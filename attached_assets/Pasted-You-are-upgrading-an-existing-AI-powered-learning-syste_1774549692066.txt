@@ -1,0 +1,289 @@
+You are upgrading an existing AI-powered learning system.
+
+Do NOT rebuild anything.
+ONLY enhance UI, UX, and behavior while keeping the system clean and distraction-free.
+
+-----------------------------------
+🔷 1. CLEAN DAILY ROUTINE UI (CRITICAL)
+-----------------------------------
+
+Default screen must show ONLY:
+
+- "Today's Plan"
+- Current Date
+- Today's progress (e.g., 0/3)
+- Progress bar
+- Subject cards
+
+DO NOT show:
+- Course progress
+- Time analysis
+- Pending work
+- Revision details
+
+-----------------------------------
+🔷 2. SMART VISIBILITY SYSTEM
+-----------------------------------
+
+All secondary data must be hidden under:
+
+[ View Details ]
+
+On click → expand to show:
+
+- Course progress %
+- Pending tasks
+- Revision tasks
+- Backlog tasks
+- Time analysis
+
+Default = clean  
+Details = on demand
+
+-----------------------------------
+🔷 3. SUBJECT CARD DESIGN
+-----------------------------------
+
+Each subject card must show:
+
+- Subject name (L1)
+- Task count
+- Total time
+
+Example:
+English (L1)  
+1 task • 40 min
+
+Keep minimal and clean
+
+-----------------------------------
+🔷 4. ACCORDION BEHAVIOR
+-----------------------------------
+
+- Only ONE subject open at a time
+- Opening one closes others
+- Default = all collapsed
+
+-----------------------------------
+🔷 5. REMOVE CONTINUE LEARNING FEATURE
+-----------------------------------
+
+- Remove floating button
+- Remove resume logic
+- Remove last active tracking
+
+Navigation depends on:
+- Daily routine order
+- Subject section
+
+-----------------------------------
+🔷 6. REMOVE "START HERE" SYSTEM
+-----------------------------------
+
+- Do NOT highlight any specific task
+- Do NOT show labels like:
+  "Start Here" or "Next Task"
+
+Instead:
+
+- Maintain strict top-to-bottom order
+- First visible item = next task
+
+-----------------------------------
+🔷 7. AUTO SCROLL SYSTEM
+-----------------------------------
+
+On page open:
+
+- Automatically scroll to first incomplete item
+
+-----------------------------------
+🔷 8. OVERVIEW SYSTEM
+-----------------------------------
+
+Apply Overview to:
+
+- L2 (Chapter)
+- L3 (Topic)
+- L4 (Subtopic - optional)
+
+Do NOT apply to:
+- L5 (Concept)
+- L6 (Point)
+
+Rules:
+
+- Overview must be completed first
+- Does NOT complete children
+
+-----------------------------------
+🔷 9. PROGRESS VISIBILITY
+-----------------------------------
+
+Each item must show:
+
+- Child progress (e.g., 2/5)
+- Progress %
+
+Visible without opening
+
+-----------------------------------
+🔷 10. COMPLETION STATES
+-----------------------------------
+
+3 states:
+
+- Not Started
+- In Progress
+- Fully Completed
+
+Special label:
+- "Overview Completed"
+
+-----------------------------------
+🔷 11. BACKLOG SYSTEM
+-----------------------------------
+
+If tasks are missed:
+
+- Carry forward automatically
+- Show small badge:
+  "Pending"
+
+Do NOT show full backlog list in default UI
+
+-----------------------------------
+🔷 12. REVISION SYSTEM
+-----------------------------------
+
+- Keep revision logic active
+- Hide in default view
+- Show only inside "View Details"
+
+-----------------------------------
+🔷 13. SMART MOTIVATION SYSTEM
+-----------------------------------
+
+Replace negative messages:
+
+❌ "You are behind"
+✔ "You're catching up 🚀"
+
+Always use positive tone
+
+-----------------------------------
+🔷 14. TIME DISPLAY SIMPLIFICATION
+-----------------------------------
+
+Show ONLY:
+
+- Task duration (e.g., 40 min)
+
+Hide:
+- Total content time
+- Available time
+
+-----------------------------------
+🔷 15. DASHBOARD SIMPLIFICATION
+-----------------------------------
+
+Top area shows ONLY:
+
+- Today's progress
+- Small progress bar
+
+Everything else hidden
+
+-----------------------------------
+🔷 16. FOCUS MODE
+-----------------------------------
+
+When user opens any item:
+
+- Show only that learning branch
+- Hide unrelated items
+
+-----------------------------------
+🔷 17. COMPLETED ITEMS HANDLING
+-----------------------------------
+
+- Auto-hide completed items
+- Add toggle:
+  "Show Completed"
+
+-----------------------------------
+🔷 18. EMPTY STATE
+-----------------------------------
+
+If no tasks:
+
+Show:
+"🎉 All tasks completed"
+
+-----------------------------------
+🔷 19. TOUCH & MOBILE UX
+-----------------------------------
+
+- Large tap areas
+- Clean spacing
+- No overlapping UI
+
+-----------------------------------
+🔷 20. UI CLEANUP RULES
+-----------------------------------
+
+- Fix overlapping elements
+- Fix z-index issues
+- Maintain proper spacing
+- Use minimal colors
+
+-----------------------------------
+🔷 21. ANIMATION RULES
+-----------------------------------
+
+Use subtle animations only:
+
+- Expand/collapse
+- Fade in/out
+- Smooth transitions
+
+Avoid heavy animations
+
+-----------------------------------
+🔷 22. LEVEL LABEL DISPLAY
+-----------------------------------
+
+Show everywhere:
+
+Title (L1–L6)
+
+Style:
+- Small font
+- Muted color
+
+-----------------------------------
+🔷 23. SUBJECT PRIORITY ORDER
+-----------------------------------
+
+Order subjects:
+
+1. Incomplete
+2. Backlog
+3. New
+
+-----------------------------------
+🔷 FINAL INSTRUCTION
+-----------------------------------
+
+System must feel:
+
+- clean
+- simple
+- focused
+- distraction-free
+
+User should feel:
+"I know what to study without thinking"
+
+If anything unclear:
+ASK USER

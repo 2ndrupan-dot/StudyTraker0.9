@@ -1,0 +1,141 @@
+Build a polished offline mobile study tracker app called "StudyTrack" using Expo React Native 
+(pnpm monorepo). The app must work fully offline using AsyncStorage — no backend or database needed.
+
+---
+
+## AUTH SYSTEM
+- Login & Registration with Gmail + password (stored in AsyncStorage)
+- Simple password hashing (no uuid package — use Date.now() + Math.random())
+- On app start: auto-redirect to /(tabs) if logged in, else to /auth
+- Use useEffect in _layout.tsx (NOT in context) to handle navigation after login/logout
+- IMPORTANT: Never call router.replace() from inside a React context — only from within 
+  navigation components
+
+---
+
+## LANGUAGE SYSTEM (LangContext)
+- Support Bengali (bn) and English (en)
+- Full translation object with keys for every UI string
+- Persisted to AsyncStorage key: @study_lang
+- Toggle available in Settings modal (gear icon in Progress tab)
+- useLang() hook exposes: lang, setLang, t(key)
+
+---
+
+## COURSE SETTINGS & SMART AUTO TIME MANAGEMENT (StudyContext)
+Global setting per user (stored at @study_course_{email}):
+- courseTotalDays: total days to complete the entire course
+
+Subject model:
+- id, title, color, allocatedDays, manualDays (boolean), deadline, totalMinutes, topics[], completed
+
+Auto-distribution logic (redistributeDays):
+- If courseTotalDays is set, auto-distribute days to subjects weighted by topic count + 
+  subtopic count (subtopics count as 0.5 weight each)
+- manualDays=true subjects keep their days; remaining days distributed to auto subjects
+- When a subject's days are manually changed: set manualDays=true, redistribute other subjects
+- When courseTotalDays changes: redistribute ALL subjects (reset manual flags? No — keep manual 
+  flags, recalculate auto ones)
+- Subject deadline = today + allocatedDays (always relative to today)
+- DEFAULT_DAILY_MINUTES = 120
+
+Topic & Subtopic auto-time:
+- When topics/subtopics added without time: auto-calculate from subject's allocatedDays
+- redistributeMinutesInSubject() divides subject's total minutes across topics by subtopic weight
+
+---
+
+## SCREENS
+
+### Auth Screen (/auth)
+- Logo icon (book-open from Feather), app title, subtitle
+- Tab switcher: লগইন / রেজিস্ট্রেশন
+- Fields: Gmail, Password (with show/hide toggle), Name (register only), Confirm Password (register)
+- Validation with inline error messages
+- On success: router.replace("/(tabs)")
+
+### Today Screen (/(tabs)/index)
+- Course completion banner at TOP — tappable to set courseTotalDays via a bottom sheet modal
+  Shows: target icon + label + current days value (or "সেট করুন" if not set) + edit icon
+- Date header + progress badge (completed/total)
+- Progress bar
+- List of today's incomplete topics across all active subjects
+- Each card: subject name, topic title, time range, days left badge (red if ≤2 days), 
+  allocated days, mark-complete button
+- Empty state with sun icon
+
+### Subjects Screen (/(tabs)/subjects)
+- Add Subject button (top right)
+- Subject cards with colored left border
+- Subject card shows: title, days badge (tappable to edit days), deadline pill, topic count, 
+  mini progress bar
+- Expand to see topics; topics expand to see subtopics
+- Add Topic button (dashed border) inside expanded subject
+- Add Subtopic button inside expanded topic
+- ALL forms have optional time/days fields with auto-calculation hint text
+- CRITICAL: All delete confirmations use CUSTOM MODALS (not Alert.alert — it doesn't work on web)
+  Custom DeleteConfirmModal: centered modal with trash icon, title, message, cancel + delete buttons
+
+### Progress Screen (/(tabs)/progress)
+- Top bar: title + settings gear icon + red logout icon
+- User card (tappable → Edit Profile modal): avatar, name, email, edit icon
+- Overall stats: completed subjects, active subjects, completed topics
+- Big progress bar + percentage
+- Per-subject cards: color badge, deadline, progress bar, topic/subtopic counts, allocated days
+- Edit Profile modal: change name + optional new password (≥6 chars)
+- Settings modal: language toggle (বাংলা / English) as segmented control
+- Logout: CUSTOM confirmation modal (NOT Alert.alert) with logout icon, yes/no buttons
+
+---
+
+## CRITICAL WEB COMPATIBILITY RULES
+- NEVER use Alert.alert with custom buttons — on web it only shows OK, callbacks never fire
+- Replace ALL Alert.alert confirmations with custom Modal components
+- All custom modals: semi-transparent overlay, card sheet, icon, title, message, button row
+
+---
+
+## DATA STORAGE KEYS
+- @study_users — array of all users
+- @study_current_user — currently logged in user
+- @study_subjects_{email} — subjects for each user
+- @study_course_{email} — course settings for each user
+- @study_lang — selected language
+
+---
+
+## UI/STYLE
+- Font: Inter (400/500/600/700 weights via @expo-google-fonts/inter)
+- Colors: accent #4F6EF7, success #22C55E, danger #EF4444, card white, background light gray
+- Subject colors palette: 10 colors including blue, teal, amber, red, purple, green, orange, pink, cyan, lime
+- Tab layout: NativeTabs (liquid glass) on iOS 26+, classic Tabs fallback
+- Safe area insets: paddingTop = insets.top + 67 on web, insets.top + 8 on native
+- Bottom padding for scroll: insets.bottom + 34 on web, insets.bottom + 100 on native
+- All bottom sheet modals: handle bar, 24px padding, safe area bottom padding
+- Delete confirm modals: centered (not bottom sheet), 85% width, rounded 24px
+
+---
+
+## PACKAGES NEEDED
+expo, expo-router, @react-native-async-storage/async-storage, expo-haptics,
+@expo/vector-icons (Feather), expo-google-fonts/inter, react-native-safe-area-context,
+react-native-gesture-handler, react-native-keyboard-controller, @tanstack/react-query,
+expo-splash-screen
+
+---
+
+## FOLDER STRUCTURE
+artifacts/study-tracker/
+  app/
+    _layout.tsx          (root layout with LangProvider > StudyProvider > Navigator)
+    auth.tsx             (login/register screen)
+    (tabs)/
+      _layout.tsx        (tab bar config)
+      index.tsx          (today screen)
+      subjects.tsx       (subjects/topics/subtopics)
+      progress.tsx       (progress + profile + settings + logout)
+  context/
+    StudyContext.tsx     (all data logic)
+    LangContext.tsx      (translations)
+  constants/
+    colors.ts

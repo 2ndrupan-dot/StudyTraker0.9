@@ -1,0 +1,200 @@
+You are an expert full-stack system designer and Firebase architect.
+
+I am building an AI-powered learning system with the following requirements. You must design and implement the complete backend logic using Firebase (Firestore, Cloud Functions, Authentication).
+
+-----------------------------------
+🔷 CORE SYSTEM OVERVIEW
+-----------------------------------
+
+The system has TWO MAIN PARTS:
+
+1. Subject Section (User-generated course structure)
+2. Daily Routine Section (AI-based study planner)
+
+-----------------------------------
+🔷 PART 1: SUBJECT STRUCTURE (DYNAMIC)
+-----------------------------------
+
+Users can create their own course structure dynamically like:
+
+Subject → Chapter → Topic → Subtopic → Concept → Point
+
+IMPORTANT:
+- This structure is NOT fixed.
+- Users may create fewer or more levels.
+- The system must support UNLIMITED hierarchical nesting.
+
+Each item must have:
+- id
+- title
+- parent_id
+- subject_id
+- user_id
+- level (number)
+- order (for sequencing)
+- type (chapter/topic/subtopic/concept/point/custom)
+- estimated_time (user-defined)
+- adjusted_time (system-controlled)
+
+-----------------------------------
+🔷 LEARNING FLOW RULES (VERY IMPORTANT)
+-----------------------------------
+
+The system MUST enforce a strict guided learning flow:
+
+1. Parent must be completed before child unlocks
+2. A user must NOT jump randomly between items
+3. One concept must be completed before the next begins
+4. No mixed learning (no switching between unrelated topics)
+
+Flow must always be:
+Parent → Child → Next sibling
+
+-----------------------------------
+🔷 COMPLETION LOGIC
+-----------------------------------
+
+Each item has TWO completion states:
+
+1. Manual Completion:
+User clicks "complete" after reading overview
+
+2. Auto Completion:
+When ALL child items are completed
+
+Rules:
+- Manual complete ≠ fully complete
+- Auto complete happens only when children are done
+
+-----------------------------------
+🔷 PART 2: DAILY ROUTINE SYSTEM
+-----------------------------------
+
+The system generates a DAILY STUDY PLAN automatically.
+
+User provides:
+- Daily study time (minutes)
+- Target completion duration (e.g. 100 days, 200 days, 365 days)
+- Maximum 2 subjects
+
+-----------------------------------
+🔷 ROUTINE GENERATION LOGIC
+-----------------------------------
+
+Every day at 12 AM:
+
+1. Fetch all incomplete items
+2. Prioritize:
+   a. In-progress items first
+   b. Then lowest-level items (point > concept > subtopic)
+3. Maintain learning sequence (no skipping hierarchy)
+4. Select tasks based on available daily time
+5. Assign tasks into routine
+
+-----------------------------------
+🔷 TIME MANAGEMENT SYSTEM (CRITICAL)
+-----------------------------------
+
+System must ensure ALL content is completed within target days.
+
+Steps:
+
+1. Calculate total content time:
+   Sum of all estimated_time
+
+2. Calculate total available time:
+   daily_time × target_days
+
+3. If mismatch:
+   Apply adjustment ratio:
+
+   adjustment_ratio = available_time / total_content_time
+
+4. Update:
+   adjusted_time = estimated_time × adjustment_ratio
+
+-----------------------------------
+🔷 TIME LIMIT RULES
+-----------------------------------
+
+Minimum limits:
+- Point ≥ 3 minutes
+- Concept ≥ 5 minutes
+- Subtopic ≥ 7 minutes
+
+System must NOT reduce below these limits.
+
+-----------------------------------
+🔷 DYNAMIC ADAPTATION
+-----------------------------------
+
+System must adapt daily:
+
+IF user is behind:
+- Compress future items slightly
+
+IF user is ahead:
+- Increase time or add revision
+
+IF user skips repeatedly:
+- Reduce difficulty or break into smaller tasks
+
+-----------------------------------
+🔷 ROUTINE OUTPUT STRUCTURE
+-----------------------------------
+
+Each day routine must include:
+- Ordered list of items
+- Allocated time per item
+- Status (pending/completed)
+
+-----------------------------------
+🔷 FIREBASE REQUIREMENTS
+-----------------------------------
+
+Use:
+- Firestore (main database)
+- Authentication (user management)
+- Cloud Functions (logic engine)
+- Cloud Messaging (notifications)
+
+Collections required:
+- subjects
+- content_items (single collection for all levels)
+- progress
+- routine
+- user_settings
+
+-----------------------------------
+🔷 CLOUD FUNCTIONS REQUIRED
+-----------------------------------
+
+1. Daily Routine Generator (runs at 12 AM)
+2. Time Adjustment Engine (on content change)
+3. Progress Watcher (auto completion trigger)
+
+-----------------------------------
+🔷 UI/UX REQUIREMENTS
+-----------------------------------
+
+- Locked/unlocked content flow
+- Progress tracking (percentage)
+- Continue learning button
+- No random access unless explicitly allowed
+
+-----------------------------------
+🔷 FINAL INSTRUCTION
+-----------------------------------
+
+You must design this system in a scalable, optimized, and production-ready way.
+
+If any required data, structure, or clarification is missing,
+ASK ME FIRST before making assumptions.
+
+Do NOT skip any logic.
+Do NOT simplify the system.
+
+Build it step by step with clean structure.
+
+
+আমাকে বাংলায় রিপ্লাই দেবেন......

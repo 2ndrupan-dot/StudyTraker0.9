@@ -11,7 +11,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 export function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const { login, register, error, clearError } = useAuth();
-  const { t } = useLang();
+  const { t, lang, setLang } = useLang();
   const [showPass, setShowPass] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -54,6 +54,23 @@ export function Auth() {
   return (
     <div className="min-h-[100dvh] max-w-md mx-auto bg-background flex flex-col relative overflow-hidden">
       <div className="absolute top-0 left-0 w-full h-72 bg-gradient-to-br from-primary/20 to-accent/40 rounded-b-[40px] -z-10" />
+
+      {/* Language toggle - top right */}
+      <div className="absolute top-4 right-4 z-20">
+        <button
+          onClick={() => setLang(lang === 'en' ? 'bn' : 'en')}
+          className="flex items-center gap-1 bg-white/80 backdrop-blur-sm border border-border/40 rounded-full px-3 py-1.5 shadow-sm"
+        >
+          <span className={`text-xs font-bold transition-colors ${lang === 'en' ? 'text-primary' : 'text-muted-foreground'}`}>EN</span>
+          <div className="relative w-8 h-4 bg-secondary rounded-full mx-0.5">
+            <div
+              className="absolute top-0.5 w-3 h-3 bg-primary rounded-full shadow-sm transition-all duration-200"
+              style={{ left: lang === 'en' ? '2px' : '18px' }}
+            />
+          </div>
+          <span className={`text-xs font-bold transition-colors ${lang === 'bn' ? 'text-primary' : 'text-muted-foreground'}`}>বাং</span>
+        </button>
+      </div>
 
       <div className="flex-1 px-6 pt-16 pb-8 flex flex-col">
         <div className="flex justify-center mb-6">

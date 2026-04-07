@@ -87,10 +87,10 @@ function formatTotalTime(total: number, t: (k: string) => string): string {
   const h = Math.floor((total % 1440) / 60);
   const m = total % 60;
   const parts: string[] = [];
-  if (mo > 0) parts.push(`${mo} মাস`);
-  if (d > 0) parts.push(`${d} দিন`);
-  if (h > 0) parts.push(`${h} ঘণ্টা`);
-  if (m > 0) parts.push(`${m} মিনিট`);
+  if (mo > 0) parts.push(`${mo} ${t('months')}`);
+  if (d > 0) parts.push(`${d} ${t('days')}`);
+  if (h > 0) parts.push(`${h} ${t('hoursLabel')}`);
+  if (m > 0) parts.push(`${m} ${t('minutesLabel')}`);
   return parts.join(' ') || t('timeAuto');
 }
 
@@ -786,10 +786,10 @@ export function Subjects() {
                   {formatTotalTime(totalMins, t)}
                 </span>
               </div>
-              <TimeSlider label="মাস (Months)" value={sliderMonths} max={12} onChange={setSliderMonths} unit="মাস" />
-              <TimeSlider label="দিন (Days)" value={sliderDays} max={30} onChange={setSliderDays} unit="দিন" />
-              <TimeSlider label="ঘণ্টা (Hours)" value={sliderHours} max={23} onChange={setSliderHours} unit="ঘণ্টা" />
-              <TimeSlider label="মিনিট (Minutes)" value={sliderMins} max={59} onChange={setSliderMins} unit="মিনিট" />
+              <TimeSlider label={t('months')} value={sliderMonths} max={12} onChange={setSliderMonths} unit={t('months')} />
+              <TimeSlider label={t('days')} value={sliderDays} max={30} onChange={setSliderDays} unit={t('days')} />
+              <TimeSlider label={t('hoursLabel')} value={sliderHours} max={23} onChange={setSliderHours} unit={t('hoursLabel')} />
+              <TimeSlider label={t('minutesLabel')} value={sliderMins} max={59} onChange={setSliderMins} unit={t('minutesLabel')} />
               {totalMins === 0 && (
                 <p className="text-[10px] text-muted-foreground text-center">{t('autoCalcHint')}</p>
               )}

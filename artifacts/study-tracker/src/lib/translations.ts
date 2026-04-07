@@ -54,6 +54,12 @@ export const translations = {
     hours: "hrs",
     noTasksDesc: "Add subjects and chapters to get started.",
 
+    // Time slider labels
+    months: "Months",
+    days: "Days",
+    hoursLabel: "Hours",
+    minutesLabel: "Minutes",
+
     // Subjects - hierarchy
     noSubjectsYet: "No Subjects Yet",
     addFirstSubject: "Add your first subject and start studying!",
@@ -204,6 +210,12 @@ export const translations = {
     hour: "ঘণ্টা",
     hours: "ঘণ্টা",
     noTasksDesc: "শুরু করতে বিষয় ও চ্যাপ্টার যোগ করুন।",
+
+    // Time slider labels
+    months: "মাস",
+    days: "দিন",
+    hoursLabel: "ঘণ্টা",
+    minutesLabel: "মিনিট",
 
     // Subjects - hierarchy
     noSubjectsYet: "এখনো কোনো বিষয় নেই",

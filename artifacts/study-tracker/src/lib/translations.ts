@@ -55,6 +55,8 @@ export const translations = {
     noTasksDesc: "Add subjects and chapters to get started.",
 
     // Subjects - hierarchy
+    noSubjectsYet: "No Subjects Yet",
+    addFirstSubject: "Add your first subject and start studying!",
     addSubject: "Add Subject",
     addChapter: "Add Chapter",
     addTopic: "Add Topic",
@@ -204,6 +206,8 @@ export const translations = {
     noTasksDesc: "শুরু করতে বিষয় ও চ্যাপ্টার যোগ করুন।",
 
     // Subjects - hierarchy
+    noSubjectsYet: "এখনো কোনো বিষয় নেই",
+    addFirstSubject: "প্রথম বিষয় যোগ করুন এবং পড়াশোনা শুরু করুন!",
     addSubject: "বিষয় যোগ করুন",
     addChapter: "চ্যাপ্টার যোগ করুন",
     addTopic: "টপিক যোগ করুন",

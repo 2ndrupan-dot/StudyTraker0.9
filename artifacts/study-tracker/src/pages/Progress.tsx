@@ -9,10 +9,10 @@ import { motion } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
 
 const cardVariants = {
-  hidden: { opacity: 0, x: -40 },
+  hidden: { opacity: 0, x: 48 },
   visible: (i: number) => ({
     opacity: 1, x: 0,
-    transition: { delay: i * 0.07, type: 'spring', stiffness: 320, damping: 28, mass: 0.8 }
+    transition: { delay: i * 0.07, duration: 0.45, ease: [0.22, 1, 0.36, 1] }
   }),
 };
 

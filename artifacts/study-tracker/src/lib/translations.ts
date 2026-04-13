@@ -142,6 +142,21 @@ export const translations = {
     revisionDone: "Done",
     revisionScheduled: "Scheduled",
 
+    // Lock tooltips
+    completePrevChapter: "Complete previous chapter first",
+    completePrevTopic: "Complete previous topic first",
+    completePrevSubtopic: "Complete previous subtopic first",
+    completePrevConcept: "Complete previous concept first",
+    completePrevPoint: "Complete previous point first",
+
+    // Confirm dialogs
+    confirmDismissPending: "Are you sure? This pending task will be removed.",
+    confirmCompletePending: "Are you sure? This task will be marked as complete.",
+    confirmCompleteRevision: "Are you sure? This revision will be marked as complete.",
+    confirmRescheduleRevision: "Are you sure? This revision will be rescheduled to a less busy day.",
+    confirmRegeneratePlan: "Are you sure? Today's plan will be regenerated.",
+    confirmAllRevisions: "Mark all revisions as complete?",
+
     // Course Start Date / Reset
     courseStartDate: "Course Starting Date",
     courseStartDateDesc: "Set a date to start (or restart) your course.",
@@ -298,6 +313,21 @@ export const translations = {
     revisionUpcoming: "আসন্ন রিভিশন",
     revisionDone: "সম্পন্ন",
     revisionScheduled: "নির্ধারিত",
+
+    // Lock tooltips
+    completePrevChapter: "আগের chapter সম্পন্ন করুন",
+    completePrevTopic: "আগের topic সম্পন্ন করুন",
+    completePrevSubtopic: "আগের subtopic সম্পন্ন করুন",
+    completePrevConcept: "আগের concept সম্পন্ন করুন",
+    completePrevPoint: "আগের point সম্পন্ন করুন",
+
+    // Confirm dialogs
+    confirmDismissPending: "আপনি কি নিশ্চিত? এই pending task টি সরিয়ে দেওয়া হবে।",
+    confirmCompletePending: "আপনি কি নিশ্চিত? এই task টি সম্পন্ন হিসেবে চিহ্নিত হবে।",
+    confirmCompleteRevision: "আপনি কি নিশ্চিত? এই রিভিশন সম্পন্ন হিসেবে চিহ্নিত হবে।",
+    confirmRescheduleRevision: "আপনি কি নিশ্চিত? রিভিশনটি পরে কম চাপের দিনে দেখানো হবে।",
+    confirmRegeneratePlan: "আপনি কি নিশ্চিত? আজকের পরিকল্পনা পুনরায় তৈরি করা হবে।",
+    confirmAllRevisions: "সব রিভিশন সম্পন্ন হিসেবে চিহ্নিত করবেন?",
 
     // Course Start Date / Reset
     courseStartDate: "কোর্স শুরুর তারিখ",

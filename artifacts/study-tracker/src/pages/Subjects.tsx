@@ -162,13 +162,7 @@ export function Subjects() {
   const resetForm = () => { setFormTitle(''); setFormDays(''); setFormDifficulty('easy'); resetSliders(); };
   const closeModal = () => { setModal(null); resetForm(); };
 
-  const [maxSubjectAlert, setMaxSubjectAlert] = useState(false);
-
   const openAdd = (level: LevelType, path: Partial<ActivePath>) => {
-    if (level === 'subject' && subjects.length >= 3) {
-      setMaxSubjectAlert(true);
-      return;
-    }
     setActivePath(prev => ({ ...prev, ...path, level }));
     resetForm();
     setModal('add');
@@ -300,10 +294,10 @@ export function Subjects() {
               <BookOpen size={36} className="text-primary" />
             </motion.div>
             <h3 className="text-xl font-bold text-foreground mb-2">
-              {t('noSubjectsYet') ?? 'কোনো বিষয় নেই'}
+              {t('noSubjectsYet')}
             </h3>
             <p className="text-muted-foreground text-sm mb-8 leading-relaxed">
-              {t('addFirstSubject') ?? 'প্রথম বিষয় যোগ করুন এবং পড়াশোনা শুরু করুন!'}
+              {t('addFirstSubject')}
             </p>
             <motion.div whileTap={{ scale: 0.95 }}>
               <Button
@@ -420,7 +414,7 @@ export function Subjects() {
                                     onClick={e => { e.stopPropagation(); if (!chLocked) toggleChapterComplete(subj.id, chapter.id); }}
                                     className={`shrink-0 transition-colors ${chLocked ? 'cursor-not-allowed text-muted-foreground/50' : 'text-muted-foreground hover:text-primary'}`}
                                     disabled={chLocked}
-                                    title={chLocked ? 'আগের chapter সম্পন্ন করুন' : undefined}
+                                    title={chLocked ? t('completePrevChapter') : undefined}
                                   >
                                     {chLocked ? <Lock size={18} className="text-muted-foreground/50" /> : chapter.completed ? <CheckCircle2 size={18} className="text-green-500" /> : <Circle size={18} />}
                                   </button>
@@ -478,7 +472,7 @@ export function Subjects() {
                                                   onClick={e => { e.stopPropagation(); if (!topLocked) toggleTopicComplete(subj.id, chapter.id, topic.id); }}
                                                   className="shrink-0"
                                                   disabled={topLocked}
-                                                  title={topLocked ? 'আগের topic সম্পন্ন করুন' : undefined}
+                                                  title={topLocked ? t('completePrevTopic') : undefined}
                                                 >
                                                   {topLocked ? <Lock size={15} className="text-muted-foreground/40" /> : topic.completed ? <CheckCircle2 size={15} className="text-green-500" /> : <Circle size={15} className="text-muted-foreground" />}
                                                 </button>
@@ -532,7 +526,7 @@ export function Subjects() {
                                                               className="px-2.5 py-2 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20"
                                                               onClick={() => toggleSubtopicExpand(sub.id)}
                                                             >
-                                                              <button onClick={e => { e.stopPropagation(); if (!subLocked) toggleSubtopicComplete(subj.id, chapter.id, topic.id, sub.id); }} disabled={subLocked} title={subLocked ? 'আগের subtopic সম্পন্ন করুন' : undefined}>
+                                                              <button onClick={e => { e.stopPropagation(); if (!subLocked) toggleSubtopicComplete(subj.id, chapter.id, topic.id, sub.id); }} disabled={subLocked} title={subLocked ? t('completePrevSubtopic') : undefined}>
                                                                 {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : sub.completed ? <CheckCircle2 size={13} className="text-green-500" /> : <Circle size={13} className="text-muted-foreground" />}
                                                               </button>
                                                               <div className="flex-1 min-w-0">
@@ -577,7 +571,7 @@ export function Subjects() {
                                                                             className="px-2 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20"
                                                                             onClick={() => toggleConceptExpand(concept.id)}
                                                                           >
-                                                                            <button onClick={e => { e.stopPropagation(); if (!conLocked) toggleConceptComplete(subj.id, chapter.id, topic.id, sub.id, concept.id); }} disabled={conLocked} title={conLocked ? 'আগের concept সম্পন্ন করুন' : undefined}>
+                                                                            <button onClick={e => { e.stopPropagation(); if (!conLocked) toggleConceptComplete(subj.id, chapter.id, topic.id, sub.id, concept.id); }} disabled={conLocked} title={conLocked ? t('completePrevConcept') : undefined}>
                                                                               {conLocked ? <Lock size={11} className="text-muted-foreground/30" /> : concept.completed ? <CheckCircle2 size={11} className="text-green-500" /> : <Circle size={11} className="text-muted-foreground" />}
                                                                             </button>
                                                                             <div className="flex-1 min-w-0">
@@ -619,7 +613,7 @@ export function Subjects() {
                                                                                       {...itemAnim}
                                                                                       className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-card group/point ${ptLocked ? 'opacity-45' : ''}`}
                                                                                     >
-                                                                                      <button onClick={() => { if (!ptLocked) togglePointComplete(subj.id, chapter.id, topic.id, sub.id, concept.id, point.id); }} disabled={ptLocked} title={ptLocked ? 'আগের point সম্পন্ন করুন' : undefined}>
+                                                                                      <button onClick={() => { if (!ptLocked) togglePointComplete(subj.id, chapter.id, topic.id, sub.id, concept.id, point.id); }} disabled={ptLocked} title={ptLocked ? t('completePrevPoint') : undefined}>
                                                                                         {ptLocked ? <Lock size={10} className="text-muted-foreground/30" /> : point.completed ? <CheckCircle2 size={10} className="text-green-500" /> : <Circle size={10} className="text-muted-foreground" />}
                                                                                       </button>
                                                                                       <Dot size={10} className="text-muted-foreground shrink-0" />
@@ -820,16 +814,6 @@ export function Subjects() {
         isDanger={true}
       />
 
-      {/* Max 3 subjects alert */}
-      <Modal isOpen={maxSubjectAlert} onClose={() => setMaxSubjectAlert(false)} title="সর্বোচ্চ ৩টি Subject" align="center" icon={BookOpen}>
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            Daily Routine System সর্বোচ্চ <strong>৩টি Subject</strong> সমর্থন করে।
-            নতুন Subject যোগ করতে আগের একটি মুছুন।
-          </p>
-          <Button className="w-full" onClick={() => setMaxSubjectAlert(false)}>ঠিক আছে</Button>
-        </div>
-      </Modal>
     </Layout>
   );
 }

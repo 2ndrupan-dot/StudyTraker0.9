@@ -133,12 +133,25 @@ function isTaskCompleted(subjects: Subject[], task: PlanTask): boolean {
   return c.points.find(p => p.id === task.pointId)?.completed ?? false;
 }
 
+// ─── Seeded RNG (LCG) for deterministic daily rotation ───────────────────────
+function lcgRandom(seed: number) {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(1664525, s) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
 // ─── Smart plan generator ────────────────────────────────────────────────────
 // Rules:
-// 1. Max 3 subjects per day (1 if budget < 90 min)
-// 2. Topic-First: topic appears as overview before subtopics
-// 3. In-progress items first
-// 4. Pending re-scheduled items have priority
+// 1. Up to 3 subjects per day (1 if budget < 90 min), selected by weighted rotation
+// 2. Selection weights = urgencyScore = f(completionPct, deadline)
+//    → less complete + tighter deadline → appears more often across days
+// 3. Rotation: date-seeded weighted random ensures all subjects are covered
+//    proportionally to their remaining work and urgency
+// 4. Topic-First: topic appears as overview before subtopics
+// 5. In-progress items always included first
+// 6. Pending re-scheduled items have priority
 function generateSmartPlan(
   subjects: Subject[],
   dailyBudgetMinutes: number,
@@ -166,7 +179,7 @@ function generateSmartPlan(
     for (const ch of subj.chapters) {
       if (ch.topics.length === 0) { total++; if (!ch.completed) { incomplete++; } continue; }
       for (const t of ch.topics) {
-        total++; // Topic itself counts
+        total++;
         if (!t.completed) { incomplete++; }
         if (t.subtopics.length === 0) continue;
         for (const sub of t.subtopics) {
@@ -180,19 +193,57 @@ function generateSmartPlan(
     }
     if (total === 0) continue;
 
-    const urgencyScore = daysLeft === 0 ? 10000 : ((incomplete / total) * 100) / Math.sqrt(daysLeft + 1);
+    // urgencyScore: higher = less complete + closer deadline → needs more study days
+    const completionPct = (total - incomplete) / total; // 0=nothing done, 1=all done
+    const urgencyScore = daysLeft === 0
+      ? 10000
+      : ((1 - completionPct) * 100) / Math.sqrt(daysLeft + 1);
     const urgency: 'high' | 'medium' | 'low' = urgencyScore > 25 ? 'high' : urgencyScore > 8 ? 'medium' : 'low';
     subjCandidates.push({ subj, daysLeft, urgencyScore, urgency, hasInProgress });
   }
 
-  subjCandidates.sort((a, b) => {
-    if (a.hasInProgress !== b.hasInProgress) return a.hasInProgress ? -1 : 1;
-    return b.urgencyScore - a.urgencyScore;
-  });
-
-  // Max 3 subjects per day, 1 if budget < 90 min
+  // Max subjects per session based on available time
   const maxSubjects = dailyBudgetMinutes < 90 ? 1 : 3;
-  const selected = subjCandidates.slice(0, maxSubjects);
+  const n = subjCandidates.length;
+
+  let selected: SubjectCandidate[];
+
+  if (n <= maxSubjects) {
+    // All subjects fit — sort by urgency
+    selected = [...subjCandidates].sort((a, b) => {
+      if (a.hasInProgress !== b.hasInProgress) return a.hasInProgress ? -1 : 1;
+      return b.urgencyScore - a.urgencyScore;
+    });
+  } else {
+    // Weighted random selection seeded by today's date
+    // Over many days, each subject appears proportional to its urgencyScore
+    // → less complete subjects with tighter deadlines appear more often
+    const dayIndex = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+    const rand = lcgRandom(dayIndex * 31337 + 12345);
+
+    const pool = [...subjCandidates];
+    selected = [];
+
+    // Always include in-progress subjects first
+    for (let i = pool.length - 1; i >= 0; i--) {
+      if (pool[i].hasInProgress && selected.length < maxSubjects) {
+        selected.push(...pool.splice(i, 1));
+      }
+    }
+
+    // Fill remaining slots with urgency-weighted random selection
+    while (selected.length < maxSubjects && pool.length > 0) {
+      const totalW = pool.reduce((s, c) => s + Math.max(c.urgencyScore, 1), 0);
+      let r = rand() * totalW;
+      let chosen = pool.length - 1;
+      for (let i = 0; i < pool.length; i++) {
+        r -= Math.max(pool[i].urgencyScore, 1);
+        if (r <= 0) { chosen = i; break; }
+      }
+      selected.push(...pool.splice(chosen, 1));
+    }
+  }
+
   const perSubjectBudget = selected.length > 0 ? Math.floor(dailyBudgetMinutes / selected.length) : dailyBudgetMinutes;
 
   const pendingKeys = new Set(pendingItems.filter(p => pendingDaysLeft(p, todayStr) > 0).map(p => p.task.key));
@@ -516,7 +567,7 @@ export function Today() {
 
   const confirmDismissPending = (key: string) => {
     setConfirmDialog({
-      message: isBn ? 'আপনি কি নিশ্চিত? এই pending task টি সরিয়ে দেওয়া হবে।' : 'Are you sure? This pending task will be removed.',
+      message: t('confirmDismissPending'),
       onConfirm: () => { dismissPending(key); setConfirmDialog(null); },
     });
   };
@@ -530,7 +581,7 @@ export function Today() {
 
   const confirmCompletePending = (item: PendingItem) => {
     setConfirmDialog({
-      message: isBn ? 'আপনি কি নিশ্চিত? এই task টি সম্পন্ন হিসেবে চিহ্নিত হবে।' : 'Are you sure? This task will be marked as complete.',
+      message: t('confirmCompletePending'),
       onConfirm: () => { completePendingTask(item); setConfirmDialog(null); },
     });
   };
@@ -568,14 +619,14 @@ export function Today() {
 
   const confirmCompleteRevision = (id: string) => {
     setConfirmDialog({
-      message: isBn ? 'আপনি কি নিশ্চিত? এই রিভিশন সম্পন্ন হিসেবে চিহ্নিত হবে।' : 'Are you sure? This revision will be marked as complete.',
+      message: t('confirmCompleteRevision'),
       onConfirm: () => { completeRevision(id); setConfirmDialog(null); },
     });
   };
 
   const confirmDismissRevision = (id: string) => {
     setConfirmDialog({
-      message: isBn ? 'আপনি কি নিশ্চিত? রিভিশনটি পরে কম চাপের দিনে দেখানো হবে।' : 'Are you sure? This revision will be rescheduled to a less busy day.',
+      message: t('confirmRescheduleRevision'),
       onConfirm: () => { rescheduleRevision(id); setConfirmDialog(null); },
     });
   };

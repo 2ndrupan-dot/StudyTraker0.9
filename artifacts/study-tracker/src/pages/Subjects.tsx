@@ -429,6 +429,9 @@ export function Subjects() {
                                         {chapter.title}
                                       </span>
                                       <span className="text-[9px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L2</span>
+                                      {chapter.completed && !isChapterContentDone(chapter) && (
+                                        <span className="text-[9px] font-bold text-indigo-500 bg-indigo-500/10 px-1.5 py-0.5 rounded-full border border-indigo-400/30 shrink-0">OV ✓</span>
+                                      )}
                                     </div>
                                     <p className="text-[10px] text-muted-foreground mt-0.5">
                                       {t('topics')}: {completedTopics}/{topicCount}
@@ -487,6 +490,10 @@ export function Subjects() {
                                                       {topic.title}
                                                     </span>
                                                     <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L3</span>
+                                                  
+                                                      {topic.completed && !isTopicContentDone(topic) && (
+                                                        <span className="text-[8px] font-bold text-indigo-500 bg-indigo-500/10 px-1.5 py-0.5 rounded-full border border-indigo-400/30 shrink-0">OV ✓</span>
+                                                      )}
                                                   </div>
                                                   <p className="text-[9px] text-muted-foreground mt-0.5">
                                                     Subtopics: {completedSubs}/{topic.subtopics.length}
@@ -540,7 +547,11 @@ export function Subjects() {
                                                                     {sub.title}
                                                                   </span>
                                                                   <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L4</span>
-                                                                </div>
+                                                                
+                                                                  {sub.completed && !isSubtopicContentDone(sub) && (
+                                                                    <span className="text-[8px] font-bold text-indigo-500 bg-indigo-500/10 px-1.5 py-0.5 rounded-full border border-indigo-400/30 shrink-0">OV ✓</span>
+                                                                  )}
+                                                              </div>
                                                                 <p className="text-[8px] text-muted-foreground">
                                                                   Concepts: {completedConcepts}/{sub.concepts.length}
                                                                   {subPoints > 0 ? ` • Points: ${subCompletedPoints}/${subPoints}` : ''}

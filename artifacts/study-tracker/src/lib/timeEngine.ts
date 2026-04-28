@@ -107,18 +107,16 @@ export function adjChapter(ch: Chapter): number {
 
 export function totalContentMinutes(subjects: Subject[]): number {
   return subjects.reduce((s, subj) => {
-    if (subj.completed) return s;
     return s + subj.chapters
-      .filter(ch => !ch.completed)
+      .filter(ch => !isChapterContentDone(ch))
       .reduce((cs, ch) => cs + rawChapter(ch), 0);
   }, 0);
 }
 
 export function totalAdjustedMinutes(subjects: Subject[]): number {
   return subjects.reduce((s, subj) => {
-    if (subj.completed) return s;
     return s + subj.chapters
-      .filter(ch => !ch.completed)
+      .filter(ch => !isChapterContentDone(ch))
       .reduce((cs, ch) => cs + adjChapter(ch), 0);
   }, 0);
 }
@@ -221,6 +219,29 @@ export function calculateAdaptivePressure(
   };
 }
 
+// ─── Deep content completion helpers ──────────────────────────────────────────
+// These check if ALL leaf-level items are done (not just the overview flag).
+
+export function isConceptContentDone(c: Concept): boolean {
+  if (c.points.length > 0) return c.points.every(p => p.completed);
+  return c.completed;
+}
+
+export function isSubtopicContentDone(sub: Subtopic): boolean {
+  if (sub.concepts.length > 0) return sub.concepts.every(c => isConceptContentDone(c));
+  return sub.completed;
+}
+
+export function isTopicContentDone(t: Topic): boolean {
+  if (t.subtopics.length > 0) return t.subtopics.every(sub => isSubtopicContentDone(sub));
+  return t.completed;
+}
+
+export function isChapterContentDone(ch: Chapter): boolean {
+  if (ch.topics.length > 0) return ch.topics.every(t => isTopicContentDone(t));
+  return ch.completed;
+}
+
 // ─── Locked/Unlocked logic ───────────────────────────────────────────────────
 // Topic-First Rule: subtopics unlock ONLY after topic itself is complete.
 
@@ -286,9 +307,8 @@ export interface NextItem {
 
 export function findNextItem(subjects: Subject[]): NextItem | null {
   for (const subj of subjects) {
-    if (subj.completed) continue;
     for (const ch of subj.chapters) {
-      if (ch.completed) continue;
+      if (isChapterContentDone(ch)) continue;
 
       if (ch.topics.length === 0) {
         return {

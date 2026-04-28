@@ -4,7 +4,8 @@ import { useAuth } from './AuthContext';
 import { addDays, formatISO } from 'date-fns';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { applyTimeAdjustment } from '@/lib/timeEngine';
+import { applyTimeAdjustment, isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone } from '@/lib/timeEngine';
+import type { DifficultyLevel } from '@/lib/types';
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 
@@ -29,23 +30,23 @@ interface StudyContextType {
   addChapter: (subjectId: string, chapter: Omit<Chapter, 'id' | 'completed' | 'topics'>) => void;
   deleteChapter: (subjectId: string, chapterId: string) => void;
   toggleChapterComplete: (subjectId: string, chapterId: string) => void;
-  updateChapterMeta: (subjectId: string, chapterId: string, title: string, estimatedMinutes?: number) => void;
+  updateChapterMeta: (subjectId: string, chapterId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => void;
   addTopic: (subjectId: string, chapterId: string, topic: Omit<Topic, 'id' | 'completed' | 'subtopics'>) => void;
   deleteTopic: (subjectId: string, chapterId: string, topicId: string) => void;
   toggleTopicComplete: (subjectId: string, chapterId: string, topicId: string) => void;
-  updateTopicMeta: (subjectId: string, chapterId: string, topicId: string, title: string, estimatedMinutes?: number) => void;
+  updateTopicMeta: (subjectId: string, chapterId: string, topicId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => void;
   addSubtopic: (subjectId: string, chapterId: string, topicId: string, subtopic: Omit<Subtopic, 'id' | 'completed' | 'concepts'>) => void;
   deleteSubtopic: (subjectId: string, chapterId: string, topicId: string, subtopicId: string) => void;
   toggleSubtopicComplete: (subjectId: string, chapterId: string, topicId: string, subtopicId: string) => void;
-  updateSubtopicMeta: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, title: string, estimatedMinutes?: number) => void;
+  updateSubtopicMeta: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => void;
   addConcept: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, concept: Omit<Concept, 'id' | 'completed' | 'points'>) => void;
   deleteConcept: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string) => void;
   toggleConceptComplete: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string) => void;
-  updateConceptMeta: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, title: string, estimatedMinutes?: number) => void;
+  updateConceptMeta: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => void;
   addPoint: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, point: Omit<Point, 'id' | 'completed'>) => void;
   deletePoint: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, pointId: string) => void;
   togglePointComplete: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, pointId: string) => void;
-  updatePointMeta: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, pointId: string, title: string) => void;
+  updatePointMeta: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, pointId: string, title: string, difficulty?: DifficultyLevel) => void;
 }
 
 const StudyContext = createContext<StudyContextType | undefined>(undefined);
@@ -294,7 +295,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   const checkSubjectCompletion = (s: Subject): Subject => ({
     ...s,
-    completed: s.chapters.length > 0 && s.chapters.every(ch => ch.completed),
+    completed: s.chapters.length > 0 && s.chapters.every(ch => isChapterContentDone(ch)),
   });
 
   // ─── Immutable update helpers ──────────────────────────────────────────
@@ -383,10 +384,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const updateChapterMeta = (subjId: string, chId: string, title: string, estimatedMinutes?: number) =>
+  const updateChapterMeta = (subjId: string, chId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) =>
     setSubjects(updateChapterFn(subjId, chId, ch => ({
       ...ch, title,
       ...(estimatedMinutes !== undefined ? { estimatedMinutes } : {}),
+      ...(difficulty !== undefined ? { difficulty } : {}),
     })));
 
   // ─── Topic methods ─────────────────────────────────────────────────────
@@ -412,8 +414,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         const newChapters = s.chapters.map(ch => {
           if (ch.id !== chId) return ch;
           const newTopics = ch.topics.filter(t => t.id !== tId);
-          const allDone = newTopics.length > 0 && newTopics.every(t => t.completed);
-          return { ...ch, topics: newTopics, completed: allDone };
+          return { ...ch, topics: newTopics };
         });
         return checkSubjectCompletion(redistributeMinutes({ ...s, chapters: newChapters }));
       });
@@ -431,18 +432,18 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           // Manual completion: only toggle this topic, do NOT cascade to subtopics (Topic-First rule)
           return { ...t, completed: !t.completed };
         });
-        // Auto-complete chapter if all topics are done
-        const allDone = newTopics.length > 0 && newTopics.every(t => t.completed);
-        return { ...ch, topics: newTopics, completed: allDone };
+        // ch.completed = chapter overview flag (manual only, not auto-set from topics)
+        return { ...ch, topics: newTopics };
       });
       return checkSubjectCompletion({ ...s, chapters: newChapters });
     }));
   };
 
-  const updateTopicMeta = (subjId: string, chId: string, tId: string, title: string, estimatedMinutes?: number) =>
+  const updateTopicMeta = (subjId: string, chId: string, tId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) =>
     setSubjects(updateTopicFn(subjId, chId, tId, t => ({
       ...t, title,
       ...(estimatedMinutes !== undefined ? { estimatedMinutes } : {}),
+      ...(difficulty !== undefined ? { difficulty } : {}),
     })));
 
   // ─── Subtopic methods ──────────────────────────────────────────────────
@@ -490,21 +491,22 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             // Manual completion: only toggle this subtopic, do NOT cascade to concepts
             return { ...sub, completed: !sub.completed };
           });
-          // Auto-complete topic if all subtopics are done
-          const allSubsDone = newSubs.length > 0 && newSubs.every(sub => sub.completed);
-          return { ...t, subtopics: newSubs, completed: t.completed || allSubsDone };
+          // Auto-complete topic only when overview done AND ALL subtopics content done
+          const topicDone = t.completed && newSubs.length > 0 && newSubs.every(sub => isSubtopicContentDone(sub));
+          return { ...t, subtopics: newSubs, completed: topicDone };
         });
-        const allTopicsDone = newTopics.length > 0 && newTopics.every(t => t.completed);
-        return { ...ch, topics: newTopics, completed: allTopicsDone };
+        // ch.completed = chapter overview flag (manual only)
+        return { ...ch, topics: newTopics };
       });
       return checkSubjectCompletion({ ...s, chapters: newChapters });
     }));
   };
 
-  const updateSubtopicMeta = (subjId: string, chId: string, tId: string, subId: string, title: string, estimatedMinutes?: number) =>
+  const updateSubtopicMeta = (subjId: string, chId: string, tId: string, subId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) =>
     setSubjects(updateSubtopicFn(subjId, chId, tId, subId, sub => ({
       ...sub, title,
       ...(estimatedMinutes !== undefined ? { estimatedMinutes } : {}),
+      ...(difficulty !== undefined ? { difficulty } : {}),
     })));
 
   // ─── Concept methods ───────────────────────────────────────────────────
@@ -548,16 +550,17 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         // Manual completion: only toggle this concept, do NOT cascade to points
         return { ...c, completed: !c.completed };
       });
-      // Auto-complete subtopic if all concepts are done
-      const allDone = newConcepts.length > 0 && newConcepts.every(c => c.completed);
-      return { ...sub, concepts: newConcepts, completed: sub.completed || allDone };
+      // Auto-complete subtopic only when overview done AND ALL concepts content done
+      const subDone = sub.completed && newConcepts.length > 0 && newConcepts.every(c => isConceptContentDone(c));
+      return { ...sub, concepts: newConcepts, completed: subDone };
     }));
   };
 
-  const updateConceptMeta = (subjId: string, chId: string, tId: string, subId: string, cId: string, title: string, estimatedMinutes?: number) =>
+  const updateConceptMeta = (subjId: string, chId: string, tId: string, subId: string, cId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) =>
     setSubjects(updateConceptFn(subjId, chId, tId, subId, cId, c => ({
       ...c, title,
       ...(estimatedMinutes !== undefined ? { estimatedMinutes } : {}),
+      ...(difficulty !== undefined ? { difficulty } : {}),
     })));
 
   // ─── Point methods ─────────────────────────────────────────────────────
@@ -603,14 +606,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const togglePointComplete = (subjId: string, chId: string, tId: string, subId: string, cId: string, pId: string) => {
     setSubjects(updateConceptFn(subjId, chId, tId, subId, cId, c => {
       const newPoints = c.points.map(p => p.id === pId ? { ...p, completed: !p.completed } : p);
-      const allDone = newPoints.length > 0 && newPoints.every(p => p.completed);
-      return { ...c, points: newPoints, completed: allDone };
+      // Auto-complete concept only when overview done AND all points done
+      const conceptDone = c.completed && newPoints.length > 0 && newPoints.every(p => p.completed);
+      return { ...c, points: newPoints, completed: conceptDone };
     }));
   };
 
-  const updatePointMeta = (subjId: string, chId: string, tId: string, subId: string, cId: string, pId: string, title: string) =>
+  const updatePointMeta = (subjId: string, chId: string, tId: string, subId: string, cId: string, pId: string, title: string, difficulty?: DifficultyLevel) =>
     setSubjects(updateConceptFn(subjId, chId, tId, subId, cId, c => ({
-      ...c, points: c.points.map(p => p.id === pId ? { ...p, title } : p)
+      ...c, points: c.points.map(p => p.id === pId ? { ...p, title, ...(difficulty !== undefined ? { difficulty } : {}) } : p)
     })));
 
   return (

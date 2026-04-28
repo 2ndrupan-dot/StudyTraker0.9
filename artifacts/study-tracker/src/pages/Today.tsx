@@ -17,6 +17,7 @@ import {
   adjPoint, adjConcept, adjSubtopic, adjTopic, adjChapter,
   findNextItem, calculateAdaptivePressure,
   totalContentMinutes, totalAdjustedMinutes,
+  isChapterContentDone, isTopicContentDone,
 } from '@/lib/timeEngine';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -170,7 +171,7 @@ function generateSmartPlan(
 
   for (const subj of subjects) {
     if (subj.completed) continue;
-    const hasAnyIncomplete = subj.chapters.some(ch => !ch.completed);
+    const hasAnyIncomplete = subj.chapters.some(ch => !isChapterContentDone(ch));
     if (!hasAnyIncomplete) continue;
 
     const daysLeft = Math.max(0, differenceInDays(parseISO(subj.deadline), new Date()));
@@ -257,7 +258,7 @@ function generateSmartPlan(
       subjectColor: subj.color, daysLeft, urgency, urgencyScore
     };
 
-    const firstCh = subj.chapters.find(ch => !ch.completed);
+    const firstCh = subj.chapters.find(ch => !isChapterContentDone(ch));
     if (!firstCh) continue;
 
     const chBase = { ...base, chapterId: firstCh.id };
@@ -276,6 +277,14 @@ function generateSmartPlan(
         pushTask(`${subj.id}|${firstCh.id}`, { breadcrumb: [], mainTitle: firstCh.title, level: 'chapter' }, mins);
       }
       continue;
+    }
+
+    // Chapter-First: if chapter has topics and overview not done, show chapter overview first
+    if (!firstCh.completed) {
+      const overviewMins = Math.max(firstCh.estimatedMinutes ?? 0, 20);
+      pushTask(`${subj.id}|${firstCh.id}`,
+        { breadcrumb: [], mainTitle: `[Overview] ${firstCh.title}`, level: 'chapter' }, overviewMins);
+      continue; // Don't show topics until chapter overview is done
     }
 
     outer: for (const t of firstCh.topics) {

@@ -10,6 +10,7 @@ import {
 import {
   isChapterUnlocked, isTopicUnlocked, isSubtopicUnlocked,
   isConceptUnlocked, isPointUnlocked,
+  isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone,
 } from '@/lib/timeEngine';
 import { Modal, ConfirmModal, Input, Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -168,11 +169,13 @@ export function Subjects() {
     setModal('add');
   };
 
-  const openEdit = (level: LevelType, path: Partial<ActivePath>, currentTitle: string, currentMins?: number, currentDays?: number) => {
+  const openEdit = (level: LevelType, path: Partial<ActivePath>, currentTitle: string, currentMins?: number, currentDays?: number, currentDifficulty?: DifficultyLevel) => {
     setActivePath(prev => ({ ...prev, ...path, level }));
     setFormTitle(currentTitle);
     if (currentDays !== undefined) setFormDays(currentDays.toString());
     else setFormDays('');
+    if (currentDifficulty) setFormDifficulty(currentDifficulty);
+    else setFormDifficulty('easy');
     if (currentMins && currentMins > 0) {
       const { months, days, hours, mins } = minutesToSliders(currentMins);
       setSliderMonths(months);
@@ -216,16 +219,17 @@ export function Subjects() {
       }
     } else if (modal === 'edit') {
       const newMins = mins > 0 ? mins : undefined;
+      const diff = formDifficulty;
       if (level === 'subject') {
         updateSubjectMeta(subjId, formTitle);
         const parsedDays = parseInt(formDays);
         if (!isNaN(parsedDays) && parsedDays > 0) updateSubjectDays(subjId, parsedDays);
       }
-      else if (level === 'chapter') updateChapterMeta(subjId, chapterId, formTitle, newMins);
-      else if (level === 'topic') updateTopicMeta(subjId, chapterId, topicId, formTitle, newMins);
-      else if (level === 'subtopic') updateSubtopicMeta(subjId, chapterId, topicId, subtopicId, formTitle, newMins);
-      else if (level === 'concept') updateConceptMeta(subjId, chapterId, topicId, subtopicId, conceptId, formTitle, newMins);
-      else if (level === 'point') updatePointMeta(subjId, chapterId, topicId, subtopicId, conceptId, pointId, formTitle);
+      else if (level === 'chapter') updateChapterMeta(subjId, chapterId, formTitle, newMins, diff);
+      else if (level === 'topic') updateTopicMeta(subjId, chapterId, topicId, formTitle, newMins, diff);
+      else if (level === 'subtopic') updateSubtopicMeta(subjId, chapterId, topicId, subtopicId, formTitle, newMins, diff);
+      else if (level === 'concept') updateConceptMeta(subjId, chapterId, topicId, subtopicId, conceptId, formTitle, newMins, diff);
+      else if (level === 'point') updatePointMeta(subjId, chapterId, topicId, subtopicId, conceptId, pointId, formTitle, diff);
     } else if (modal === 'days') {
       if (formDays) updateSubjectDays(subjId, parseInt(formDays));
     }
@@ -316,7 +320,7 @@ export function Subjects() {
             {subjects.map((subj, idx) => {
               const isExpanded = expandedSubj === subj.id;
               const chapterCount = subj.chapters.length;
-              const completedChapters = subj.chapters.filter(c => c.completed).length;
+              const completedChapters = subj.chapters.filter(c => isChapterContentDone(c)).length;
               const prog = chapterCount === 0 ? 0 : (completedChapters / chapterCount) * 100;
 
               return (
@@ -350,7 +354,7 @@ export function Subjects() {
                         >
                           {subj.allocatedDays} d
                         </button>
-                        {subj.completed && (
+                        {subj.chapters.length > 0 && subj.chapters.every(c => isChapterContentDone(c)) && (
                           <span className="px-2 py-0.5 bg-green-500/10 text-green-600 text-[10px] font-bold rounded-md">✓ Done</span>
                         )}
                       </div>
@@ -401,9 +405,9 @@ export function Subjects() {
                             const chLocked = !isChapterUnlocked(subj, chIdx);
                             const chExpanded = expandedChapter === chapter.id;
                             const topicCount = chapter.topics.length;
-                            const completedTopics = chapter.topics.filter(t => t.completed).length;
+                            const completedTopics = chapter.topics.filter(t => isTopicContentDone(t)).length;
                             let chSubtopics = 0, chCompletedSubs = 0;
-                            chapter.topics.forEach(t => { chSubtopics += t.subtopics.length; chCompletedSubs += t.subtopics.filter(s => s.completed).length; });
+                            chapter.topics.forEach(t => { chSubtopics += t.subtopics.length; chCompletedSubs += t.subtopics.filter(s => isSubtopicContentDone(s)).length; });
                             return (
                               <motion.div key={chapter.id} {...itemAnim} className={`bg-card border rounded-xl overflow-hidden shadow-sm ${chLocked ? 'border-border/30 opacity-70' : 'border-border/50'}`}>
                                 <div
@@ -416,12 +420,12 @@ export function Subjects() {
                                     disabled={chLocked}
                                     title={chLocked ? t('completePrevChapter') : undefined}
                                   >
-                                    {chLocked ? <Lock size={18} className="text-muted-foreground/50" /> : chapter.completed ? <CheckCircle2 size={18} className="text-green-500" /> : <Circle size={18} />}
+                                    {chLocked ? <Lock size={18} className="text-muted-foreground/50" /> : isChapterContentDone(chapter) ? <CheckCircle2 size={18} className="text-green-500" /> : <Circle size={18} />}
                                   </button>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                       <BookOpen size={13} className="text-primary shrink-0" />
-                                      <span className={`font-semibold text-sm ${chapter.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                      <span className={`font-semibold text-sm ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                         {chapter.title}
                                       </span>
                                       <span className="text-[9px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L2</span>
@@ -434,7 +438,7 @@ export function Subjects() {
                                   </div>
                                   <div className="flex items-center gap-1 shrink-0">
                                     <button
-                                      onClick={e => { e.stopPropagation(); openEdit('chapter', { subjId: subj.id, chapterId: chapter.id }, chapter.title, chapter.estimatedMinutes); }}
+                                      onClick={e => { e.stopPropagation(); openEdit('chapter', { subjId: subj.id, chapterId: chapter.id }, chapter.title, chapter.estimatedMinutes, undefined, chapter.difficulty); }}
                                       className="p-1.5 text-muted-foreground hover:text-primary rounded-lg transition-colors"
                                     >
                                       <Pencil size={12} />
@@ -459,7 +463,7 @@ export function Subjects() {
                                         {chapter.topics.map((topic, topIdx) => {
                                           const topLocked = chLocked || !isTopicUnlocked(chapter, topIdx);
                                           const tExpanded = expandedTopic === topic.id;
-                                          const completedSubs = topic.subtopics.filter(s => s.completed).length;
+                                          const completedSubs = topic.subtopics.filter(s => isSubtopicContentDone(s)).length;
                                           let topConcepts = 0, topCompletedConcepts = 0;
                                           topic.subtopics.forEach(s => { topConcepts += s.concepts.length; topCompletedConcepts += s.concepts.filter(c => c.completed).length; });
                                           return (
@@ -474,12 +478,12 @@ export function Subjects() {
                                                   disabled={topLocked}
                                                   title={topLocked ? t('completePrevTopic') : undefined}
                                                 >
-                                                  {topLocked ? <Lock size={15} className="text-muted-foreground/40" /> : topic.completed ? <CheckCircle2 size={15} className="text-green-500" /> : <Circle size={15} className="text-muted-foreground" />}
+                                                  {topLocked ? <Lock size={15} className="text-muted-foreground/40" /> : isTopicContentDone(topic) ? <CheckCircle2 size={15} className="text-green-500" /> : <Circle size={15} className="text-muted-foreground" />}
                                                 </button>
                                                 <div className="flex-1 min-w-0">
                                                   <div className="flex items-center gap-1.5 flex-wrap">
                                                     <Layers size={11} className="text-accent-foreground shrink-0" />
-                                                    <span className={`text-xs font-semibold ${topic.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                    <span className={`text-xs font-semibold ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                       {topic.title}
                                                     </span>
                                                     <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L3</span>
@@ -492,7 +496,7 @@ export function Subjects() {
                                                 </div>
                                                 <div className="flex items-center gap-0.5 shrink-0">
                                                   <button
-                                                    onClick={e => { e.stopPropagation(); openEdit('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }, topic.title, topic.estimatedMinutes); }}
+                                                    onClick={e => { e.stopPropagation(); openEdit('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }, topic.title, topic.estimatedMinutes, undefined, topic.difficulty); }}
                                                     className="p-1 text-muted-foreground hover:text-primary"
                                                   >
                                                     <Pencil size={10} />
@@ -517,7 +521,7 @@ export function Subjects() {
                                                       {topic.subtopics.map((sub, subIdx) => {
                                                         const subLocked = topLocked || !isSubtopicUnlocked(topic, subIdx);
                                                         const subExpanded = expandedSubtopic === sub.id;
-                                                        const completedConcepts = sub.concepts.filter(c => c.completed).length;
+                                                        const completedConcepts = sub.concepts.filter(c => isConceptContentDone(c)).length;
                                                         let subPoints = 0, subCompletedPoints = 0;
                                                         sub.concepts.forEach(c => { subPoints += c.points.length; subCompletedPoints += c.points.filter(p => p.completed).length; });
                                                         return (
@@ -527,12 +531,12 @@ export function Subjects() {
                                                               onClick={() => toggleSubtopicExpand(sub.id)}
                                                             >
                                                               <button onClick={e => { e.stopPropagation(); if (!subLocked) toggleSubtopicComplete(subj.id, chapter.id, topic.id, sub.id); }} disabled={subLocked} title={subLocked ? t('completePrevSubtopic') : undefined}>
-                                                                {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : sub.completed ? <CheckCircle2 size={13} className="text-green-500" /> : <Circle size={13} className="text-muted-foreground" />}
+                                                                {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : isSubtopicContentDone(sub) ? <CheckCircle2 size={13} className="text-green-500" /> : <Circle size={13} className="text-muted-foreground" />}
                                                               </button>
                                                               <div className="flex-1 min-w-0">
                                                                 <div className="flex items-center gap-1 flex-wrap">
                                                                   <List size={10} className="text-blue-400 shrink-0" />
-                                                                  <span className={`text-[11px] font-medium ${sub.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                  <span className={`text-[11px] font-medium ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                                     {sub.title}
                                                                   </span>
                                                                   <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L4</span>
@@ -544,7 +548,7 @@ export function Subjects() {
                                                                 </p>
                                                               </div>
                                                               <div className="flex items-center gap-0.5 shrink-0">
-                                                                <button onClick={e => { e.stopPropagation(); openEdit('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title, sub.estimatedMinutes); }} className="p-1 text-muted-foreground hover:text-primary">
+                                                                <button onClick={e => { e.stopPropagation(); openEdit('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title, sub.estimatedMinutes, undefined, sub.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
                                                                   <Pencil size={9} />
                                                                 </button>
                                                                 <button onClick={e => { e.stopPropagation(); openDelete('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
@@ -572,12 +576,12 @@ export function Subjects() {
                                                                             onClick={() => toggleConceptExpand(concept.id)}
                                                                           >
                                                                             <button onClick={e => { e.stopPropagation(); if (!conLocked) toggleConceptComplete(subj.id, chapter.id, topic.id, sub.id, concept.id); }} disabled={conLocked} title={conLocked ? t('completePrevConcept') : undefined}>
-                                                                              {conLocked ? <Lock size={11} className="text-muted-foreground/30" /> : concept.completed ? <CheckCircle2 size={11} className="text-green-500" /> : <Circle size={11} className="text-muted-foreground" />}
+                                                                              {conLocked ? <Lock size={11} className="text-muted-foreground/30" /> : isConceptContentDone(concept) ? <CheckCircle2 size={11} className="text-green-500" /> : <Circle size={11} className="text-muted-foreground" />}
                                                                             </button>
                                                                             <div className="flex-1 min-w-0">
                                                                               <div className="flex items-center gap-1 flex-wrap">
                                                                                 <Lightbulb size={9} className="text-yellow-500 shrink-0" />
-                                                                                <span className={`text-[10px] font-medium ${concept.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                                <span className={`text-[10px] font-medium ${isConceptContentDone(concept) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                                                   {concept.title}
                                                                                 </span>
                                                                                 <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L5</span>
@@ -588,7 +592,7 @@ export function Subjects() {
                                                                               </p>
                                                                             </div>
                                                                             <div className="flex items-center gap-0.5 shrink-0">
-                                                                              <button onClick={e => { e.stopPropagation(); openEdit('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title, concept.estimatedMinutes); }} className="p-1 text-muted-foreground hover:text-primary">
+                                                                              <button onClick={e => { e.stopPropagation(); openEdit('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title, concept.estimatedMinutes, undefined, concept.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
                                                                                 <Pencil size={8} />
                                                                               </button>
                                                                               <button onClick={e => { e.stopPropagation(); openDelete('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
@@ -622,7 +626,7 @@ export function Subjects() {
                                                                                       </span>
                                                                                       <span className="text-[7px] font-bold text-muted-foreground/40 bg-secondary/60 px-1 py-0.5 rounded border border-border/20 shrink-0">L6</span>
                                                                                       <div className="flex items-center gap-0.5 opacity-0 group-hover/point:opacity-100 transition-all shrink-0">
-                                                                                        <button onClick={() => openEdit('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title)} className="p-0.5 text-muted-foreground hover:text-primary">
+                                                                                        <button onClick={() => openEdit('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title, undefined, undefined, point.difficulty)} className="p-0.5 text-muted-foreground hover:text-primary">
                                                                                           <Pencil size={8} />
                                                                                         </button>
                                                                                         <button onClick={() => openDelete('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id })} className="p-0.5 text-muted-foreground hover:text-destructive">
@@ -743,7 +747,7 @@ export function Subjects() {
           )}
 
           {/* Difficulty selector — for all levels except subject */}
-          {activePath.level !== 'subject' && (modal === 'add') && (
+          {activePath.level !== 'subject' && (modal === 'add' || modal === 'edit') && (
             <div>
               <p className="text-xs font-bold text-foreground mb-2">{t('difficultyLabel')}</p>
               <div className="flex gap-2">

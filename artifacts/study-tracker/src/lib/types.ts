@@ -6,7 +6,14 @@ export const DIFFICULTY_MULTIPLIERS: Record<DifficultyLevel, number> = {
   hard: 2,
 };
 
-export interface Point {
+// Common optional fields for all study levels
+export interface MarkableItem {
+  note?: string;
+  important?: boolean;
+  weak?: boolean;
+}
+
+export interface Point extends MarkableItem {
   id: string;
   title: string;
   completed: boolean;
@@ -15,7 +22,7 @@ export interface Point {
   difficulty?: DifficultyLevel;
 }
 
-export interface Concept {
+export interface Concept extends MarkableItem {
   id: string;
   title: string;
   completed: boolean;
@@ -25,7 +32,7 @@ export interface Concept {
   points: Point[];
 }
 
-export interface Subtopic {
+export interface Subtopic extends MarkableItem {
   id: string;
   title: string;
   completed: boolean;
@@ -35,7 +42,7 @@ export interface Subtopic {
   concepts: Concept[];
 }
 
-export interface Topic {
+export interface Topic extends MarkableItem {
   id: string;
   title: string;
   totalMinutes: number;
@@ -46,7 +53,7 @@ export interface Topic {
   subtopics: Subtopic[];
 }
 
-export interface Chapter {
+export interface Chapter extends MarkableItem {
   id: string;
   title: string;
   totalMinutes: number;
@@ -57,7 +64,7 @@ export interface Chapter {
   topics: Topic[];
 }
 
-export interface Subject {
+export interface Subject extends MarkableItem {
   id: string;
   title: string;
   color: string;
@@ -84,3 +91,16 @@ export const MIN_TIMES = {
   topic: 10,
   chapter: 15,
 } as const;
+
+// Levels used by mark / note APIs
+export type MarkLevel = 'subject' | 'chapter' | 'topic' | 'subtopic' | 'concept' | 'point';
+
+export interface MarkPath {
+  subjectId: string;
+  chapterId?: string;
+  topicId?: string;
+  subtopicId?: string;
+  conceptId?: string;
+  pointId?: string;
+  level: MarkLevel;
+}

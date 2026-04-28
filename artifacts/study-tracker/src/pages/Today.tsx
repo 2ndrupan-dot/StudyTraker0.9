@@ -7,7 +7,7 @@ import {
   Target, CheckCircle2, Clock, CalendarDays, Edit3, BookOpen,
   Layers, Zap, Sun, ChevronRight, AlarmClock, Hash, Lightbulb, List,
   ChevronDown, AlertTriangle, X, RotateCcw, TrendingUp, PlayCircle,
-  Lock, Flame, ThumbsUp, RefreshCw,
+  Lock, Flame, ThumbsUp, RefreshCw, Plus, StickyNote, Star, AlertOctagon,
 } from 'lucide-react';
 import { format, differenceInDays, parseISO, addDays } from 'date-fns';
 import { Modal, Input, Button } from '@/components/ui';
@@ -434,6 +434,48 @@ export function Today() {
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
   const [revisions, setRevisions]       = useState<RevisionEntry[]>([]);
   const [planReady, setPlanReady]       = useState(false);
+  const [extraLoadedMins, setExtraLoadedMins] = useState(0);
+  const [loadMoreNotice, setLoadMoreNotice] = useState<string | null>(null);
+
+  const loadMore = () => {
+    const extraStep = 30;
+    const newBudget = dailyBudgetMins + extraLoadedMins + extraStep;
+    const candidate = generateSmartPlan(subjects, newBudget, pendingItems, todayStr);
+    const existingKeys = new Set(lockedPlan.map(p => p.key));
+    const additions = candidate.filter(p => !existingKeys.has(p.key));
+    if (additions.length === 0) {
+      setLoadMoreNotice(t('loadMoreNothing'));
+      setTimeout(() => setLoadMoreNotice(null), 2500);
+      return;
+    }
+    const merged = [...lockedPlan, ...additions];
+    setLockedPlan(merged);
+    savePlan(email, todayStr, merged);
+    setExtraLoadedMins(prev => prev + extraStep);
+    setLoadMoreNotice(`${t('loadMoreAdded')} +${additions.length}`);
+    setTimeout(() => setLoadMoreNotice(null), 2500);
+  };
+
+  // Look up note/important/weak for a task by walking subjects tree
+  const getTaskMarks = (task: PlanTask): { note?: string; important?: boolean; weak?: boolean } => {
+    const subj = subjects.find(s => s.id === task.subjectId);
+    if (!subj) return {};
+    if (task.level === 'chapter' && !task.topicId) {
+      const ch = subj.chapters.find(c => c.id === task.chapterId);
+      return ch ? { note: ch.note, important: ch.important, weak: ch.weak } : {};
+    }
+    const ch = subj.chapters.find(c => c.id === task.chapterId);
+    if (!ch) return {};
+    const top = task.topicId ? ch.topics.find(t => t.id === task.topicId) : undefined;
+    if (task.level === 'topic') return top ? { note: top.note, important: top.important, weak: top.weak } : {};
+    const sub = top && task.subtopicId ? top.subtopics.find(s => s.id === task.subtopicId) : undefined;
+    if (task.level === 'subtopic') return sub ? { note: sub.note, important: sub.important, weak: sub.weak } : {};
+    const con = sub && task.conceptId ? sub.concepts.find(c => c.id === task.conceptId) : undefined;
+    if (task.level === 'concept') return con ? { note: con.note, important: con.important, weak: con.weak } : {};
+    const pt = con && task.pointId ? con.points.find(p => p.id === task.pointId) : undefined;
+    if (task.level === 'point') return pt ? { note: pt.note, important: pt.important, weak: pt.weak } : {};
+    return {};
+  };
 
   // ── Initial load ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -819,24 +861,47 @@ export function Today() {
             </h3>
           </div>
 
-          {(opts?.pendingLabel || done) && (
-            <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-              {opts?.pendingLabel && (
-                <span className={`flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                  opts.pendingDLeft !== undefined && opts.pendingDLeft <= 3
-                    ? 'text-red-600 bg-red-500/10 border-red-200'
-                    : 'text-orange-600 bg-orange-500/10 border-orange-200'
-                }`}>
-                  <AlertTriangle size={8} /> {opts.pendingLabel}
-                </span>
-              )}
-              {done && (
-                <span className="flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-500/10 border border-green-200 px-1.5 py-0.5 rounded">
-                  <CheckCircle2 size={8} /> {isBn ? 'সম্পন্ন' : 'Done'}
-                </span>
-              )}
-            </div>
-          )}
+          {(() => {
+            const marks = getTaskMarks(task);
+            const hasMarks = marks.important || marks.weak || marks.note;
+            if (!opts?.pendingLabel && !done && !hasMarks) return null;
+            return (
+              <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                {opts?.pendingLabel && (
+                  <span className={`flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                    opts.pendingDLeft !== undefined && opts.pendingDLeft <= 3
+                      ? 'text-red-600 bg-red-500/10 border-red-200'
+                      : 'text-orange-600 bg-orange-500/10 border-orange-200'
+                  }`}>
+                    <AlertTriangle size={8} /> {opts.pendingLabel}
+                  </span>
+                )}
+                {done && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-500/10 border border-green-200 px-1.5 py-0.5 rounded">
+                    <CheckCircle2 size={8} /> {isBn ? 'সম্পন্ন' : 'Done'}
+                  </span>
+                )}
+                {marks.important && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-yellow-700 bg-yellow-500/15 border border-yellow-300 px-1.5 py-0.5 rounded">
+                    <Star size={8} className="fill-yellow-500" /> {t('important')}
+                  </span>
+                )}
+                {marks.weak && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-500/15 border border-rose-300 px-1.5 py-0.5 rounded">
+                    <AlertOctagon size={8} /> {t('weak')}
+                  </span>
+                )}
+                {marks.note && (
+                  <span
+                    className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-500/15 border border-amber-300 px-1.5 py-0.5 rounded max-w-[160px] truncate"
+                    title={marks.note}
+                  >
+                    <StickyNote size={8} /> {marks.note.split('\n')[0].slice(0, 24)}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
@@ -1167,8 +1232,47 @@ export function Today() {
                   {isBn ? '🎉 আজকের সব কাজ সম্পন্ন!' : '🎉 All tasks completed!'}
                 </h3>
                 <p className="text-muted-foreground text-sm mb-5">{t('enjoyRest')}</p>
+                {subjects.length > 0 && (
+                  <div className="w-full max-w-sm space-y-2">
+                    <p className="text-[11px] text-muted-foreground/70">{t('loadMoreDesc')}</p>
+                    <Button variant="outline" className="w-full" onClick={loadMore}>
+                      <Plus size={14} className="mr-1.5 inline" /> {t('loadMore')}
+                    </Button>
+                  </div>
+                )}
               </motion.div>
             )}
+
+            {/* ── Load More button (when plan has tasks) ── */}
+            {incompleteSubjectGroups.length > 0 && (
+              <div className="mb-4 flex flex-col items-center gap-1.5">
+                <button
+                  onClick={loadMore}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-dashed border-border/70 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-secondary/40 hover:border-primary/50 transition-all"
+                >
+                  <Plus size={12} /> {t('loadMore')}
+                </button>
+                {extraLoadedMins > 0 && (
+                  <span className="text-[10px] text-muted-foreground/70">
+                    {isBn ? `+${extraLoadedMins} মিনিট অতিরিক্ত` : `+${extraLoadedMins} min extra loaded`}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* ── Load More notice toast ── */}
+            <AnimatePresence>
+              {loadMoreNotice && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-foreground text-background text-xs font-bold shadow-lg pointer-events-none"
+                >
+                  {loadMoreNotice}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* ── Show Completed toggle ── */}
             {completedTasks.length > 0 && (

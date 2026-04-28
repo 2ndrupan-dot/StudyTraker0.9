@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
@@ -6,6 +6,7 @@ import {
   Plus, Trash2, ChevronRight,
   BookOpen, Layers, List, Lightbulb, Dot, FolderPlus,
   CheckCircle2, Circle, Pencil, Lock,
+  BookOpenCheck, Star, AlertTriangle, StickyNote, Filter,
 } from 'lucide-react';
 import {
   isChapterUnlocked, isTopicUnlocked, isSubtopicUnlocked,
@@ -13,12 +14,73 @@ import {
   isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone,
 } from '@/lib/timeEngine';
 import { Modal, ConfirmModal, Input, Button } from '@/components/ui';
+import { ItemActions, MarksBadgeRow } from '@/components/ItemActions';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getRandomColor } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
-import type { DifficultyLevel } from '@/lib/types';
+import type { DifficultyLevel, MarkPath, Subject, Chapter, Topic, Subtopic, Concept, Point } from '@/lib/types';
 
 type LevelType = 'subject' | 'chapter' | 'topic' | 'subtopic' | 'concept' | 'point';
+type StatusFilter = 'all' | 'inProgress' | 'completed' | 'notStarted';
+
+// ─── Status helpers ────────────────────────────────────────────────────────
+function chapterHasAnyProgress(ch: Chapter): boolean {
+  if (ch.completed) return true;
+  for (const t of ch.topics) {
+    if (t.completed) return true;
+    for (const s of t.subtopics) {
+      if (s.completed) return true;
+      for (const c of s.concepts) {
+        if (c.completed) return true;
+        for (const p of c.points) if (p.completed) return true;
+      }
+    }
+  }
+  return false;
+}
+function chapterStatus(ch: Chapter): 'completed' | 'inProgress' | 'notStarted' {
+  if (isChapterContentDone(ch)) return 'completed';
+  if (chapterHasAnyProgress(ch)) return 'inProgress';
+  return 'notStarted';
+}
+function subjectStatus(s: Subject): 'completed' | 'inProgress' | 'notStarted' {
+  if (s.chapters.length === 0) return 'notStarted';
+  if (s.chapters.every(isChapterContentDone)) return 'completed';
+  if (s.chapters.some(ch => chapterHasAnyProgress(ch) || isChapterContentDone(ch))) return 'inProgress';
+  return 'notStarted';
+}
+const matchesStatus = (status: 'completed' | 'inProgress' | 'notStarted', f: StatusFilter) =>
+  f === 'all' || f === status;
+
+// Recursively check if any descendant has the given flag set
+function subjectHasDeepFlag(s: Subject, flag: 'important' | 'weak'): boolean {
+  for (const ch of s.chapters) {
+    if (ch[flag]) return true;
+    for (const t of ch.topics) {
+      if (t[flag]) return true;
+      for (const sub of t.subtopics) {
+        if (sub[flag]) return true;
+        for (const c of sub.concepts) {
+          if (c[flag]) return true;
+          for (const p of c.points) if (p[flag]) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Counts of overview-done vs content-done chapters within a subject
+function chapterCounts(s: Subject) {
+  let contentDone = 0;
+  let overviewOnly = 0; // chapters with completed flag set but content not yet finished
+  for (const c of s.chapters) {
+    const cd = isChapterContentDone(c);
+    if (cd) contentDone++;
+    else if (c.completed) overviewOnly++;
+  }
+  return { total: s.chapters.length, contentDone, overviewOnly };
+}
 
 interface ActivePath {
   subjId: string;
@@ -115,8 +177,28 @@ export function Subjects() {
     addSubtopic, deleteSubtopic, toggleSubtopicComplete,
     addConcept, deleteConcept, toggleConceptComplete,
     addPoint, deletePoint, togglePointComplete,
+    setNote,
   } = useStudy();
   const { t } = useLang();
+
+  // ─── Filter / marks state ─────────────────────────────────────────────
+  const [filter, setFilter] = useState<StatusFilter>('all');
+  const [importantOnly, setImportantOnly] = useState(false);
+  const [weakOnly, setWeakOnly] = useState(false);
+
+  // Single note modal for any level
+  const [notePath, setNotePath] = useState<MarkPath | null>(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  const openNote = (path: MarkPath, current: string) => {
+    setNotePath(path);
+    setNoteDraft(current);
+  };
+  const closeNote = () => { setNotePath(null); setNoteDraft(''); };
+  const saveNote = () => {
+    if (!notePath) return;
+    setNote(notePath, noteDraft);
+    closeNote();
+  };
 
   // Expanded state per level
   const [expandedSubj, setExpandedSubj] = useState<string | null>(null);
@@ -263,6 +345,19 @@ export function Subjects() {
   const modalTitle = modal === 'edit' ? `${t('edit')}: ${formTitle || '...'}` : t(levelTitleKey[activePath.level]);
   const ModalIcon = levelIcon[activePath.level];
 
+  // ─── Apply filter to subject list ───────────────────────────────────────
+  const subjectMatchesMarks = (s: Subject): boolean => {
+    if (importantOnly && !s.important && !subjectHasDeepFlag(s, 'important')) return false;
+    if (weakOnly && !s.weak && !subjectHasDeepFlag(s, 'weak')) return false;
+    return true;
+  };
+  const filteredSubjects = useMemo(() => {
+    return subjects.filter(s =>
+      matchesStatus(subjectStatus(s), filter) && subjectMatchesMarks(s)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjects, filter, importantOnly, weakOnly]);
+
   return (
     <Layout>
       <div className="p-5">
@@ -282,6 +377,64 @@ export function Subjects() {
             </Button>
           </motion.div>
         </motion.header>
+
+        {/* ─── Filter chip bar ────────────────────────────────────────── */}
+        {subjects.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 flex items-center gap-1.5 flex-wrap"
+          >
+            <Filter size={13} className="text-muted-foreground mr-0.5" />
+            {([
+              ['all',         t('filterAll'),         'bg-primary text-primary-foreground'],
+              ['inProgress',  t('filterInProgress'),  'bg-amber-500 text-white'],
+              ['completed',   t('filterCompleted'),   'bg-green-500 text-white'],
+              ['notStarted',  t('filterNotStarted'),  'bg-slate-500 text-white'],
+            ] as const).map(([key, label, activeCls]) => {
+              const isActive = filter === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setFilter(key)}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all ${
+                    isActive
+                      ? `${activeCls} border-transparent shadow-sm`
+                      : 'bg-card text-muted-foreground border-border/60 hover:bg-secondary'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+            <span className="mx-1 text-muted-foreground/40">|</span>
+            <button
+              type="button"
+              onClick={() => setImportantOnly(v => !v)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1 transition-all ${
+                importantOnly
+                  ? 'bg-yellow-400 text-yellow-900 border-yellow-500 shadow-sm'
+                  : 'bg-card text-muted-foreground border-border/60 hover:bg-secondary'
+              }`}
+            >
+              <Star size={11} fill={importantOnly ? 'currentColor' : 'none'} />
+              {t('importantOnly')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setWeakOnly(v => !v)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1 transition-all ${
+                weakOnly
+                  ? 'bg-rose-500 text-white border-rose-600 shadow-sm'
+                  : 'bg-card text-muted-foreground border-border/60 hover:bg-secondary'
+              }`}
+            >
+              <AlertTriangle size={11} fill={weakOnly ? 'currentColor' : 'none'} />
+              {t('weakOnly')}
+            </button>
+          </motion.div>
+        )}
 
         {/* Empty state */}
         {subjects.length === 0 && (
@@ -315,13 +468,34 @@ export function Subjects() {
           </motion.div>
         )}
 
+        {/* No-filter-results state */}
+        {subjects.length > 0 && filteredSubjects.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-12 text-muted-foreground bg-card border border-dashed border-border/50 rounded-2xl"
+          >
+            <Filter size={32} className="mx-auto mb-3 opacity-30" />
+            <p className="font-semibold text-sm">{t('noResultsForFilter')}</p>
+            <button
+              onClick={() => { setFilter('all'); setImportantOnly(false); setWeakOnly(false); }}
+              className="mt-3 px-3 py-1 text-xs font-bold text-primary hover:underline"
+            >
+              {t('filterAll')}
+            </button>
+          </motion.div>
+        )}
+
         <AnimatePresence>
           <div className="space-y-4">
-            {subjects.map((subj, idx) => {
+            {filteredSubjects.map((subj, idx) => {
               const isExpanded = expandedSubj === subj.id;
               const chapterCount = subj.chapters.length;
               const completedChapters = subj.chapters.filter(c => isChapterContentDone(c)).length;
+              const counts = chapterCounts(subj);
               const prog = chapterCount === 0 ? 0 : (completedChapters / chapterCount) * 100;
+              const overviewProg = chapterCount === 0 ? 0 : (counts.overviewOnly / chapterCount) * 100;
+              const subjPath: MarkPath = { subjectId: subj.id, level: 'subject' };
 
               return (
                 <motion.div
@@ -335,7 +509,7 @@ export function Subjects() {
                 >
                   {/* Subject header */}
                   <div
-                    className="p-4 relative flex items-center justify-between cursor-pointer active:bg-secondary/40 transition-colors"
+                    className="p-4 relative flex items-center justify-between cursor-pointer active:bg-secondary/40 transition-colors group/row"
                     onClick={() => toggleSubj(subj.id)}
                   >
                     <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: subj.color }} />
@@ -355,17 +529,39 @@ export function Subjects() {
                           {subj.allocatedDays} d
                         </button>
                         {subj.chapters.length > 0 && subj.chapters.every(c => isChapterContentDone(c)) && (
-                          <span className="px-2 py-0.5 bg-green-500/10 text-green-600 text-[10px] font-bold rounded-md">✓ Done</span>
+                          <span className="px-2 py-0.5 bg-green-500/10 text-green-700 text-[10px] font-bold rounded-md">✓ {t('filterCompleted')}</span>
+                        )}
+                        {counts.overviewOnly > 0 && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 bg-indigo-500/15 text-indigo-700 text-[10px] font-bold rounded-md border border-indigo-300/60">
+                            <BookOpenCheck size={10} /> {counts.overviewOnly} {t('overviewBadge')}
+                          </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-medium flex-wrap">
+                      <MarksBadgeRow important={subj.important} weak={subj.weak} note={subj.note} onClickNote={() => openNote(subjPath, subj.note ?? '')} />
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-medium flex-wrap mt-1">
                         <span>{t('chapters')}: {completedChapters}/{chapterCount}</span>
+                        {counts.overviewOnly > 0 && (
+                          <>
+                            <span>•</span>
+                            <span className="text-indigo-600 font-bold">{counts.overviewOnly} {t('overviewDone')}</span>
+                          </>
+                        )}
                         <span>•</span>
                         <span>{format(parseISO(subj.deadline), 'MMM d, yyyy')}</span>
                       </div>
-                      <div className="mt-3 h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                      {/* Layered progress bar: content done (solid) + overview-only (translucent) */}
+                      <div className="mt-3 h-1.5 w-full bg-secondary rounded-full overflow-hidden relative">
+                        {overviewProg > 0 && (
+                          <motion.div
+                            className="absolute left-0 top-0 h-full opacity-40"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${prog + overviewProg}%` }}
+                            transition={{ duration: 0.6, ease: 'easeOut' }}
+                            style={{ backgroundColor: subj.color }}
+                          />
+                        )}
                         <motion.div
-                          className="h-full rounded-full"
+                          className="absolute left-0 top-0 h-full"
                           initial={{ width: 0 }}
                           animate={{ width: `${prog}%` }}
                           transition={{ duration: 0.6, ease: 'easeOut' }}
@@ -373,7 +569,15 @@ export function Subjects() {
                         />
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 pl-3 shrink-0">
+                    <div className="flex items-center gap-1 pl-3 shrink-0">
+                      <ItemActions
+                        path={subjPath}
+                        important={subj.important}
+                        weak={subj.weak}
+                        hasNote={!!subj.note}
+                        currentNote={subj.note}
+                        onOpenNote={openNote}
+                      />
                       <button
                         onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
                         className="p-2 text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors"
@@ -401,17 +605,24 @@ export function Subjects() {
                     {isExpanded && (
                       <motion.div {...collapseAnim} className="overflow-hidden bg-secondary/10 border-t border-border/40">
                         <div className="p-3 pl-4 space-y-2">
-                          {subj.chapters.map((chapter, chIdx) => {
-                            const chLocked = !isChapterUnlocked(subj, chIdx);
+                          {subj.chapters
+                            .filter(c => matchesStatus(chapterStatus(c), filter))
+                            .map((chapter, chIdx) => {
+                            // chIdx in filtered list is fine for unlock since filter is purely visual;
+                            // use original index for unlock check
+                            const origChIdx = subj.chapters.findIndex(c => c.id === chapter.id);
+                            const chLocked = !isChapterUnlocked(subj, origChIdx);
                             const chExpanded = expandedChapter === chapter.id;
                             const topicCount = chapter.topics.length;
                             const completedTopics = chapter.topics.filter(t => isTopicContentDone(t)).length;
+                            const overviewTopics = chapter.topics.filter(t => t.completed && !isTopicContentDone(t)).length;
                             let chSubtopics = 0, chCompletedSubs = 0;
                             chapter.topics.forEach(t => { chSubtopics += t.subtopics.length; chCompletedSubs += t.subtopics.filter(s => isSubtopicContentDone(s)).length; });
+                            const chPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, level: 'chapter' };
                             return (
-                              <motion.div key={chapter.id} {...itemAnim} className={`bg-card border rounded-xl overflow-hidden shadow-sm ${chLocked ? 'border-border/30 opacity-70' : 'border-border/50'}`}>
+                              <motion.div key={chapter.id} {...itemAnim} className={`bg-card border rounded-xl overflow-hidden shadow-sm ${chLocked ? 'border-border/30 opacity-70' : 'border-border/50'} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`}>
                                 <div
-                                  className="p-3 flex items-center gap-2 cursor-pointer hover:bg-secondary/30 transition-colors"
+                                  className="p-3 flex items-center gap-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row"
                                   onClick={() => toggleChapter(chapter.id)}
                                 >
                                   <button
@@ -430,16 +641,29 @@ export function Subjects() {
                                       </span>
                                       <span className="text-[9px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L2</span>
                                       {chapter.completed && !isChapterContentDone(chapter) && (
-                                        <span className="text-[9px] font-bold text-indigo-500 bg-indigo-500/10 px-1.5 py-0.5 rounded-full border border-indigo-400/30 shrink-0">OV ✓</span>
+                                        <span className="flex items-center gap-0.5 text-[9px] font-bold text-indigo-700 bg-indigo-500/15 px-1.5 py-0.5 rounded-full border border-indigo-400/60 shrink-0">
+                                          <BookOpenCheck size={9} /> {t('overviewBadge')}
+                                        </span>
                                       )}
                                     </div>
+                                    <MarksBadgeRow important={chapter.important} weak={chapter.weak} note={chapter.note} onClickNote={() => openNote(chPath, chapter.note ?? '')} />
                                     <p className="text-[10px] text-muted-foreground mt-0.5">
                                       {t('topics')}: {completedTopics}/{topicCount}
+                                      {overviewTopics > 0 ? ` • ${overviewTopics} ${t('overviewBadge')}` : ''}
                                       {chSubtopics > 0 ? ` • Subtopics: ${chCompletedSubs}/${chSubtopics}` : ''}
                                       {chapter.estimatedMinutes ? ` • ${formatTotalTime(chapter.estimatedMinutes, t)}` : ''}
                                     </p>
                                   </div>
-                                  <div className="flex items-center gap-1 shrink-0">
+                                  <div className="flex items-center gap-0.5 shrink-0">
+                                    <ItemActions
+                                      path={chPath}
+                                      important={chapter.important}
+                                      weak={chapter.weak}
+                                      hasNote={!!chapter.note}
+                                      currentNote={chapter.note}
+                                      onOpenNote={openNote}
+                                      size="sm"
+                                    />
                                     <button
                                       onClick={e => { e.stopPropagation(); openEdit('chapter', { subjId: subj.id, chapterId: chapter.id }, chapter.title, chapter.estimatedMinutes, undefined, chapter.difficulty); }}
                                       className="p-1.5 text-muted-foreground hover:text-primary rounded-lg transition-colors"
@@ -467,12 +691,14 @@ export function Subjects() {
                                           const topLocked = chLocked || !isTopicUnlocked(chapter, topIdx);
                                           const tExpanded = expandedTopic === topic.id;
                                           const completedSubs = topic.subtopics.filter(s => isSubtopicContentDone(s)).length;
+                                          const overviewSubs = topic.subtopics.filter(s => s.completed && !isSubtopicContentDone(s)).length;
                                           let topConcepts = 0, topCompletedConcepts = 0;
                                           topic.subtopics.forEach(s => { topConcepts += s.concepts.length; topCompletedConcepts += s.concepts.filter(c => c.completed).length; });
+                                          const topPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, level: 'topic' };
                                           return (
-                                            <motion.div key={topic.id} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${topLocked ? 'border-border/20 opacity-60' : 'border-border/40'}`}>
+                                            <motion.div key={topic.id} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${topLocked ? 'border-border/20 opacity-60' : 'border-border/40'} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`}>
                                               <div
-                                                className="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-secondary/20"
+                                                className="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-secondary/20 group/row"
                                                 onClick={() => toggleTopic(topic.id)}
                                               >
                                                 <button
@@ -490,18 +716,30 @@ export function Subjects() {
                                                       {topic.title}
                                                     </span>
                                                     <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L3</span>
-                                                  
-                                                      {topic.completed && !isTopicContentDone(topic) && (
-                                                        <span className="text-[8px] font-bold text-indigo-500 bg-indigo-500/10 px-1.5 py-0.5 rounded-full border border-indigo-400/30 shrink-0">OV ✓</span>
-                                                      )}
+                                                    {topic.completed && !isTopicContentDone(topic) && (
+                                                      <span className="flex items-center gap-0.5 text-[8px] font-bold text-indigo-700 bg-indigo-500/15 px-1.5 py-0.5 rounded-full border border-indigo-400/60 shrink-0">
+                                                        <BookOpenCheck size={8} /> {t('overviewBadge')}
+                                                      </span>
+                                                    )}
                                                   </div>
+                                                  <MarksBadgeRow size="xs" important={topic.important} weak={topic.weak} note={topic.note} onClickNote={() => openNote(topPath, topic.note ?? '')} />
                                                   <p className="text-[9px] text-muted-foreground mt-0.5">
                                                     Subtopics: {completedSubs}/{topic.subtopics.length}
+                                                    {overviewSubs > 0 ? ` • ${overviewSubs} ${t('overviewBadge')}` : ''}
                                                     {topConcepts > 0 ? ` • Concepts: ${topCompletedConcepts}/${topConcepts}` : ''}
                                                     {topic.estimatedMinutes ? ` • ${formatTotalTime(topic.estimatedMinutes, t)}` : ''}
                                                   </p>
                                                 </div>
                                                 <div className="flex items-center gap-0.5 shrink-0">
+                                                  <ItemActions
+                                                    path={topPath}
+                                                    important={topic.important}
+                                                    weak={topic.weak}
+                                                    hasNote={!!topic.note}
+                                                    currentNote={topic.note}
+                                                    onOpenNote={openNote}
+                                                    size="sm"
+                                                  />
                                                   <button
                                                     onClick={e => { e.stopPropagation(); openEdit('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }, topic.title, topic.estimatedMinutes, undefined, topic.difficulty); }}
                                                     className="p-1 text-muted-foreground hover:text-primary"
@@ -529,12 +767,14 @@ export function Subjects() {
                                                         const subLocked = topLocked || !isSubtopicUnlocked(topic, subIdx);
                                                         const subExpanded = expandedSubtopic === sub.id;
                                                         const completedConcepts = sub.concepts.filter(c => isConceptContentDone(c)).length;
+                                                        const overviewConcepts = sub.concepts.filter(c => c.completed && !isConceptContentDone(c)).length;
                                                         let subPoints = 0, subCompletedPoints = 0;
                                                         sub.concepts.forEach(c => { subPoints += c.points.length; subCompletedPoints += c.points.filter(p => p.completed).length; });
+                                                        const subPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, level: 'subtopic' };
                                                         return (
-                                                          <motion.div key={sub.id} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${subLocked ? 'border-border/15 opacity-55' : 'border-border/30'}`}>
+                                                          <motion.div key={sub.id} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${subLocked ? 'border-border/15 opacity-55' : 'border-border/30'} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
                                                             <div
-                                                              className="px-2.5 py-2 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20"
+                                                              className="px-2.5 py-2 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20 group/row"
                                                               onClick={() => toggleSubtopicExpand(sub.id)}
                                                             >
                                                               <button onClick={e => { e.stopPropagation(); if (!subLocked) toggleSubtopicComplete(subj.id, chapter.id, topic.id, sub.id); }} disabled={subLocked} title={subLocked ? t('completePrevSubtopic') : undefined}>
@@ -547,18 +787,30 @@ export function Subjects() {
                                                                     {sub.title}
                                                                   </span>
                                                                   <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L4</span>
-                                                                
                                                                   {sub.completed && !isSubtopicContentDone(sub) && (
-                                                                    <span className="text-[8px] font-bold text-indigo-500 bg-indigo-500/10 px-1.5 py-0.5 rounded-full border border-indigo-400/30 shrink-0">OV ✓</span>
+                                                                    <span className="flex items-center gap-0.5 text-[8px] font-bold text-indigo-700 bg-indigo-500/15 px-1.5 py-0.5 rounded-full border border-indigo-400/60 shrink-0">
+                                                                      <BookOpenCheck size={8} /> {t('overviewBadge')}
+                                                                    </span>
                                                                   )}
-                                                              </div>
+                                                                </div>
+                                                                <MarksBadgeRow size="xs" important={sub.important} weak={sub.weak} note={sub.note} onClickNote={() => openNote(subPath, sub.note ?? '')} />
                                                                 <p className="text-[8px] text-muted-foreground">
                                                                   Concepts: {completedConcepts}/{sub.concepts.length}
+                                                                  {overviewConcepts > 0 ? ` • ${overviewConcepts} ${t('overviewBadge')}` : ''}
                                                                   {subPoints > 0 ? ` • Points: ${subCompletedPoints}/${subPoints}` : ''}
                                                                   {sub.estimatedMinutes ? ` • ${formatTotalTime(sub.estimatedMinutes, t)}` : ''}
                                                                 </p>
                                                               </div>
                                                               <div className="flex items-center gap-0.5 shrink-0">
+                                                                <ItemActions
+                                                                  path={subPath}
+                                                                  important={sub.important}
+                                                                  weak={sub.weak}
+                                                                  hasNote={!!sub.note}
+                                                                  currentNote={sub.note}
+                                                                  onOpenNote={openNote}
+                                                                  size="sm"
+                                                                />
                                                                 <button onClick={e => { e.stopPropagation(); openEdit('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title, sub.estimatedMinutes, undefined, sub.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
                                                                   <Pencil size={9} />
                                                                 </button>
@@ -580,10 +832,11 @@ export function Subjects() {
                                                                       const conLocked = subLocked || !isConceptUnlocked(sub, conIdx);
                                                                       const cExpanded = expandedConcept === concept.id;
                                                                       const completedPoints = concept.points.filter(p => p.completed).length;
+                                                                      const conPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, level: 'concept' };
                                                                       return (
-                                                                        <motion.div key={concept.id} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${conLocked ? 'border-border/10 opacity-50' : 'border-border/20'}`}>
+                                                                        <motion.div key={concept.id} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${conLocked ? 'border-border/10 opacity-50' : 'border-border/20'} ${concept.important ? 'ring-1 ring-yellow-300/40' : ''} ${concept.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
                                                                           <div
-                                                                            className="px-2 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20"
+                                                                            className="px-2 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20 group/row"
                                                                             onClick={() => toggleConceptExpand(concept.id)}
                                                                           >
                                                                             <button onClick={e => { e.stopPropagation(); if (!conLocked) toggleConceptComplete(subj.id, chapter.id, topic.id, sub.id, concept.id); }} disabled={conLocked} title={conLocked ? t('completePrevConcept') : undefined}>
@@ -596,13 +849,28 @@ export function Subjects() {
                                                                                   {concept.title}
                                                                                 </span>
                                                                                 <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L5</span>
+                                                                                {concept.completed && !isConceptContentDone(concept) && (
+                                                                                  <span className="flex items-center gap-0.5 text-[8px] font-bold text-indigo-700 bg-indigo-500/15 px-1.5 py-0.5 rounded-full border border-indigo-400/60 shrink-0">
+                                                                                    <BookOpenCheck size={7} /> {t('overviewBadge')}
+                                                                                  </span>
+                                                                                )}
                                                                               </div>
+                                                                              <MarksBadgeRow size="xs" important={concept.important} weak={concept.weak} note={concept.note} onClickNote={() => openNote(conPath, concept.note ?? '')} />
                                                                               <p className="text-[8px] text-muted-foreground">
                                                                                 {concept.points.length > 0 ? `Points: ${completedPoints}/${concept.points.length}` : ''}
                                                                                 {concept.estimatedMinutes ? ` • ${formatTotalTime(concept.estimatedMinutes, t)}` : ''}
                                                                               </p>
                                                                             </div>
                                                                             <div className="flex items-center gap-0.5 shrink-0">
+                                                                              <ItemActions
+                                                                                path={conPath}
+                                                                                important={concept.important}
+                                                                                weak={concept.weak}
+                                                                                hasNote={!!concept.note}
+                                                                                currentNote={concept.note}
+                                                                                onOpenNote={openNote}
+                                                                                size="sm"
+                                                                              />
                                                                               <button onClick={e => { e.stopPropagation(); openEdit('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title, concept.estimatedMinutes, undefined, concept.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
                                                                                 <Pencil size={8} />
                                                                               </button>
@@ -622,28 +890,45 @@ export function Subjects() {
                                                                                 <div className="p-1.5 pl-7 space-y-0.5">
                                                                                   {concept.points.map((point, ptIdx) => {
                                                                                     const ptLocked = conLocked || !isPointUnlocked(concept, ptIdx);
+                                                                                    const ptPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id, level: 'point' };
                                                                                     return (
                                                                                     <motion.div
                                                                                       key={point.id}
                                                                                       {...itemAnim}
-                                                                                      className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-card group/point ${ptLocked ? 'opacity-45' : ''}`}
+                                                                                      className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-lg hover:bg-card group/row ${ptLocked ? 'opacity-45' : ''} ${point.important ? 'ring-1 ring-yellow-300/40' : ''} ${point.weak ? 'ring-1 ring-rose-300/40' : ''}`}
                                                                                     >
-                                                                                      <button onClick={() => { if (!ptLocked) togglePointComplete(subj.id, chapter.id, topic.id, sub.id, concept.id, point.id); }} disabled={ptLocked} title={ptLocked ? t('completePrevPoint') : undefined}>
-                                                                                        {ptLocked ? <Lock size={10} className="text-muted-foreground/30" /> : point.completed ? <CheckCircle2 size={10} className="text-green-500" /> : <Circle size={10} className="text-muted-foreground" />}
-                                                                                      </button>
-                                                                                      <Dot size={10} className="text-muted-foreground shrink-0" />
-                                                                                      <span className={`text-[9px] font-medium flex-1 min-w-0 ${point.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                                                                                        {point.title}
-                                                                                      </span>
-                                                                                      <span className="text-[7px] font-bold text-muted-foreground/40 bg-secondary/60 px-1 py-0.5 rounded border border-border/20 shrink-0">L6</span>
-                                                                                      <div className="flex items-center gap-0.5 opacity-0 group-hover/point:opacity-100 transition-all shrink-0">
-                                                                                        <button onClick={() => openEdit('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title, undefined, undefined, point.difficulty)} className="p-0.5 text-muted-foreground hover:text-primary">
-                                                                                          <Pencil size={8} />
+                                                                                      <div className="flex items-center gap-1.5">
+                                                                                        <button onClick={() => { if (!ptLocked) togglePointComplete(subj.id, chapter.id, topic.id, sub.id, concept.id, point.id); }} disabled={ptLocked} title={ptLocked ? t('completePrevPoint') : undefined}>
+                                                                                          {ptLocked ? <Lock size={10} className="text-muted-foreground/30" /> : point.completed ? <CheckCircle2 size={10} className="text-green-500" /> : <Circle size={10} className="text-muted-foreground" />}
                                                                                         </button>
-                                                                                        <button onClick={() => openDelete('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id })} className="p-0.5 text-muted-foreground hover:text-destructive">
-                                                                                          <Trash2 size={9} />
-                                                                                        </button>
+                                                                                        <Dot size={10} className="text-muted-foreground shrink-0" />
+                                                                                        <span className={`text-[9px] font-medium flex-1 min-w-0 ${point.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                                          {point.title}
+                                                                                        </span>
+                                                                                        <span className="text-[7px] font-bold text-muted-foreground/40 bg-secondary/60 px-1 py-0.5 rounded border border-border/20 shrink-0">L6</span>
+                                                                                        <ItemActions
+                                                                                          path={ptPath}
+                                                                                          important={point.important}
+                                                                                          weak={point.weak}
+                                                                                          hasNote={!!point.note}
+                                                                                          currentNote={point.note}
+                                                                                          onOpenNote={openNote}
+                                                                                          size="sm"
+                                                                                        />
+                                                                                        <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-all shrink-0">
+                                                                                          <button onClick={() => openEdit('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title, undefined, undefined, point.difficulty)} className="p-0.5 text-muted-foreground hover:text-primary">
+                                                                                            <Pencil size={8} />
+                                                                                          </button>
+                                                                                          <button onClick={() => openDelete('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id })} className="p-0.5 text-muted-foreground hover:text-destructive">
+                                                                                            <Trash2 size={9} />
+                                                                                          </button>
+                                                                                        </div>
                                                                                       </div>
+                                                                                      {(point.important || point.weak || point.note) && (
+                                                                                        <div className="ml-6">
+                                                                                          <MarksBadgeRow size="xs" important={point.important} weak={point.weak} note={point.note} onClickNote={() => openNote(ptPath, point.note ?? '')} />
+                                                                                        </div>
+                                                                                      )}
                                                                                     </motion.div>
                                                                                   ); })}
                                                                                   <button
@@ -828,6 +1113,36 @@ export function Subjects() {
         cancelText={t('cancel')}
         isDanger={true}
       />
+
+      {/* Note editor */}
+      <Modal
+        isOpen={!!notePath}
+        onClose={closeNote}
+        title={t('editNote')}
+        align="bottom"
+        icon={StickyNote}
+      >
+        <div className="space-y-4">
+          <textarea
+            value={noteDraft}
+            onChange={e => setNoteDraft(e.target.value)}
+            placeholder={t('notePlaceholder')}
+            rows={5}
+            className="w-full p-3 rounded-xl border border-border/60 bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              className="flex-1 text-muted-foreground"
+              onClick={() => { setNoteDraft(''); }}
+            >
+              {t('clearNote')}
+            </Button>
+            <Button className="flex-1" onClick={saveNote}>{t('saveNote')}</Button>
+          </div>
+        </div>
+      </Modal>
 
     </Layout>
   );

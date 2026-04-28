@@ -1,6 +1,10 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAZGUkLUQ61bEyIvnp-NEYSrNF8xzxYKzA",
@@ -13,5 +17,20 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+// Enable Firestore offline persistence (IndexedDB) with multi-tab support.
+// Falls back gracefully if the browser doesn't support IndexedDB.
+let firestore;
+try {
+  firestore = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  });
+} catch (e) {
+  // Re-init without persistence if browser blocks IndexedDB
+  // eslint-disable-next-line no-console
+  console.warn('[firebase] persistent cache disabled:', e);
+  firestore = initializeFirestore(app, {});
+}
+
+export const db = firestore;
 export default app;

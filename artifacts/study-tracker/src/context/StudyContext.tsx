@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Subject, Chapter, Topic, Subtopic, Concept, Point, CourseSettings } from '@/lib/types';
+import { Subject, Chapter, Topic, Subtopic, Concept, Point, CourseSettings, MarkLevel, MarkPath } from '@/lib/types';
 import { useAuth } from './AuthContext';
 import { addDays, formatISO } from 'date-fns';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -20,6 +20,10 @@ interface StudyContextType {
   settings: CourseSettings;
   dataLoaded: boolean;
   syncing: boolean;
+  online: boolean;
+  setNote: (path: MarkPath, note: string) => void;
+  toggleImportant: (path: MarkPath) => void;
+  toggleWeak: (path: MarkPath) => void;
   setCourseTotalDays: (days: number) => void;
   setDailyStudyHours: (hours: number) => void;
   setCourseStartDate: (date: string) => void;
@@ -109,6 +113,19 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<CourseSettings>({ courseTotalDays: null, dailyStudyHours: 3 });
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  // Track online / offline transitions
+  useEffect(() => {
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoad = useRef(true);
 
@@ -617,9 +634,96 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       ...c, points: c.points.map(p => p.id === pId ? { ...p, title, ...(difficulty !== undefined ? { difficulty } : {}) } : p)
     })));
 
+  // ─── Note / Important / Weak ───────────────────────────────────────────
+  // Generic patcher: mutates only the targeted node based on path.level
+  const applyMarkPatch = (path: MarkPath, patch: Partial<{ note: string; important: boolean; weak: boolean }>) => {
+    const sId = path.subjectId;
+    const cleanedPatch: any = {};
+    for (const k of Object.keys(patch) as (keyof typeof patch)[]) {
+      const v = patch[k];
+      // Drop empty notes, drop false flags so the doc stays small
+      if (k === 'note') {
+        if (v && (v as string).trim().length > 0) cleanedPatch.note = (v as string).trim();
+        else cleanedPatch.note = undefined;
+      } else {
+        if (v) cleanedPatch[k] = true;
+        else cleanedPatch[k] = undefined;
+      }
+    }
+    const merge = <T extends object>(o: T): T => {
+      const out: any = { ...o };
+      for (const k of Object.keys(cleanedPatch)) {
+        if (cleanedPatch[k] === undefined) delete out[k];
+        else out[k] = cleanedPatch[k];
+      }
+      return out as T;
+    };
+
+    if (path.level === 'subject') {
+      setSubjects(updateSubjectFn(sId, s => merge(s)));
+      return;
+    }
+    if (path.level === 'chapter' && path.chapterId) {
+      setSubjects(updateChapterFn(sId, path.chapterId, ch => merge(ch)));
+      return;
+    }
+    if (path.level === 'topic' && path.chapterId && path.topicId) {
+      setSubjects(updateTopicFn(sId, path.chapterId, path.topicId, t => merge(t)));
+      return;
+    }
+    if (path.level === 'subtopic' && path.chapterId && path.topicId && path.subtopicId) {
+      setSubjects(updateSubtopicFn(sId, path.chapterId, path.topicId, path.subtopicId, sub => merge(sub)));
+      return;
+    }
+    if (path.level === 'concept' && path.chapterId && path.topicId && path.subtopicId && path.conceptId) {
+      setSubjects(updateConceptFn(sId, path.chapterId, path.topicId, path.subtopicId, path.conceptId, c => merge(c)));
+      return;
+    }
+    if (path.level === 'point' && path.chapterId && path.topicId && path.subtopicId && path.conceptId && path.pointId) {
+      setSubjects(updateConceptFn(sId, path.chapterId, path.topicId, path.subtopicId, path.conceptId, c => ({
+        ...c,
+        points: c.points.map(p => p.id === path.pointId ? merge(p) : p),
+      })));
+      return;
+    }
+  };
+
+  const getMarkable = (path: MarkPath): { note?: string; important?: boolean; weak?: boolean } | null => {
+    const subj = subjects.find(s => s.id === path.subjectId);
+    if (!subj) return null;
+    if (path.level === 'subject') return subj;
+    const ch = subj.chapters.find(c => c.id === path.chapterId);
+    if (!ch) return null;
+    if (path.level === 'chapter') return ch;
+    const tp = ch.topics.find(t => t.id === path.topicId);
+    if (!tp) return null;
+    if (path.level === 'topic') return tp;
+    const sub = tp.subtopics.find(s => s.id === path.subtopicId);
+    if (!sub) return null;
+    if (path.level === 'subtopic') return sub;
+    const con = sub.concepts.find(c => c.id === path.conceptId);
+    if (!con) return null;
+    if (path.level === 'concept') return con;
+    const pt = con.points.find(p => p.id === path.pointId);
+    return pt ?? null;
+  };
+
+  const setNote = (path: MarkPath, note: string) => {
+    applyMarkPatch(path, { note });
+  };
+  const toggleImportant = (path: MarkPath) => {
+    const cur = getMarkable(path);
+    applyMarkPatch(path, { important: !cur?.important });
+  };
+  const toggleWeak = (path: MarkPath) => {
+    const cur = getMarkable(path);
+    applyMarkPatch(path, { weak: !cur?.weak });
+  };
+
   return (
     <StudyContext.Provider value={{
-      subjects, settings, dataLoaded, syncing,
+      subjects, settings, dataLoaded, syncing, online,
+      setNote, toggleImportant, toggleWeak,
       setCourseTotalDays, setDailyStudyHours, setCourseStartDate,
       addSubject, updateSubjectDays, deleteSubject, updateSubjectMeta,
       addChapter, deleteChapter, toggleChapterComplete, updateChapterMeta,

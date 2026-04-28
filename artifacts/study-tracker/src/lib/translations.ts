@@ -172,6 +172,52 @@ export const translations = {
     courseResetCountdown: "Reset scheduled for",
     courseResetProceeed: "Yes, continue",
     courseResetAbsoluteSure: "Yes, I'm absolutely sure",
+
+    // Online / Offline status
+    online: "Online",
+    offline: "Offline",
+    offlineMode: "Working offline – changes will sync when you reconnect.",
+    backOnline: "Back online – syncing your changes…",
+
+    // Notes / Marks
+    note: "Note",
+    notes: "Notes",
+    addNote: "Add note",
+    editNote: "Edit note",
+    saveNote: "Save",
+    clearNote: "Clear",
+    notePlaceholder: "Write a quick reminder, hint or summary…",
+    important: "Important",
+    weak: "Weak",
+    markImportant: "Mark important",
+    unmarkImportant: "Unmark important",
+    markWeak: "Mark weak",
+    unmarkWeak: "Unmark weak",
+    importantOnly: "Important",
+    weakOnly: "Weak",
+
+    // Status filter
+    filterAll: "All",
+    filterInProgress: "In Progress",
+    filterCompleted: "Completed",
+    filterNotStarted: "Not Started",
+    statusInProgress: "In Progress",
+    statusCompleted: "Completed",
+    statusNotStarted: "Not Started",
+    noResultsForFilter: "No items match this filter.",
+
+    // Overview indicator
+    overviewDone: "Overview done",
+    contentDone: "Content done",
+    overviewBadge: "Overview",
+    overviewPending: "Overview pending",
+
+    // Load more (Today)
+    loadMore: "Load more tasks",
+    loadMoreDesc: "Pull tasks from tomorrow's plan into today (+30 min).",
+    loadMoreAdded: "Added more tasks for today.",
+    loadMoreNothing: "No more tasks available – everything is planned.",
+    extraLoaded: "Extra loaded",
   },
   bn: {
     // Auth
@@ -344,5 +390,51 @@ export const translations = {
     courseResetCountdown: "রিসেট নির্ধারিত",
     courseResetProceeed: "হ্যাঁ, এগিয়ে যান",
     courseResetAbsoluteSure: "হ্যাঁ, আমি সম্পূর্ণ নিশ্চিত",
+
+    // Online / Offline status
+    online: "অনলাইন",
+    offline: "অফলাইন",
+    offlineMode: "অফলাইনে কাজ করছেন – আবার সংযুক্ত হলে সিঙ্ক হবে।",
+    backOnline: "আবার অনলাইন – পরিবর্তন সিঙ্ক হচ্ছে…",
+
+    // Notes / Marks
+    note: "নোট",
+    notes: "নোট",
+    addNote: "নোট যোগ করুন",
+    editNote: "নোট সম্পাদনা",
+    saveNote: "সংরক্ষণ",
+    clearNote: "মুছুন",
+    notePlaceholder: "ছোট রিমাইন্ডার, হিন্ট বা সারসংক্ষেপ লিখুন…",
+    important: "গুরুত্বপূর্ণ",
+    weak: "দুর্বল",
+    markImportant: "গুরুত্বপূর্ণ চিহ্নিত",
+    unmarkImportant: "গুরুত্বপূর্ণ সরান",
+    markWeak: "দুর্বল চিহ্নিত",
+    unmarkWeak: "দুর্বল সরান",
+    importantOnly: "গুরুত্বপূর্ণ",
+    weakOnly: "দুর্বল",
+
+    // Status filter
+    filterAll: "সব",
+    filterInProgress: "চলমান",
+    filterCompleted: "সম্পন্ন",
+    filterNotStarted: "শুরু হয়নি",
+    statusInProgress: "চলমান",
+    statusCompleted: "সম্পন্ন",
+    statusNotStarted: "শুরু হয়নি",
+    noResultsForFilter: "এই ফিল্টারে কিছু মেলেনি।",
+
+    // Overview indicator
+    overviewDone: "ওভারভিউ সম্পন্ন",
+    contentDone: "কন্টেন্ট সম্পন্ন",
+    overviewBadge: "ওভারভিউ",
+    overviewPending: "ওভারভিউ বাকি",
+
+    // Load more (Today)
+    loadMore: "আরও কাজ আনুন",
+    loadMoreDesc: "আগামীকালের পরিকল্পনা থেকে আজকের জন্য টানুন (+৩০ মিনিট)।",
+    loadMoreAdded: "আজকের জন্য আরও কাজ যোগ হয়েছে।",
+    loadMoreNothing: "আর কোনো কাজ নেই – সব পরিকল্পনা সম্পন্ন।",
+    extraLoaded: "অতিরিক্ত যোগ",
   }
 };

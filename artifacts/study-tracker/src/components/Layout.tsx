@@ -1,14 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Target, BookOpen, User, CheckCircle2, GraduationCap, CloudOff } from 'lucide-react';
+import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const { syncing } = useStudy();
-
   return (
     <>
       {/* Desktop: sidebar layout */}
@@ -27,18 +25,82 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <BottomNav />
       </div>
 
-      {/* Sync indicator */}
-      {syncing && (
-        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-card border border-border shadow-lg rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground">
+      {/* Online / Sync status */}
+      <ConnectionStatus />
+    </>
+  );
+}
+
+function ConnectionStatus() {
+  const { syncing, online } = useStudy();
+  const { t } = useLang();
+  const [showBackOnline, setShowBackOnline] = useState(false);
+  const wasOfflineRef = React.useRef(false);
+
+  useEffect(() => {
+    if (!online) {
+      wasOfflineRef.current = true;
+      return;
+    }
+    if (wasOfflineRef.current) {
+      // We just came back online — show a quick toast for ~2.5s
+      setShowBackOnline(true);
+      const id = setTimeout(() => {
+        setShowBackOnline(false);
+        wasOfflineRef.current = false;
+      }, 2500);
+      return () => clearTimeout(id);
+    }
+    return;
+  }, [online]);
+
+  // Priority: offline > back-online > syncing
+  const visible = !online || showBackOnline || syncing;
+  if (!visible) return null;
+
+  let label = '';
+  let Icon: React.ElementType = Cloud;
+  let cls = '';
+  let spinning = false;
+
+  if (!online) {
+    label = t('offline');
+    Icon = CloudOff;
+    cls = 'bg-red-500/10 text-red-700 border-red-300';
+  } else if (showBackOnline) {
+    label = t('online');
+    Icon = Cloud;
+    cls = 'bg-green-500/10 text-green-700 border-green-300';
+  } else {
+    label = t('syncing');
+    cls = 'bg-card text-muted-foreground border-border';
+    spinning = true;
+  }
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key={label}
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        className={cn(
+          'fixed top-3 right-3 z-50 flex items-center gap-2 shadow-lg rounded-full px-3 py-1.5 text-xs font-bold border',
+          cls
+        )}
+      >
+        {spinning ? (
           <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
             className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full"
           />
-          <span className="hidden sm:inline">Syncing</span>
-        </div>
-      )}
-    </>
+        ) : (
+          <Icon size={12} />
+        )}
+        <span className="hidden sm:inline">{label}</span>
+      </motion.div>
+    </AnimatePresence>
   );
 }
 

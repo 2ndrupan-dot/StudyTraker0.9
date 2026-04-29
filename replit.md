@@ -21,9 +21,17 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Hierarchy**: Subject > Chapter > Topic > Subtopic > Concept > Point (6 levels)
 - **Responsive**: Mobile bottom nav, Desktop sidebar nav
 - **Cloud sync**: Firebase Firestore (requires Firestore enabled in Firebase console)
-- **Profile photo**: Firebase Storage upload (requires Storage enabled in Firebase console)
+- **Profile photo + note attachments**: Firebase Storage upload (requires Storage enabled in Firebase console)
 - **i18n**: English + Bengali, all strings via `t()` translation function
 - **Persistence**: Firestore primary, localStorage fallback
+- **Marks**: per-item Important/Weak flags + free-form Notes at every hierarchy level (`MarkPath` + `ItemActions`)
+- **Weak boost**: when an item is marked Weak, the time engine multiplies its estimated minutes (`WEAK_MULTIPLIER` in `lib/timeEngine.ts`)
+- **Important/Weak filter**: on Subjects page, toggling either chip swaps the tree view for a flat breadcrumbed list of every flagged item (`gatherFlaggedItems` in `pages/Subjects.tsx`)
+- **Temp Notes**: hierarchical Firestore-backed to-do list rendered atop the Subjects page (newest first, NOT synced to Today plan)
+- **Note Pages**: A4 (794×1123 px) rich pages with draggable/resizable text, links, images, and PDFs. Multi-page, zoomable, paste-image support. Each page is its own Firestore doc at `users/{uid}/notePages/{id}` with `notePagesIndex` as the lightweight list. Routes: `/notes` and `/notes/:id`
+- **Global search**: Ctrl/Cmd+K (or sidebar/floating button) — searches every subject-tree node, temp notes, and note page titles with highlighted matches and breadcrumbs
+- **Today extras**: per-task Note/Important/Weak buttons inline on every card; Load More additions are tagged with `loadedFrom` (Extra badge) and can be returned to their original day with one click
+- **PWA**: installable + offline-capable via `public/manifest.webmanifest` + `public/sw.js` (network-first navigation, stale-while-revalidate static assets, Firebase calls bypassed). `PWAUpdater` shows install + update prompts
 
 ## Structure
 

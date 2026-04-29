@@ -1,0 +1,21 @@
+{
+  "name": "StudyTrack — Study Planner",
+  "short_name": "StudyTrack",
+  "description": "Smart study planner with hierarchical subjects, daily plan, revisions, marks and rich note pages.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
+  "theme_color": "#6366f1",
+  "lang": "en",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

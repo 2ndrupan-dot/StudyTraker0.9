@@ -12,30 +12,36 @@
 import type { Subject, Chapter, Topic, Subtopic, Concept, Point } from './types';
 import { MIN_TIMES, DIFFICULTY_MULTIPLIERS } from './types';
 
-// ─── Raw time estimates (with difficulty multiplier) ─────────────────────────
+// "Weak" mark = student finds this hard → automatically allocate 30% more time
+export const WEAK_MULTIPLIER = 1.3;
+const weakBoost = (item: { weak?: boolean }) => (item.weak ? WEAK_MULTIPLIER : 1);
+
+// ─── Raw time estimates (with difficulty + weak multiplier) ─────────────────
 
 export function rawPoint(p: Point): number {
   const base = p.estimatedMinutes && p.estimatedMinutes > 0 ? p.estimatedMinutes : 5;
-  const mult = DIFFICULTY_MULTIPLIERS[p.difficulty ?? 'easy'];
+  const mult = DIFFICULTY_MULTIPLIERS[p.difficulty ?? 'easy'] * weakBoost(p);
   return Math.round(base * mult);
 }
 
 export function rawConcept(c: Concept): number {
   if (c.points.length === 0) {
     const base = c.estimatedMinutes && c.estimatedMinutes > 0 ? c.estimatedMinutes : 15;
-    const mult = DIFFICULTY_MULTIPLIERS[c.difficulty ?? 'easy'];
+    const mult = DIFFICULTY_MULTIPLIERS[c.difficulty ?? 'easy'] * weakBoost(c);
     return Math.round(base * mult);
   }
-  return c.points.reduce((s, p) => s + rawPoint(p), 0);
+  const sum = c.points.reduce((s, p) => s + rawPoint(p), 0);
+  return Math.round(sum * weakBoost(c));
 }
 
 export function rawSubtopic(sub: Subtopic): number {
   if (sub.concepts.length === 0) {
     const base = sub.estimatedMinutes && sub.estimatedMinutes > 0 ? sub.estimatedMinutes : 20;
-    const mult = DIFFICULTY_MULTIPLIERS[sub.difficulty ?? 'easy'];
+    const mult = DIFFICULTY_MULTIPLIERS[sub.difficulty ?? 'easy'] * weakBoost(sub);
     return Math.round(base * mult);
   }
-  return sub.concepts.reduce((s, c) => s + rawConcept(c), 0);
+  const sum = sub.concepts.reduce((s, c) => s + rawConcept(c), 0);
+  return Math.round(sum * weakBoost(sub));
 }
 
 export function rawTopic(t: Topic): number {
@@ -43,10 +49,11 @@ export function rawTopic(t: Topic): number {
     const base = t.estimatedMinutes && t.estimatedMinutes > 0
       ? t.estimatedMinutes
       : t.totalMinutes > 0 ? t.totalMinutes : 30;
-    const mult = DIFFICULTY_MULTIPLIERS[t.difficulty ?? 'easy'];
+    const mult = DIFFICULTY_MULTIPLIERS[t.difficulty ?? 'easy'] * weakBoost(t);
     return Math.round(base * mult);
   }
-  return t.subtopics.reduce((s, sub) => s + rawSubtopic(sub), 0);
+  const sum = t.subtopics.reduce((s, sub) => s + rawSubtopic(sub), 0);
+  return Math.round(sum * weakBoost(t));
 }
 
 export function rawChapter(ch: Chapter): number {
@@ -54,10 +61,11 @@ export function rawChapter(ch: Chapter): number {
     const base = ch.estimatedMinutes && ch.estimatedMinutes > 0
       ? ch.estimatedMinutes
       : ch.totalMinutes > 0 ? ch.totalMinutes : 45;
-    const mult = DIFFICULTY_MULTIPLIERS[ch.difficulty ?? 'easy'];
+    const mult = DIFFICULTY_MULTIPLIERS[ch.difficulty ?? 'easy'] * weakBoost(ch);
     return Math.round(base * mult);
   }
-  return ch.topics.reduce((s, t) => s + rawTopic(t), 0);
+  const sum = ch.topics.reduce((s, t) => s + rawTopic(t), 0);
+  return Math.round(sum * weakBoost(ch));
 }
 
 export function rawSubject(subj: Subject): number {

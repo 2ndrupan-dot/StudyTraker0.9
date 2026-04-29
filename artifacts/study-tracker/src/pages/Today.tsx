@@ -12,7 +12,8 @@ import {
 import { format, differenceInDays, parseISO, addDays } from 'date-fns';
 import { Modal, Input, Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { Subject } from '@/lib/types';
+import type { Subject, MarkPath, MarkLevel } from '@/lib/types';
+import { ItemActions } from '@/components/ItemActions';
 import {
   adjPoint, adjConcept, adjSubtopic, adjTopic, adjChapter,
   findNextItem, calculateAdaptivePressure,
@@ -36,6 +37,7 @@ export interface PlanTask {
   urgency: 'high' | 'medium' | 'low';
   urgencyScore: number;
   isInProgress?: boolean;
+  loadedFrom?: string;
 }
 
 export interface PendingItem {
@@ -395,6 +397,7 @@ export function Today() {
     setCourseTotalDays, setDailyStudyHours,
     toggleChapterComplete, toggleTopicComplete,
     toggleSubtopicComplete, toggleConceptComplete, togglePointComplete,
+    setNote,
   } = useStudy();
   const { user } = useAuth();
   const { t, lang } = useLang();
@@ -442,7 +445,9 @@ export function Today() {
     const newBudget = dailyBudgetMins + extraLoadedMins + extraStep;
     const candidate = generateSmartPlan(subjects, newBudget, pendingItems, todayStr);
     const existingKeys = new Set(lockedPlan.map(p => p.key));
-    const additions = candidate.filter(p => !existingKeys.has(p.key));
+    const additions = candidate
+      .filter(p => !existingKeys.has(p.key))
+      .map(p => ({ ...p, loadedFrom: todayStr })); // mark as borrowed-from-today
     if (additions.length === 0) {
       setLoadMoreNotice(t('loadMoreNothing'));
       setTimeout(() => setLoadMoreNotice(null), 2500);
@@ -454,6 +459,49 @@ export function Today() {
     setExtraLoadedMins(prev => prev + extraStep);
     setLoadMoreNotice(`${t('loadMoreAdded')} +${additions.length}`);
     setTimeout(() => setLoadMoreNotice(null), 2500);
+  };
+
+  // Return a load-more-added task back to its original day (remove from today's locked plan).
+  // The task will simply re-appear naturally on the day the planner originally scheduled it.
+  const returnToOriginal = (task: PlanTask) => {
+    const next = lockedPlan.filter(p => p.key !== task.key);
+    setLockedPlan(next);
+    savePlan(email, todayStr, next);
+    // Restore the borrowed minutes
+    setExtraLoadedMins(prev => Math.max(0, prev - task.estimatedMins));
+    setLoadMoreNotice(t('returnToOriginTitle'));
+    setTimeout(() => setLoadMoreNotice(null), 2200);
+  };
+
+  // Build a MarkPath from a PlanTask
+  const taskToMarkPath = (task: PlanTask): MarkPath => {
+    let level: MarkLevel = 'chapter';
+    if (task.pointId) level = 'point';
+    else if (task.conceptId) level = 'concept';
+    else if (task.subtopicId) level = 'subtopic';
+    else if (task.topicId) level = 'topic';
+    else level = 'chapter';
+    return {
+      level,
+      subjectId: task.subjectId,
+      chapterId: task.chapterId,
+      topicId: task.topicId,
+      subtopicId: task.subtopicId,
+      conceptId: task.conceptId,
+      pointId: task.pointId,
+    };
+  };
+
+  // ── Note modal state ──────────────────────────────────────────────────────
+  const [noteModal, setNoteModal] = useState<{ open: boolean; path: MarkPath | null; draft: string }>({
+    open: false, path: null, draft: '',
+  });
+  const openNoteModal = (path: MarkPath, currentNote: string) =>
+    setNoteModal({ open: true, path, draft: currentNote });
+  const closeNoteModal = () => setNoteModal({ open: false, path: null, draft: '' });
+  const submitNoteModal = () => {
+    if (noteModal.path) setNote(noteModal.path, noteModal.draft);
+    closeNoteModal();
   };
 
   // Look up note/important/weak for a task by walking subjects tree
@@ -855,10 +903,30 @@ export function Today() {
                 <RefreshCw size={9} /> {isBn ? 'রিভিশন' : 'Revision'}
               </span>
             )}
-            <h3 className={`font-bold text-sm leading-snug ${done ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+            {task.loadedFrom && (
+              <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border text-indigo-600 bg-indigo-500/10 border-indigo-200">
+                <Plus size={9} /> {t('loadedExtraBadge')}
+              </span>
+            )}
+            <h3 className={`font-bold text-sm leading-snug flex-1 ${done ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
               {task.mainTitle}
               <span className="ml-1.5 text-[70%] text-muted-foreground/55 font-medium not-italic align-baseline">({levelNum})</span>
             </h3>
+            {!opts?.isRevision && (() => {
+              const marks = getTaskMarks(task);
+              return (
+                <ItemActions
+                  path={taskToMarkPath(task)}
+                  important={marks.important}
+                  weak={marks.weak}
+                  hasNote={!!marks.note}
+                  currentNote={marks.note}
+                  onOpenNote={openNoteModal}
+                  size="sm"
+                  alwaysVisible
+                />
+              );
+            })()}
           </div>
 
           {(() => {
@@ -915,21 +983,32 @@ export function Today() {
                 </div>
               )}
             </div>
-            {!done ? (
-              <button
-                onClick={() => markComplete(task)}
-                className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl border border-border/80 text-xs font-bold hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all"
-              >
-                <CheckCircle2 size={12} /> {t('markComplete')}
-              </button>
-            ) : (
-              <button
-                onClick={() => markComplete(task)}
-                className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
-              >
-                {isBn ? 'পূর্বাবস্থায় ফেরান' : 'Undo'}
-              </button>
-            )}
+            <div className="flex items-center gap-1.5">
+              {task.loadedFrom && !done && !opts?.isRevision && (
+                <button
+                  onClick={() => returnToOriginal(task)}
+                  title={t('returnToOriginTitle')}
+                  className="flex items-center gap-1 h-8 px-2.5 rounded-xl border border-indigo-200 text-indigo-600 bg-indigo-500/5 text-[11px] font-bold hover:bg-indigo-500/15 transition-all"
+                >
+                  <RotateCcw size={11} /> {t('returnToOrigin')}
+                </button>
+              )}
+              {!done ? (
+                <button
+                  onClick={() => markComplete(task)}
+                  className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl border border-border/80 text-xs font-bold hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all"
+                >
+                  <CheckCircle2 size={12} /> {t('markComplete')}
+                </button>
+              ) : (
+                <button
+                  onClick={() => markComplete(task)}
+                  className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+                >
+                  {isBn ? 'পূর্বাবস্থায় ফেরান' : 'Undo'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1876,6 +1955,27 @@ export function Today() {
         <div className="mt-4 flex gap-2">
           <Button variant="ghost" onClick={() => setHoursModalOpen(false)} className="flex-1">{t('cancel')}</Button>
           <Button variant="primary" onClick={handleSetHours} className="flex-1">{t('save')}</Button>
+        </div>
+      </Modal>
+
+      {/* ─── Note editor modal ─── */}
+      <Modal
+        isOpen={noteModal.open}
+        onClose={closeNoteModal}
+        title={t('editNote')}
+        icon={<StickyNote size={18} />}
+      >
+        <textarea
+          autoFocus
+          value={noteModal.draft}
+          onChange={e => setNoteModal(s => ({ ...s, draft: e.target.value }))}
+          rows={5}
+          placeholder={t('notePlaceholder')}
+          className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"
+        />
+        <div className="mt-4 flex gap-2">
+          <Button variant="ghost" className="flex-1" onClick={closeNoteModal}>{t('cancel')}</Button>
+          <Button variant="primary" className="flex-1" onClick={submitNoteModal}>{t('save')}</Button>
         </div>
       </Modal>
     </Layout>

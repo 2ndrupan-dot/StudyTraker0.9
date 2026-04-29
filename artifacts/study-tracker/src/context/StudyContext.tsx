@@ -1,17 +1,28 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Subject, Chapter, Topic, Subtopic, Concept, Point, CourseSettings, MarkLevel, MarkPath } from '@/lib/types';
+import { Subject, Chapter, Topic, Subtopic, Concept, Point, CourseSettings, MarkLevel, MarkPath, TempNoteItem, NotePage } from '@/lib/types';
 import { useAuth } from './AuthContext';
 import { addDays, formatISO } from 'date-fns';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { applyTimeAdjustment, isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone } from '@/lib/timeEngine';
 import type { DifficultyLevel } from '@/lib/types';
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+export const newId = uid;
+
+interface NotePageMeta {
+  id: string;
+  title: string;
+  pageCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
 
 interface StudyData {
   subjects: Subject[];
   settings: CourseSettings;
+  tempNotes?: TempNoteItem[];
+  notePagesIndex?: NotePageMeta[];
   savedAt?: number;
 }
 
@@ -51,6 +62,21 @@ interface StudyContextType {
   deletePoint: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, pointId: string) => void;
   togglePointComplete: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, pointId: string) => void;
   updatePointMeta: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, pointId: string, title: string, difficulty?: DifficultyLevel) => void;
+
+  // Temp Notes (hierarchical to-do)
+  tempNotes: TempNoteItem[];
+  addTempNote: (text: string, parentId?: string | null) => void;
+  updateTempNote: (id: string, text: string) => void;
+  toggleTempNoteDone: (id: string) => void;
+  deleteTempNote: (id: string) => void;
+
+  // A4 Note pages
+  notePagesIndex: NotePageMeta[];
+  createNotePage: (title?: string) => string;
+  renameNotePage: (id: string, title: string) => void;
+  deleteNotePage: (id: string) => Promise<void>;
+  loadNotePage: (id: string) => Promise<NotePage | null>;
+  saveNotePage: (page: NotePage) => Promise<void>;
 }
 
 const StudyContext = createContext<StudyContextType | undefined>(undefined);
@@ -111,6 +137,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [settings, setSettings] = useState<CourseSettings>({ courseTotalDays: null, dailyStudyHours: 3 });
+  const [tempNotes, setTempNotes] = useState<TempNoteItem[]>([]);
+  const [notePagesIndex, setNotePagesIndex] = useState<NotePageMeta[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -136,6 +164,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     if (!user) {
       setSubjects([]);
       setSettings({ courseTotalDays: null, dailyStudyHours: 3 });
+      setTempNotes([]);
+      setNotePagesIndex([]);
       setDataLoaded(false);
       isInitialLoad.current = true;
       return;
@@ -148,8 +178,18 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     getDoc(docRef)
       .then(snap => {
         const fsData: StudyData | null = snap.exists()
-          ? { subjects: snap.data().subjects || [], settings: snap.data().settings || {}, savedAt: snap.data().savedAt }
+          ? {
+              subjects: snap.data().subjects || [],
+              settings: snap.data().settings || {},
+              tempNotes: snap.data().tempNotes || [],
+              notePagesIndex: snap.data().notePagesIndex || [],
+              savedAt: snap.data().savedAt,
+            }
           : null;
+        if (fsData) {
+          setTempNotes(fsData.tempNotes || []);
+          setNotePagesIndex(fsData.notePagesIndex || []);
+        }
 
         const lsRaw = localKey('data');
         const localData = lsRaw ? getLocalData(lsRaw) : null;
@@ -211,6 +251,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         if (localData) {
           setSubjects(localData.subjects || []);
           setSettings(prev => ({ ...prev, ...localData.settings }));
+          setTempNotes(localData.tempNotes || []);
+          setNotePagesIndex(localData.notePagesIndex || []);
         }
       })
       .finally(() => {
@@ -220,11 +262,22 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   // Save data (debounced for Firestore, immediate for localStorage)
-  const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings } | null>(null);
+  const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; notePagesIndex: NotePageMeta[] } | null>(null);
 
-  const flushSave = async (subjectsToSave: Subject[], settingsToSave: CourseSettings) => {
+  const flushSave = async (
+    subjectsToSave: Subject[],
+    settingsToSave: CourseSettings,
+    tempNotesToSave: TempNoteItem[],
+    notePagesIndexToSave: NotePageMeta[],
+  ) => {
     if (!user) return;
-    const payload: StudyData = { subjects: subjectsToSave, settings: settingsToSave, savedAt: Date.now() };
+    const payload: StudyData = {
+      subjects: subjectsToSave,
+      settings: settingsToSave,
+      tempNotes: tempNotesToSave,
+      notePagesIndex: notePagesIndexToSave,
+      savedAt: Date.now(),
+    };
     const lsKey = localKey('data');
     if (lsKey) localStorage.setItem(lsKey, JSON.stringify(payload));
     try {
@@ -238,26 +291,26 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     if (!user || !dataLoaded || isInitialLoad.current) return;
 
     // Save to localStorage immediately (synchronous, always up to date)
-    const payload: StudyData = { subjects, settings, savedAt: Date.now() };
+    const payload: StudyData = { subjects, settings, tempNotes, notePagesIndex, savedAt: Date.now() };
     const lsKey = localKey('data');
     if (lsKey) localStorage.setItem(lsKey, JSON.stringify(payload));
 
     // Debounce the Firestore save
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSyncing(true);
-    pendingSaveRef.current = { subjects, settings };
+    pendingSaveRef.current = { subjects, settings, tempNotes, notePagesIndex };
     saveTimerRef.current = setTimeout(() => {
       const pending = pendingSaveRef.current;
-      if (pending) flushSave(pending.subjects, pending.settings);
+      if (pending) flushSave(pending.subjects, pending.settings, pending.tempNotes, pending.notePagesIndex);
     }, 400);
-  }, [subjects, settings, user, dataLoaded]);
+  }, [subjects, settings, tempNotes, notePagesIndex, user, dataLoaded]);
 
   // Flush save immediately before page unload
   useEffect(() => {
     const handleUnload = () => {
       if (pendingSaveRef.current && user) {
-        const { subjects: s, settings: st } = pendingSaveRef.current;
-        const payload: StudyData = { subjects: s, settings: st, savedAt: Date.now() };
+        const { subjects: s, settings: st, tempNotes: tn, notePagesIndex: np } = pendingSaveRef.current;
+        const payload: StudyData = { subjects: s, settings: st, tempNotes: tn, notePagesIndex: np, savedAt: Date.now() };
         const lsKey = `@study_data_${user.email}`;
         localStorage.setItem(lsKey, JSON.stringify(payload));
       }
@@ -720,6 +773,157 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     applyMarkPatch(path, { weak: !cur?.weak });
   };
 
+  // ─── Temp Notes (hierarchical to-do, not synced to Today plan) ───────
+  const mapTempTree = (
+    items: TempNoteItem[],
+    fn: (n: TempNoteItem) => TempNoteItem | null,
+  ): TempNoteItem[] => {
+    const out: TempNoteItem[] = [];
+    for (const it of items) {
+      const mapped = fn({ ...it, children: mapTempTree(it.children || [], fn) });
+      if (mapped) out.push(mapped);
+    }
+    return out;
+  };
+
+  const addTempNote = (text: string, parentId?: string | null) => {
+    const newNote: TempNoteItem = {
+      id: uid(),
+      text: text.trim(),
+      done: false,
+      createdAt: Date.now(),
+      children: [],
+    };
+    if (!newNote.text) return;
+    if (!parentId) {
+      // newest first
+      setTempNotes(prev => [newNote, ...prev]);
+      return;
+    }
+    setTempNotes(prev => mapTempTree(prev, n =>
+      n.id === parentId ? { ...n, children: [newNote, ...(n.children || [])] } : n
+    ));
+  };
+
+  const updateTempNote = (id: string, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setTempNotes(prev => mapTempTree(prev, n =>
+      n.id === id ? { ...n, text: trimmed } : n
+    ));
+  };
+
+  const toggleTempNoteDone = (id: string) => {
+    setTempNotes(prev => mapTempTree(prev, n =>
+      n.id === id ? { ...n, done: !n.done } : n
+    ));
+  };
+
+  const deleteTempNote = (id: string) => {
+    setTempNotes(prev => mapTempTree(prev, n => n.id === id ? null : n));
+  };
+
+  // ─── A4 Note Pages (each page stored as a separate Firestore doc) ────
+  const notePageDocRef = (id: string) =>
+    user ? doc(db, 'users', user.id, 'notePages', id) : null;
+
+  const localPageKey = (id: string) =>
+    user ? `@study_notepage_${user.email}_${id}` : null;
+
+  const createNotePage = (title?: string): string => {
+    const id = uid();
+    const now = Date.now();
+    const meta: NotePageMeta = {
+      id,
+      title: title?.trim() || 'Untitled page',
+      pageCount: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setNotePagesIndex(prev => [meta, ...prev]);
+    // Save empty page doc
+    const emptyPage: NotePage = { ...meta, elements: [] };
+    const lk = localPageKey(id);
+    if (lk) localStorage.setItem(lk, JSON.stringify(emptyPage));
+    const ref = notePageDocRef(id);
+    if (ref) setDoc(ref, emptyPage).catch(() => {});
+    return id;
+  };
+
+  const renameNotePage = (id: string, title: string) => {
+    const trimmed = title.trim() || 'Untitled page';
+    setNotePagesIndex(prev => prev.map(p =>
+      p.id === id ? { ...p, title: trimmed, updatedAt: Date.now() } : p
+    ));
+    // Update doc title
+    const lk = localPageKey(id);
+    if (lk) {
+      try {
+        const cur = JSON.parse(localStorage.getItem(lk) || 'null') as NotePage | null;
+        if (cur) localStorage.setItem(lk, JSON.stringify({ ...cur, title: trimmed, updatedAt: Date.now() }));
+      } catch {}
+    }
+    const ref = notePageDocRef(id);
+    if (ref) setDoc(ref, { title: trimmed, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+  };
+
+  const deleteNotePage = async (id: string): Promise<void> => {
+    setNotePagesIndex(prev => prev.filter(p => p.id !== id));
+    const lk = localPageKey(id);
+    if (lk) localStorage.removeItem(lk);
+    const ref = notePageDocRef(id);
+    if (ref) {
+      try { await deleteDoc(ref); } catch { /* ignore */ }
+    }
+  };
+
+  const loadNotePage = async (id: string): Promise<NotePage | null> => {
+    const lk = localPageKey(id);
+    let local: NotePage | null = null;
+    if (lk) {
+      try { local = JSON.parse(localStorage.getItem(lk) || 'null'); } catch { local = null; }
+    }
+    const ref = notePageDocRef(id);
+    if (!ref) return local;
+    try {
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const d = snap.data() as NotePage;
+        const remote: NotePage = {
+          id: d.id ?? id,
+          title: d.title ?? 'Untitled page',
+          elements: d.elements || [],
+          pageCount: d.pageCount ?? 1,
+          createdAt: d.createdAt ?? Date.now(),
+          updatedAt: d.updatedAt ?? Date.now(),
+        };
+        // Pick newest
+        if (!local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0)) {
+          if (lk) localStorage.setItem(lk, JSON.stringify(remote));
+          return remote;
+        }
+        return local;
+      }
+    } catch { /* offline */ }
+    return local;
+  };
+
+  const saveNotePage = async (page: NotePage): Promise<void> => {
+    const updated: NotePage = { ...page, updatedAt: Date.now() };
+    const lk = localPageKey(page.id);
+    if (lk) localStorage.setItem(lk, JSON.stringify(updated));
+    // Update index meta
+    setNotePagesIndex(prev => prev.map(p =>
+      p.id === page.id
+        ? { ...p, title: updated.title, pageCount: updated.pageCount, updatedAt: updated.updatedAt }
+        : p
+    ));
+    const ref = notePageDocRef(page.id);
+    if (ref) {
+      try { await setDoc(ref, updated); } catch { /* offline – local saved */ }
+    }
+  };
+
   return (
     <StudyContext.Provider value={{
       subjects, settings, dataLoaded, syncing, online,
@@ -731,6 +935,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       addSubtopic, deleteSubtopic, toggleSubtopicComplete, updateSubtopicMeta,
       addConcept, deleteConcept, toggleConceptComplete, updateConceptMeta,
       addPoint, deletePoint, togglePointComplete, updatePointMeta,
+      tempNotes, addTempNote, updateTempNote, toggleTempNoteDone, deleteTempNote,
+      notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage,
     }}>
       {children}
     </StudyContext.Provider>

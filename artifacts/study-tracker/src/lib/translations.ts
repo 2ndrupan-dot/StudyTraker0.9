@@ -218,6 +218,80 @@ export const translations = {
     loadMoreAdded: "Added more tasks for today.",
     loadMoreNothing: "No more tasks available – everything is planned.",
     extraLoaded: "Extra loaded",
+
+    // Return loaded task to its original day
+    returnToOrigin: "Return",
+    returnToOriginTitle: "Return to original day",
+    confirmReturnToOrigin: "Send this task back so it appears on its original day instead of today?",
+    loadedExtraBadge: "Extra",
+
+    // Tabs / nav
+    notesTab: "Notes",
+
+    // Marked items flat list
+    markedItemsHeading: "Marked items",
+    markedNoneFound: "Nothing marked yet. Add a star or weak flag to any item to see it here.",
+
+    // Temp notes
+    tempNotes: "Temp Notes",
+    tempNotesDesc: "Quick to-do reminders. Stored separately, never affect Today's plan.",
+    addTempNote: "Add note",
+    tempNotePlaceholder: "Quick to-do… (e.g. revise chapter 3)",
+    addSubItem: "Add sub-item",
+    saveItem: "Save",
+    cancelItem: "Cancel",
+    deleteTempNote: "Delete this note?",
+    noTempNotes: "No quick notes yet.",
+
+    // Global search
+    searchPlaceholder: "Search subjects, chapters, notes…",
+    searchTitle: "Search",
+    searchEmpty: "Nothing matches your query.",
+    searchHintNeed3: "Type at least 2 characters to search.",
+    searchResultsCount: "results",
+    searchInSubjects: "In subjects",
+    searchInTempNotes: "In temp notes",
+    searchInPages: "In note pages",
+
+    // Note Pages (A4 rich editor)
+    notePagesTitle: "Note Pages",
+    notePagesEmpty: "No note pages yet. Create your first one!",
+    createNotePage: "Create note page",
+    untitledPage: "Untitled page",
+    addText: "Text",
+    addLink: "Link",
+    addImage: "Image",
+    addPdf: "PDF",
+    addPage: "Add page",
+    removePage: "Remove last page",
+    deletePage: "Delete page",
+    deletePageConfirm: "Delete this entire note page? It cannot be undone.",
+    duplicateElement: "Duplicate",
+    deleteElement: "Delete element",
+    bringToFront: "Bring to front",
+    sendToBack: "Send to back",
+    elementText: "Text content",
+    elementLink: "Link URL",
+    pageBack: "Back",
+    pageSaving: "Saving…",
+    pageSaved: "Saved",
+    pasteImageHint: "Paste image (Ctrl+V) or upload",
+    uploadFile: "Upload file",
+    pdfUrl: "PDF URL or upload file",
+    enterUrl: "Enter URL",
+    fontSize: "Size",
+    bold: "Bold",
+    italic: "Italic",
+    color: "Color",
+    align: "Align",
+    rotate: "Rotate",
+    zoom: "Zoom",
+    fitWidth: "Fit",
+
+    // PWA
+    installApp: "Install app",
+    installAppDesc: "Install StudyTrack for offline use.",
+    updateAvailable: "Update available – tap to refresh",
   },
   bn: {
     // Auth
@@ -436,5 +510,79 @@ export const translations = {
     loadMoreAdded: "আজকের জন্য আরও কাজ যোগ হয়েছে।",
     loadMoreNothing: "আর কোনো কাজ নেই – সব পরিকল্পনা সম্পন্ন।",
     extraLoaded: "অতিরিক্ত যোগ",
+
+    // Return loaded task to its original day
+    returnToOrigin: "ফেরত দিন",
+    returnToOriginTitle: "মূল দিনে ফেরত দিন",
+    confirmReturnToOrigin: "এই কাজটি আজ থেকে সরিয়ে মূল দিনে ফিরিয়ে দেবেন?",
+    loadedExtraBadge: "অতিরিক্ত",
+
+    // Tabs / nav
+    notesTab: "নোট",
+
+    // Marked items flat list
+    markedItemsHeading: "চিহ্নিত আইটেম",
+    markedNoneFound: "এখনও কিছু চিহ্নিত করা হয়নি। যেকোনো আইটেমে ⭐ বা ⚠ যোগ করলে এখানে দেখা যাবে।",
+
+    // Temp notes
+    tempNotes: "Temp Notes",
+    tempNotesDesc: "ছোট রিমাইন্ডার। আলাদা সংরক্ষিত, আজকের পরিকল্পনায় যোগ হবে না।",
+    addTempNote: "নোট যোগ",
+    tempNotePlaceholder: "ছোট কাজ… (যেমন: chapter ৩ revise করতে হবে)",
+    addSubItem: "সাব-আইটেম",
+    saveItem: "সংরক্ষণ",
+    cancelItem: "বাতিল",
+    deleteTempNote: "এই নোটটি মুছবেন?",
+    noTempNotes: "এখনও কোনো ছোট নোট নেই।",
+
+    // Global search
+    searchPlaceholder: "বিষয়, চ্যাপ্টার, নোটে খুঁজুন…",
+    searchTitle: "অনুসন্ধান",
+    searchEmpty: "কিছু মেলেনি।",
+    searchHintNeed3: "অন্তত ২ অক্ষর লিখুন।",
+    searchResultsCount: "ফলাফল",
+    searchInSubjects: "বিষয়ে",
+    searchInTempNotes: "Temp Notes এ",
+    searchInPages: "Note Pages এ",
+
+    // Note Pages (A4 rich editor)
+    notePagesTitle: "Note Pages",
+    notePagesEmpty: "এখনও কোনো নোট পেজ নেই। প্রথমটি তৈরি করুন!",
+    createNotePage: "নোট পেজ তৈরি",
+    untitledPage: "শিরোনামহীন পেজ",
+    addText: "টেক্সট",
+    addLink: "লিংক",
+    addImage: "ছবি",
+    addPdf: "PDF",
+    addPage: "পেজ যোগ",
+    removePage: "শেষ পেজ মুছুন",
+    deletePage: "পেজ মুছুন",
+    deletePageConfirm: "এই পুরো নোট পেজটি মুছবেন? এটি আর ফিরিয়ে আনা যাবে না।",
+    duplicateElement: "নকল করুন",
+    deleteElement: "মুছুন",
+    bringToFront: "সামনে আনুন",
+    sendToBack: "পেছনে নিন",
+    elementText: "টেক্সট",
+    elementLink: "লিংক URL",
+    pageBack: "ফিরে যান",
+    pageSaving: "সংরক্ষণ…",
+    pageSaved: "সংরক্ষিত",
+    pasteImageHint: "ছবি পেস্ট করুন (Ctrl+V) বা আপলোড",
+    uploadFile: "ফাইল আপলোড",
+    pdfUrl: "PDF URL বা ফাইল আপলোড",
+    enterUrl: "URL লিখুন",
+    fontSize: "সাইজ",
+    bold: "বোল্ড",
+    italic: "ইটালিক",
+    color: "রঙ",
+    align: "অ্যালাইন",
+    rotate: "ঘোরান",
+    zoom: "জুম",
+    fitWidth: "ফিট",
+
+    // PWA
+    installApp: "অ্যাপ ইনস্টল করুন",
+    installAppDesc: "অফলাইনে ব্যবহারের জন্য StudyTrack ইনস্টল করুন।",
+    updateAvailable: "আপডেট আছে – রিফ্রেশ করতে ট্যাপ করুন",
   }
 };

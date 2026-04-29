@@ -104,3 +104,43 @@ export interface MarkPath {
   pointId?: string;
   level: MarkLevel;
 }
+
+// ─── Temp Note (hierarchical to-do, NOT synced to Today plan) ───────────────
+export interface TempNoteItem {
+  id: string;
+  text: string;
+  done: boolean;
+  createdAt: number;
+  children: TempNoteItem[];
+}
+
+// ─── A4 Rich Note Pages ─────────────────────────────────────────────────────
+export type NoteElementType = 'text' | 'link' | 'image' | 'pdf';
+
+export interface NoteElement {
+  id: string;
+  type: NoteElementType;
+  x: number;       // px on canvas (A4: 794 x 1123 @ 96dpi)
+  y: number;
+  width: number;
+  height: number;
+  // type-specific
+  text?: string;          // text/link label
+  href?: string;          // link URL
+  src?: string;           // image / pdf data URL or storage URL
+  fontSize?: number;      // text
+  fontWeight?: 'normal' | 'bold';
+  fontStyle?: 'normal' | 'italic';
+  color?: string;
+  align?: 'left' | 'center' | 'right';
+  rotation?: number;      // degrees
+}
+
+export interface NotePage {
+  id: string;
+  title: string;
+  elements: NoteElement[];
+  pageCount: number;     // number of A4 pages stacked
+  createdAt: number;
+  updatedAt: number;
+}

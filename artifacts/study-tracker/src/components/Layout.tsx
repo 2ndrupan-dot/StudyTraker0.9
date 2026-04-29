@@ -1,17 +1,32 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff } from 'lucide-react';
+import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, StickyNote } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { GlobalSearch } from './GlobalSearch';
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Open search with Ctrl+K / Cmd+K
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <>
       {/* Desktop: sidebar layout */}
       <div className="hidden md:flex min-h-[100dvh] bg-background">
-        <SideNav />
+        <SideNav onSearch={() => setSearchOpen(true)} />
         <main className="flex-1 ml-64 min-h-[100dvh] overflow-y-auto">
           <div className="max-w-4xl mx-auto">
             {children}
@@ -23,11 +38,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <div className="md:hidden w-full min-h-[100dvh] bg-background relative overflow-x-hidden pb-[80px]">
         {children}
         <BottomNav />
+        <FloatingSearchButton onClick={() => setSearchOpen(true)} />
       </div>
 
       {/* Online / Sync status */}
       <ConnectionStatus />
+
+      {/* Global Search Modal */}
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </>
+  );
+}
+
+function FloatingSearchButton({ onClick }: { onClick: () => void }) {
+  const { t } = useLang();
+  return (
+    <motion.button
+      initial={{ opacity: 0, scale: 0.7 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileTap={{ scale: 0.92 }}
+      onClick={onClick}
+      aria-label={t('searchTitle')}
+      className="md:hidden fixed bottom-[88px] right-4 z-40 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center"
+    >
+      <Search size={20} strokeWidth={2.4} />
+    </motion.button>
   );
 }
 
@@ -130,12 +165,13 @@ function NavItem({ path, icon: Icon, label }: { path: string; icon: any; label: 
   );
 }
 
-function SideNav() {
+function SideNav({ onSearch }: { onSearch: () => void }) {
   const { t } = useLang();
 
   const tabs = [
     { path: '/today', icon: CheckCircle2, label: t('today') },
     { path: '/subjects', icon: BookOpen, label: t('subjects') },
+    { path: '/notes', icon: StickyNote, label: t('notesTab') },
     { path: '/progress', icon: Target, label: t('progress') },
   ];
 
@@ -152,6 +188,19 @@ function SideNav() {
             <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Study Planner</p>
           </div>
         </div>
+      </div>
+
+      {/* Search bar */}
+      <div className="p-3 pb-1">
+        <button
+          type="button"
+          onClick={onSearch}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/60 hover:bg-secondary text-muted-foreground text-xs font-medium border border-border/60 transition-colors"
+        >
+          <Search size={14} />
+          <span className="flex-1 text-left">{t('searchPlaceholder')}</span>
+          <kbd className="hidden lg:inline px-1.5 py-0.5 rounded bg-card border border-border/60 text-[9px] font-bold">⌘K</kbd>
+        </button>
       </div>
 
       {/* Nav items */}
@@ -176,6 +225,7 @@ function BottomNav() {
   const tabs = [
     { path: '/today', icon: CheckCircle2, label: t('today') },
     { path: '/subjects', icon: BookOpen, label: t('subjects') },
+    { path: '/notes', icon: StickyNote, label: t('notesTab') },
     { path: '/progress', icon: Target, label: t('progress') },
   ];
 
@@ -183,7 +233,10 @@ function BottomNav() {
     <div className="fixed bottom-0 left-0 right-0 bg-card/90 backdrop-blur-xl border-t border-border pb-safe z-40">
       <div className="flex items-center justify-around h-[68px] px-2 max-w-md mx-auto">
         {tabs.map(tab => {
-          const isActive = location === tab.path || (location === '/tabs' && tab.path === '/today');
+          const isActive =
+            location === tab.path ||
+            (location === '/tabs' && tab.path === '/today') ||
+            (tab.path === '/notes' && location.startsWith('/notes'));
           const Icon = tab.icon;
           return (
             <button
@@ -198,7 +251,7 @@ function BottomNav() {
                 />
               )}
               <Icon
-                size={24}
+                size={22}
                 className={cn("transition-all duration-300", isActive ? "text-primary scale-110" : "text-muted-foreground")}
                 strokeWidth={isActive ? 2.5 : 2}
               />

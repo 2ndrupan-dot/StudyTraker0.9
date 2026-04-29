@@ -7,6 +7,9 @@ import { Auth } from "./pages/Auth";
 import { Today } from "./pages/Today";
 import { Subjects } from "./pages/Subjects";
 import { Progress } from "./pages/Progress";
+import { NotesIndex } from "./pages/NotesIndex";
+import { NoteEditor } from "./pages/NoteEditor";
+import { PWAUpdater } from "./components/PWAUpdater";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -89,6 +92,8 @@ function Router() {
       <Route path="/today"><ProtectedRoute component={Today} /></Route>
       <Route path="/subjects"><ProtectedRoute component={Subjects} /></Route>
       <Route path="/progress"><ProtectedRoute component={Progress} /></Route>
+      <Route path="/notes"><ProtectedRoute component={NotesIndex} /></Route>
+      <Route path="/notes/:id"><ProtectedRoute component={NoteEditor} /></Route>
 
       <Route path="/">
         <Redirect to={user ? "/today" : "/auth"} />
@@ -111,6 +116,7 @@ function App() {
         <AuthProvider>
           <StudyProvider>
             <Router />
+            <PWAUpdater />
           </StudyProvider>
         </AuthProvider>
       </LangProvider>

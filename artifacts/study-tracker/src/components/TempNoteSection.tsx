@@ -145,7 +145,10 @@ function TempNoteRow({ item, depth, onToggle, onUpdate, onAddChild, onDelete }: 
   const [draft, setDraft] = useState(item.text);
   const [showChildInput, setShowChildInput] = useState(false);
   const [childText, setChildText] = useState('');
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+
+  const childCount = item.children?.length ?? 0;
+  const toggle = () => { if (childCount > 0) setExpanded(e => !e); };
 
   const submitEdit = () => {
     if (draft.trim() && draft.trim() !== item.text) onUpdate(item.id, draft);
@@ -161,27 +164,27 @@ function TempNoteRow({ item, depth, onToggle, onUpdate, onAddChild, onDelete }: 
   return (
     <li>
       <div
-        className="flex items-start gap-1.5 group rounded-lg hover:bg-secondary/30 px-1.5 py-1"
+        className="flex items-center gap-1.5 group rounded-lg hover:bg-secondary/30 px-1.5 py-1"
         style={{ marginLeft: depth * 16 }}
       >
+        {/* Checkbox */}
         <button
           onClick={() => onToggle(item.id)}
-          className="mt-0.5 w-4 h-4 rounded border-2 border-border flex items-center justify-center shrink-0 hover:border-primary transition-colors"
+          className="w-4 h-4 rounded border-2 border-border flex items-center justify-center shrink-0 hover:border-primary transition-colors"
           style={{ backgroundColor: item.done ? 'var(--color-primary)' : 'transparent', borderColor: item.done ? 'var(--color-primary)' : undefined }}
         >
           {item.done && <Check size={10} className="text-primary-foreground" strokeWidth={3} />}
         </button>
 
-        {item.children?.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setExpanded(e => !e)}
-            className="mt-0.5 text-muted-foreground"
-            aria-label="toggle children"
-          >
-            {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-          </button>
-        )}
+        {/* Expand chevron — always reserve space for alignment */}
+        <button
+          type="button"
+          onClick={toggle}
+          className={`shrink-0 text-muted-foreground transition-colors ${childCount > 0 ? 'hover:text-foreground' : 'pointer-events-none opacity-0'}`}
+          aria-label="toggle children"
+        >
+          {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        </button>
 
         {editing ? (
           <div className="flex-1 flex items-center gap-1">
@@ -200,31 +203,43 @@ function TempNoteRow({ item, depth, onToggle, onUpdate, onAddChild, onDelete }: 
           </div>
         ) : (
           <>
+            {/* Clickable text — clicking toggles children */}
             <span
-              className={`flex-1 text-xs leading-relaxed ${item.done ? 'line-through text-muted-foreground' : 'text-foreground'}`}
+              onClick={toggle}
+              className={`flex-1 text-xs leading-relaxed select-none ${childCount > 0 ? 'cursor-pointer' : ''} ${item.done ? 'line-through text-muted-foreground' : 'text-foreground'}`}
             >
               {item.text}
             </span>
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 text-muted-foreground">
-              <button
-                onClick={() => setShowChildInput(s => !s)}
-                title={t('addSubItem')}
-                className="p-1 rounded hover:bg-card hover:text-primary"
-              >
-                <Plus size={11} />
-              </button>
-              <button
-                onClick={() => setEditing(true)}
-                className="p-1 rounded hover:bg-card hover:text-primary"
-              >
-                <Pencil size={11} />
-              </button>
-              <button
-                onClick={() => onDelete(item.id)}
-                className="p-1 rounded hover:bg-card hover:text-rose-600"
-              >
-                <Trash2 size={11} />
-              </button>
+
+            <div className="flex items-center gap-1 shrink-0">
+              {/* Direct child count badge — always visible */}
+              {childCount > 0 && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary leading-none">
+                  {childCount}
+                </span>
+              )}
+              {/* Action buttons — hover only */}
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 text-muted-foreground">
+                <button
+                  onClick={() => setShowChildInput(s => !s)}
+                  title={t('addSubItem')}
+                  className="p-1 rounded hover:bg-card hover:text-primary"
+                >
+                  <Plus size={11} />
+                </button>
+                <button
+                  onClick={() => setEditing(true)}
+                  className="p-1 rounded hover:bg-card hover:text-primary"
+                >
+                  <Pencil size={11} />
+                </button>
+                <button
+                  onClick={() => onDelete(item.id)}
+                  className="p-1 rounded hover:bg-card hover:text-rose-600"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
             </div>
           </>
         )}
@@ -248,21 +263,29 @@ function TempNoteRow({ item, depth, onToggle, onUpdate, onAddChild, onDelete }: 
         </div>
       )}
 
-      {expanded && item.children?.length > 0 && (
-        <ul className="mt-1 space-y-1">
-          {item.children.map(child => (
-            <TempNoteRow
-              key={child.id}
-              item={child}
-              depth={depth + 1}
-              onToggle={onToggle}
-              onUpdate={onUpdate}
-              onAddChild={onAddChild}
-              onDelete={onDelete}
-            />
-          ))}
-        </ul>
-      )}
+      <AnimatePresence initial={false}>
+        {expanded && childCount > 0 && (
+          <motion.ul
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden mt-0.5 space-y-0.5"
+          >
+            {item.children.map(child => (
+              <TempNoteRow
+                key={child.id}
+                item={child}
+                depth={depth + 1}
+                onToggle={onToggle}
+                onUpdate={onUpdate}
+                onAddChild={onAddChild}
+                onDelete={onDelete}
+              />
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
     </li>
   );
 }

@@ -10,7 +10,7 @@ import {
   Lock, Flame, ThumbsUp, RefreshCw, Plus, StickyNote, Star, AlertOctagon,
 } from 'lucide-react';
 import { format, differenceInDays, parseISO, addDays } from 'date-fns';
-import { Modal, Input, Button } from '@/components/ui';
+import { Modal, Input, Button, NoteEditorModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Subject, MarkPath, MarkLevel } from '@/lib/types';
 import { ItemActions } from '@/components/ItemActions';
@@ -1959,30 +1959,19 @@ export function Today() {
       </Modal>
 
       {/* ─── Note editor modal ─── */}
-      <Modal
+      <NoteEditorModal
         isOpen={noteModal.open}
         onClose={closeNoteModal}
         title={t('editNote')}
-        align="bottom"
         icon={StickyNote}
-      >
-        <div className="space-y-4">
-          <textarea
-            autoFocus
-            value={noteModal.draft}
-            onChange={e => setNoteModal(s => ({ ...s, draft: e.target.value }))}
-            rows={5}
-            placeholder={t('notePlaceholder')}
-            className="w-full p-3 rounded-xl border border-border/60 bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-          />
-          <div className="flex gap-2">
-            <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={() => setNoteModal(s => ({ ...s, draft: '' }))}>
-              {t('clearNote')}
-            </Button>
-            <Button className="flex-1" onClick={submitNoteModal}>{t('saveNote')}</Button>
-          </div>
-        </div>
-      </Modal>
+        value={noteModal.draft}
+        onChange={v => setNoteModal(s => ({ ...s, draft: v }))}
+        onClear={() => setNoteModal(s => ({ ...s, draft: '' }))}
+        onSave={submitNoteModal}
+        placeholder={t('notePlaceholder')}
+        clearLabel={t('clearNote')}
+        saveLabel={t('saveNote')}
+      />
     </Layout>
   );
 }

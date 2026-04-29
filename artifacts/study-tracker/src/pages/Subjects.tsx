@@ -13,7 +13,7 @@ import {
   isConceptUnlocked, isPointUnlocked,
   isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone,
 } from '@/lib/timeEngine';
-import { Modal, ConfirmModal, Input, Button } from '@/components/ui';
+import { Modal, ConfirmModal, Input, Button, NoteEditorModal } from '@/components/ui';
 import { ItemActions, MarksBadgeRow } from '@/components/ItemActions';
 import { TempNoteSection } from '@/components/TempNoteSection';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1314,34 +1314,19 @@ export function Subjects() {
       />
 
       {/* Note editor */}
-      <Modal
+      <NoteEditorModal
         isOpen={!!notePath}
         onClose={closeNote}
         title={t('editNote')}
-        align="bottom"
         icon={StickyNote}
-      >
-        <div className="space-y-4">
-          <textarea
-            value={noteDraft}
-            onChange={e => setNoteDraft(e.target.value)}
-            placeholder={t('notePlaceholder')}
-            rows={5}
-            className="w-full p-3 rounded-xl border border-border/60 bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-            autoFocus
-          />
-          <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              className="flex-1 text-muted-foreground"
-              onClick={() => { setNoteDraft(''); }}
-            >
-              {t('clearNote')}
-            </Button>
-            <Button className="flex-1" onClick={saveNote}>{t('saveNote')}</Button>
-          </div>
-        </div>
-      </Modal>
+        value={noteDraft}
+        onChange={setNoteDraft}
+        onClear={() => setNoteDraft('')}
+        onSave={saveNote}
+        placeholder={t('notePlaceholder')}
+        clearLabel={t('clearNote')}
+        saveLabel={t('saveNote')}
+      />
 
     </Layout>
   );

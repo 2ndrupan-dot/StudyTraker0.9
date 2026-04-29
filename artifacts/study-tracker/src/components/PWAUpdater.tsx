@@ -1,30 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, RefreshCw, X } from 'lucide-react';
+import { RefreshCw, X, Download } from 'lucide-react';
 import { useLang } from '@/context/LangContext';
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
+import { usePWAInstall } from '@/context/PWAInstallContext';
 
 export function PWAUpdater() {
   const { t } = useLang();
-  const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const { canInstall, installApp } = usePWAInstall();
   const [installDismissed, setInstallDismissed] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
 
-  // Listen for install prompt
   useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setInstallEvent(e as BeforeInstallPromptEvent);
-    };
-    window.addEventListener('beforeinstallprompt', handler);
-    // Was previously dismissed?
     setInstallDismissed(localStorage.getItem('@study_pwa_install_dismissed') === '1');
-    return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
   // Register service worker (only in production builds where SW exists)
@@ -36,7 +24,6 @@ export function PWAUpdater() {
       try {
         const reg = await navigator.serviceWorker.register('/sw.js');
 
-        // If a worker is already waiting, surface update prompt
         if (reg.waiting) {
           setWaitingWorker(reg.waiting);
           setUpdateAvailable(true);
@@ -70,12 +57,6 @@ export function PWAUpdater() {
     return () => navigator.serviceWorker.removeEventListener('controllerchange', handler);
   }, []);
 
-  const installApp = async () => {
-    if (!installEvent) return;
-    await installEvent.prompt();
-    setInstallEvent(null);
-  };
-
   const dismissInstall = () => {
     setInstallDismissed(true);
     localStorage.setItem('@study_pwa_install_dismissed', '1');
@@ -101,7 +82,7 @@ export function PWAUpdater() {
         </motion.button>
       )}
 
-      {!updateAvailable && installEvent && !installDismissed && (
+      {!updateAvailable && canInstall && !installDismissed && (
         <motion.div
           key="install"
           initial={{ opacity: 0, y: 30 }}
@@ -120,7 +101,7 @@ export function PWAUpdater() {
             onClick={installApp}
             className="px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold"
           >
-            {t('installApp')}
+            {t('installBtn')}
           </button>
           <button onClick={dismissInstall} className="text-muted-foreground p-1">
             <X size={14} />

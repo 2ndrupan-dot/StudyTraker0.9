@@ -10,6 +10,7 @@ import { Subjects } from "./pages/Subjects";
 import { Progress } from "./pages/Progress";
 import { CreateCoursePage } from "./pages/CreateCoursePage";
 import { PWAUpdater } from "./components/PWAUpdater";
+import { PWAInstallProvider } from "./context/PWAInstallContext";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -118,12 +119,14 @@ function App() {
     <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
       <LangProvider>
         <AuthProvider>
-          <CourseProvider>
-            <StudyProvider>
-              <Router />
-              <PWAUpdater />
-            </StudyProvider>
-          </CourseProvider>
+          <PWAInstallProvider>
+            <CourseProvider>
+              <StudyProvider>
+                <Router />
+                <PWAUpdater />
+              </StudyProvider>
+            </CourseProvider>
+          </PWAInstallProvider>
         </AuthProvider>
       </LangProvider>
     </WouterRouter>

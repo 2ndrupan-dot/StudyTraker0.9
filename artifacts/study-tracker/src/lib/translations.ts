@@ -291,7 +291,11 @@ export const translations = {
     // PWA
     installApp: "Install app",
     installAppDesc: "Install StudyTrack for offline use.",
+    installBtn: "Install",
     updateAvailable: "Update available – tap to refresh",
+    shareInstallLink: "Share install link",
+    linkCopied: "Link copied!",
+    appInstalled: "App installed",
 
     // Course management
     createCourse: "Create Course",
@@ -597,7 +601,11 @@ export const translations = {
     // PWA
     installApp: "অ্যাপ ইনস্টল করুন",
     installAppDesc: "অফলাইনে ব্যবহারের জন্য StudyTrack ইনস্টল করুন।",
+    installBtn: "ইনস্টল",
     updateAvailable: "আপডেট আছে – রিফ্রেশ করতে ট্যাপ করুন",
+    shareInstallLink: "ইনস্টল লিংক শেয়ার করুন",
+    linkCopied: "লিংক কপি হয়েছে!",
+    appInstalled: "অ্যাপ ইনস্টল হয়েছে",
 
     // Course management
     createCourse: "কোর্স তৈরি করুন",

@@ -174,6 +174,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }
 
     isInitialLoad.current = true;
+    setSubjects([]);
+    setSettings({ courseTotalDays: null, dailyStudyHours: 3 });
+    setTempNotes([]);
+    setNotePagesIndex([]);
     setDataLoaded(false);
 
     const docRef = doc(db, 'users', user.id, 'studyData', activeCourseId);

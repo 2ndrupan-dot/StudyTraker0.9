@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, StickyNote } from 'lucide-react';
+import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
@@ -171,7 +171,6 @@ function SideNav({ onSearch }: { onSearch: () => void }) {
   const tabs = [
     { path: '/today', icon: CheckCircle2, label: t('today') },
     { path: '/subjects', icon: BookOpen, label: t('subjects') },
-    { path: '/notes', icon: StickyNote, label: t('notesTab') },
     { path: '/progress', icon: Target, label: t('progress') },
   ];
 
@@ -225,7 +224,6 @@ function BottomNav() {
   const tabs = [
     { path: '/today', icon: CheckCircle2, label: t('today') },
     { path: '/subjects', icon: BookOpen, label: t('subjects') },
-    { path: '/notes', icon: StickyNote, label: t('notesTab') },
     { path: '/progress', icon: Target, label: t('progress') },
   ];
 
@@ -235,8 +233,7 @@ function BottomNav() {
         {tabs.map(tab => {
           const isActive =
             location === tab.path ||
-            (location === '/tabs' && tab.path === '/today') ||
-            (tab.path === '/notes' && location.startsWith('/notes'));
+            (location === '/tabs' && tab.path === '/today');
           const Icon = tab.icon;
           return (
             <button

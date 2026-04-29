@@ -7,8 +7,6 @@ import { Auth } from "./pages/Auth";
 import { Today } from "./pages/Today";
 import { Subjects } from "./pages/Subjects";
 import { Progress } from "./pages/Progress";
-import { NotesIndex } from "./pages/NotesIndex";
-import { NoteEditor } from "./pages/NoteEditor";
 import { PWAUpdater } from "./components/PWAUpdater";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -45,7 +43,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
           {[1,2,3].map(i => (
             <div key={i} className="flex flex-col items-center gap-1.5">
               <div className="skeleton h-6 w-6 rounded" />
-              <div className="skeleton h-2.5 w-10 rounded" />
+              <div className="skeleton h-2.5 w-12 rounded" />
             </div>
           ))}
         </div>
@@ -92,9 +90,6 @@ function Router() {
       <Route path="/today"><ProtectedRoute component={Today} /></Route>
       <Route path="/subjects"><ProtectedRoute component={Subjects} /></Route>
       <Route path="/progress"><ProtectedRoute component={Progress} /></Route>
-      <Route path="/notes"><ProtectedRoute component={NotesIndex} /></Route>
-      <Route path="/notes/:id"><ProtectedRoute component={NoteEditor} /></Route>
-
       <Route path="/">
         <Redirect to={user ? "/today" : "/auth"} />
       </Route>

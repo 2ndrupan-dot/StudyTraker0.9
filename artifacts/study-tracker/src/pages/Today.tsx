@@ -1963,19 +1963,24 @@ export function Today() {
         isOpen={noteModal.open}
         onClose={closeNoteModal}
         title={t('editNote')}
-        icon={<StickyNote size={18} />}
+        align="bottom"
+        icon={StickyNote}
       >
-        <textarea
-          autoFocus
-          value={noteModal.draft}
-          onChange={e => setNoteModal(s => ({ ...s, draft: e.target.value }))}
-          rows={5}
-          placeholder={t('notePlaceholder')}
-          className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"
-        />
-        <div className="mt-4 flex gap-2">
-          <Button variant="ghost" className="flex-1" onClick={closeNoteModal}>{t('cancel')}</Button>
-          <Button variant="primary" className="flex-1" onClick={submitNoteModal}>{t('save')}</Button>
+        <div className="space-y-4">
+          <textarea
+            autoFocus
+            value={noteModal.draft}
+            onChange={e => setNoteModal(s => ({ ...s, draft: e.target.value }))}
+            rows={5}
+            placeholder={t('notePlaceholder')}
+            className="w-full p-3 rounded-xl border border-border/60 bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+          />
+          <div className="flex gap-2">
+            <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={() => setNoteModal(s => ({ ...s, draft: '' }))}>
+              {t('clearNote')}
+            </Button>
+            <Button className="flex-1" onClick={submitNoteModal}>{t('saveNote')}</Button>
+          </div>
         </div>
       </Modal>
     </Layout>

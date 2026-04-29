@@ -25,6 +25,7 @@ interface CourseContextType {
   createCourse: (name: string) => Promise<string>;
   switchCourse: (courseId: string) => void;
   renameCourse: (courseId: string, name: string) => Promise<void>;
+  deleteCourse: (courseId: string) => Promise<void>;
 }
 
 const CourseContext = createContext<CourseContextType | undefined>(undefined);
@@ -161,6 +162,36 @@ export function CourseProvider({ children }: { children: ReactNode }) {
     } catch { /* offline */ }
   };
 
+  const deleteCourse = async (courseId: string) => {
+    if (!user) return;
+    if (courses.length <= 1) throw new Error('Cannot delete the only course');
+
+    const updated = courses.filter(c => c.id !== courseId);
+    setCourses(updated);
+    saveCoursesList(updated, user.email);
+
+    // If we deleted the active course, switch to the first remaining one
+    if (activeCourseId === courseId) {
+      const next = updated[0];
+      setActiveCourseId(next.id);
+      setActiveCourseIdInStorage(user.email, next.id);
+    }
+
+    // Delete from Firestore
+    try {
+      await deleteDoc(doc(db, 'users', user.id, 'courses', courseId));
+      await deleteDoc(doc(db, 'users', user.id, 'studyData', courseId));
+    } catch { /* offline, cleaned up locally */ }
+
+    // Clean up localStorage
+    try {
+      localStorage.removeItem(`@study_data_${courseId}_${user.email}`);
+      ['today_plan_v2', 'pending_v2', 'revisions_v1'].forEach(k => {
+        localStorage.removeItem(`@study_${k}_${user.email}_${courseId}`);
+      });
+    } catch { /* ignore */ }
+  };
+
   const activeCourse = courses.find(c => c.id === activeCourseId) ?? null;
   const needsCourseCreation = coursesLoaded && courses.length === 0;
 
@@ -174,6 +205,7 @@ export function CourseProvider({ children }: { children: ReactNode }) {
       createCourse,
       switchCourse,
       renameCourse,
+      deleteCourse,
     }}>
       {children}
     </CourseContext.Provider>

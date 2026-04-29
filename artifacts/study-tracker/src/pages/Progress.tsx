@@ -4,7 +4,7 @@ import { useStudy } from '@/context/StudyContext';
 import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
-import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked } from 'lucide-react';
+import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, Trash2, BookOpenCheck } from 'lucide-react';
 import { Modal, ConfirmModal, Input, Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
@@ -20,7 +20,7 @@ const cardVariants = {
 export function Progress() {
   const { user, logout, updateProfile, updateProfilePhoto } = useAuth();
   const { subjects, settings, setCourseStartDate } = useStudy();
-  const { courses, activeCourseId, activeCourse, createCourse, switchCourse } = useCourse();
+  const { courses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse } = useCourse();
   const { t, lang, setLang } = useLang();
 
   const [modals, setModals] = useState({ profile: false, settings: false, logout: false, addCourse: false, switchCourse: false });
@@ -35,6 +35,15 @@ export function Progress() {
   const [newCourseName, setNewCourseName] = useState('');
   const [newCourseError, setNewCourseError] = useState('');
   const [newCourseLoading, setNewCourseLoading] = useState(false);
+
+  // Rename course
+  const [renamingCourse, setRenamingCourse] = useState<{ id: string; name: string } | null>(null);
+  const [renameLoading, setRenameLoading] = useState(false);
+
+  // Delete course
+  const [deletingCourse, setDeletingCourse] = useState<{ id: string; name: string } | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [cannotDeleteError, setCannotDeleteError] = useState(false);
 
   // Course Start Date state
   const [pendingStartDate, setPendingStartDate] = useState('');
@@ -106,6 +115,36 @@ export function Progress() {
     setPendingStartDate('');
     setResetSuccess(true);
     setTimeout(() => setResetSuccess(false), 5000);
+  };
+
+  // Rename course handler
+  const handleRenameCourse = async () => {
+    if (!renamingCourse || !renamingCourse.name.trim()) return;
+    setRenameLoading(true);
+    try {
+      await renameCourse(renamingCourse.id, renamingCourse.name.trim());
+      setRenamingCourse(null);
+    } catch { /* ignore */ } finally {
+      setRenameLoading(false);
+    }
+  };
+
+  // Delete course handler
+  const handleDeleteCourse = async () => {
+    if (!deletingCourse) return;
+    if (courses.length <= 1) {
+      setDeletingCourse(null);
+      setCannotDeleteError(true);
+      setTimeout(() => setCannotDeleteError(false), 4000);
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      await deleteCourse(deletingCourse.id);
+      setDeletingCourse(null);
+    } catch { /* ignore */ } finally {
+      setDeleteLoading(false);
+    }
   };
 
   // Add new course
@@ -506,49 +545,153 @@ export function Progress() {
         </div>
       </Modal>
 
-      {/* Switch Course Modal */}
+      {/* My Courses Modal */}
       <Modal
         isOpen={modals.switchCourse}
         onClose={() => setModals({ ...modals, switchCourse: false })}
         title={t('switchCourse')}
         align="bottom"
-        icon={ArrowLeftRight}
+        icon={BookOpenCheck}
       >
         <div className="space-y-2">
-          <p className="text-sm text-muted-foreground mb-4">{t('selectCourse')}</p>
+          <p className="text-xs text-muted-foreground mb-3">{t('selectCourse')}</p>
+
+          {/* Cannot delete error */}
           <AnimatePresence>
-            {courses.map((course, i) => (
-              <motion.button
-                key={course.id}
-                initial={{ opacity: 0, y: 8 }}
+            {cannotDeleteError && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-                onClick={() => {
-                  switchCourse(course.id);
-                  setModals({ ...modals, switchCourse: false });
-                }}
-                className={`w-full flex items-center gap-3 p-4 rounded-2xl border transition-all text-left ${
-                  course.id === activeCourseId
-                    ? 'bg-primary/10 border-primary/30 text-primary'
-                    : 'bg-secondary border-border/50 text-foreground hover:bg-secondary/70'
-                }`}
+                exit={{ opacity: 0 }}
+                className="flex items-start gap-2 px-3 py-2.5 bg-destructive/10 border border-destructive/20 rounded-xl mb-2"
               >
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                  course.id === activeCourseId ? 'bg-primary/20' : 'bg-background'
-                }`}>
-                  <BookMarked size={16} className={course.id === activeCourseId ? 'text-primary' : 'text-muted-foreground'} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate">{course.name}</p>
-                </div>
-                {course.id === activeCourseId && (
-                  <CheckCircle2 size={16} className="text-primary shrink-0" />
-                )}
-              </motion.button>
-            ))}
+                <Trash2 size={13} className="text-destructive shrink-0 mt-0.5" />
+                <p className="text-xs text-destructive font-medium">{t('cannotDeleteOnly')}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {courses.map((course, i) => {
+              const isActive = course.id === activeCourseId;
+              const canDelete = courses.length > 1;
+              return (
+                <motion.div
+                  key={course.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className={`flex items-center gap-2 p-3 rounded-2xl border transition-all ${
+                    isActive
+                      ? 'bg-primary/10 border-primary/30'
+                      : 'bg-secondary border-border/50'
+                  }`}
+                >
+                  {/* Switch tap area */}
+                  <button
+                    className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                    onClick={() => {
+                      switchCourse(course.id);
+                      setModals({ ...modals, switchCourse: false });
+                    }}
+                  >
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                      isActive ? 'bg-primary/20' : 'bg-background'
+                    }`}>
+                      <BookMarked size={15} className={isActive ? 'text-primary' : 'text-muted-foreground'} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold text-sm truncate ${isActive ? 'text-primary' : 'text-foreground'}`}>
+                        {course.name}
+                      </p>
+                      {isActive && (
+                        <p className="text-[10px] text-primary/60 font-medium">{t('currentCourse')}</p>
+                      )}
+                    </div>
+                    {isActive && <CheckCircle2 size={15} className="text-primary shrink-0" />}
+                  </button>
+
+                  {/* Action icons */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRenamingCourse({ id: course.id, name: course.name });
+                      }}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+                      title={t('renameCourse')}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!canDelete) {
+                          setCannotDeleteError(true);
+                          setTimeout(() => setCannotDeleteError(false), 4000);
+                        } else {
+                          setDeletingCourse({ id: course.id, name: course.name });
+                        }
+                      }}
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
+                        canDelete
+                          ? 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
+                          : 'text-muted-foreground/30 cursor-not-allowed'
+                      }`}
+                      title={canDelete ? t('deleteCourse') : t('cannotDeleteOnly')}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </motion.div>
+              );
+            })}
           </AnimatePresence>
         </div>
       </Modal>
+
+      {/* Rename Course Modal */}
+      <Modal
+        isOpen={!!renamingCourse}
+        onClose={() => setRenamingCourse(null)}
+        title={t('renameCourse')}
+        align="bottom"
+        icon={Pencil}
+      >
+        <div className="space-y-4">
+          <Input
+            placeholder={t('courseNamePlaceholder')}
+            value={renamingCourse?.name ?? ''}
+            onChange={e => setRenamingCourse(prev => prev ? { ...prev, name: e.target.value } : null)}
+            onKeyDown={e => { if (e.key === 'Enter') handleRenameCourse(); }}
+            autoFocus
+          />
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 py-3" onClick={() => setRenamingCourse(null)}>
+              {t('cancel')}
+            </Button>
+            <Button
+              className="flex-1 py-3"
+              onClick={handleRenameCourse}
+              disabled={renameLoading || !renamingCourse?.name.trim()}
+            >
+              {renameLoading ? '...' : t('rename')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Course Confirm */}
+      <ConfirmModal
+        isOpen={!!deletingCourse}
+        onClose={() => setDeletingCourse(null)}
+        onConfirm={handleDeleteCourse}
+        title={`${t('deleteCourse')}: ${deletingCourse?.name ?? ''}`}
+        message={t('deleteCourseConfirm')}
+        confirmText={t('deleteCourse')}
+        cancelText={t('cancel')}
+        isDanger={true}
+      />
 
       {/* Logout Confirm */}
       <ConfirmModal

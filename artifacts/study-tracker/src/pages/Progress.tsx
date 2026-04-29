@@ -1,11 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useStudy } from '@/context/StudyContext';
+import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
-import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2 } from 'lucide-react';
+import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked } from 'lucide-react';
 import { Modal, ConfirmModal, Input, Button } from '@/components/ui';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
 
 const cardVariants = {
@@ -19,15 +20,21 @@ const cardVariants = {
 export function Progress() {
   const { user, logout, updateProfile, updateProfilePhoto } = useAuth();
   const { subjects, settings, setCourseStartDate } = useStudy();
+  const { courses, activeCourseId, activeCourse, createCourse, switchCourse } = useCourse();
   const { t, lang, setLang } = useLang();
 
-  const [modals, setModals] = useState({ profile: false, settings: false, logout: false });
+  const [modals, setModals] = useState({ profile: false, settings: false, logout: false, addCourse: false, switchCourse: false });
   const [profileForm, setProfileForm] = useState({ name: user?.name || '', currentPass: '', newPass: '' });
   const [profileError, setProfileError] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoMsg, setPhotoMsg] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Course management
+  const [newCourseName, setNewCourseName] = useState('');
+  const [newCourseError, setNewCourseError] = useState('');
+  const [newCourseLoading, setNewCourseLoading] = useState(false);
 
   // Course Start Date state
   const [pendingStartDate, setPendingStartDate] = useState('');
@@ -101,6 +108,25 @@ export function Progress() {
     setTimeout(() => setResetSuccess(false), 5000);
   };
 
+  // Add new course
+  const handleAddCourse = async () => {
+    if (!newCourseName.trim()) {
+      setNewCourseError(t('courseNameRequired'));
+      return;
+    }
+    setNewCourseLoading(true);
+    setNewCourseError('');
+    try {
+      await createCourse(newCourseName.trim());
+      setNewCourseName('');
+      setModals({ ...modals, addCourse: false });
+    } catch {
+      setNewCourseError(t('registerError'));
+    } finally {
+      setNewCourseLoading(false);
+    }
+  };
+
   return (
     <Layout>
       <div className="p-5">
@@ -129,6 +155,45 @@ export function Progress() {
             </motion.button>
           </div>
         </header>
+
+        {/* Active Course Card */}
+        <motion.div
+          custom={-1}
+          variants={cardVariants}
+          initial="hidden"
+          animate="visible"
+          className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-3xl p-4 border border-primary/20 mb-5 shadow-sm"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+                <BookMarked size={18} className="text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-primary/70 uppercase tracking-wider">{t('currentCourse')}</p>
+                <p className="font-bold text-foreground text-sm truncate">{activeCourse?.name ?? '—'}</p>
+              </div>
+            </div>
+            <div className="flex gap-1.5 shrink-0">
+              {courses.length > 1 && (
+                <button
+                  onClick={() => setModals({ ...modals, switchCourse: true })}
+                  className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-2.5 py-1.5 rounded-xl"
+                >
+                  <ArrowLeftRight size={12} />
+                  {t('switchCourse')}
+                </button>
+              )}
+              <button
+                onClick={() => { setNewCourseName(''); setNewCourseError(''); setModals({ ...modals, addCourse: true }); }}
+                className="flex items-center gap-1 text-xs font-semibold text-foreground bg-secondary hover:bg-secondary/70 transition-colors px-2.5 py-1.5 rounded-xl"
+              >
+                <Plus size={12} />
+                {t('addCourse')}
+              </button>
+            </div>
+          </div>
+        </motion.div>
 
         {/* User Card */}
         <motion.div
@@ -274,7 +339,6 @@ export function Progress() {
         icon={UserIcon}
       >
         <div className="space-y-4">
-          {/* Photo upload section */}
           <div className="flex flex-col items-center gap-3 pb-2">
             <div className="relative">
               <div className="h-20 w-20 rounded-full bg-primary/10 border-2 border-primary/20 overflow-hidden shadow-md">
@@ -409,6 +473,80 @@ export function Progress() {
               </motion.div>
             )}
           </div>
+        </div>
+      </Modal>
+
+      {/* Add New Course Modal */}
+      <Modal
+        isOpen={modals.addCourse}
+        onClose={() => { setModals({ ...modals, addCourse: false }); setNewCourseName(''); setNewCourseError(''); }}
+        title={t('addCourse')}
+        align="bottom"
+        icon={BookMarked}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">{t('courseWelcomeDescExtra')}</p>
+          <Input
+            placeholder={t('courseNamePlaceholder')}
+            value={newCourseName}
+            onChange={e => { setNewCourseName(e.target.value); setNewCourseError(''); }}
+            onKeyDown={e => { if (e.key === 'Enter') handleAddCourse(); }}
+            autoFocus
+          />
+          {newCourseError && (
+            <p className="text-destructive text-sm bg-destructive/10 rounded-xl px-3 py-2">{newCourseError}</p>
+          )}
+          <Button
+            className="w-full py-3.5"
+            onClick={handleAddCourse}
+            disabled={newCourseLoading || !newCourseName.trim()}
+          >
+            {newCourseLoading ? '...' : t('createCourseBtn')}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Switch Course Modal */}
+      <Modal
+        isOpen={modals.switchCourse}
+        onClose={() => setModals({ ...modals, switchCourse: false })}
+        title={t('switchCourse')}
+        align="bottom"
+        icon={ArrowLeftRight}
+      >
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground mb-4">{t('selectCourse')}</p>
+          <AnimatePresence>
+            {courses.map((course, i) => (
+              <motion.button
+                key={course.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                onClick={() => {
+                  switchCourse(course.id);
+                  setModals({ ...modals, switchCourse: false });
+                }}
+                className={`w-full flex items-center gap-3 p-4 rounded-2xl border transition-all text-left ${
+                  course.id === activeCourseId
+                    ? 'bg-primary/10 border-primary/30 text-primary'
+                    : 'bg-secondary border-border/50 text-foreground hover:bg-secondary/70'
+                }`}
+              >
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                  course.id === activeCourseId ? 'bg-primary/20' : 'bg-background'
+                }`}>
+                  <BookMarked size={16} className={course.id === activeCourseId ? 'text-primary' : 'text-muted-foreground'} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm truncate">{course.name}</p>
+                </div>
+                {course.id === activeCourseId && (
+                  <CheckCircle2 size={16} className="text-primary shrink-0" />
+                )}
+              </motion.button>
+            ))}
+          </AnimatePresence>
         </div>
       </Modal>
 

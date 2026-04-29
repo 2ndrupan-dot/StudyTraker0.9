@@ -292,6 +292,20 @@ export const translations = {
     installApp: "Install app",
     installAppDesc: "Install StudyTrack for offline use.",
     updateAvailable: "Update available – tap to refresh",
+
+    // Course management
+    createCourse: "Create Course",
+    courseName: "Course Name",
+    courseNamePlaceholder: "e.g. SSC 2025, HSC Physics...",
+    createCourseBtn: "Create Course",
+    addCourse: "Add New Course",
+    switchCourse: "Switch Course",
+    currentCourse: "Current Course",
+    selectCourse: "Select a course to switch to:",
+    courseNameRequired: "Please enter a course name",
+    courseWelcome: "Welcome! Create your first course.",
+    courseWelcomeDesc: "A course keeps all your subjects organised in one place. You can add more courses later from the Progress page.",
+    courseWelcomeDescExtra: "Give this course a name. It will have its own subjects, notes and progress — completely separate from your other courses.",
   },
   bn: {
     // Auth
@@ -584,5 +598,19 @@ export const translations = {
     installApp: "অ্যাপ ইনস্টল করুন",
     installAppDesc: "অফলাইনে ব্যবহারের জন্য StudyTrack ইনস্টল করুন।",
     updateAvailable: "আপডেট আছে – রিফ্রেশ করতে ট্যাপ করুন",
+
+    // Course management
+    createCourse: "কোর্স তৈরি করুন",
+    courseName: "কোর্সের নাম",
+    courseNamePlaceholder: "যেমন: SSC 2025, HSC Physics...",
+    createCourseBtn: "কোর্স তৈরি করুন",
+    addCourse: "নতুন কোর্স যোগ করুন",
+    switchCourse: "কোর্স পরিবর্তন",
+    currentCourse: "বর্তমান কোর্স",
+    selectCourse: "যে কোর্সে যেতে চান সেটি বেছে নিন:",
+    courseNameRequired: "কোর্সের নাম দিন",
+    courseWelcome: "স্বাগতম! প্রথম কোর্সটি তৈরি করুন।",
+    courseWelcomeDesc: "একটি কোর্সে আপনার সব বিষয় একসাথে থাকে। পরে Progress পেজ থেকে আরো কোর্স যোগ করতে পারবেন।",
+    courseWelcomeDescExtra: "এই কোর্সের জন্য একটি নাম দিন। এটি সম্পূর্ণ আলাদা বিষয়, নোট ও অগ্রগতি রাখবে।",
   }
 };

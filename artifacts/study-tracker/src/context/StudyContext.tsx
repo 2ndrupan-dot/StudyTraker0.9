@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { Subject, Chapter, Topic, Subtopic, Concept, Point, CourseSettings, MarkLevel, MarkPath, TempNoteItem, NotePage } from '@/lib/types';
 import { useAuth } from './AuthContext';
+import { useCourse } from './CourseContext';
 import { addDays, formatISO } from 'date-fns';
 import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -135,6 +136,7 @@ function pickNewerData(firestore: StudyData | null, local: StudyData | null): St
 
 export function StudyProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { activeCourseId } = useCourse();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [settings, setSettings] = useState<CourseSettings>({ courseTotalDays: null, dailyStudyHours: 3 });
   const [tempNotes, setTempNotes] = useState<TempNoteItem[]>([]);
@@ -157,11 +159,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoad = useRef(true);
 
-  const localKey = (suffix: string) => user ? `@study_${suffix}_${user.email}` : null;
+  const localKey = (suffix: string) => (user && activeCourseId) ? `@study_${suffix}_${activeCourseId}_${user.email}` : null;
 
   // Load data from Firestore, comparing with localStorage to pick the freshest
   useEffect(() => {
-    if (!user) {
+    if (!user || !activeCourseId) {
       setSubjects([]);
       setSettings({ courseTotalDays: null, dailyStudyHours: 3 });
       setTempNotes([]);
@@ -174,7 +176,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     isInitialLoad.current = true;
     setDataLoaded(false);
 
-    const docRef = doc(db, 'users', user.id, 'studyData', 'main');
+    const docRef = doc(db, 'users', user.id, 'studyData', activeCourseId);
     getDoc(docRef)
       .then(snap => {
         const fsData: StudyData | null = snap.exists()
@@ -259,7 +261,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         setDataLoaded(true);
         setTimeout(() => { isInitialLoad.current = false; }, 100);
       });
-  }, [user]);
+  }, [user, activeCourseId]);
 
   // Save data (debounced for Firestore, immediate for localStorage)
   const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; notePagesIndex: NotePageMeta[] } | null>(null);
@@ -270,7 +272,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     tempNotesToSave: TempNoteItem[],
     notePagesIndexToSave: NotePageMeta[],
   ) => {
-    if (!user) return;
+    if (!user || !activeCourseId) return;
     const payload: StudyData = {
       subjects: subjectsToSave,
       settings: settingsToSave,
@@ -281,7 +283,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     const lsKey = localKey('data');
     if (lsKey) localStorage.setItem(lsKey, JSON.stringify(payload));
     try {
-      const docRef = doc(db, 'users', user.id, 'studyData', 'main');
+      const docRef = doc(db, 'users', user.id, 'studyData', activeCourseId);
       await setDoc(docRef, payload, { merge: false });
     } catch { /* localStorage backup already done */ }
     setSyncing(false);
@@ -303,15 +305,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       const pending = pendingSaveRef.current;
       if (pending) flushSave(pending.subjects, pending.settings, pending.tempNotes, pending.notePagesIndex);
     }, 400);
-  }, [subjects, settings, tempNotes, notePagesIndex, user, dataLoaded]);
+  }, [subjects, settings, tempNotes, notePagesIndex, user, dataLoaded, activeCourseId]);
 
   // Flush save immediately before page unload
   useEffect(() => {
     const handleUnload = () => {
-      if (pendingSaveRef.current && user) {
+      if (pendingSaveRef.current && user && activeCourseId) {
         const { subjects: s, settings: st, tempNotes: tn, notePagesIndex: np } = pendingSaveRef.current;
         const payload: StudyData = { subjects: s, settings: st, tempNotes: tn, notePagesIndex: np, savedAt: Date.now() };
-        const lsKey = `@study_data_${user.email}`;
+        const lsKey = `@study_data_${activeCourseId}_${user.email}`;
         localStorage.setItem(lsKey, JSON.stringify(payload));
       }
     };

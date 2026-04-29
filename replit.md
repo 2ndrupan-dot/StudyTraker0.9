@@ -18,12 +18,13 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 ## StudyTrack App — Key Features
 
+- **Multi-Course system**: Each user can create and manage multiple courses (e.g. SSC 2025, HSC Physics). After first registration, user must create a course before accessing any feature. Each course is completely isolated (own subjects, settings, temp notes, note pages). Courses managed via `CourseContext` (`context/CourseContext.tsx`). Add/Switch course from Progress page.
 - **Hierarchy**: Subject > Chapter > Topic > Subtopic > Concept > Point (6 levels)
 - **Responsive**: Mobile bottom nav, Desktop sidebar nav
 - **Cloud sync**: Firebase Firestore (requires Firestore enabled in Firebase console)
 - **Profile photo + note attachments**: Firebase Storage upload (requires Storage enabled in Firebase console)
 - **i18n**: English + Bengali, all strings via `t()` translation function
-- **Persistence**: Firestore primary, localStorage fallback
+- **Persistence**: Firestore primary, localStorage fallback. Study data stored per course at `users/{uid}/studyData/{courseId}`. Course list at `users/{uid}/courses/{courseId}`. Active course tracked in localStorage `@study_activeCourse_{email}`.
 - **Marks**: per-item Important/Weak flags + free-form Notes at every hierarchy level (`MarkPath` + `ItemActions`)
 - **Weak boost**: when an item is marked Weak, the time engine multiplies its estimated minutes (`WEAK_MULTIPLIER` in `lib/timeEngine.ts`)
 - **Important/Weak filter**: on Subjects page, toggling either chip swaps the tree view for a flat breadcrumbed list of every flagged item (`gatherFlaggedItems` in `pages/Subjects.tsx`)
@@ -31,7 +32,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Note Pages**: A4 (794×1123 px) rich pages with draggable/resizable text, links, images, and PDFs. Multi-page, zoomable, paste-image support. Each page is its own Firestore doc at `users/{uid}/notePages/{id}` with `notePagesIndex` as the lightweight list. Routes: `/notes` and `/notes/:id`
 - **Global search**: Ctrl/Cmd+K (or sidebar/floating button) — searches every subject-tree node, temp notes, and note page titles with highlighted matches and breadcrumbs
 - **Today extras**: per-task Note/Important/Weak buttons inline on every card; Load More additions are tagged with `loadedFrom` (Extra badge) and can be returned to their original day with one click
-- **PWA**: installable + offline-capable via `public/manifest.webmanifest` + `public/sw.js` (network-first navigation, stale-while-revalidate static assets, Firebase calls bypassed). `PWAUpdater` shows install + update prompts
+- **PWA**: installable + offline-capable via `public/manifest.webmanifest` + `public/sw.js` (network-first navigation, stale-while-revalidate static assets, Firebase calls bypassed). `PWAUpdater` shows install + update prompts. Icon: `public/images/icon-512.jpeg` (the app logo).
 
 ## Structure
 

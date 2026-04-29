@@ -2,15 +2,18 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { useEffect } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LangProvider } from "./context/LangContext";
+import { CourseProvider, useCourse } from "./context/CourseContext";
 import { StudyProvider } from "./context/StudyContext";
 import { Auth } from "./pages/Auth";
 import { Today } from "./pages/Today";
 import { Subjects } from "./pages/Subjects";
 import { Progress } from "./pages/Progress";
+import { CreateCoursePage } from "./pages/CreateCoursePage";
 import { PWAUpdater } from "./components/PWAUpdater";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
+  const { needsCourseCreation, coursesLoaded } = useCourse();
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
@@ -19,7 +22,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     }
   }, [user, loading, location, setLocation]);
 
-  if (loading) {
+  if (loading || !coursesLoaded) {
     return (
       <div className="min-h-[100dvh] max-w-md mx-auto bg-background p-5 pb-24">
         <div className="skeleton h-8 w-36 mb-6 mt-4" />
@@ -50,7 +53,13 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
       </div>
     );
   }
+
   if (!user) return null;
+
+  if (needsCourseCreation) {
+    return <CreateCoursePage />;
+  }
+
   return <Component />;
 }
 
@@ -109,10 +118,12 @@ function App() {
     <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
       <LangProvider>
         <AuthProvider>
-          <StudyProvider>
-            <Router />
-            <PWAUpdater />
-          </StudyProvider>
+          <CourseProvider>
+            <StudyProvider>
+              <Router />
+              <PWAUpdater />
+            </StudyProvider>
+          </CourseProvider>
         </AuthProvider>
       </LangProvider>
     </WouterRouter>

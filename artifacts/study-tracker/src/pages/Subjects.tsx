@@ -580,80 +580,110 @@ export function Subjects() {
           </motion.div>
         )}
 
-        {/* ─── Flat marked-items view (when Important/Weak filter is on) ─── */}
+        {/* ─── Grouped marked-items view (when Important/Weak filter is on) ─── */}
         {(importantOnly || weakOnly) && subjects.length > 0 && (() => {
           const flagged = gatherFlaggedItems(subjects, { important: importantOnly, weak: weakOnly });
-          if (flagged.length === 0) return null;
-          return (
+          if (flagged.length === 0) return (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-4 bg-card border border-border/60 rounded-2xl overflow-hidden"
+              className="flex flex-col items-center justify-center py-16 text-center px-6"
             >
-              <div className="px-4 py-2.5 border-b border-border/50 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {importantOnly && <Star size={13} className="text-yellow-600 fill-yellow-500" />}
-                  {weakOnly && <AlertTriangle size={13} className="text-rose-600 fill-rose-500" />}
-                  <span className="text-xs font-bold text-foreground">
-                    {importantOnly && weakOnly
-                      ? `${t('importantOnly')} + ${t('weakOnly')}`
-                      : importantOnly ? t('importantOnly') : t('weakOnly')}
-                  </span>
-                </div>
-                <span className="text-[10px] font-bold text-muted-foreground">{flagged.length}</span>
-              </div>
-              <ul className="divide-y divide-border/40">
-                {flagged.map((it, i) => (
-                  <li key={`${it.level}-${i}`} className="px-4 py-2.5 group/row hover:bg-secondary/30 transition-colors">
-                    <div className="flex items-start gap-2.5">
-                      <div
-                        className="w-1 self-stretch rounded-full shrink-0"
-                        style={{ backgroundColor: it.subjectColor }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        {it.breadcrumb.length > 0 && (
-                          <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground font-medium mb-1 leading-relaxed">
-                            {it.breadcrumb.map((c, ci) => (
-                              <React.Fragment key={ci}>
-                                {ci > 0 && <ChevronRight size={8} className="opacity-40 shrink-0" />}
-                                <span className="max-w-[120px] truncate">{c}</span>
-                              </React.Fragment>
-                            ))}
+              {importantOnly
+                ? <Star size={32} className="text-yellow-400 mb-3" />
+                : <AlertTriangle size={32} className="text-rose-400 mb-3" />}
+              <p className="text-sm font-bold text-foreground mb-1">
+                {importantOnly ? t('importantOnly') : t('weakOnly')}
+              </p>
+              <p className="text-xs text-muted-foreground">{t('noResultsForFilter')}</p>
+            </motion.div>
+          );
+
+          // Group items by subject, preserving subject order
+          const groups = subjects
+            .map(s => ({
+              subjectId: s.id,
+              subjectTitle: s.title,
+              subjectColor: s.color,
+              items: flagged.filter(f => f.subjectId === s.id),
+            }))
+            .filter(g => g.items.length > 0);
+
+          return (
+            <div className="space-y-4">
+              {groups.map(group => (
+                <motion.div
+                  key={group.subjectId}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-card border border-border/60 rounded-2xl overflow-hidden"
+                >
+                  {/* Subject header */}
+                  <div
+                    className="px-4 py-3 border-b border-border/50 flex items-center gap-2.5"
+                    style={{ borderLeftColor: group.subjectColor, borderLeftWidth: 4 }}
+                  >
+                    <span className="text-sm font-bold text-foreground flex-1">{group.subjectTitle}</span>
+                    <span className="text-[10px] font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full border border-border/60">
+                      {group.items.length}
+                    </span>
+                  </div>
+                  {/* Items */}
+                  <ul className="divide-y divide-border/40">
+                    {group.items.map((it, i) => (
+                      <li key={`${it.level}-${i}`} className="px-4 py-3 group/row hover:bg-secondary/30 transition-colors">
+                        <div className="flex items-start gap-2.5">
+                          <div className="flex-1 min-w-0">
+                            {/* Breadcrumb (excluding subject name since it's the header) */}
+                            {it.breadcrumb.slice(1).length > 0 && (
+                              <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground font-medium mb-1.5 leading-relaxed">
+                                {it.breadcrumb.slice(1).map((c, ci) => (
+                                  <React.Fragment key={ci}>
+                                    {ci > 0 && <ChevronRight size={8} className="opacity-40 shrink-0" />}
+                                    <span className="max-w-[140px] truncate">{c}</span>
+                                  </React.Fragment>
+                                ))}
+                              </div>
+                            )}
+                            {/* Level tag + title */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border/60 shrink-0">
+                                {it.level}
+                              </span>
+                              <h4 className="text-sm font-bold text-foreground flex-1 min-w-0">{it.title}</h4>
+                            </div>
+                            {/* Marks badges */}
+                            <div className="mt-1.5">
+                              <MarksBadgeRow
+                                important={it.important}
+                                weak={it.weak}
+                                note={it.note}
+                                onClickNote={() => openNote(it.path, it.note ?? '')}
+                              />
+                            </div>
                           </div>
-                        )}
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border/60">
-                            {it.level}
-                          </span>
-                          <h4 className="text-sm font-bold text-foreground flex-1 min-w-0 truncate">{it.title}</h4>
-                        </div>
-                        <div className="mt-1.5">
-                          <MarksBadgeRow
+                          <ItemActions
+                            path={it.path}
                             important={it.important}
                             weak={it.weak}
-                            note={it.note}
-                            onClickNote={() => openNote(it.path, it.note ?? '')}
+                            hasNote={!!it.note}
+                            currentNote={it.note}
+                            onOpenNote={openNote}
+                            size="sm"
+                            alwaysVisible
                           />
                         </div>
-                      </div>
-                      <ItemActions
-                        path={it.path}
-                        important={it.important}
-                        weak={it.weak}
-                        hasNote={!!it.note}
-                        currentNote={it.note}
-                        onOpenNote={openNote}
-                        size="sm"
-                        alwaysVisible
-                      />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
+                      </li>
+                    ))}
+                  </ul>
+                </motion.div>
+              ))}
+            </div>
           );
         })()}
 
+        {/* ─── Full subjects list (hidden when Important/Weak filter is active) ─── */}
+        {!importantOnly && !weakOnly && (
         <AnimatePresence>
           <div className="space-y-4">
             {filteredSubjects.map((subj, idx) => {
@@ -1167,6 +1197,7 @@ export function Subjects() {
             })}
           </div>
         </AnimatePresence>
+        )}
 
         {subjects.length === 0 && (
           <motion.div

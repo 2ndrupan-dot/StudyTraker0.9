@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2 } from 'lucide-react';
+import { X, Maximize2, Minimize2, Eye, Edit2 } from 'lucide-react';
 
 export const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' }>(
   ({ className, variant = 'primary', ...props }, ref) => {
@@ -112,7 +112,28 @@ export const Modal = ({
   );
 };
 
-// ─── Note Editor Modal (with expand to A4 full-screen) ────────────────────────
+// ─── Helper: render text with clickable URLs ──────────────────────────────────
+function renderWithLinks(text: string) {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return parts.map((part, i) =>
+    /^https?:\/\//.test(part) ? (
+      <a
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary underline break-all"
+        onClick={e => e.stopPropagation()}
+      >
+        {part}
+      </a>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
+}
+
+// ─── Note Editor Modal (with expand to A4 full-screen + link preview) ─────────
 export const NoteEditorModal = ({
   isOpen, onClose, value, onChange, onClear, onSave,
   title, placeholder, clearLabel, saveLabel, icon: Icon,
@@ -130,10 +151,53 @@ export const NoteEditorModal = ({
   icon?: any;
 }) => {
   const [expanded, setExpanded] = React.useState(false);
+  const [preview, setPreview] = React.useState(false);
 
   React.useEffect(() => {
-    if (!isOpen) setExpanded(false);
+    if (!isOpen) { setExpanded(false); setPreview(false); }
   }, [isOpen]);
+
+  const PreviewToggleBtn = () => (
+    <button
+      onClick={() => setPreview(p => !p)}
+      className={cn(
+        "p-2 rounded-full transition-colors",
+        preview
+          ? "text-primary bg-primary/10 hover:bg-primary/20"
+          : "text-muted-foreground hover:bg-secondary"
+      )}
+      title={preview ? "Edit" : "Preview links"}
+    >
+      {preview ? <Edit2 size={18} /> : <Eye size={18} />}
+    </button>
+  );
+
+  const ContentArea = ({ className }: { className?: string }) => (
+    preview ? (
+      <div
+        className={cn(
+          "w-full p-3 rounded-xl border border-border/60 bg-background text-sm text-foreground overflow-y-auto whitespace-pre-wrap break-words leading-relaxed",
+          className
+        )}
+      >
+        {value
+          ? renderWithLinks(value)
+          : <span className="text-muted-foreground">{placeholder}</span>
+        }
+      </div>
+    ) : (
+      <textarea
+        autoFocus
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={cn(
+          "w-full p-3 rounded-xl border border-border/60 bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none",
+          className
+        )}
+      />
+    )
+  );
 
   return (
     <AnimatePresence>
@@ -177,6 +241,7 @@ export const NoteEditorModal = ({
                     )}
                     <h2 className="text-lg font-bold text-foreground flex-1 min-w-0 truncate">{title}</h2>
                     <div className="flex items-center gap-1 shrink-0">
+                      <PreviewToggleBtn />
                       <button
                         onClick={() => setExpanded(false)}
                         className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
@@ -195,13 +260,7 @@ export const NoteEditorModal = ({
 
                   {/* Body */}
                   <div className="flex-1 flex flex-col p-6 gap-4 overflow-hidden min-h-0">
-                    <textarea
-                      autoFocus
-                      value={value}
-                      onChange={e => onChange(e.target.value)}
-                      placeholder={placeholder}
-                      className="flex-1 w-full p-4 rounded-xl border border-border/60 bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none min-h-0"
-                    />
+                    <ContentArea className="flex-1 min-h-0" />
                     <div className="flex gap-2 shrink-0">
                       <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>
                         {clearLabel}
@@ -235,6 +294,7 @@ export const NoteEditorModal = ({
                     <h2 className="text-lg font-bold text-foreground">{title}</h2>
                   </div>
                   <div className="flex items-center gap-1 -mr-2">
+                    <PreviewToggleBtn />
                     <button
                       onClick={() => setExpanded(true)}
                       className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
@@ -253,14 +313,7 @@ export const NoteEditorModal = ({
 
                 {/* Body */}
                 <div className="p-6 space-y-4">
-                  <textarea
-                    autoFocus
-                    value={value}
-                    onChange={e => onChange(e.target.value)}
-                    rows={5}
-                    placeholder={placeholder}
-                    className="w-full p-3 rounded-xl border border-border/60 bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-                  />
+                  <ContentArea className="min-h-[7rem]" />
                   <div className="flex gap-2">
                     <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>
                       {clearLabel}

@@ -9,7 +9,7 @@ import type { TempNoteItem } from '@/lib/types';
 export function TempNoteSection() {
   const { tempNotes, addTempNote, updateTempNote, toggleTempNoteDone, deleteTempNote } = useStudy();
   const { t } = useLang();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [showInput, setShowInput] = useState(false);
   const [text, setText] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);

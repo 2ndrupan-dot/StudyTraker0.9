@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 import {
   initializeFirestore,
@@ -18,6 +18,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
 
 // Enable Firestore offline persistence (IndexedDB) with multi-tab support.
 // Falls back gracefully if the browser doesn't support IndexedDB.

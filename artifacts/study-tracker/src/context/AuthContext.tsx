@@ -2,16 +2,18 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   onAuthStateChanged,
   updateProfile as firebaseUpdateProfile,
   updatePassword,
+  sendPasswordResetEmail,
   EmailAuthProvider,
   reauthenticateWithCredential,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { auth, db, googleProvider } from '@/lib/firebase';
 import { useLocation } from 'wouter';
 
 export interface AppUser {
@@ -29,6 +31,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateProfile: (name: string, currentPass: string, newPass?: string) => Promise<void>;
   updateProfilePhoto: (file: File) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   error: string;
   clearError: () => void;
 }
@@ -142,6 +146,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const signInWithGoogle = async () => {
+    setError('');
+    try {
+      await signInWithPopup(auth, googleProvider);
+      setLocation('/today');
+    } catch (e: any) {
+      const code = e.code || '';
+      if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+        setError('googleSignInFailed');
+      }
+      throw e;
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    setError('');
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (e: any) {
+      setError('resetPasswordFailed');
+      throw e;
+    }
+  };
+
   const logout = async () => {
     await signOut(auth);
     setUser(null);
@@ -173,7 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile, updateProfilePhoto, error, clearError }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile, updateProfilePhoto, signInWithGoogle, resetPassword, error, clearError }}>
       {children}
     </AuthContext.Provider>
   );

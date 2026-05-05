@@ -6,7 +6,7 @@ import {
   Plus, Trash2, ChevronRight,
   BookOpen, Layers, List, Lightbulb, Dot, FolderPlus,
   CheckCircle2, Circle, Pencil, Lock,
-  BookOpenCheck, Star, AlertTriangle, StickyNote, Filter,
+  BookOpenCheck, Star, AlertTriangle, StickyNote, Filter, RotateCcw,
 } from 'lucide-react';
 import {
   isChapterUnlocked, isTopicUnlocked, isSubtopicUnlocked,
@@ -268,7 +268,7 @@ export function Subjects() {
     addSubtopic, deleteSubtopic, toggleSubtopicComplete,
     addConcept, deleteConcept, toggleConceptComplete,
     addPoint, deletePoint, togglePointComplete,
-    setNote,
+    setNote, resetSubjectProgress,
   } = useStudy();
   const { t } = useLang();
 
@@ -331,6 +331,9 @@ export function Subjects() {
   const [sliderDays, setSliderDays] = useState(0);
   const [sliderHours, setSliderHours] = useState(0);
   const [sliderMins, setSliderMins] = useState(0);
+
+  // ─── Reset subject progress state ────────────────────────────────────
+  const [resetConfirmSubjId, setResetConfirmSubjId] = useState<string | null>(null);
 
   const resetSliders = () => { setSliderMonths(0); setSliderDays(0); setSliderHours(0); setSliderMins(0); };
   const resetForm = () => { setFormTitle(''); setFormDays(''); setFormDifficulty('easy'); resetSliders(); };
@@ -776,6 +779,13 @@ export function Subjects() {
                         currentNote={subj.note}
                         onOpenNote={openNote}
                       />
+                      <button
+                        onClick={e => { e.stopPropagation(); setResetConfirmSubjId(subj.id); }}
+                        className="p-2 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 rounded-full transition-colors"
+                        title={t('resetSubject')}
+                      >
+                        <RotateCcw size={14} />
+                      </button>
                       <button
                         onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
                         className="p-2 text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors"
@@ -1326,6 +1336,23 @@ export function Subjects() {
         placeholder={t('notePlaceholder')}
         clearLabel={t('clearNote')}
         saveLabel={t('saveNote')}
+      />
+
+      {/* Reset subject progress confirm */}
+      <ConfirmModal
+        isOpen={!!resetConfirmSubjId}
+        onClose={() => setResetConfirmSubjId(null)}
+        onConfirm={() => {
+          if (resetConfirmSubjId) {
+            resetSubjectProgress(resetConfirmSubjId);
+          }
+          setResetConfirmSubjId(null);
+        }}
+        title={t('resetSubjectTitle')}
+        message={t('resetSubjectConfirm')}
+        confirmText={t('resetSubject')}
+        cancelText={t('cancel')}
+        isDanger={true}
       />
 
     </Layout>

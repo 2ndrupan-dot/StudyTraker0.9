@@ -327,6 +327,12 @@ export const translations = {
     cannotDeleteOnly: "You can't delete the only course. Add another course first, then delete this one.",
     rename: "Rename",
     courseDeleted: "Course deleted",
+
+    // Subject progress reset
+    resetSubject: "Reset Progress",
+    resetSubjectTitle: "Reset Subject Progress?",
+    resetSubjectConfirm: "All chapters, topics, subtopics, concepts, and points in this subject will be marked as incomplete. Today's plan will regenerate. This cannot be undone.",
+    resetSubjectDone: "Progress reset successfully!",
   },
   bn: {
     // Auth
@@ -654,5 +660,11 @@ export const translations = {
     cannotDeleteOnly: "শুধুমাত্র একটি কোর্স থাকলে মুছা যাবে না। আগে আরেকটি কোর্স তৈরি করুন, তারপর এটি মুছতে পারবেন।",
     rename: "নাম বদলান",
     courseDeleted: "কোর্স মুছে গেছে",
+
+    // Subject progress reset
+    resetSubject: "রিসেট করুন",
+    resetSubjectTitle: "সাবজেক্টের অগ্রগতি রিসেট করবেন?",
+    resetSubjectConfirm: "এই সাবজেক্টের সমস্ত চ্যাপ্টার, টপিক, সাবটপিক, কনসেপ্ট ও পয়েন্ট অসম্পন্ন হয়ে যাবে। আজকের পরিকল্পনা নতুনভাবে তৈরি হবে। এটি আর ফিরিয়ে আনা যাবে না।",
+    resetSubjectDone: "অগ্রগতি সফলভাবে রিসেট হয়েছে!",
   }
 };

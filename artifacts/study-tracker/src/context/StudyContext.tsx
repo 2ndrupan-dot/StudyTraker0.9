@@ -64,6 +64,8 @@ interface StudyContextType {
   togglePointComplete: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, pointId: string) => void;
   updatePointMeta: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, pointId: string, title: string, difficulty?: DifficultyLevel) => void;
 
+  resetSubjectProgress: (subjectId: string) => void;
+
   // Temp Notes (hierarchical to-do)
   tempNotes: TempNoteItem[];
   addTempNote: (text: string, parentId?: string | null) => void;
@@ -425,6 +427,51 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   const updateSubjectMeta = (subjId: string, title: string) =>
     setSubjects(prev => prev.map(s => s.id === subjId ? { ...s, title } : s));
+
+  const resetSubjectProgress = (subjId: string) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      return {
+        ...s,
+        completed: false,
+        chapters: s.chapters.map(ch => ({
+          ...ch,
+          completed: false,
+          topics: ch.topics.map(t => ({
+            ...t,
+            completed: false,
+            subtopics: t.subtopics.map(sub => ({
+              ...sub,
+              completed: false,
+              concepts: sub.concepts.map(c => ({
+                ...c,
+                completed: false,
+                points: c.points.map(p => ({ ...p, completed: false })),
+              })),
+            })),
+          })),
+        })),
+      };
+    }));
+    // Clear today's plan so it regenerates fresh; filter pending & revisions for this subject
+    if (user?.email) {
+      try {
+        localStorage.removeItem(`@study_today_plan_v2_${user.email}`);
+        const pendRaw = localStorage.getItem(`@study_pending_v2_${user.email}`);
+        if (pendRaw) {
+          const pend = JSON.parse(pendRaw);
+          const filtered = Array.isArray(pend) ? pend.filter((t: any) => t.subjectId !== subjId) : [];
+          localStorage.setItem(`@study_pending_v2_${user.email}`, JSON.stringify(filtered));
+        }
+        const revRaw = localStorage.getItem(`@study_revisions_v1_${user.email}`);
+        if (revRaw) {
+          const rev = JSON.parse(revRaw);
+          const filtered = Array.isArray(rev) ? rev.filter((r: any) => r.subjectId !== subjId) : [];
+          localStorage.setItem(`@study_revisions_v1_${user.email}`, JSON.stringify(filtered));
+        }
+      } catch { /* ignore */ }
+    }
+  };
 
   // ─── Chapter methods ───────────────────────────────────────────────────
   const addChapter = (subjId: string, data: Omit<Chapter, 'id' | 'completed' | 'topics'>) => {
@@ -935,7 +982,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       subjects, settings, dataLoaded, syncing, online,
       setNote, toggleImportant, toggleWeak,
       setCourseTotalDays, setDailyStudyHours, setCourseStartDate,
-      addSubject, updateSubjectDays, deleteSubject, updateSubjectMeta,
+      addSubject, updateSubjectDays, deleteSubject, updateSubjectMeta, resetSubjectProgress,
       addChapter, deleteChapter, toggleChapterComplete, updateChapterMeta,
       addTopic, deleteTopic, toggleTopicComplete, updateTopicMeta,
       addSubtopic, deleteSubtopic, toggleSubtopicComplete, updateSubtopicMeta,

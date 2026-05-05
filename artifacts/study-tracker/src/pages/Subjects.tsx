@@ -710,13 +710,15 @@ export function Subjects() {
                 >
                   {/* Subject header */}
                   <div
-                    className="p-4 relative flex items-center justify-between cursor-pointer active:bg-secondary/40 transition-colors group/row"
+                    className="p-3 relative flex items-center justify-between cursor-pointer active:bg-secondary/40 transition-colors group/row"
                     onClick={() => toggleSubj(subj.id)}
                   >
                     <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: subj.color }} />
-                    <div className="pl-4 flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="font-bold text-foreground text-lg leading-tight">{subj.title}</h3>
+                    <div className="pl-3 flex-1 min-w-0">
+                      {/* Title */}
+                      <h3 className="font-bold text-foreground text-base leading-tight truncate mb-0.5">{subj.title}</h3>
+                      {/* Badges row — L1, days, status badges, marks */}
+                      <div className="flex items-center gap-1 flex-wrap mb-1">
                         <span className="text-[9px] font-bold text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded border border-border/40">L1</span>
                         <button
                           onClick={e => {
@@ -725,21 +727,22 @@ export function Subjects() {
                             setFormDays(subj.allocatedDays.toString());
                             setModal('days');
                           }}
-                          className="px-2 py-0.5 bg-secondary text-muted-foreground text-[10px] font-bold rounded-md border border-border/50 cursor-pointer hover:bg-primary/10 transition-colors"
+                          className="px-1.5 py-0.5 bg-secondary text-muted-foreground text-[10px] font-bold rounded-md border border-border/50 cursor-pointer hover:bg-primary/10 transition-colors"
                         >
                           {subj.allocatedDays} d
                         </button>
                         {subj.chapters.length > 0 && subj.chapters.every(c => isChapterContentDone(c)) && (
-                          <span className="px-2 py-0.5 bg-green-500/10 text-green-700 text-[10px] font-bold rounded-md">✓ {t('filterCompleted')}</span>
+                          <span className="px-1.5 py-0.5 bg-green-500/10 text-green-700 text-[9px] font-bold rounded-md">✓ {t('filterCompleted')}</span>
                         )}
                         {counts.overviewOnly > 0 && (
-                          <span className="flex items-center gap-1 px-2 py-0.5 bg-indigo-500/15 text-indigo-700 text-[10px] font-bold rounded-md border border-indigo-300/60">
-                            <BookOpenCheck size={10} /> {counts.overviewOnly} {t('overviewBadge')}
+                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-indigo-500/15 text-indigo-700 text-[9px] font-bold rounded-md border border-indigo-300/60">
+                            <BookOpenCheck size={9} /> {counts.overviewOnly} {t('overviewBadge')}
                           </span>
                         )}
+                        <MarksBadgeRow important={subj.important} weak={subj.weak} note={subj.note} onClickNote={() => openNote(subjPath, subj.note ?? '')} size="xs" />
                       </div>
-                      <MarksBadgeRow important={subj.important} weak={subj.weak} note={subj.note} onClickNote={() => openNote(subjPath, subj.note ?? '')} />
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-medium flex-wrap mt-1">
+                      {/* Meta row — chapters count + date */}
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium">
                         <span>{t('chapters')}: {completedChapters}/{chapterCount}</span>
                         {counts.overviewOnly > 0 && (
                           <>
@@ -748,10 +751,10 @@ export function Subjects() {
                           </>
                         )}
                         <span>•</span>
-                        <span>{format(parseISO(subj.deadline), 'MMM d, yyyy')}</span>
+                        <span>{format(parseISO(subj.deadline), 'MMM d, yy')}</span>
                       </div>
-                      {/* Layered progress bar: content done (solid) + overview-only (translucent) */}
-                      <div className="mt-3 h-1.5 w-full bg-secondary rounded-full overflow-hidden relative">
+                      {/* Layered progress bar */}
+                      <div className="mt-2 h-1 w-full bg-secondary rounded-full overflow-hidden relative">
                         {overviewProg > 0 && (
                           <motion.div
                             className="absolute left-0 top-0 h-full opacity-40"
@@ -770,41 +773,46 @@ export function Subjects() {
                         />
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 pl-3 shrink-0">
-                      <ItemActions
-                        path={subjPath}
-                        important={subj.important}
-                        weak={subj.weak}
-                        hasNote={!!subj.note}
-                        currentNote={subj.note}
-                        onOpenNote={openNote}
-                      />
-                      <button
-                        onClick={e => { e.stopPropagation(); setResetConfirmSubjId(subj.id); }}
-                        className="p-2 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 rounded-full transition-colors"
-                        title={t('resetSubject')}
-                      >
-                        <RotateCcw size={14} />
-                      </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
-                        className="p-2 text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }); }}
-                        className="p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-full transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                      <motion.div
-                        animate={{ rotate: isExpanded ? 90 : 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="text-muted-foreground bg-secondary p-1.5 rounded-full"
-                      >
-                        <ChevronRight size={16} />
-                      </motion.div>
+                    {/* Action buttons — compact two-row layout */}
+                    <div className="flex flex-col items-end gap-0.5 pl-2 shrink-0">
+                      <div className="flex items-center gap-0.5">
+                        <ItemActions
+                          path={subjPath}
+                          important={subj.important}
+                          weak={subj.weak}
+                          hasNote={!!subj.note}
+                          currentNote={subj.note}
+                          onOpenNote={openNote}
+                        />
+                      </div>
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={e => { e.stopPropagation(); setResetConfirmSubjId(subj.id); }}
+                          className="p-1.5 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 rounded-full transition-colors"
+                          title={t('resetSubject')}
+                        >
+                          <RotateCcw size={13} />
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
+                          className="p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }); }}
+                          className="p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-full transition-colors"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                        <motion.div
+                          animate={{ rotate: isExpanded ? 90 : 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="text-muted-foreground bg-secondary p-1.5 rounded-full"
+                        >
+                          <ChevronRight size={14} />
+                        </motion.div>
+                      </div>
                     </div>
                   </div>
 

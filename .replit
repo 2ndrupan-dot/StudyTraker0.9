@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "python-3.11"]
+modules = ["nodejs-20", "web", "bash"]
 
 [[artifacts]]
 id = "artifacts/api-server"
@@ -55,3 +55,6 @@ VITE_FIREBASE_PROJECT_ID = "studytraker-ef123"
 VITE_FIREBASE_STORAGE_BUCKET = "studytraker-ef123.firebasestorage.app"
 VITE_FIREBASE_MESSAGING_SENDER_ID = "19815454438"
 VITE_FIREBASE_APP_ID = "1:19815454438:web:0fa92d6250ed3df2ff0d27"
+
+[nix]
+channel = "stable-25_05"

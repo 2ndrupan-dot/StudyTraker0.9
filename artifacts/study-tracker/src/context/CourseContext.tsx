@@ -181,6 +181,7 @@ export function CourseProvider({ children }: { children: ReactNode }) {
     try {
       await deleteDoc(doc(db, 'users', user.id, 'courses', courseId));
       await deleteDoc(doc(db, 'users', user.id, 'studyData', courseId));
+      await deleteDoc(doc(db, 'users', user.id, 'todayData', courseId));
     } catch { /* offline, cleaned up locally */ }
 
     // Clean up localStorage

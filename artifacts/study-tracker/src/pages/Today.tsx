@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useStudy } from '@/context/StudyContext';
 import { useAuth } from '@/context/AuthContext';
 import { useLang } from '@/context/LangContext';
@@ -14,6 +14,9 @@ import { Modal, Input, Button, NoteEditorModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Subject, MarkPath, MarkLevel } from '@/lib/types';
 import { ItemActions } from '@/components/ItemActions';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useCourse } from '@/context/CourseContext';
 import {
   adjPoint, adjConcept, adjSubtopic, adjTopic, adjChapter,
   findNextItem, calculateAdaptivePressure,
@@ -403,6 +406,7 @@ export function Today() {
   const { t, lang } = useLang();
   const isBn = lang === 'bn';
   const email = user?.email ?? 'guest';
+  const { activeCourseId } = useCourse();
 
   const [isDaysModalOpen, setDaysModalOpen] = useState(false);
   const [isHoursModalOpen, setHoursModalOpen] = useState(false);
@@ -439,6 +443,99 @@ export function Today() {
   const [planReady, setPlanReady]       = useState(false);
   const [extraLoadedMins, setExtraLoadedMins] = useState(0);
   const [loadMoreNotice, setLoadMoreNotice] = useState<string | null>(null);
+  const [reloadDay, setReloadDay] = useState(0);
+
+  // Ref to suppress onSnapshot echoes right after a local write
+  const lastWriteRef = useRef<number>(0);
+  const WRITE_GRACE_MS = 3000;
+  // Ref to know if planReady has been set (used in onSnapshot guard)
+  const planReadyRef = useRef(false);
+  useEffect(() => { planReadyRef.current = planReady; }, [planReady]);
+
+  // ── Firestore write helpers (fire-and-forget) ──────────────────────────────
+  const writePlan = useCallback(async (date: string, tasks: PlanTask[]) => {
+    if (!user?.id || !activeCourseId) return;
+    lastWriteRef.current = Date.now();
+    await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { plan: { date, tasks } }, { merge: true })
+      .catch(e => console.warn('[todaySync] writePlan:', e));
+  }, [user?.id, activeCourseId]); // eslint-disable-line
+
+  const writePending = useCallback(async (items: PendingItem[]) => {
+    if (!user?.id || !activeCourseId) return;
+    lastWriteRef.current = Date.now();
+    await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { pending: items }, { merge: true })
+      .catch(e => console.warn('[todaySync] writePending:', e));
+  }, [user?.id, activeCourseId]); // eslint-disable-line
+
+  const writeRevisions = useCallback(async (entries: RevisionEntry[]) => {
+    if (!user?.id || !activeCourseId) return;
+    lastWriteRef.current = Date.now();
+    await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { revisions: entries }, { merge: true })
+      .catch(e => console.warn('[todaySync] writeRevisions:', e));
+  }, [user?.id, activeCourseId]); // eslint-disable-line
+
+  // Dual-write: localStorage (instant/offline) + Firestore (cross-device sync)
+  const syncPlan = useCallback((date: string, tasks: PlanTask[]) => {
+    savePlan(email, date, tasks);
+    writePlan(date, tasks);
+  }, [email, writePlan]);
+
+  const syncPending = useCallback((items: PendingItem[]) => {
+    savePending(email, items);
+    writePending(items);
+  }, [email, writePending]);
+
+  const syncRevisions = useCallback((entries: RevisionEntry[]) => {
+    saveRevisions(email, entries);
+    writeRevisions(entries);
+  }, [email, writeRevisions]);
+
+  // ── Midnight auto-refresh ──────────────────────────────────────────────────
+  useEffect(() => {
+    const scheduleRefresh = () => {
+      const now = new Date();
+      const midnight = new Date(now);
+      midnight.setDate(midnight.getDate() + 1);
+      midnight.setHours(0, 0, 1, 0); // 1 second past midnight
+      return setTimeout(() => {
+        setReloadDay(d => d + 1);
+        scheduleRefresh(); // reschedule for next midnight
+      }, midnight.getTime() - now.getTime());
+    };
+    const timer = scheduleRefresh();
+    return () => clearTimeout(timer);
+  }, []);
+
+  // ── Real-time Firestore listener (cross-device sync) ──────────────────────
+  useEffect(() => {
+    if (!user?.id || !activeCourseId) return;
+    const todayDateStr = format(new Date(), 'yyyy-MM-dd');
+    const unsubscribe = onSnapshot(
+      doc(db, 'users', user.id, 'todayData', activeCourseId),
+      (snap) => {
+        // Ignore echoes from our own writes
+        if (Date.now() - lastWriteRef.current < WRITE_GRACE_MS) return;
+        if (!snap.exists()) return;
+        const d = snap.data();
+        const remPending: PendingItem[] = Array.isArray(d.pending) ? d.pending : [];
+        const remRevisions: RevisionEntry[] = Array.isArray(d.revisions) ? d.revisions : [];
+        const remPlan: { date: string; tasks: PlanTask[] } | null = d.plan ?? null;
+        // Cache to localStorage for faster next load on this device
+        savePending(email, remPending);
+        saveRevisions(email, remRevisions);
+        if (remPlan) savePlan(email, remPlan.date, remPlan.tasks);
+        // Update React state only after initial load is done (avoid conflict with init)
+        if (!planReadyRef.current) return;
+        setPendingItems(remPending);
+        setRevisions(remRevisions);
+        if (remPlan && remPlan.date === todayDateStr) {
+          setLockedPlan(remPlan.tasks);
+        }
+      },
+      (err) => console.warn('[todaySync] onSnapshot error:', err)
+    );
+    return unsubscribe;
+  }, [user?.id, activeCourseId, email]); // eslint-disable-line
 
   const loadMore = () => {
     const extraStep = 30;
@@ -455,7 +552,7 @@ export function Today() {
     }
     const merged = [...lockedPlan, ...additions];
     setLockedPlan(merged);
-    savePlan(email, todayStr, merged);
+    syncPlan(todayStr, merged);
     setExtraLoadedMins(prev => prev + extraStep);
     setLoadMoreNotice(`${t('loadMoreAdded')} +${additions.length}`);
     setTimeout(() => setLoadMoreNotice(null), 2500);
@@ -466,7 +563,7 @@ export function Today() {
   const returnToOriginal = (task: PlanTask) => {
     const next = lockedPlan.filter(p => p.key !== task.key);
     setLockedPlan(next);
-    savePlan(email, todayStr, next);
+    syncPlan(todayStr, next);
     // Restore the borrowed minutes
     setExtraLoadedMins(prev => Math.max(0, prev - task.estimatedMins));
     setLoadMoreNotice(t('returnToOriginTitle'));
@@ -535,7 +632,7 @@ export function Today() {
 
     // Expire pending items older than 10 days
     currentPending = currentPending.filter(p => pendingDaysLeft(p, todayStr) > 0);
-    savePending(email, currentPending);
+    syncPending(currentPending);
 
     // Clean up completed revisions older than 30 days
     currentRevisions = currentRevisions.filter(r => {
@@ -574,7 +671,7 @@ export function Today() {
       });
     }
 
-    saveRevisions(email, currentRevisions);
+    syncRevisions(currentRevisions);
 
     if (stored && stored.date === todayStr) {
       setLockedPlan(stored.tasks);
@@ -587,19 +684,19 @@ export function Today() {
             .filter(t => !existingKeys.has(t.key))
             .map(task => ({ task, plannedDate: stored.date, addedDate: todayStr }));
           currentPending = [...currentPending, ...newPending];
-          savePending(email, currentPending);
+          syncPending(currentPending);
         }
       }
       const fresh = generateSmartPlan(subjects, dailyBudgetMins, currentPending, todayStr);
       setLockedPlan(fresh);
-      savePlan(email, todayStr, fresh);
+      syncPlan(todayStr, fresh);
     }
 
     itemIdsRef.current = getAllItemIds(subjects);
     setPendingItems(currentPending);
     setRevisions(currentRevisions);
     setPlanReady(true);
-  }, [dataLoaded, email]); // eslint-disable-line
+  }, [dataLoaded, email, reloadDay]); // eslint-disable-line
 
   // ── React to structural additions ──────────────────────────────────────────
   useEffect(() => {
@@ -616,7 +713,7 @@ export function Today() {
     );
     if (cleanedPending.length !== pendingItems.length) {
       setPendingItems(cleanedPending);
-      savePending(email, cleanedPending);
+      syncPending(cleanedPending);
     }
 
     const currentIds = getAllItemIds(subjects);
@@ -630,10 +727,10 @@ export function Today() {
     if (hasNewItems) {
       const freshPlan = generateSmartPlan(subjects, dailyBudgetMins, pendingItems, todayStr);
       setLockedPlan(freshPlan);
-      savePlan(email, todayStr, freshPlan);
+      syncPlan(todayStr, freshPlan);
       return;
     }
-    if (dirty) { setLockedPlan(currentPlan); savePlan(email, todayStr, currentPlan); }
+    if (dirty) { setLockedPlan(currentPlan); syncPlan(todayStr, currentPlan); }
   }, [subjects, planReady]); // eslint-disable-line
 
   // ── Auto-scroll to first incomplete item ─────────────────────────────────
@@ -655,13 +752,13 @@ export function Today() {
 
     const fresh = generateSmartPlan(subjects, currentHours * 60, pendingItems, todayStr);
     setLockedPlan(fresh);
-    savePlan(email, todayStr, fresh);
+    syncPlan(todayStr, fresh);
   }, [settings.dailyStudyHours, planReady]); // eslint-disable-line
 
   const dismissPending = (key: string) => {
     const updated = pendingItems.filter(p => p.task.key !== key);
     setPendingItems(updated);
-    savePending(email, updated);
+    syncPending(updated);
   };
 
   const confirmDismissPending = (key: string) => {
@@ -689,7 +786,7 @@ export function Today() {
   const completeRevision = (id: string) => {
     const updated = revisions.map(r => r.id === id ? { ...r, done: true } : r);
     setRevisions(updated);
-    saveRevisions(email, updated);
+    syncRevisions(updated);
   };
 
   // Keep for backward compat (revision panel uses this name)
@@ -713,7 +810,7 @@ export function Today() {
     const rescheduled: RevisionEntry = { ...current, id: newId, scheduledDate: bestDate, done: false };
     const merged = [...updated, rescheduled];
     setRevisions(merged);
-    saveRevisions(email, merged);
+    syncRevisions(merged);
   };
 
   const confirmCompleteRevision = (id: string) => {
@@ -732,7 +829,7 @@ export function Today() {
 
   // Schedule revision tasks when a task is marked complete
   const scheduleRevisions = (task: PlanTask) => {
-    const existing = loadRevisions(email);
+    const existing = revisions;
     const existingIds = new Set(existing.map(r => r.id));
     const newRevisions: RevisionEntry[] = REVISION_DAYS.map(days => ({
       id: `${task.key}_rev_${days}`,
@@ -749,7 +846,7 @@ export function Today() {
     const toAdd = newRevisions.filter(r => !existingIds.has(r.id));
     const merged = [...existing, ...toAdd];
     setRevisions(merged);
-    saveRevisions(email, merged);
+    syncRevisions(merged);
   };
 
   // ── Task status ───────────────────────────────────────────────────────────

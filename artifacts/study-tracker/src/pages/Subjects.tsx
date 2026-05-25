@@ -6,8 +6,17 @@ import {
   Plus, Trash2, ChevronRight,
   BookOpen, Layers, List, Lightbulb, Dot, FolderPlus,
   CheckCircle2, Circle, Pencil, Lock,
-  BookOpenCheck, Star, AlertTriangle, StickyNote, Filter, RotateCcw,
+  BookOpenCheck, Star, AlertTriangle, StickyNote, Filter, RotateCcw, GripVertical,
 } from 'lucide-react';
+import {
+  DndContext, closestCenter, PointerSensor, TouchSensor, KeyboardSensor,
+  useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, sortableKeyboardCoordinates, useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   isChapterUnlocked, isTopicUnlocked, isSubtopicUnlocked,
   isConceptUnlocked, isPointUnlocked,
@@ -258,6 +267,31 @@ function minutesToSliders(totalMins: number) {
   return { months, days, hours, mins };
 }
 
+// ─── Sortable Item Wrapper ──────────────────────────────────────────────────
+function SortableItemWrapper({ id, children }: { id: string; children: (handle: React.ReactNode) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : undefined,
+    position: isDragging ? 'relative' : undefined,
+    opacity: isDragging ? 0.55 : undefined,
+  };
+  const handle = (
+    <button
+      type="button"
+      {...attributes}
+      {...listeners}
+      onClick={e => e.stopPropagation()}
+      className="touch-none cursor-grab active:cursor-grabbing shrink-0 p-1 rounded text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors select-none"
+      title="ড্র্যাগ করে সরান"
+    >
+      <GripVertical size={14} />
+    </button>
+  );
+  return <div ref={setNodeRef} style={style}>{children(handle)}</div>;
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────
 export function Subjects() {
   const {
@@ -269,8 +303,23 @@ export function Subjects() {
     addConcept, deleteConcept, toggleConceptComplete,
     addPoint, deletePoint, togglePointComplete,
     setNote, resetSubjectProgress,
+    reorderSubjects, reorderChapters, reorderTopics, reorderSubtopics, reorderConcepts, reorderPoints,
   } = useStudy();
   const { t } = useLang();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleSubjDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const fromIdx = subjects.findIndex(s => s.id === active.id);
+    const toIdx = subjects.findIndex(s => s.id === over.id);
+    if (fromIdx !== -1 && toIdx !== -1) reorderSubjects(fromIdx, toIdx);
+  };
 
   // ─── Filter / marks state ─────────────────────────────────────────────
   const [filter, setFilter] = useState<StatusFilter>('all');
@@ -687,7 +736,9 @@ export function Subjects() {
 
         {/* ─── Full subjects list (hidden when Important/Weak filter is active) ─── */}
         {!importantOnly && !weakOnly && (
-        <AnimatePresence>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSubjDragEnd}>
+          <SortableContext items={filteredSubjects.map(s => s.id)} strategy={verticalListSortingStrategy}>
+          <AnimatePresence>
           <div className="space-y-4">
             {filteredSubjects.map((subj, idx) => {
               const isExpanded = expandedSubj === subj.id;
@@ -699,9 +750,9 @@ export function Subjects() {
               const subjPath: MarkPath = { subjectId: subj.id, level: 'subject' };
 
               return (
+                <SortableItemWrapper key={subj.id} id={subj.id}>
+                {(subjHandle) => (
                 <motion.div
-                  key={subj.id}
-                  layout
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.96 }}
@@ -776,6 +827,7 @@ export function Subjects() {
                     {/* Action buttons — compact two-row layout */}
                     <div className="flex flex-col items-end gap-0.5 pl-2 shrink-0">
                       <div className="flex items-center gap-0.5">
+                        {subjHandle}
                         <ItemActions
                           path={subjPath}
                           important={subj.important}
@@ -821,6 +873,14 @@ export function Subjects() {
                     {isExpanded && (
                       <motion.div {...collapseAnim} className="overflow-hidden bg-secondary/10 border-t border-border/40">
                         <div className="p-3 pl-4 space-y-2">
+                          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
+                            const { active, over } = e;
+                            if (!over || active.id === over.id) return;
+                            const fIdx = subj.chapters.findIndex(c => c.id === active.id);
+                            const tIdx = subj.chapters.findIndex(c => c.id === over.id);
+                            if (fIdx !== -1 && tIdx !== -1) reorderChapters(subj.id, fIdx, tIdx);
+                          }}>
+                          <SortableContext items={subj.chapters.filter(c => matchesStatus(chapterStatus(c), filter)).map(c => c.id)} strategy={verticalListSortingStrategy}>
                           {subj.chapters
                             .filter(c => matchesStatus(chapterStatus(c), filter))
                             .map((chapter, chIdx) => {
@@ -836,7 +896,9 @@ export function Subjects() {
                             chapter.topics.forEach(t => { chSubtopics += t.subtopics.length; chCompletedSubs += t.subtopics.filter(s => isSubtopicContentDone(s)).length; });
                             const chPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, level: 'chapter' };
                             return (
-                              <motion.div key={chapter.id} {...itemAnim} className={`bg-card border rounded-xl overflow-hidden shadow-sm ${chLocked ? 'border-border/30 opacity-70' : 'border-border/50'} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`}>
+                              <SortableItemWrapper key={chapter.id} id={chapter.id}>
+                              {(chHandle) => (
+                              <motion.div {...itemAnim} className={`bg-card border rounded-xl overflow-hidden shadow-sm ${chLocked ? 'border-border/30 opacity-70' : 'border-border/50'} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`}>
                                 <div
                                   className="p-3 flex items-center gap-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row"
                                   onClick={() => toggleChapter(chapter.id)}
@@ -871,6 +933,7 @@ export function Subjects() {
                                     </p>
                                   </div>
                                   <div className="flex items-center gap-0.5 shrink-0">
+                                    {chHandle}
                                     <ItemActions
                                       path={chPath}
                                       important={chapter.important}
@@ -903,6 +966,14 @@ export function Subjects() {
                                   {chExpanded && (
                                     <motion.div {...collapseAnim} className="overflow-hidden border-t border-border/30 bg-secondary/10">
                                       <div className="p-2 pl-8 space-y-1.5">
+                                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
+                                          const { active, over } = e;
+                                          if (!over || active.id === over.id) return;
+                                          const fIdx = chapter.topics.findIndex(t => t.id === active.id);
+                                          const tIdx = chapter.topics.findIndex(t => t.id === over.id);
+                                          if (fIdx !== -1 && tIdx !== -1) reorderTopics(subj.id, chapter.id, fIdx, tIdx);
+                                        }}>
+                                        <SortableContext items={chapter.topics.map(t => t.id)} strategy={verticalListSortingStrategy}>
                                         {chapter.topics.map((topic, topIdx) => {
                                           const topLocked = chLocked || !isTopicUnlocked(chapter, topIdx);
                                           const tExpanded = expandedTopic === topic.id;
@@ -912,7 +983,9 @@ export function Subjects() {
                                           topic.subtopics.forEach(s => { topConcepts += s.concepts.length; topCompletedConcepts += s.concepts.filter(c => c.completed).length; });
                                           const topPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, level: 'topic' };
                                           return (
-                                            <motion.div key={topic.id} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${topLocked ? 'border-border/20 opacity-60' : 'border-border/40'} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`}>
+                                            <SortableItemWrapper key={topic.id} id={topic.id}>
+                                            {(topHandle) => (
+                                            <motion.div {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${topLocked ? 'border-border/20 opacity-60' : 'border-border/40'} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`}>
                                               <div
                                                 className="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-secondary/20 group/row"
                                                 onClick={() => toggleTopic(topic.id)}
@@ -947,6 +1020,7 @@ export function Subjects() {
                                                   </p>
                                                 </div>
                                                 <div className="flex items-center gap-0.5 shrink-0">
+                                                  {topHandle}
                                                   <ItemActions
                                                     path={topPath}
                                                     important={topic.important}
@@ -979,6 +1053,14 @@ export function Subjects() {
                                                 {tExpanded && (
                                                   <motion.div {...collapseAnim} className="overflow-hidden border-t border-border/20 bg-secondary/10">
                                                     <div className="p-2 pl-10 space-y-1">
+                                                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
+                                                        const { active, over } = e;
+                                                        if (!over || active.id === over.id) return;
+                                                        const fIdx = topic.subtopics.findIndex(s => s.id === active.id);
+                                                        const tIdx = topic.subtopics.findIndex(s => s.id === over.id);
+                                                        if (fIdx !== -1 && tIdx !== -1) reorderSubtopics(subj.id, chapter.id, topic.id, fIdx, tIdx);
+                                                      }}>
+                                                      <SortableContext items={topic.subtopics.map(s => s.id)} strategy={verticalListSortingStrategy}>
                                                       {topic.subtopics.map((sub, subIdx) => {
                                                         const subLocked = topLocked || !isSubtopicUnlocked(topic, subIdx);
                                                         const subExpanded = expandedSubtopic === sub.id;
@@ -988,7 +1070,9 @@ export function Subjects() {
                                                         sub.concepts.forEach(c => { subPoints += c.points.length; subCompletedPoints += c.points.filter(p => p.completed).length; });
                                                         const subPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, level: 'subtopic' };
                                                         return (
-                                                          <motion.div key={sub.id} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${subLocked ? 'border-border/15 opacity-55' : 'border-border/30'} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
+                                                          <SortableItemWrapper key={sub.id} id={sub.id}>
+                                                          {(subHandle) => (
+                                                          <motion.div {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${subLocked ? 'border-border/15 opacity-55' : 'border-border/30'} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
                                                             <div
                                                               className="px-2.5 py-2 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20 group/row"
                                                               onClick={() => toggleSubtopicExpand(sub.id)}
@@ -1018,6 +1102,7 @@ export function Subjects() {
                                                                 </p>
                                                               </div>
                                                               <div className="flex items-center gap-0.5 shrink-0">
+                                                                {subHandle}
                                                                 <ItemActions
                                                                   path={subPath}
                                                                   important={sub.important}
@@ -1044,13 +1129,23 @@ export function Subjects() {
                                                               {subExpanded && (
                                                                 <motion.div {...collapseAnim} className="overflow-hidden border-t border-border/20 bg-secondary/10">
                                                                   <div className="p-1.5 pl-8 space-y-1">
+                                                                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
+                                                                      const { active, over } = e;
+                                                                      if (!over || active.id === over.id) return;
+                                                                      const fIdx = sub.concepts.findIndex(c => c.id === active.id);
+                                                                      const tIdx = sub.concepts.findIndex(c => c.id === over.id);
+                                                                      if (fIdx !== -1 && tIdx !== -1) reorderConcepts(subj.id, chapter.id, topic.id, sub.id, fIdx, tIdx);
+                                                                    }}>
+                                                                    <SortableContext items={sub.concepts.map(c => c.id)} strategy={verticalListSortingStrategy}>
                                                                     {sub.concepts.map((concept, conIdx) => {
                                                                       const conLocked = subLocked || !isConceptUnlocked(sub, conIdx);
                                                                       const cExpanded = expandedConcept === concept.id;
                                                                       const completedPoints = concept.points.filter(p => p.completed).length;
                                                                       const conPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, level: 'concept' };
                                                                       return (
-                                                                        <motion.div key={concept.id} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${conLocked ? 'border-border/10 opacity-50' : 'border-border/20'} ${concept.important ? 'ring-1 ring-yellow-300/40' : ''} ${concept.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
+                                                                        <SortableItemWrapper key={concept.id} id={concept.id}>
+                                                                        {(conHandle) => (
+                                                                        <motion.div {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${conLocked ? 'border-border/10 opacity-50' : 'border-border/20'} ${concept.important ? 'ring-1 ring-yellow-300/40' : ''} ${concept.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
                                                                           <div
                                                                             className="px-2 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20 group/row"
                                                                             onClick={() => toggleConceptExpand(concept.id)}
@@ -1078,6 +1173,7 @@ export function Subjects() {
                                                                               </p>
                                                                             </div>
                                                                             <div className="flex items-center gap-0.5 shrink-0">
+                                                                              {conHandle}
                                                                               <ItemActions
                                                                                 path={conPath}
                                                                                 important={concept.important}
@@ -1104,12 +1200,21 @@ export function Subjects() {
                                                                             {cExpanded && (
                                                                               <motion.div {...collapseAnim} className="overflow-hidden border-t border-border/10 bg-secondary/10">
                                                                                 <div className="p-1.5 pl-7 space-y-0.5">
+                                                                                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
+                                                                                    const { active, over } = e;
+                                                                                    if (!over || active.id === over.id) return;
+                                                                                    const fIdx = concept.points.findIndex(p => p.id === active.id);
+                                                                                    const tIdx = concept.points.findIndex(p => p.id === over.id);
+                                                                                    if (fIdx !== -1 && tIdx !== -1) reorderPoints(subj.id, chapter.id, topic.id, sub.id, concept.id, fIdx, tIdx);
+                                                                                  }}>
+                                                                                  <SortableContext items={concept.points.map(p => p.id)} strategy={verticalListSortingStrategy}>
                                                                                   {concept.points.map((point, ptIdx) => {
                                                                                     const ptLocked = conLocked || !isPointUnlocked(concept, ptIdx);
                                                                                     const ptPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id, level: 'point' };
                                                                                     return (
+                                                                                    <SortableItemWrapper key={point.id} id={point.id}>
+                                                                                    {(ptHandle) => (
                                                                                     <motion.div
-                                                                                      key={point.id}
                                                                                       {...itemAnim}
                                                                                       className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-lg hover:bg-card group/row ${ptLocked ? 'opacity-45' : ''} ${point.important ? 'ring-1 ring-yellow-300/40' : ''} ${point.weak ? 'ring-1 ring-rose-300/40' : ''}`}
                                                                                     >
@@ -1122,6 +1227,7 @@ export function Subjects() {
                                                                                           {point.title}
                                                                                         </span>
                                                                                         <span className="text-[7px] font-bold text-muted-foreground/40 bg-secondary/60 px-1 py-0.5 rounded border border-border/20 shrink-0">L6</span>
+                                                                                        {ptHandle}
                                                                                         <ItemActions
                                                                                           path={ptPath}
                                                                                           important={point.important}
@@ -1146,7 +1252,11 @@ export function Subjects() {
                                                                                         </div>
                                                                                       )}
                                                                                     </motion.div>
+                                                                                    )}
+                                                                                    </SortableItemWrapper>
                                                                                   ); })}
+                                                                                  </SortableContext>
+                                                                                  </DndContext>
                                                                                   <button
                                                                                     onClick={() => openAdd('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id })}
                                                                                     className="w-full py-1 border border-dashed border-border/60 text-[9px] font-semibold text-muted-foreground hover:text-foreground rounded-md flex items-center justify-center gap-0.5"
@@ -1158,8 +1268,12 @@ export function Subjects() {
                                                                             )}
                                                                           </AnimatePresence>
                                                                         </motion.div>
+                                                                        )}
+                                                                        </SortableItemWrapper>
                                                                       );
                                                                     })}
+                                                                    </SortableContext>
+                                                                    </DndContext>
                                                                     <button
                                                                       onClick={() => openAdd('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id })}
                                                                       className="w-full py-1.5 border border-dashed border-border/60 text-[10px] font-semibold text-muted-foreground hover:text-foreground rounded-lg flex items-center justify-center gap-1"
@@ -1171,8 +1285,12 @@ export function Subjects() {
                                                               )}
                                                             </AnimatePresence>
                                                           </motion.div>
+                                                          )}
+                                                          </SortableItemWrapper>
                                                         );
                                                       })}
+                                                      </SortableContext>
+                                                      </DndContext>
                                                       <button
                                                         onClick={() => openAdd('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id })}
                                                         className="w-full py-2 border border-dashed border-border/60 text-[10px] font-semibold text-muted-foreground hover:text-foreground rounded-lg flex items-center justify-center gap-1"
@@ -1184,8 +1302,12 @@ export function Subjects() {
                                                 )}
                                               </AnimatePresence>
                                             </motion.div>
+                                            )}
+                                            </SortableItemWrapper>
                                           );
                                         })}
+                                        </SortableContext>
+                                        </DndContext>
                                         <button
                                           onClick={() => openAdd('topic', { subjId: subj.id, chapterId: chapter.id })}
                                           className="w-full py-2 border border-dashed border-border/60 text-xs font-semibold text-muted-foreground hover:text-foreground rounded-lg flex items-center justify-center gap-1 hover:border-primary/40 hover:bg-primary/5 transition-all"
@@ -1197,8 +1319,12 @@ export function Subjects() {
                                   )}
                                 </AnimatePresence>
                               </motion.div>
+                              )}
+                              </SortableItemWrapper>
                             );
                           })}
+                          </SortableContext>
+                          </DndContext>
 
                           <button
                             onClick={() => openAdd('chapter', { subjId: subj.id })}
@@ -1211,10 +1337,14 @@ export function Subjects() {
                     )}
                   </AnimatePresence>
                 </motion.div>
+                )}
+                </SortableItemWrapper>
               );
             })}
           </div>
-        </AnimatePresence>
+          </AnimatePresence>
+          </SortableContext>
+        </DndContext>
         )}
 
         {subjects.length === 0 && (

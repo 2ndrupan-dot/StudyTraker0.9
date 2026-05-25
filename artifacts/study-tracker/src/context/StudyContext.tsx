@@ -66,6 +66,13 @@ interface StudyContextType {
 
   resetSubjectProgress: (subjectId: string) => void;
 
+  reorderSubjects: (fromIdx: number, toIdx: number) => void;
+  reorderChapters: (subjectId: string, fromIdx: number, toIdx: number) => void;
+  reorderTopics: (subjectId: string, chapterId: string, fromIdx: number, toIdx: number) => void;
+  reorderSubtopics: (subjectId: string, chapterId: string, topicId: string, fromIdx: number, toIdx: number) => void;
+  reorderConcepts: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, fromIdx: number, toIdx: number) => void;
+  reorderPoints: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, fromIdx: number, toIdx: number) => void;
+
   // Temp Notes (hierarchical to-do)
   tempNotes: TempNoteItem[];
   addTempNote: (text: string, parentId?: string | null) => void;
@@ -471,6 +478,96 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         }
       } catch { /* ignore */ }
     }
+  };
+
+  // ─── Reorder methods ───────────────────────────────────────────────────
+  const reorderSubjects = (fromIdx: number, toIdx: number) => {
+    setSubjects(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  };
+
+  const reorderChapters = (subjId: string, fromIdx: number, toIdx: number) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      const chs = [...s.chapters];
+      const [moved] = chs.splice(fromIdx, 1);
+      chs.splice(toIdx, 0, moved);
+      return { ...s, chapters: chs };
+    }));
+  };
+
+  const reorderTopics = (subjId: string, chId: string, fromIdx: number, toIdx: number) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      return { ...s, chapters: s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        const tops = [...ch.topics];
+        const [moved] = tops.splice(fromIdx, 1);
+        tops.splice(toIdx, 0, moved);
+        return { ...ch, topics: tops };
+      }) };
+    }));
+  };
+
+  const reorderSubtopics = (subjId: string, chId: string, tId: string, fromIdx: number, toIdx: number) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      return { ...s, chapters: s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        return { ...ch, topics: ch.topics.map(t => {
+          if (t.id !== tId) return t;
+          const subs = [...t.subtopics];
+          const [moved] = subs.splice(fromIdx, 1);
+          subs.splice(toIdx, 0, moved);
+          return { ...t, subtopics: subs };
+        }) };
+      }) };
+    }));
+  };
+
+  const reorderConcepts = (subjId: string, chId: string, tId: string, subId: string, fromIdx: number, toIdx: number) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      return { ...s, chapters: s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        return { ...ch, topics: ch.topics.map(t => {
+          if (t.id !== tId) return t;
+          return { ...t, subtopics: t.subtopics.map(sub => {
+            if (sub.id !== subId) return sub;
+            const cons = [...sub.concepts];
+            const [moved] = cons.splice(fromIdx, 1);
+            cons.splice(toIdx, 0, moved);
+            return { ...sub, concepts: cons };
+          }) };
+        }) };
+      }) };
+    }));
+  };
+
+  const reorderPoints = (subjId: string, chId: string, tId: string, subId: string, cId: string, fromIdx: number, toIdx: number) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      return { ...s, chapters: s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        return { ...ch, topics: ch.topics.map(t => {
+          if (t.id !== tId) return t;
+          return { ...t, subtopics: t.subtopics.map(sub => {
+            if (sub.id !== subId) return sub;
+            return { ...sub, concepts: sub.concepts.map(c => {
+              if (c.id !== cId) return c;
+              const pts = [...c.points];
+              const [moved] = pts.splice(fromIdx, 1);
+              pts.splice(toIdx, 0, moved);
+              return { ...c, points: pts };
+            }) };
+          }) };
+        }) };
+      }) };
+    }));
   };
 
   // ─── Chapter methods ───────────────────────────────────────────────────
@@ -983,6 +1080,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       setNote, toggleImportant, toggleWeak,
       setCourseTotalDays, setDailyStudyHours, setCourseStartDate,
       addSubject, updateSubjectDays, deleteSubject, updateSubjectMeta, resetSubjectProgress,
+      reorderSubjects, reorderChapters, reorderTopics, reorderSubtopics, reorderConcepts, reorderPoints,
       addChapter, deleteChapter, toggleChapterComplete, updateChapterMeta,
       addTopic, deleteTopic, toggleTopicComplete, updateTopicMeta,
       addSubtopic, deleteSubtopic, toggleSubtopicComplete, updateSubtopicMeta,

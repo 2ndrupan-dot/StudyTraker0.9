@@ -249,6 +249,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
           const best = pickNewerData(fsData, localData);
 
+          // Anchor lastSavedAt to the freshest timestamp we know about.
+          // This ensures subsequent snapshots (e.g. Firestore's server
+          // confirmation after the cache snapshot) are recognised as
+          // "already seen" and don't overwrite what we just loaded.
+          lastSavedAt.current = best?.savedAt ?? fsData.savedAt ?? 0;
+
           if (best) {
             const loadedSettings = { ...best.settings } as CourseSettings;
             let loadedSubjects = best.subjects || [];
@@ -293,9 +299,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           setTimeout(() => { isInitialLoad.current = false; }, 200);
         } else {
           // ── Real-time update from another device ──
-          // Skip if this snapshot was triggered by our own save (savedAt matches)
+          // Skip if this snapshot is not newer than what we already have.
+          // Covers: our own save echo AND Firestore's server-confirmation
+          // snapshot arriving after the local-cache snapshot on initial load.
           if (!fsData) return;
-          if (fsData.savedAt && fsData.savedAt === lastSavedAt.current) return;
+          if (fsData.savedAt && fsData.savedAt <= lastSavedAt.current) return;
 
           setSubjects(fsData.subjects || []);
           setSettings(prev => ({ ...prev, ...fsData.settings }));

@@ -206,12 +206,6 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
     const docRef = doc(db, 'users', user.id, 'studyData', activeCourseId);
     let isFirstSnapshot = true;
-    // Firestore with offline persistence fires onSnapshot TWICE on subscription:
-    //   1st: from local cache  (fast, fromCache=true)
-    //   2nd: from server       (slightly later, fromCache=false)
-    // We must treat the 2nd snapshot as still part of "initial load" — not as a
-    // remote update — otherwise it overwrites user edits made between the two fires.
-    let hasReceivedServerSnapshot = false;
 
     // ── Real-time listener — fires immediately on mount (initial load)
     //    and again whenever any device writes to this document ──
@@ -231,10 +225,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           : null;
 
         if (isFirstSnapshot) {
-          // ── 1st snapshot (from cache): pick the freshest between Firestore and localStorage ──
+          // ── Initial load: pick the freshest between Firestore and localStorage ──
           isFirstSnapshot = false;
-          // If Firestore skipped the cache and went straight to server, mark server as received
-          if (!snap.metadata.fromCache) hasReceivedServerSnapshot = true;
 
           if (!fsData) {
             setDataLoaded(true);
@@ -257,7 +249,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           }
 
           const best = pickNewerData(fsData, localData);
-          // Anchor lastSavedAt to the freshest data we have.
+
+          // Anchor lastSavedAt to the freshest timestamp we know about.
+          // The save-useEffect will push this forward immediately whenever
+          // the user makes an edit, so server snapshots arriving before our
+          // own save is acknowledged can never overwrite user-added data.
           lastSavedAt.current = best?.savedAt ?? fsData.savedAt ?? 0;
 
           if (best) {
@@ -302,32 +298,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           // Delay so React finishes batching all setState calls above before
           // the save-useEffect can run (prevents saving empty [] subjects on load)
           setTimeout(() => { isInitialLoad.current = false; }, 200);
-
-        } else if (!hasReceivedServerSnapshot && !snap.metadata.hasPendingWrites) {
-          // ── 2nd snapshot (server confirmation of initial load) ──
-          // This is NOT a remote update — it's Firestore confirming the server state
-          // after giving us the cache snapshot. We must NOT overwrite user edits here.
-          hasReceivedServerSnapshot = true;
-          if (!fsData) return;
-
-          // Update our timestamp anchor so we know the server's current watermark.
-          if (fsData.savedAt && fsData.savedAt > lastSavedAt.current) {
-            lastSavedAt.current = fsData.savedAt;
-            // Safe to apply server data only during the boot window (isInitialLoad=true),
-            // meaning the user hasn't had a chance to make any edits yet.
-            if (isInitialLoad.current) {
-              setSubjects(fsData.subjects || []);
-              setSettings(prev => ({ ...prev, ...fsData.settings }));
-              setTempNotes(fsData.tempNotes || []);
-              setOverallNoteState(fsData.overallNote || '');
-              setNotePagesIndex(fsData.notePagesIndex || []);
-            }
-          }
-
         } else {
-          // ── Real-time update from another device (after initial boot) ──
-          // Skip snapshots that aren't newer than what we already have
-          // (covers: our own save echo, optimistic cache writes, etc.)
+          // ── Real-time update ──
+          // Skip if this snapshot is not newer than what we already have.
+          // This covers:
+          //   • Our own save echo (lastSavedAt was set in flushSave)
+          //   • Firestore's server-confirmation snapshot after offline-cache load
+          //     (lastSavedAt was pushed forward optimistically in the save-useEffect
+          //      the moment the user made any edit, so it beats any stale server stamp)
+          //   • Our own optimistic local-cache write (hasPendingWrites=true)
           if (!fsData) return;
           if (snap.metadata.hasPendingWrites) return;
           if (fsData.savedAt && fsData.savedAt <= lastSavedAt.current) return;
@@ -343,7 +322,6 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         // Firestore error (offline / permission denied) — fall back to localStorage
         if (!isFirstSnapshot) return;
         isFirstSnapshot = false;
-        hasReceivedServerSnapshot = true;
         const lsRaw = localKey('data');
         const localData = lsRaw ? getLocalData(lsRaw) : null;
         if (localData) {
@@ -404,6 +382,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     const payload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, savedAt: Date.now() };
     const lsKey = localKey('data');
     if (lsKey) localStorage.setItem(lsKey, JSON.stringify(payload));
+
+    // Push lastSavedAt forward immediately (before the 400ms Firestore debounce).
+    // This ensures any server snapshot that arrives during the debounce window
+    // (e.g. Firestore's server-confirmation after the offline-cache snapshot)
+    // is treated as "already seen" and cannot overwrite the user's new data.
+    lastSavedAt.current = payload.savedAt;
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSyncing(true);

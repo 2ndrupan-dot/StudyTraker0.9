@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useEditor, EditorContent, Extension, Editor } from '@tiptap/react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { Plugin, PluginKey } from 'prosemirror-state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -426,15 +427,15 @@ function LinkPopover({
   const { t } = useLang();
   const currentHref = editor.getAttributes('link').href || '';
   const isEditingExisting = !!currentHref && !currentHref.startsWith('note://');
-  const [url, setUrl] = useState(currentHref && !currentHref.startsWith('note://') ? currentHref : 'https://');
+  const [url, setUrl] = useState(isEditingExisting ? currentHref : '');
   const [label, setLabel] = useState(initialText);
-
-  const showLabelField = initialEmpty || isEditingExisting;
 
   const submit = () => {
     const href = url.trim();
-    if (!href || href === 'https://') {
-      editor.chain().focus().unsetLink().run();
+    if (!href) {
+      if (isEditingExisting) {
+        editor.chain().focus().setTextSelection({ from: initialFrom, to: initialTo }).unsetLink().run();
+      }
       onClose();
       return;
     }
@@ -443,13 +444,16 @@ function LinkPopover({
       editor.commands.insertContent(
         `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`
       );
-    } else if (isEditingExisting && label.trim() && label.trim() !== initialText) {
-      editor.chain().focus().setTextSelection({ from: initialFrom, to: initialTo }).run();
-      editor.chain().focus().insertContent(
-        `<a href="${href}" target="_blank" rel="noopener noreferrer">${label.trim()}</a>`
-      ).run();
+    } else if (label.trim() && label.trim() !== initialText) {
+      editor.chain().focus()
+        .setTextSelection({ from: initialFrom, to: initialTo })
+        .insertContent(`<a href="${href}" target="_blank" rel="noopener noreferrer">${label.trim()}</a>`)
+        .run();
     } else {
-      editor.chain().focus().setTextSelection({ from: initialFrom, to: initialTo }).setLink({ href }).run();
+      editor.chain().focus()
+        .setTextSelection({ from: initialFrom, to: initialTo })
+        .setLink({ href })
+        .run();
     }
     onClose();
   };
@@ -464,15 +468,13 @@ function LinkPopover({
         onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose(); }}
         className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background mb-2 outline-none focus:border-primary"
       />
-      {showLabelField && (
-        <input
-          placeholder={t('linkTextOptional')}
-          value={label}
-          onChange={e => setLabel(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose(); }}
-          className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background mb-2 outline-none focus:border-primary"
-        />
-      )}
+      <input
+        placeholder={t('linkTextOptional')}
+        value={label}
+        onChange={e => setLabel(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose(); }}
+        className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background mb-2 outline-none focus:border-primary"
+      />
       <div className="flex gap-2">
         <button
           type="button"
@@ -772,6 +774,35 @@ export function RichTextEditor({
   const linkPopoverRef = useRef<HTMLDivElement>(null);
   const [linkSelection, setLinkSelection] = useState<{ empty: boolean; text: string; from: number; to: number }>({ empty: true, text: '', from: 0, to: 0 });
 
+  // Decoration ref — stores the range to visually highlight while the link popover is open
+  const linkHighlightRef = useRef<{ from: number; to: number } | null>(null);
+  const LinkSelectionHighlight = useMemo(() => {
+    const ref = linkHighlightRef;
+    return Extension.create({
+      name: 'linkSelectionHighlight',
+      addProseMirrorPlugins() {
+        return [new Plugin({
+          key: new PluginKey('linkSelectionHighlight'),
+          props: {
+            decorations(state) {
+              const range = ref.current;
+              if (!range || range.from >= range.to) return DecorationSet.empty;
+              const size = state.doc.content.size;
+              const from = Math.max(1, Math.min(range.from, size));
+              const to = Math.max(1, Math.min(range.to, size));
+              if (from >= to) return DecorationSet.empty;
+              return DecorationSet.create(state.doc, [
+                Decoration.inline(from, to, {
+                  style: 'background-color: rgb(99 102 241 / 0.25); border-radius: 2px;',
+                }),
+              ]);
+            },
+          },
+        })];
+      },
+    });
+  }, []);
+
   // Note ref picker
   const [showNoteRefPicker, setShowNoteRefPicker] = useState(false);
   const noteRefPickerRef = useRef<HTMLDivElement>(null);
@@ -802,6 +833,7 @@ export function RichTextEditor({
       TableCell,
       CustomLink,
       NoteRef,
+      LinkSelectionHighlight,
     ],
     content: toSafeHtml(value),
     onUpdate: ({ editor }) => onChange(editor.isEmpty ? '' : editor.getHTML()),
@@ -818,6 +850,13 @@ export function RichTextEditor({
   }, [value]);
 
   if (!editor) return null;
+
+  // Close link popover and clear the selection highlight decoration
+  const closeLinkPopover = () => {
+    linkHighlightRef.current = null;
+    editor.view.dispatch(editor.state.tr.setMeta('clearLinkHighlight', true));
+    setShowLinkPopover(false);
+  };
 
   // Insert a note-ref node (atomic chip — cursor cannot enter)
   const insertNoteRef = (id: string, title: string, noteHtml?: string, itemPath?: any) => {
@@ -888,6 +927,10 @@ export function RichTextEditor({
               const { from, to, empty } = editor.state.selection;
               const text = empty ? '' : editor.state.doc.textBetween(from, to, ' ');
               setLinkSelection({ empty, text, from, to });
+              if (!empty) {
+                linkHighlightRef.current = { from, to };
+                editor.view.dispatch(editor.state.tr.setMeta('setLinkHighlight', true));
+              }
               setShowLinkPopover(o => !o);
               setShowNoteRefPicker(false);
             }}
@@ -899,7 +942,7 @@ export function RichTextEditor({
           {showLinkPopover && (
             <LinkPopover
               editor={editor}
-              onClose={() => setShowLinkPopover(false)}
+              onClose={closeLinkPopover}
               initialEmpty={linkSelection.empty}
               initialText={linkSelection.text}
               initialFrom={linkSelection.from}

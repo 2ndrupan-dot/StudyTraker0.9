@@ -3,7 +3,7 @@ import { Subject, Chapter, Topic, Subtopic, Concept, Point, CourseSettings, Mark
 import { useAuth } from './AuthContext';
 import { useCourse } from './CourseContext';
 import { addDays, formatISO } from 'date-fns';
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { applyTimeAdjustment, isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone } from '@/lib/timeEngine';
 import type { DifficultyLevel } from '@/lib/types';
@@ -173,6 +173,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   }, []);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoad = useRef(true);
+  const lastSavedAt = useRef<number>(0);
 
   const localKey = (suffix: string) => (user && activeCourseId) ? `@study_${suffix}_${activeCourseId}_${user.email}` : null;
 
@@ -198,8 +199,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setDataLoaded(false);
 
     const docRef = doc(db, 'users', user.id, 'studyData', activeCourseId);
-    getDoc(docRef)
-      .then(snap => {
+
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snap) => {
         const fsData: StudyData | null = snap.exists()
           ? {
               subjects: snap.data().subjects || [],
@@ -210,67 +213,85 @@ export function StudyProvider({ children }: { children: ReactNode }) {
               savedAt: snap.data().savedAt,
             }
           : null;
-        if (fsData) {
+
+        if (isInitialLoad.current) {
+          // ── First snapshot: pick freshest between Firestore + localStorage ──
+          if (fsData) {
+            setTempNotes(fsData.tempNotes || []);
+            setOverallNoteState(fsData.overallNote || '');
+            setNotePagesIndex(fsData.notePagesIndex || []);
+          }
+
+          const lsRaw = localKey('data');
+          const localData = lsRaw ? getLocalData(lsRaw) : null;
+
+          let legacySubjects: Subject[] | null = null;
+          let legacySettings: CourseSettings | null = null;
+          if (!localData) {
+            try {
+              const ls = localStorage.getItem(`@study_subjects_${user.email}`);
+              const lc = localStorage.getItem(`@study_course_${user.email}`);
+              if (ls) legacySubjects = JSON.parse(ls);
+              if (lc) legacySettings = JSON.parse(lc);
+            } catch { /* ignore */ }
+          }
+
+          const best = pickNewerData(fsData, localData);
+
+          if (best) {
+            const loadedSettings = { ...best.settings } as CourseSettings;
+            let loadedSubjects = best.subjects || [];
+            if (loadedSettings.resetScheduled && loadedSettings.courseStartDate) {
+              const startDate = new Date(loadedSettings.courseStartDate);
+              startDate.setHours(0, 0, 0, 0);
+              if (new Date() >= startDate) {
+                const resetResult = doResetProgress(loadedSubjects, loadedSettings, user?.email);
+                loadedSubjects = resetResult.subjects;
+                loadedSettings.resetScheduled = false;
+              }
+            }
+            setSubjects(loadedSubjects);
+            setSettings(prev => ({ ...prev, ...loadedSettings }));
+          } else if (legacySubjects) {
+            const migrated = legacySubjects.map((s: any) => ({
+              ...s,
+              chapters: (s.topics || s.chapters || []).map((ch: any) => ({
+                id: ch.id,
+                title: ch.title,
+                totalMinutes: ch.totalMinutes || 0,
+                completed: ch.completed || false,
+                topics: (ch.subtopics || ch.topics || []).map((t: any) => ({
+                  id: t.id,
+                  title: t.title,
+                  totalMinutes: 0,
+                  completed: t.completed || false,
+                  subtopics: t.subtopics || [],
+                })),
+              })),
+            }));
+            setSubjects(migrated);
+            if (legacySettings) setSettings(prev => ({ ...prev, ...legacySettings }));
+          }
+
+          setDataLoaded(true);
+          setTimeout(() => { isInitialLoad.current = false; }, 100);
+        } else {
+          // ── Subsequent snapshots: apply only if from another device ──
+          // Skip if this snapshot was triggered by our own save
+          if (!fsData) return;
+          if (fsData.savedAt && fsData.savedAt === lastSavedAt.current) return;
+          // Also skip if data has pending local writes (our write echoed back)
+          if (snap.metadata.hasPendingWrites) return;
+
+          setSubjects(fsData.subjects || []);
+          setSettings(prev => ({ ...prev, ...fsData.settings }));
           setTempNotes(fsData.tempNotes || []);
           setOverallNoteState(fsData.overallNote || '');
           setNotePagesIndex(fsData.notePagesIndex || []);
         }
-
-        const lsRaw = localKey('data');
-        const localData = lsRaw ? getLocalData(lsRaw) : null;
-
-        // Also try legacy keys
-        let legacySubjects: Subject[] | null = null;
-        let legacySettings: CourseSettings | null = null;
-        if (!localData) {
-          try {
-            const ls = localStorage.getItem(`@study_subjects_${user.email}`);
-            const lc = localStorage.getItem(`@study_course_${user.email}`);
-            if (ls) legacySubjects = JSON.parse(ls);
-            if (lc) legacySettings = JSON.parse(lc);
-          } catch { /* ignore */ }
-        }
-
-        const best = pickNewerData(fsData, localData);
-
-        if (best) {
-          const loadedSettings = { ...best.settings } as CourseSettings;
-          let loadedSubjects = best.subjects || [];
-          // Check if a scheduled reset is due (reset date has passed)
-          if (loadedSettings.resetScheduled && loadedSettings.courseStartDate) {
-            const startDate = new Date(loadedSettings.courseStartDate);
-            startDate.setHours(0, 0, 0, 0);
-            const now = new Date();
-            if (now >= startDate) {
-              const resetResult = doResetProgress(loadedSubjects, loadedSettings, user?.email);
-              loadedSubjects = resetResult.subjects;
-              loadedSettings.resetScheduled = false;
-            }
-          }
-          setSubjects(loadedSubjects);
-          setSettings(prev => ({ ...prev, ...loadedSettings }));
-        } else if (legacySubjects) {
-          const migrated = legacySubjects.map((s: any) => ({
-            ...s,
-            chapters: (s.topics || s.chapters || []).map((ch: any) => ({
-              id: ch.id,
-              title: ch.title,
-              totalMinutes: ch.totalMinutes || 0,
-              completed: ch.completed || false,
-              topics: (ch.subtopics || ch.topics || []).map((t: any) => ({
-                id: t.id,
-                title: t.title,
-                totalMinutes: 0,
-                completed: t.completed || false,
-                subtopics: t.subtopics || [],
-              })),
-            })),
-          }));
-          setSubjects(migrated);
-          if (legacySettings) setSettings(prev => ({ ...prev, ...legacySettings }));
-        }
-      })
-      .catch(() => {
+      },
+      () => {
+        // Firestore error — fall back to localStorage
         const lsRaw = localKey('data');
         const localData = lsRaw ? getLocalData(lsRaw) : null;
         if (localData) {
@@ -280,11 +301,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           setOverallNoteState(localData.overallNote || '');
           setNotePagesIndex(localData.notePagesIndex || []);
         }
-      })
-      .finally(() => {
         setDataLoaded(true);
         setTimeout(() => { isInitialLoad.current = false; }, 100);
-      });
+      },
+    );
+
+    return () => unsubscribe();
   }, [user, activeCourseId]);
 
   // Save data (debounced for Firestore, immediate for localStorage)
@@ -298,13 +320,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     notePagesIndexToSave: NotePageMeta[],
   ) => {
     if (!user || !activeCourseId) return;
+    const savedAt = Date.now();
+    lastSavedAt.current = savedAt;
     const payload: StudyData = {
       subjects: subjectsToSave,
       settings: settingsToSave,
       tempNotes: tempNotesToSave,
       overallNote: overallNoteToSave,
       notePagesIndex: notePagesIndexToSave,
-      savedAt: Date.now(),
+      savedAt,
     };
     const lsKey = localKey('data');
     if (lsKey) localStorage.setItem(lsKey, JSON.stringify(payload));

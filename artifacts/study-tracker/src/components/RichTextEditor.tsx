@@ -849,6 +849,14 @@ export function RichTextEditor({
     if (incoming !== current) editor.commands.setContent(incoming, false);
   }, [value]);
 
+  // When the link popover is dismissed (click-outside), clear the decoration highlight
+  useEffect(() => {
+    if (showLinkPopover) return;
+    if (!editor || !linkHighlightRef.current) return;
+    linkHighlightRef.current = null;
+    editor.view.dispatch(editor.state.tr.setMeta('clearLinkHighlight', true));
+  }, [showLinkPopover]);
+
   if (!editor) return null;
 
   // Close link popover and clear the selection highlight decoration

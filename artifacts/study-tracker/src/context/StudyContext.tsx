@@ -380,7 +380,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    if (!user || !dataLoaded || isInitialLoad.current) return;
+    if (!user || !dataLoaded) return;
+    if (isInitialLoad.current) {
+      // The save-effect can't run yet, but a server snapshot may have set
+      // skipNextSaveRef during the boot window. Clear it here so the very
+      // first user edit after load isn't silently swallowed.
+      skipNextSaveRef.current = false;
+      return;
+    }
     if (subjects.length === 0) return;
 
     // Remote update arrived via onSnapshot — persist to localStorage so it

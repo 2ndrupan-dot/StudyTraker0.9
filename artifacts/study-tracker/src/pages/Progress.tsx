@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { RichTextPreview } from '@/components/RichTextEditor';
 import { useAuth } from '@/context/AuthContext';
 import { useStudy } from '@/context/StudyContext';
+import type { MarkPath } from '@/lib/types';
 import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
@@ -31,7 +32,7 @@ const cardVariants = {
 
 // ─── Note Search Modal ───────────────────────────────────────────────────────
 function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { subjects, notePagesIndex } = useStudy();
+  const { subjects, notePagesIndex, setNote } = useStudy();
   const { t } = useLang();
   const [, setLocation] = useLocation();
 
@@ -44,10 +45,19 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
   const [selSubtopic, setSelSubtopic] = React.useState<any>(null);
   const [selConcept, setSelConcept] = React.useState<any>(null);
 
-  // View note
-  const [viewNote, setViewNote] = React.useState<{ title: string; note: string } | null>(null);
+  // Edit note state (includes path for saving)
+  const [viewNote, setViewNote] = React.useState<{ title: string; draft: string; path: MarkPath } | null>(null);
   // View A4 note page
   const [viewNotePageId, setViewNotePageId] = React.useState<{ id: string; title: string } | null>(null);
+
+  const buildPath = (item: any): MarkPath => {
+    if (level === 'subjects')  return { subjectId: item.id, level: 'subject' };
+    if (level === 'chapters')  return { subjectId: selSubject.id, chapterId: item.id, level: 'chapter' };
+    if (level === 'topics')    return { subjectId: selSubject.id, chapterId: selChapter.id, topicId: item.id, level: 'topic' };
+    if (level === 'subtopics') return { subjectId: selSubject.id, chapterId: selChapter.id, topicId: selTopic.id, subtopicId: item.id, level: 'subtopic' };
+    if (level === 'concepts')  return { subjectId: selSubject.id, chapterId: selChapter.id, topicId: selTopic.id, subtopicId: selSubtopic.id, conceptId: item.id, level: 'concept' };
+    return { subjectId: selSubject.id, chapterId: selChapter.id, topicId: selTopic.id, subtopicId: selSubtopic.id, conceptId: selConcept.id, pointId: item.id, level: 'point' };
+  };
 
   React.useEffect(() => {
     if (!isOpen) {
@@ -192,7 +202,7 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
                 {/* Note badge */}
                 {item.note?.trim() && (
                   <button
-                    onClick={() => setViewNote({ title: item.title, note: item.note })}
+                    onClick={() => setViewNote({ title: item.title, draft: item.note, path: buildPath(item) })}
                     className="p-2 mr-1 rounded-lg hover:bg-amber-500/10 text-amber-500 shrink-0 transition-colors"
                     title={t('viewNote')}
                   >
@@ -205,20 +215,26 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
         </div>
       </Modal>
 
-      {/* Item note viewer */}
+      {/* Item note editor */}
       {viewNote && (
         <NoteEditorModal
           isOpen={!!viewNote}
           onClose={() => setViewNote(null)}
           title={viewNote.title}
           icon={StickyNote}
-          value={viewNote.note}
-          onChange={() => {}}
-          onClear={() => {}}
-          onSave={() => setViewNote(null)}
-          placeholder=""
-          clearLabel=""
-          saveLabel="Close"
+          value={viewNote.draft}
+          onChange={v => setViewNote(prev => prev ? { ...prev, draft: v } : null)}
+          onClear={() => {
+            setNote(viewNote.path, '');
+            setViewNote(null);
+          }}
+          onSave={() => {
+            setNote(viewNote.path, viewNote.draft);
+            setViewNote(null);
+          }}
+          placeholder={t('overallNotePlaceholder')}
+          clearLabel={t('clearNote')}
+          saveLabel={t('saveNote')}
         />
       )}
 

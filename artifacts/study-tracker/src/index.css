@@ -193,7 +193,7 @@
 }
 .rich-editor-content a {
   color: hsl(var(--primary));
-  text-decoration: underline;
+  text-decoration: none;
   cursor: pointer;
 }
 /* Internal note-ref links */

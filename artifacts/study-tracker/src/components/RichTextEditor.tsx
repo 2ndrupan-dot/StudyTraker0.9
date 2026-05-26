@@ -888,7 +888,14 @@ export function RichTextEditor({
       <div
         className="flex-1 px-3 py-2.5 overflow-y-auto cursor-text relative"
         style={{ minHeight }}
-        onClick={() => editor.commands.focus()}
+        onClick={(e) => {
+          const t = e.target as HTMLElement;
+          if (t.closest('a') || t.closest('[data-note-id]')) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+          editor.commands.focus();
+        }}
       >
         {editor.isEmpty && (
           <p className="absolute pointer-events-none text-sm text-muted-foreground select-none top-2.5 left-3">

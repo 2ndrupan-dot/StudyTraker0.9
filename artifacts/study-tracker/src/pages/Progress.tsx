@@ -5,8 +5,9 @@ import { useStudy } from '@/context/StudyContext';
 import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
-import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2 } from 'lucide-react';
-import { Modal, ConfirmModal, Input, Button, NoteEditorModal } from '@/components/ui';
+import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, FileText, ExternalLink } from 'lucide-react';
+import { Modal, ConfirmModal, Input, Button, NoteEditorModal, NotePagePreviewModal } from '@/components/ui';
+import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, parseISO, isValid } from 'date-fns';
 
@@ -27,6 +28,212 @@ const cardVariants = {
     transition: { delay: i * 0.07, duration: 0.45, ease: [0.22, 1, 0.36, 1] }
   }),
 };
+
+// ─── Note Search Modal ───────────────────────────────────────────────────────
+function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { subjects, notePagesIndex } = useStudy();
+  const { t } = useLang();
+  const [, setLocation] = useLocation();
+
+  // Drill-down state
+  type Level = 'subjects' | 'chapters' | 'topics' | 'subtopics' | 'concepts' | 'points';
+  const [level, setLevel] = React.useState<Level>('subjects');
+  const [selSubject, setSelSubject] = React.useState<any>(null);
+  const [selChapter, setSelChapter] = React.useState<any>(null);
+  const [selTopic, setSelTopic] = React.useState<any>(null);
+  const [selSubtopic, setSelSubtopic] = React.useState<any>(null);
+  const [selConcept, setSelConcept] = React.useState<any>(null);
+
+  // View note
+  const [viewNote, setViewNote] = React.useState<{ title: string; note: string } | null>(null);
+  // View A4 note page
+  const [viewNotePageId, setViewNotePageId] = React.useState<{ id: string; title: string } | null>(null);
+
+  React.useEffect(() => {
+    if (!isOpen) {
+      setLevel('subjects'); setSelSubject(null); setSelChapter(null);
+      setSelTopic(null); setSelSubtopic(null); setSelConcept(null);
+    }
+  }, [isOpen]);
+
+  const goBack = () => {
+    if (level === 'points')    { setSelConcept(null);  setLevel('concepts'); }
+    else if (level === 'concepts')  { setSelSubtopic(null); setLevel('subtopics'); }
+    else if (level === 'subtopics') { setSelTopic(null);    setLevel('topics'); }
+    else if (level === 'topics')    { setSelChapter(null);  setLevel('chapters'); }
+    else if (level === 'chapters')  { setSelSubject(null);  setLevel('subjects'); }
+  };
+
+  const currentItems: any[] = level === 'subjects'   ? subjects
+    : level === 'chapters'  ? (selSubject?.chapters ?? [])
+    : level === 'topics'    ? (selChapter?.topics ?? [])
+    : level === 'subtopics' ? (selTopic?.subtopics ?? [])
+    : level === 'concepts'  ? (selSubtopic?.concepts ?? [])
+    : level === 'points'    ? (selConcept?.points ?? [])
+    : [];
+
+  const hasChildren = (item: any) => {
+    if (level === 'subjects')   return (item.chapters?.length ?? 0) > 0;
+    if (level === 'chapters')   return (item.topics?.length ?? 0) > 0;
+    if (level === 'topics')     return (item.subtopics?.length ?? 0) > 0;
+    if (level === 'subtopics')  return (item.concepts?.length ?? 0) > 0;
+    if (level === 'concepts')   return (item.points?.length ?? 0) > 0;
+    return false;
+  };
+
+  const drillInto = (item: any) => {
+    if (level === 'subjects')   { setSelSubject(item);  setLevel('chapters'); }
+    else if (level === 'chapters')  { setSelChapter(item);  setLevel('topics'); }
+    else if (level === 'topics')    { setSelTopic(item);    setLevel('subtopics'); }
+    else if (level === 'subtopics') { setSelSubtopic(item); setLevel('concepts'); }
+    else if (level === 'concepts')  { setSelConcept(item);  setLevel('points'); }
+  };
+
+  const levelLabel: Record<Level, string> = {
+    subjects: 'Subjects', chapters: 'Chapters', topics: 'Topics',
+    subtopics: 'Subtopics', concepts: 'Concepts', points: 'Points',
+  };
+
+  const breadcrumbs = [
+    selSubject?.title, selChapter?.title, selTopic?.title,
+    selSubtopic?.title, selConcept?.title,
+  ].filter(Boolean);
+
+  const accentColor = selSubject?.color ?? '#6366f1';
+
+  return (
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} title={t('noteSearch')} icon={Search}>
+        {/* Breadcrumb */}
+        {breadcrumbs.length > 0 && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-3 flex-wrap leading-relaxed">
+            <button
+              onClick={() => { setLevel('subjects'); setSelSubject(null); setSelChapter(null); setSelTopic(null); setSelSubtopic(null); setSelConcept(null); }}
+              className="hover:text-foreground transition-colors"
+            >
+              {t('allItems')}
+            </button>
+            {breadcrumbs.map((c, i) => (
+              <React.Fragment key={i}>
+                <ChevronRight size={11} className="text-border" />
+                <span className={i === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''}>{c}</span>
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+
+        {/* Back button */}
+        {level !== 'subjects' && (
+          <button
+            onClick={goBack}
+            className="flex items-center gap-1 text-xs text-primary mb-3 hover:underline"
+          >
+            <ChevronRight size={12} className="rotate-180" />
+            Back
+          </button>
+        )}
+
+        {/* A4 Note Pages (only at root level) */}
+        {level === 'subjects' && notePagesIndex.length > 0 && (
+          <div className="mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2 px-1">
+              {t('a4NotePages')}
+            </p>
+            <div className="space-y-1">
+              {notePagesIndex.map(np => (
+                <button
+                  key={np.id}
+                  onClick={() => setViewNotePageId({ id: np.id, title: np.title || 'Untitled' })}
+                  className="w-full flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-secondary transition-colors text-left"
+                >
+                  <FileText size={14} className="text-primary shrink-0" />
+                  <span className="text-sm font-medium flex-1 truncate">{np.title || 'Untitled'}</span>
+                  <ExternalLink size={11} className="text-muted-foreground shrink-0" />
+                </button>
+              ))}
+            </div>
+            <div className="border-t border-border/40 mt-3 mb-4" />
+          </div>
+        )}
+
+        {/* Level label */}
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2 px-1">
+          {levelLabel[level]}
+        </p>
+
+        {/* Items list */}
+        <div className="space-y-1 max-h-72 overflow-y-auto">
+          {currentItems.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-6">No items here.</p>
+          ) : (
+            currentItems.map(item => (
+              <div
+                key={item.id}
+                className="flex items-center gap-2 rounded-xl hover:bg-secondary/50 transition-colors group"
+              >
+                {/* Drill-in button */}
+                <button
+                  onClick={() => hasChildren(item) ? drillInto(item) : undefined}
+                  className="flex-1 flex items-center gap-2.5 p-2.5 text-left min-w-0"
+                  disabled={!hasChildren(item)}
+                >
+                  {selSubject?.color && (
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: level === 'subjects' ? item.color : accentColor }}
+                    />
+                  )}
+                  <span className="text-sm font-medium truncate flex-1">{item.title}</span>
+                  {hasChildren(item) && (
+                    <ChevronRight size={14} className="text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+
+                {/* Note badge */}
+                {item.note?.trim() && (
+                  <button
+                    onClick={() => setViewNote({ title: item.title, note: item.note })}
+                    className="p-2 mr-1 rounded-lg hover:bg-amber-500/10 text-amber-500 shrink-0 transition-colors"
+                    title={t('viewNote')}
+                  >
+                    <StickyNote size={14} />
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
+
+      {/* Item note viewer */}
+      {viewNote && (
+        <NoteEditorModal
+          isOpen={!!viewNote}
+          onClose={() => setViewNote(null)}
+          title={viewNote.title}
+          icon={StickyNote}
+          value={viewNote.note}
+          onChange={() => {}}
+          onClear={() => {}}
+          onSave={() => setViewNote(null)}
+          placeholder=""
+          clearLabel=""
+          saveLabel="Close"
+        />
+      )}
+
+      {/* A4 note page preview */}
+      {viewNotePageId && (
+        <NotePagePreviewModal
+          isOpen={!!viewNotePageId}
+          onClose={() => setViewNotePageId(null)}
+          noteId={viewNotePageId.id}
+          noteTitle={viewNotePageId.title}
+        />
+      )}
+    </>
+  );
+}
 
 // ─── Overall Notes Component ─────────────────────────────────────────────────
 function OverallNotesCard() {
@@ -101,6 +308,7 @@ export function Progress() {
   const { t, lang, setLang } = useLang();
 
   const [modals, setModals] = useState({ profile: false, settings: false, logout: false, addCourse: false, switchCourse: false });
+  const [noteSearchOpen, setNoteSearchOpen] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: user?.name || '', currentPass: '', newPass: '' });
   const [profileError, setProfileError] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -255,6 +463,14 @@ export function Progress() {
             {t('progress')}
           </motion.h1>
           <div className="flex gap-2">
+            <motion.button
+              whileTap={{ scale: 0.93 }}
+              onClick={() => setNoteSearchOpen(true)}
+              title={t('noteSearch')}
+              className="p-2.5 bg-secondary text-foreground rounded-full hover:bg-secondary/80 transition-colors shadow-sm"
+            >
+              <Search size={20} />
+            </motion.button>
             <motion.button
               whileTap={{ scale: 0.93 }}
               onClick={() => setModals({ ...modals, settings: true })}
@@ -809,6 +1025,9 @@ export function Progress() {
         cancelText={t('cancel')}
         isDanger={true}
       />
+
+      {/* Note Search */}
+      <NoteSearchModal isOpen={noteSearchOpen} onClose={() => setNoteSearchOpen(false)} />
     </Layout>
   );
 }

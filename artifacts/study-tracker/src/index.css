@@ -194,6 +194,42 @@
 .rich-editor-content a {
   color: hsl(var(--primary));
   text-decoration: underline;
+  cursor: pointer;
+}
+/* Internal note-ref links */
+.rich-editor-content .note-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.1);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 0.85em;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: 1px solid hsl(var(--primary) / 0.2);
+}
+.rich-editor-content .note-ref:hover {
+  background: hsl(var(--primary) / 0.18);
+}
+/* Note-ref styling inside ProseMirror editor (non-clickable) */
+.ProseMirror .note-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.1);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 0.85em;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: default;
+  border: 1px solid hsl(var(--primary) / 0.2);
+  user-select: all;
 }
 /* ── Table ── */
 .rich-editor-content table {

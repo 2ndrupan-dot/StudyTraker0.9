@@ -270,6 +270,23 @@ export const translations = {
     searchInTempNotes: "In temp notes",
     searchInPages: "In note pages",
 
+    // Rich text link & note ref
+    insertLink: "Insert Link",
+    linkUrlPlaceholder: "https://...",
+    linkTextOptional: "Link text (optional)",
+    removeLink: "Remove Link",
+    insertNoteRef: "Link to Note",
+    searchNotePages: "Search note pages...",
+    noNotePagesYet: "No note pages yet",
+    nothingMatches: "Nothing matches",
+    noteSearch: "Note Search",
+    openFullNote: "Open Full Note",
+    noteNotFound: "Note not found",
+    noTextContent: "No text content in this note",
+    viewNote: "View note",
+    a4NotePages: "Note Pages",
+    allItems: "All",
+
     // Note Pages (A4 rich editor)
     notePagesTitle: "Note Pages",
     notePagesEmpty: "No note pages yet. Create your first one!",
@@ -614,6 +631,23 @@ export const translations = {
     searchInSubjects: "বিষয়ে",
     searchInTempNotes: "Temp Notes এ",
     searchInPages: "Note Pages এ",
+
+    // Rich text link & note ref
+    insertLink: "লিংক যোগ করুন",
+    linkUrlPlaceholder: "https://...",
+    linkTextOptional: "লিংক টেক্সট (ঐচ্ছিক)",
+    removeLink: "লিংক সরান",
+    insertNoteRef: "নোট লিংক",
+    searchNotePages: "নোট পেজ খুঁজুন...",
+    noNotePagesYet: "এখনো কোনো নোট পেজ নেই",
+    nothingMatches: "কিছু মেলেনি",
+    noteSearch: "নোট খুঁজুন",
+    openFullNote: "সম্পূর্ণ নোট খুলুন",
+    noteNotFound: "নোট পাওয়া যায়নি",
+    noTextContent: "এই নোটে কোনো টেক্সট নেই",
+    viewNote: "নোট দেখুন",
+    a4NotePages: "নোট পেজ",
+    allItems: "সব",
 
     // Note Pages (A4 rich editor)
     notePagesTitle: "Note Pages",

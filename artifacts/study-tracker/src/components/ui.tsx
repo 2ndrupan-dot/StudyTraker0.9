@@ -1,8 +1,10 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2, Pencil, Eye } from 'lucide-react';
+import { X, Maximize2, Minimize2, Pencil, Eye, FileText, ExternalLink } from 'lucide-react';
 import { RichTextEditor, RichTextPreview } from '@/components/RichTextEditor';
+import { useStudy } from '@/context/StudyContext';
+import { useLocation } from 'wouter';
 
 export const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' }>(
   ({ className, variant = 'primary', ...props }, ref) => {
@@ -113,6 +115,88 @@ export const Modal = ({
   );
 };
 
+// ─── Note Page Preview Modal ──────────────────────────────────────────────────
+export const NotePagePreviewModal = ({
+  isOpen, onClose, noteId, noteTitle,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  noteId: string;
+  noteTitle: string;
+}) => {
+  const { loadNotePage } = useStudy();
+  const [, setLocation] = useLocation();
+  const [note, setNote] = React.useState<any | null>(null);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isOpen || !noteId) return;
+    setLoading(true);
+    setNote(null);
+    loadNotePage(noteId).then(p => {
+      setNote(p);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [isOpen, noteId]);
+
+  const textEls = (note?.elements ?? []).filter((e: any) => e.type === 'text' && e.text?.trim());
+  const linkEls = (note?.elements ?? []).filter((e: any) => e.type === 'link' && e.href);
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={noteTitle || 'Note Page'} icon={FileText}>
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : !note ? (
+        <p className="text-muted-foreground text-sm py-6 text-center">Note not found.</p>
+      ) : (
+        <div className="space-y-4">
+          {textEls.length === 0 && linkEls.length === 0 ? (
+            <p className="text-muted-foreground text-sm py-6 text-center">This note page has no text content yet.</p>
+          ) : (
+            <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+              {textEls.map((el: any) => (
+                <p
+                  key={el.id}
+                  className="text-sm text-foreground"
+                  style={{
+                    fontWeight: el.fontWeight ?? undefined,
+                    fontStyle: el.fontStyle ?? undefined,
+                    textAlign: (el.align ?? 'left') as any,
+                  }}
+                >
+                  {el.text}
+                </p>
+              ))}
+              {linkEls.map((el: any) => (
+                <a
+                  key={el.id}
+                  href={el.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-sm text-primary underline break-all"
+                >
+                  {el.text || el.href}
+                </a>
+              ))}
+            </div>
+          )}
+          <div className="pt-2 border-t border-border/40">
+            <Button
+              className="w-full"
+              onClick={() => { onClose(); setLocation(`/notes/${noteId}`); }}
+            >
+              <ExternalLink size={14} className="mr-2" />
+              Open Full Note
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+};
+
 // ─── Note Editor Modal (Rich Text — expand to A4 full-screen) ────────────────
 export const NoteEditorModal = ({
   isOpen, onClose, value, onChange, onClear, onSave,
@@ -133,10 +217,17 @@ export const NoteEditorModal = ({
   const [expanded, setExpanded] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
 
+  // Note-ref preview state (for clicking note links inside the preview)
+  const [notePreview, setNotePreview] = React.useState<{ id: string; title: string } | null>(null);
+
   // Reset both states when modal closes
   React.useEffect(() => {
-    if (!isOpen) { setExpanded(false); setEditing(false); }
+    if (!isOpen) { setExpanded(false); setEditing(false); setNotePreview(null); }
   }, [isOpen]);
+
+  const handleNoteRef = (noteId: string, noteTitle: string) => {
+    if (noteId) setNotePreview({ id: noteId, title: noteTitle });
+  };
 
   // Shared header action buttons (pencil/eye + expand/minimize + close)
   const HeaderActions = ({ isExpanded }: { isExpanded: boolean }) => (
@@ -175,130 +266,142 @@ export const NoteEditorModal = ({
   );
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: expanded ? 1 : 0.01 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={onClose}
-            className={cn("fixed inset-0 z-50 transition-colors", expanded ? "bg-black/50" : "")}
-          />
+    <>
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: expanded ? 1 : 0.01 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={onClose}
+              className={cn("fixed inset-0 z-50 transition-colors", expanded ? "bg-black/50" : "")}
+            />
 
-          <AnimatePresence mode="wait">
-            {expanded ? (
-              /* ── A4 full-screen expanded view ── */
-              <motion.div
-                key="expanded"
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 pointer-events-none"
-              >
-                <div
-                  className="w-full max-w-[794px] bg-card rounded-3xl shadow-2xl border border-border/60 flex flex-col pointer-events-auto overflow-hidden"
-                  style={{ height: 'min(90vh, 1123px)' }}
+            <AnimatePresence mode="wait">
+              {expanded ? (
+                /* ── A4 full-screen expanded view ── */
+                <motion.div
+                  key="expanded"
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+                  className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 pointer-events-none"
+                >
+                  <div
+                    className="w-full max-w-[794px] bg-card rounded-3xl shadow-2xl border border-border/60 flex flex-col pointer-events-auto overflow-hidden"
+                    style={{ height: 'min(90vh, 1123px)' }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {/* Header */}
+                    <div className="flex items-center gap-3 px-6 py-4 border-b border-border/50 shrink-0">
+                      {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary shrink-0"><Icon size={20} /></div>}
+                      <h2 className="text-lg font-bold text-foreground flex-1 min-w-0 truncate">{title}</h2>
+                      <HeaderActions isExpanded={true} />
+                    </div>
+
+                    {/* Body */}
+                    <div className="flex-1 flex flex-col p-6 gap-4 overflow-hidden min-h-0">
+                      {editing ? (
+                        <>
+                          <RichTextEditor
+                            value={value}
+                            onChange={onChange}
+                            placeholder={placeholder}
+                            className="flex-1 min-h-0"
+                            autoFocus
+                          />
+                          <div className="flex gap-2 shrink-0">
+                            <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>
+                            <Button className="flex-1" onClick={onSave}>{saveLabel}</Button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex-1 overflow-y-auto">
+                          {value ? (
+                            <RichTextPreview html={value} className="text-base leading-relaxed" onNoteRef={handleNoteRef} />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+                              <Pencil size={32} className="opacity-30" />
+                              <p className="text-sm">{placeholder ?? 'No note yet. Click the pencil to add one.'}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ) : (
+                /* ── Compact bottom sheet ── */
+                <motion.div
+                  key="compact"
+                  initial={{ y: '100%' }}
+                  animate={{ y: 0 }}
+                  exit={{ y: '100%' }}
+                  transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+                  className="fixed bottom-0 left-0 right-0 z-50 max-w-md mx-auto bg-card rounded-t-3xl pb-8 shadow-[0_-8px_40px_rgba(0,0,0,0.18)] border-t border-x border-border/60 pointer-events-auto"
                   onClick={e => e.stopPropagation()}
                 >
                   {/* Header */}
-                  <div className="flex items-center gap-3 px-6 py-4 border-b border-border/50 shrink-0">
-                    {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary shrink-0"><Icon size={20} /></div>}
-                    <h2 className="text-lg font-bold text-foreground flex-1 min-w-0 truncate">{title}</h2>
-                    <HeaderActions isExpanded={true} />
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-border/50">
+                    <div className="flex items-center gap-3">
+                      {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary"><Icon size={20} /></div>}
+                      <h2 className="text-lg font-bold text-foreground">{title}</h2>
+                    </div>
+                    <div className="-mr-2">
+                      <HeaderActions isExpanded={false} />
+                    </div>
                   </div>
 
                   {/* Body */}
-                  <div className="flex-1 flex flex-col p-6 gap-4 overflow-hidden min-h-0">
+                  <div className="p-6 space-y-4">
                     {editing ? (
                       <>
                         <RichTextEditor
                           value={value}
                           onChange={onChange}
                           placeholder={placeholder}
-                          className="flex-1 min-h-0"
+                          minHeight="7rem"
                           autoFocus
                         />
-                        <div className="flex gap-2 shrink-0">
+                        <div className="flex gap-2">
                           <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>
                           <Button className="flex-1" onClick={onSave}>{saveLabel}</Button>
                         </div>
                       </>
                     ) : (
-                      <div className="flex-1 overflow-y-auto">
+                      <div className="min-h-[7rem]">
                         {value ? (
-                          <RichTextPreview html={value} className="text-base leading-relaxed" />
+                          <RichTextPreview html={value} className="text-sm leading-relaxed" onNoteRef={handleNoteRef} />
                         ) : (
-                          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-                            <Pencil size={32} className="opacity-30" />
-                            <p className="text-sm">{placeholder ?? 'No note yet. Click the pencil to add one.'}</p>
+                          <div className="flex flex-col items-center justify-center h-28 gap-2 text-muted-foreground">
+                            <Pencil size={24} className="opacity-30" />
+                            <p className="text-xs">{placeholder ?? 'No note yet. Tap to add one.'}</p>
                           </div>
                         )}
                       </div>
                     )}
                   </div>
-                </div>
-              </motion.div>
-            ) : (
-              /* ── Compact bottom sheet ── */
-              <motion.div
-                key="compact"
-                initial={{ y: '100%' }}
-                animate={{ y: 0 }}
-                exit={{ y: '100%' }}
-                transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-                className="fixed bottom-0 left-0 right-0 z-50 max-w-md mx-auto bg-card rounded-t-3xl pb-8 shadow-[0_-8px_40px_rgba(0,0,0,0.18)] border-t border-x border-border/60 pointer-events-auto"
-                onClick={e => e.stopPropagation()}
-              >
-                {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-border/50">
-                  <div className="flex items-center gap-3">
-                    {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary"><Icon size={20} /></div>}
-                    <h2 className="text-lg font-bold text-foreground">{title}</h2>
-                  </div>
-                  <div className="-mr-2">
-                    <HeaderActions isExpanded={false} />
-                  </div>
-                </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
+        )}
+      </AnimatePresence>
 
-                {/* Body */}
-                <div className="p-6 space-y-4">
-                  {editing ? (
-                    <>
-                      <RichTextEditor
-                        value={value}
-                        onChange={onChange}
-                        placeholder={placeholder}
-                        minHeight="7rem"
-                        autoFocus
-                      />
-                      <div className="flex gap-2">
-                        <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>
-                        <Button className="flex-1" onClick={onSave}>{saveLabel}</Button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="min-h-[7rem]">
-                      {value ? (
-                        <RichTextPreview html={value} className="text-sm leading-relaxed" />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center h-28 gap-2 text-muted-foreground">
-                          <Pencil size={24} className="opacity-30" />
-                          <p className="text-xs">{placeholder ?? 'No note yet. Tap to add one.'}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </>
+      {/* Note page preview (opened when clicking a note-ref link in view mode) */}
+      {notePreview && (
+        <NotePagePreviewModal
+          isOpen={!!notePreview}
+          onClose={() => setNotePreview(null)}
+          noteId={notePreview.id}
+          noteTitle={notePreview.title}
+        />
       )}
-    </AnimatePresence>
+    </>
   );
 };
 

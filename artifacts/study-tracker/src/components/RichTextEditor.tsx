@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useEditor, EditorContent, Extension, Editor } from '@tiptap/react';
+import { Mark, mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -9,14 +10,49 @@ import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
+import { Link } from '@tiptap/extension-link';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
+import { useStudy } from '@/context/StudyContext';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, RemoveFormatting, Palette, Highlighter, ChevronDown,
   Undo2, Redo2, Table2, Plus, Trash2, ArrowRightToLine, ArrowDownToLine,
-  ArrowLeftFromLine, ArrowUpFromLine,
+  ArrowLeftFromLine, ArrowUpFromLine, Link2, Unlink, FileText,
 } from 'lucide-react';
+
+// ─── Custom NoteRef mark (internal note page link) ────────────────────────────
+const NoteRef = Mark.create({
+  name: 'noteRef',
+  priority: 1001,
+  keepOnSplit: false,
+  exitable: true,
+  addAttributes() {
+    return {
+      'data-note-id': { default: null },
+      'data-note-title': { default: null },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'span[data-note-id]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['span', mergeAttributes({ class: 'note-ref' }, HTMLAttributes), 0];
+  },
+});
+
+// ─── Custom Link extension (with openOnClick: false) ─────────────────────────
+const CustomLink = Link.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      'data-note-id': { default: null },
+    };
+  },
+}).configure({
+  openOnClick: false,
+  HTMLAttributes: {},
+});
 
 // ─── Custom FontSize extension ────────────────────────────────────────────────
 const FontSize = Extension.create({
@@ -44,12 +80,7 @@ const FontSize = Extension.create({
   },
 });
 
-// ─── Active state helpers (check both cursor marks AND stored/pending marks) ──
-
-/**
- * Returns true if the mark is active on the selection OR queued as a stored
- * mark (i.e. the user toggled it at an empty cursor before typing).
- */
+// ─── Active state helpers ─────────────────────────────────────────────────────
 function isActiveOrStored(editor: Editor, markName: string, attrs?: Record<string, unknown>): boolean {
   if (editor.isActive(markName, attrs)) return true;
   const stored = editor.view.state.storedMarks;
@@ -61,7 +92,6 @@ function isActiveOrStored(editor: Editor, markName: string, attrs?: Record<strin
   });
 }
 
-/** Get the fontSize from stored marks (pending mark before typing). */
 function getStoredFontSize(editor: Editor): string | null {
   const stored = editor.view.state.storedMarks;
   if (!stored) return null;
@@ -69,7 +99,6 @@ function getStoredFontSize(editor: Editor): string | null {
   return (ts?.attrs?.fontSize as string) ?? null;
 }
 
-/** Get active text color considering stored marks too. */
 function getActiveColor(editor: Editor): string | null {
   const fromActive = TEXT_COLORS.find(c => c.value && editor.isActive('textStyle', { color: c.value }))?.value ?? null;
   if (fromActive) return fromActive;
@@ -79,7 +108,6 @@ function getActiveColor(editor: Editor): string | null {
   return (ts?.attrs?.color as string) ?? null;
 }
 
-/** Get active highlight color considering stored marks too. */
 function getActiveHighlight(editor: Editor): string | null {
   const fromActive = HIGHLIGHT_COLORS.find(c => c.value && editor.isActive('highlight', { color: c.value }))?.value ?? null;
   if (fromActive) return fromActive;
@@ -139,6 +167,141 @@ function usePopover() {
   return { open, setOpen, ref };
 }
 
+// ─── Note Ref Picker ──────────────────────────────────────────────────────────
+function NoteRefPicker({
+  onSelect, onClose,
+}: {
+  onSelect: (id: string, title: string) => void;
+  onClose: () => void;
+}) {
+  const { notePagesIndex } = useStudy();
+  const { t } = useLang();
+  const [filter, setFilter] = useState('');
+
+  const filtered = notePagesIndex.filter(p =>
+    (p.title || '').toLowerCase().includes(filter.toLowerCase())
+  );
+
+  return (
+    <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border/60 rounded-xl shadow-xl overflow-hidden w-64">
+      <div className="p-2 border-b border-border/40">
+        <input
+          autoFocus
+          placeholder={t('searchNotePages')}
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:border-primary"
+        />
+      </div>
+      <div className="max-h-52 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <p className="p-3 text-xs text-muted-foreground text-center">
+            {notePagesIndex.length === 0 ? t('noNotePagesYet') : t('nothingMatches')}
+          </p>
+        ) : (
+          filtered.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onMouseDown={e => {
+                e.preventDefault();
+                onSelect(p.id, p.title || 'Untitled');
+                onClose();
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors text-left"
+            >
+              <FileText size={12} className="text-primary shrink-0" />
+              <span className="truncate">{p.title || 'Untitled page'}</span>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Link Popover (external URL) ──────────────────────────────────────────────
+function LinkPopover({
+  editor, onClose,
+}: {
+  editor: Editor;
+  onClose: () => void;
+}) {
+  const { t } = useLang();
+  const currentHref = editor.getAttributes('link').href || '';
+  const [url, setUrl] = useState(currentHref && !currentHref.startsWith('note://') ? currentHref : 'https://');
+  const [label, setLabel] = useState('');
+
+  const submit = () => {
+    const href = url.trim();
+    if (!href || href === 'https://') {
+      editor.chain().focus().unsetLink().run();
+      onClose();
+      return;
+    }
+    if (editor.state.selection.empty) {
+      const text = label.trim() || href;
+      editor.commands.insertContent(
+        `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`
+      );
+    } else {
+      editor.chain().focus().setLink({ href }).run();
+    }
+    onClose();
+  };
+
+  return (
+    <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border/60 rounded-xl shadow-xl p-3 w-64">
+      <input
+        autoFocus
+        placeholder={t('linkUrlPlaceholder')}
+        value={url}
+        onChange={e => setUrl(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose(); }}
+        className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background mb-2 outline-none focus:border-primary"
+      />
+      {editor.state.selection.empty && (
+        <input
+          placeholder={t('linkTextOptional')}
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose(); }}
+          className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background mb-2 outline-none focus:border-primary"
+        />
+      )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onMouseDown={e => { e.preventDefault(); onClose(); }}
+          className="flex-1 text-xs py-1.5 rounded-lg bg-secondary text-muted-foreground hover:bg-secondary/70 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onMouseDown={e => { e.preventDefault(); submit(); }}
+          className="flex-1 text-xs py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          {t('insertLink')}
+        </button>
+      </div>
+      {editor.isActive('link') && (
+        <button
+          type="button"
+          onMouseDown={e => {
+            e.preventDefault();
+            editor.chain().focus().unsetLink().run();
+            onClose();
+          }}
+          className="w-full mt-2 text-xs py-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
+        >
+          {t('removeLink')}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── Table Popover ────────────────────────────────────────────────────────────
 function TableMenu({ editor }: { editor: Editor }) {
   const { open, setOpen, ref } = usePopover();
@@ -163,7 +326,6 @@ function TableMenu({ editor }: { editor: Editor }) {
       {open && (
         <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border/60 rounded-xl shadow-xl overflow-hidden min-w-[180px]">
           {!inTable ? (
-            /* Insert table */
             <button
               type="button"
               onMouseDown={e => {
@@ -176,7 +338,6 @@ function TableMenu({ editor }: { editor: Editor }) {
               <Plus size={14} /> Insert table (3×3)
             </button>
           ) : (
-            /* Table editing actions */
             <>
               <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide border-b border-border/40">Columns</p>
               <button type="button" onMouseDown={e => { e.preventDefault(); editor.chain().focus().addColumnBefore().run(); setOpen(false); }}
@@ -221,23 +382,15 @@ function TableMenu({ editor }: { editor: Editor }) {
 }
 
 // ─── Font Size Dropdown ───────────────────────────────────────────────────────
-function FontSizeSelect({
-  editor,
-  t,
-}: {
-  editor: Editor;
-  t: (key: any) => string;
-}) {
+function FontSizeSelect({ editor, t }: { editor: Editor; t: (key: any) => string }) {
   const { open, setOpen, ref } = usePopover();
 
-  // Check both selection-active AND stored-pending font size
   const activeSizeFromSelection = FONT_SIZE_VALUES.find(s =>
     editor.isActive('textStyle', { fontSize: s.value })
   );
   const storedSize = getStoredFontSize(editor);
   const activeSizeFromStored = storedSize ? FONT_SIZE_VALUES.find(s => s.value === storedSize) : null;
   const active = activeSizeFromSelection ?? activeSizeFromStored ?? null;
-
   const label = active ? t(active.tKey) : t('fontSize');
 
   return (
@@ -259,7 +412,6 @@ function FontSizeSelect({
 
       {open && (
         <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border/60 rounded-xl shadow-xl overflow-hidden min-w-[110px]">
-          {/* Default / clear */}
           <button
             type="button"
             onMouseDown={e => {
@@ -409,8 +561,15 @@ export function RichTextEditor({
   className, minHeight = '8rem', autoFocus = false,
 }: RichTextEditorProps) {
   const { t } = useLang();
-  // Re-render counter driven by editor transactions so stored marks are always fresh
   const [, setTick] = useState(0);
+
+  // Link popover
+  const [showLinkPopover, setShowLinkPopover] = useState(false);
+  const linkPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Note ref picker
+  const [showNoteRefPicker, setShowNoteRefPicker] = useState(false);
+  const noteRefPickerRef = useRef<HTMLDivElement>(null);
 
   const editor = useEditor({
     extensions: [
@@ -424,10 +583,11 @@ export function RichTextEditor({
       TableRow,
       TableHeader,
       TableCell,
+      CustomLink,
+      NoteRef,
     ],
     content: toSafeHtml(value),
     onUpdate: ({ editor }) => onChange(editor.isEmpty ? '' : editor.getHTML()),
-    // Fire a re-render on every transaction (including storedMarks changes)
     onTransaction: () => setTick(t => t + 1),
     autofocus: autoFocus,
     editorProps: { attributes: { class: 'rich-editor-content outline-none' } },
@@ -442,7 +602,20 @@ export function RichTextEditor({
 
   if (!editor) return null;
 
-  // Derive active states (selection + stored/pending marks)
+  // Insert a note-ref span
+  const insertNoteRef = (id: string, title: string) => {
+    if (editor.state.selection.empty) {
+      editor.commands.insertContent(
+        `<span class="note-ref" data-note-id="${id}" data-note-title="${title}">📄 ${title}</span>`
+      );
+    } else {
+      editor.chain().focus().setMark('noteRef', {
+        'data-note-id': id,
+        'data-note-title': title,
+      }).run();
+    }
+  };
+
   const isBold      = isActiveOrStored(editor, 'bold');
   const isItalic    = isActiveOrStored(editor, 'italic');
   const isUnder     = isActiveOrStored(editor, 'underline');
@@ -455,12 +628,10 @@ export function RichTextEditor({
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border/50 bg-secondary/40">
 
-        {/* Font size */}
         <FontSizeSelect editor={editor} t={t} />
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 
-        {/* Text formatting */}
         <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()}      active={isBold}   title="Bold"><Bold size={13} /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()}    active={isItalic} title="Italic"><Italic size={13} /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={isUnder}  title="Underline"><UnderlineIcon size={13} /></ToolbarBtn>
@@ -468,7 +639,6 @@ export function RichTextEditor({
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 
-        {/* Color & Highlight */}
         <ColorPopover
           colors={TEXT_COLORS}
           onSelect={v => v ? editor.chain().focus().setColor(v).run() : editor.chain().focus().unsetColor().run()}
@@ -486,37 +656,58 @@ export function RichTextEditor({
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 
-        {/* Lists */}
         <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()}  active={editor.isActive('bulletList')}  title="Bullet List"><List size={13} /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Numbered List"><ListOrdered size={13} /></ToolbarBtn>
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 
-        {/* Table */}
         <TableMenu editor={editor} />
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 
-        {/* Clear */}
+        {/* External URL link */}
+        <div className="relative" ref={linkPopoverRef}>
+          <ToolbarBtn
+            onClick={() => { setShowLinkPopover(o => !o); setShowNoteRefPicker(false); }}
+            active={editor.isActive('link')}
+            title={t('insertLink')}
+          >
+            <Link2 size={13} />
+          </ToolbarBtn>
+          {showLinkPopover && (
+            <LinkPopover editor={editor} onClose={() => setShowLinkPopover(false)} />
+          )}
+        </div>
+
+        {/* Internal note ref link */}
+        <div className="relative" ref={noteRefPickerRef}>
+          <ToolbarBtn
+            onClick={() => { setShowNoteRefPicker(o => !o); setShowLinkPopover(false); }}
+            active={false}
+            title={t('insertNoteRef')}
+          >
+            <FileText size={13} />
+          </ToolbarBtn>
+          {showNoteRefPicker && (
+            <NoteRefPicker
+              onSelect={insertNoteRef}
+              onClose={() => setShowNoteRefPicker(false)}
+            />
+          )}
+        </div>
+
+        <div className="w-px h-4 bg-border/60 mx-1" />
+
         <ToolbarBtn onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()} title="Clear Formatting">
           <RemoveFormatting size={13} />
         </ToolbarBtn>
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 
-        {/* Undo / Redo */}
-        <ToolbarBtn
-          onClick={() => editor.chain().focus().undo().run()}
-          active={false}
-          title="Undo (Ctrl+Z)"
-        >
+        <ToolbarBtn onClick={() => editor.chain().focus().undo().run()} active={false} title="Undo (Ctrl+Z)">
           <Undo2 size={13} />
         </ToolbarBtn>
-        <ToolbarBtn
-          onClick={() => editor.chain().focus().redo().run()}
-          active={false}
-          title="Redo (Ctrl+Y)"
-        >
+        <ToolbarBtn onClick={() => editor.chain().focus().redo().run()} active={false} title="Redo (Ctrl+Y)">
           <Redo2 size={13} />
         </ToolbarBtn>
       </div>
@@ -539,9 +730,49 @@ export function RichTextEditor({
 }
 
 // ─── Preview (read-only) ──────────────────────────────────────────────────────
-export function RichTextPreview({ html, className }: { html: string; className?: string }) {
+export function RichTextPreview({
+  html, className, onNoteRef,
+}: {
+  html: string;
+  className?: string;
+  onNoteRef?: (noteId: string, noteTitle: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleClick = (e: MouseEvent) => {
+      // Handle note-ref spans
+      const noteEl = (e.target as HTMLElement).closest('[data-note-id]');
+      if (noteEl) {
+        e.preventDefault();
+        e.stopPropagation();
+        const noteId = noteEl.getAttribute('data-note-id') || '';
+        const noteTitle = noteEl.getAttribute('data-note-title') || '';
+        onNoteRef?.(noteId, noteTitle);
+        return;
+      }
+
+      // Handle regular links — open in new tab
+      const link = (e.target as HTMLElement).closest('a');
+      if (link) {
+        const href = link.getAttribute('href') || '';
+        if (href && !href.startsWith('#')) {
+          e.preventDefault();
+          window.open(href, '_blank', 'noopener,noreferrer');
+        }
+      }
+    };
+
+    el.addEventListener('click', handleClick);
+    return () => el.removeEventListener('click', handleClick);
+  }, [onNoteRef]);
+
   return (
     <div
+      ref={containerRef}
       className={cn('rich-editor-content text-sm text-foreground', className)}
       dangerouslySetInnerHTML={{ __html: toSafeHtml(html) }}
     />

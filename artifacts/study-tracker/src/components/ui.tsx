@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2, Pencil, Eye, FileText, ExternalLink } from 'lucide-react';
+import { X, Maximize2, Minimize2, Pencil, Eye, FileText, ExternalLink, StickyNote } from 'lucide-react';
 import { RichTextEditor, RichTextPreview } from '@/components/RichTextEditor';
 import { useStudy } from '@/context/StudyContext';
 import { useLocation } from 'wouter';
@@ -218,15 +218,19 @@ export const NoteEditorModal = ({
   const [editing, setEditing] = React.useState(false);
 
   // Note-ref preview state (for clicking note links inside the preview)
-  const [notePreview, setNotePreview] = React.useState<{ id: string; title: string } | null>(null);
+  const [notePreview, setNotePreview] = React.useState<{ id: string; title: string; html?: string } | null>(null);
 
   // Reset both states when modal closes
   React.useEffect(() => {
     if (!isOpen) { setExpanded(false); setEditing(false); setNotePreview(null); }
   }, [isOpen]);
 
-  const handleNoteRef = (noteId: string, noteTitle: string) => {
-    if (noteId) setNotePreview({ id: noteId, title: noteTitle });
+  const handleNoteRef = (noteId: string, noteTitle: string, noteHtml?: string) => {
+    if (noteHtml !== undefined) {
+      setNotePreview({ id: '__item__', title: noteTitle, html: noteHtml });
+    } else if (noteId) {
+      setNotePreview({ id: noteId, title: noteTitle });
+    }
   };
 
   // Shared header action buttons (pencil/eye + expand/minimize + close)
@@ -394,12 +398,27 @@ export const NoteEditorModal = ({
 
       {/* Note page preview (opened when clicking a note-ref link in view mode) */}
       {notePreview && (
-        <NotePagePreviewModal
-          isOpen={!!notePreview}
-          onClose={() => setNotePreview(null)}
-          noteId={notePreview.id}
-          noteTitle={notePreview.title}
-        />
+        notePreview.html !== undefined ? (
+          /* Item note (subject/chapter/topic) — show HTML inline */
+          <Modal
+            isOpen={!!notePreview}
+            onClose={() => setNotePreview(null)}
+            title={notePreview.title}
+            icon={StickyNote}
+          >
+            <div className="max-h-80 overflow-y-auto">
+              <RichTextPreview html={notePreview.html} className="text-sm leading-relaxed" />
+            </div>
+          </Modal>
+        ) : (
+          /* A4 note page — load from Firestore */
+          <NotePagePreviewModal
+            isOpen={!!notePreview}
+            onClose={() => setNotePreview(null)}
+            noteId={notePreview.id}
+            noteTitle={notePreview.title}
+          />
+        )
       )}
     </>
   );

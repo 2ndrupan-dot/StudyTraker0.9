@@ -658,8 +658,8 @@ function ElementBox({
             href={element.href}
             target="_blank"
             rel="noopener noreferrer"
-            data-notdrag={isSelected ? undefined : '1'}
-            onClick={(e) => { if (!isSelected) e.preventDefault(); }}
+            data-notdrag="1"
+            onClick={(e) => e.preventDefault()}
             className="w-full h-full flex items-center gap-1 px-2 underline hover:opacity-80"
             style={{
               fontSize: element.fontSize ?? 14,

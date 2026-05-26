@@ -19,6 +19,7 @@ import {
   List, ListOrdered, RemoveFormatting, Palette, Highlighter, ChevronDown,
   Undo2, Redo2, Table2, Plus, Trash2, ArrowRightToLine, ArrowDownToLine,
   ArrowLeftFromLine, ArrowUpFromLine, Link2, Unlink, FileText,
+  ChevronLeft, ChevronRight, StickyNote,
 } from 'lucide-react';
 
 // ─── Custom NoteRef mark (internal note page link) ────────────────────────────
@@ -31,6 +32,7 @@ const NoteRef = Mark.create({
     return {
       'data-note-id': { default: null },
       'data-note-title': { default: null },
+      'data-note-html': { default: null },
     };
   },
   parseHTML() {
@@ -41,12 +43,41 @@ const NoteRef = Mark.create({
   },
 });
 
-// ─── Custom Link extension (with openOnClick: false) ─────────────────────────
+// ─── Custom Link extension (with openOnClick: false + Space exits link) ──────
 const CustomLink = Link.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
       'data-note-id': { default: null },
+    };
+  },
+  addKeyboardShortcuts() {
+    return {
+      Space: () => {
+        const { state } = this.editor;
+        const { selection } = state;
+        if (!selection.empty) return false;
+        const { $from } = selection;
+        const linkMarkType = state.schema.marks.link;
+        if (!linkMarkType) return false;
+        // Are we inside a link?
+        const inLink = linkMarkType.isInSet($from.marks());
+        if (!inLink) return false;
+        // Is the next position also inside the same link? (not at end yet)
+        const nodeAfter = $from.nodeAfter;
+        if (nodeAfter && linkMarkType.isInSet(nodeAfter.marks)) return false;
+        // At the end of a link — insert a space outside the link mark
+        return this.editor.commands.command(({ tr, dispatch }) => {
+          if (dispatch) {
+            const pos = selection.from;
+            tr.insertText(' ', pos, pos);
+            tr.removeMark(pos, pos + 1, linkMarkType);
+            const newStoredMarks = (state.storedMarks ?? []).filter(m => m.type !== linkMarkType);
+            tr.setStoredMarks(newStoredMarks);
+          }
+          return true;
+        });
+      },
     };
   },
 }).configure({
@@ -167,52 +198,156 @@ function usePopover() {
   return { open, setOpen, ref };
 }
 
-// ─── Note Ref Picker ──────────────────────────────────────────────────────────
+// ─── Note Ref Picker (hierarchical, like NoteSearchModal) ────────────────────
 function NoteRefPicker({
-  onSelect, onClose,
+  onSelectPage, onSelectItemNote, onClose,
 }: {
-  onSelect: (id: string, title: string) => void;
+  onSelectPage: (id: string, title: string) => void;
+  onSelectItemNote: (title: string, html: string) => void;
   onClose: () => void;
 }) {
-  const { notePagesIndex } = useStudy();
+  const { subjects, notePagesIndex } = useStudy();
   const { t } = useLang();
-  const [filter, setFilter] = useState('');
 
-  const filtered = notePagesIndex.filter(p =>
-    (p.title || '').toLowerCase().includes(filter.toLowerCase())
-  );
+  type Level = 'subjects' | 'chapters' | 'topics' | 'subtopics' | 'concepts' | 'points';
+  const [level, setLevel] = useState<Level>('subjects');
+  const [selSubject, setSelSubject] = useState<any>(null);
+  const [selChapter, setSelChapter] = useState<any>(null);
+  const [selTopic, setSelTopic] = useState<any>(null);
+  const [selSubtopic, setSelSubtopic] = useState<any>(null);
+  const [selConcept, setSelConcept] = useState<any>(null);
+
+  const goBack = () => {
+    if (level === 'points')         { setSelConcept(null);  setLevel('concepts'); }
+    else if (level === 'concepts')  { setSelSubtopic(null); setLevel('subtopics'); }
+    else if (level === 'subtopics') { setSelTopic(null);    setLevel('topics'); }
+    else if (level === 'topics')    { setSelChapter(null);  setLevel('chapters'); }
+    else if (level === 'chapters')  { setSelSubject(null);  setLevel('subjects'); }
+  };
+
+  const currentItems: any[] =
+    level === 'subjects'  ? subjects
+    : level === 'chapters'  ? (selSubject?.chapters ?? [])
+    : level === 'topics'    ? (selChapter?.topics ?? [])
+    : level === 'subtopics' ? (selTopic?.subtopics ?? [])
+    : level === 'concepts'  ? (selSubtopic?.concepts ?? [])
+    : level === 'points'    ? (selConcept?.points ?? [])
+    : [];
+
+  const hasChildren = (item: any) => {
+    if (level === 'subjects')  return (item.chapters?.length ?? 0) > 0;
+    if (level === 'chapters')  return (item.topics?.length ?? 0) > 0;
+    if (level === 'topics')    return (item.subtopics?.length ?? 0) > 0;
+    if (level === 'subtopics') return (item.concepts?.length ?? 0) > 0;
+    if (level === 'concepts')  return (item.points?.length ?? 0) > 0;
+    return false;
+  };
+
+  const drillInto = (item: any) => {
+    if (level === 'subjects')       { setSelSubject(item);  setLevel('chapters'); }
+    else if (level === 'chapters')  { setSelChapter(item);  setLevel('topics'); }
+    else if (level === 'topics')    { setSelTopic(item);    setLevel('subtopics'); }
+    else if (level === 'subtopics') { setSelSubtopic(item); setLevel('concepts'); }
+    else if (level === 'concepts')  { setSelConcept(item);  setLevel('points'); }
+  };
+
+  const levelLabel: Record<Level, string> = {
+    subjects: 'Subjects', chapters: 'Chapters', topics: 'Topics',
+    subtopics: 'Subtopics', concepts: 'Concepts', points: 'Points',
+  };
+
+  const breadcrumbs = [
+    selSubject?.title, selChapter?.title, selTopic?.title, selSubtopic?.title, selConcept?.title,
+  ].filter(Boolean);
 
   return (
-    <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border/60 rounded-xl shadow-xl overflow-hidden w-64">
-      <div className="p-2 border-b border-border/40">
-        <input
-          autoFocus
-          placeholder={t('searchNotePages')}
-          value={filter}
-          onChange={e => setFilter(e.target.value)}
-          className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:border-primary"
-        />
-      </div>
-      <div className="max-h-52 overflow-y-auto">
-        {filtered.length === 0 ? (
-          <p className="p-3 text-xs text-muted-foreground text-center">
-            {notePagesIndex.length === 0 ? t('noNotePagesYet') : t('nothingMatches')}
-          </p>
+    <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border/60 rounded-xl shadow-xl overflow-hidden w-72">
+      {/* Header */}
+      <div className="px-3 pt-2 pb-1.5 border-b border-border/40">
+        {level !== 'subjects' && (
+          <button
+            type="button"
+            onMouseDown={e => { e.preventDefault(); goBack(); }}
+            className="flex items-center gap-1 text-[11px] text-primary mb-1 hover:underline"
+          >
+            <ChevronLeft size={11} /> Back
+          </button>
+        )}
+        {breadcrumbs.length > 0 ? (
+          <div className="flex items-center gap-1 text-[10px] text-muted-foreground flex-wrap">
+            {breadcrumbs.map((c, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && <ChevronRight size={9} />}
+                <span className={i === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''}>{c}</span>
+              </React.Fragment>
+            ))}
+          </div>
         ) : (
-          filtered.map(p => (
-            <button
-              key={p.id}
-              type="button"
-              onMouseDown={e => {
-                e.preventDefault();
-                onSelect(p.id, p.title || 'Untitled');
-                onClose();
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors text-left"
-            >
-              <FileText size={12} className="text-primary shrink-0" />
-              <span className="truncate">{p.title || 'Untitled page'}</span>
-            </button>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Note Reference</p>
+        )}
+      </div>
+
+      <div className="max-h-64 overflow-y-auto">
+        {/* A4 note pages (root level only) */}
+        {level === 'subjects' && notePagesIndex.length > 0 && (
+          <>
+            <p className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+              {t('a4NotePages')}
+            </p>
+            {notePagesIndex.map(p => (
+              <button
+                key={p.id}
+                type="button"
+                onMouseDown={e => { e.preventDefault(); onSelectPage(p.id, p.title || 'Untitled'); onClose(); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-secondary transition-colors text-left"
+              >
+                <FileText size={11} className="text-primary shrink-0" />
+                <span className="truncate">{p.title || 'Untitled page'}</span>
+              </button>
+            ))}
+            <div className="border-t border-border/30 my-1" />
+          </>
+        )}
+
+        {/* Level label */}
+        <p className="px-3 pt-1.5 pb-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+          {levelLabel[level]}
+        </p>
+
+        {/* Items */}
+        {currentItems.length === 0 ? (
+          <p className="px-3 py-3 text-[11px] text-muted-foreground text-center">Nothing here.</p>
+        ) : (
+          currentItems.map(item => (
+            <div key={item.id} className="flex items-center hover:bg-secondary/60 transition-colors group">
+              <button
+                type="button"
+                onMouseDown={e => { e.preventDefault(); if (hasChildren(item)) drillInto(item); }}
+                className="flex-1 flex items-center gap-2 px-3 py-1.5 text-left min-w-0"
+                disabled={!hasChildren(item)}
+              >
+                {level === 'subjects' && item.color && (
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                )}
+                {level !== 'subjects' && selSubject?.color && (
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: selSubject.color }} />
+                )}
+                <span className="text-xs truncate">{item.title}</span>
+                {hasChildren(item) && (
+                  <ChevronRight size={11} className="text-muted-foreground ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                )}
+              </button>
+              {item.note?.trim() && (
+                <button
+                  type="button"
+                  onMouseDown={e => { e.preventDefault(); onSelectItemNote(item.title, item.note); onClose(); }}
+                  className="p-1.5 mr-1 rounded-lg hover:bg-amber-500/10 text-amber-500 shrink-0 transition-colors"
+                  title="Insert note reference"
+                >
+                  <StickyNote size={11} />
+                </button>
+              )}
+            </div>
           ))
         )}
       </div>
@@ -602,17 +737,36 @@ export function RichTextEditor({
 
   if (!editor) return null;
 
-  // Insert a note-ref span
-  const insertNoteRef = (id: string, title: string) => {
-    if (editor.state.selection.empty) {
-      editor.commands.insertContent(
-        `<span class="note-ref" data-note-id="${id}" data-note-title="${title}">📄 ${title}</span>`
-      );
+  // Insert a note-ref span (page = A4 note page, item = subject/chapter/topic note)
+  const insertNoteRef = (id: string, title: string, noteHtml?: string) => {
+    if (noteHtml !== undefined) {
+      // Item note reference — stores HTML encoded in attribute
+      const encoded = encodeURIComponent(noteHtml);
+      const safeTitle = title.replace(/"/g, '&quot;');
+      if (editor.state.selection.empty) {
+        editor.commands.insertContent(
+          `<span class="note-ref" data-note-id="__item__" data-note-title="${safeTitle}" data-note-html="${encoded}">📝 ${title}</span>`
+        );
+      } else {
+        editor.chain().focus().setMark('noteRef', {
+          'data-note-id': '__item__',
+          'data-note-title': title,
+          'data-note-html': encoded,
+        }).run();
+      }
     } else {
-      editor.chain().focus().setMark('noteRef', {
-        'data-note-id': id,
-        'data-note-title': title,
-      }).run();
+      // A4 page reference
+      const safeTitle = title.replace(/"/g, '&quot;');
+      if (editor.state.selection.empty) {
+        editor.commands.insertContent(
+          `<span class="note-ref" data-note-id="${id}" data-note-title="${safeTitle}">📄 ${title}</span>`
+        );
+      } else {
+        editor.chain().focus().setMark('noteRef', {
+          'data-note-id': id,
+          'data-note-title': title,
+        }).run();
+      }
     }
   };
 
@@ -690,7 +844,8 @@ export function RichTextEditor({
           </ToolbarBtn>
           {showNoteRefPicker && (
             <NoteRefPicker
-              onSelect={insertNoteRef}
+              onSelectPage={(id, title) => { insertNoteRef(id, title); setShowNoteRefPicker(false); }}
+              onSelectItemNote={(title, html) => { insertNoteRef('__item__', title, html); setShowNoteRefPicker(false); }}
               onClose={() => setShowNoteRefPicker(false)}
             />
           )}
@@ -735,7 +890,7 @@ export function RichTextPreview({
 }: {
   html: string;
   className?: string;
-  onNoteRef?: (noteId: string, noteTitle: string) => void;
+  onNoteRef?: (noteId: string, noteTitle: string, noteHtml?: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -751,7 +906,9 @@ export function RichTextPreview({
         e.stopPropagation();
         const noteId = noteEl.getAttribute('data-note-id') || '';
         const noteTitle = noteEl.getAttribute('data-note-title') || '';
-        onNoteRef?.(noteId, noteTitle);
+        const noteHtmlEncoded = noteEl.getAttribute('data-note-html');
+        const noteHtml = noteHtmlEncoded ? decodeURIComponent(noteHtmlEncoded) : undefined;
+        onNoteRef?.(noteId, noteTitle, noteHtml);
         return;
       }
 

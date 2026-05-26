@@ -807,7 +807,7 @@ export function RichTextEditor({
     onUpdate: ({ editor }) => onChange(editor.isEmpty ? '' : editor.getHTML()),
     onTransaction: () => setTick(t => t + 1),
     autofocus: autoFocus,
-    editorProps: { attributes: { class: 'rich-editor-content outline-none' } },
+    editorProps: { attributes: { class: 'rich-editor-content outline-none', spellcheck: 'false' } },
   });
 
   useEffect(() => {

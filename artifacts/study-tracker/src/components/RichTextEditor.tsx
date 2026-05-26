@@ -10,6 +10,7 @@ import { useLang } from '@/context/LangContext';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, RemoveFormatting, Palette, Highlighter, ChevronDown,
+  Undo2, Redo2,
 } from 'lucide-react';
 
 // ─── Custom FontSize extension ────────────────────────────────────────────────
@@ -404,6 +405,24 @@ export function RichTextEditor({
         {/* Clear */}
         <ToolbarBtn onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()} title="Clear Formatting">
           <RemoveFormatting size={13} />
+        </ToolbarBtn>
+
+        <div className="w-px h-4 bg-border/60 mx-1" />
+
+        {/* Undo / Redo */}
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().undo().run()}
+          active={false}
+          title="Undo (Ctrl+Z)"
+        >
+          <Undo2 size={13} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().redo().run()}
+          active={false}
+          title="Redo (Ctrl+Y)"
+        >
+          <Redo2 size={13} />
         </ToolbarBtn>
       </div>
 

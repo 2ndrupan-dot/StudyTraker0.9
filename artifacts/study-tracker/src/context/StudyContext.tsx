@@ -374,8 +374,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(lsKey, JSON.stringify(payload));
     try {
       const docRef = doc(db, 'users', currentUser.id, 'studyData', currentCourseId);
-      await setDoc(docRef, payload, { merge: false });
-    } catch { /* localStorage backup already done */ }
+      // Strip undefined values — Firestore rejects documents containing undefined fields
+      const firestorePayload = JSON.parse(JSON.stringify(payload));
+      await setDoc(docRef, firestorePayload, { merge: false });
+    } catch (err) {
+      console.error('[StudyContext] Firestore save failed:', err);
+    }
     setSyncing(false);
   };
 

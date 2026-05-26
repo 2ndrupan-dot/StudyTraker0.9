@@ -432,13 +432,13 @@ export function Subjects() {
       if (level === 'subject') {
         addSubject({ title: formTitle, color: getRandomColor(), allocatedDays: parseInt(formDays) || 0, manualDays: !!formDays, deadline: new Date().toISOString(), totalMinutes: mins || 1200 });
       } else if (level === 'chapter') {
-        addChapter(subjId, { title: formTitle, totalMinutes: mins, estimatedMinutes: mins || undefined, difficulty: diff });
+        addChapter(subjId, { title: formTitle, totalMinutes: mins, ...(mins > 0 ? { estimatedMinutes: mins } : {}), ...(diff !== undefined ? { difficulty: diff } : {}) });
       } else if (level === 'topic') {
-        addTopic(subjId, chapterId, { title: formTitle, totalMinutes: mins, estimatedMinutes: mins || undefined, difficulty: diff });
+        addTopic(subjId, chapterId, { title: formTitle, totalMinutes: mins, ...(mins > 0 ? { estimatedMinutes: mins } : {}), ...(diff !== undefined ? { difficulty: diff } : {}) });
       } else if (level === 'subtopic') {
-        addSubtopic(subjId, chapterId, topicId, { title: formTitle, estimatedMinutes: mins || undefined, difficulty: diff });
+        addSubtopic(subjId, chapterId, topicId, { title: formTitle, ...(mins > 0 ? { estimatedMinutes: mins } : {}), ...(diff !== undefined ? { difficulty: diff } : {}) });
       } else if (level === 'concept') {
-        addConcept(subjId, chapterId, topicId, subtopicId, { title: formTitle, estimatedMinutes: mins || undefined, difficulty: diff });
+        addConcept(subjId, chapterId, topicId, subtopicId, { title: formTitle, ...(mins > 0 ? { estimatedMinutes: mins } : {}), ...(diff !== undefined ? { difficulty: diff } : {}) });
       } else if (level === 'point') {
         addPoint(subjId, chapterId, topicId, subtopicId, conceptId, { title: formTitle, difficulty: diff });
       }

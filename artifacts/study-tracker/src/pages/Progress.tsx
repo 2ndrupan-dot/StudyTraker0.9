@@ -74,12 +74,19 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
     else if (level === 'chapters')  { setSelSubject(null);  setLevel('subjects'); }
   };
 
+  // Always derive from live `subjects` so note edits reflect immediately
+  const liveSubject  = selSubject  ? subjects.find((s: any) => s.id === selSubject.id)                              : null;
+  const liveChapter  = liveSubject && selChapter  ? liveSubject.chapters?.find((c: any) => c.id === selChapter.id)  : null;
+  const liveTopic    = liveChapter && selTopic    ? liveChapter.topics?.find((t: any) => t.id === selTopic.id)      : null;
+  const liveSubtopic = liveTopic   && selSubtopic ? liveTopic.subtopics?.find((s: any) => s.id === selSubtopic.id)  : null;
+  const liveConcept  = liveSubtopic && selConcept ? liveSubtopic.concepts?.find((c: any) => c.id === selConcept.id) : null;
+
   const currentItems: any[] = level === 'subjects'   ? subjects
-    : level === 'chapters'  ? (selSubject?.chapters ?? [])
-    : level === 'topics'    ? (selChapter?.topics ?? [])
-    : level === 'subtopics' ? (selTopic?.subtopics ?? [])
-    : level === 'concepts'  ? (selSubtopic?.concepts ?? [])
-    : level === 'points'    ? (selConcept?.points ?? [])
+    : level === 'chapters'  ? (liveSubject?.chapters  ?? [])
+    : level === 'topics'    ? (liveChapter?.topics    ?? [])
+    : level === 'subtopics' ? (liveTopic?.subtopics   ?? [])
+    : level === 'concepts'  ? (liveSubtopic?.concepts ?? [])
+    : level === 'points'    ? (liveConcept?.points    ?? [])
     : [];
 
   const hasChildren = (item: any) => {

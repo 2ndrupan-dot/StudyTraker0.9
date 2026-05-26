@@ -23,7 +23,7 @@ interface StudyData {
   subjects: Subject[];
   settings: CourseSettings;
   tempNotes?: TempNoteItem[];
-  courseNotes?: TempNoteItem[];
+  overallNote?: string;
   notePagesIndex?: NotePageMeta[];
   savedAt?: number;
 }
@@ -81,12 +81,9 @@ interface StudyContextType {
   toggleTempNoteDone: (id: string) => void;
   deleteTempNote: (id: string) => void;
 
-  // Course Notes (progress page)
-  courseNotes: TempNoteItem[];
-  addCourseNote: (text: string, parentId?: string | null) => void;
-  updateCourseNote: (id: string, text: string) => void;
-  toggleCourseNoteDone: (id: string) => void;
-  deleteCourseNote: (id: string) => void;
+  // Overall Note (progress page)
+  overallNote: string;
+  setOverallNote: (note: string) => void;
 
   // A4 Note pages
   notePagesIndex: NotePageMeta[];
@@ -157,7 +154,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [settings, setSettings] = useState<CourseSettings>({ courseTotalDays: null, dailyStudyHours: 3 });
   const [tempNotes, setTempNotes] = useState<TempNoteItem[]>([]);
-  const [courseNotes, setCourseNotes] = useState<TempNoteItem[]>([]);
+  const [overallNote, setOverallNoteState] = useState<string>('');
   const [notePagesIndex, setNotePagesIndex] = useState<NotePageMeta[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -185,7 +182,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       setSubjects([]);
       setSettings({ courseTotalDays: null, dailyStudyHours: 3 });
       setTempNotes([]);
-      setCourseNotes([]);
+      setOverallNoteState('');
       setNotePagesIndex([]);
       setDataLoaded(false);
       isInitialLoad.current = true;
@@ -196,7 +193,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setSubjects([]);
     setSettings({ courseTotalDays: null, dailyStudyHours: 3 });
     setTempNotes([]);
-    setCourseNotes([]);
+    setOverallNoteState('');
     setNotePagesIndex([]);
     setDataLoaded(false);
 
@@ -208,14 +205,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
               subjects: snap.data().subjects || [],
               settings: snap.data().settings || {},
               tempNotes: snap.data().tempNotes || [],
-              courseNotes: snap.data().courseNotes || [],
+              overallNote: snap.data().overallNote || '',
               notePagesIndex: snap.data().notePagesIndex || [],
               savedAt: snap.data().savedAt,
             }
           : null;
         if (fsData) {
           setTempNotes(fsData.tempNotes || []);
-          setCourseNotes(fsData.courseNotes || []);
+          setOverallNoteState(fsData.overallNote || '');
           setNotePagesIndex(fsData.notePagesIndex || []);
         }
 
@@ -280,7 +277,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           setSubjects(localData.subjects || []);
           setSettings(prev => ({ ...prev, ...localData.settings }));
           setTempNotes(localData.tempNotes || []);
-          setCourseNotes(localData.courseNotes || []);
+          setOverallNoteState(localData.overallNote || '');
           setNotePagesIndex(localData.notePagesIndex || []);
         }
       })
@@ -291,13 +288,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   }, [user, activeCourseId]);
 
   // Save data (debounced for Firestore, immediate for localStorage)
-  const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; courseNotes: TempNoteItem[]; notePagesIndex: NotePageMeta[] } | null>(null);
+  const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; overallNote: string; notePagesIndex: NotePageMeta[] } | null>(null);
 
   const flushSave = async (
     subjectsToSave: Subject[],
     settingsToSave: CourseSettings,
     tempNotesToSave: TempNoteItem[],
-    courseNotesToSave: TempNoteItem[],
+    overallNoteToSave: string,
     notePagesIndexToSave: NotePageMeta[],
   ) => {
     if (!user || !activeCourseId) return;
@@ -305,7 +302,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       subjects: subjectsToSave,
       settings: settingsToSave,
       tempNotes: tempNotesToSave,
-      courseNotes: courseNotesToSave,
+      overallNote: overallNoteToSave,
       notePagesIndex: notePagesIndexToSave,
       savedAt: Date.now(),
     };
@@ -321,27 +318,25 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user || !dataLoaded || isInitialLoad.current) return;
 
-    // Save to localStorage immediately (synchronous, always up to date)
-    const payload: StudyData = { subjects, settings, tempNotes, courseNotes, notePagesIndex, savedAt: Date.now() };
+    const payload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, savedAt: Date.now() };
     const lsKey = localKey('data');
     if (lsKey) localStorage.setItem(lsKey, JSON.stringify(payload));
 
-    // Debounce the Firestore save
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSyncing(true);
-    pendingSaveRef.current = { subjects, settings, tempNotes, courseNotes, notePagesIndex };
+    pendingSaveRef.current = { subjects, settings, tempNotes, overallNote, notePagesIndex };
     saveTimerRef.current = setTimeout(() => {
       const pending = pendingSaveRef.current;
-      if (pending) flushSave(pending.subjects, pending.settings, pending.tempNotes, pending.courseNotes, pending.notePagesIndex);
+      if (pending) flushSave(pending.subjects, pending.settings, pending.tempNotes, pending.overallNote, pending.notePagesIndex);
     }, 400);
-  }, [subjects, settings, tempNotes, courseNotes, notePagesIndex, user, dataLoaded, activeCourseId]);
+  }, [subjects, settings, tempNotes, overallNote, notePagesIndex, user, dataLoaded, activeCourseId]);
 
   // Flush save immediately before page unload
   useEffect(() => {
     const handleUnload = () => {
       if (pendingSaveRef.current && user && activeCourseId) {
-        const { subjects: s, settings: st, tempNotes: tn, courseNotes: cn, notePagesIndex: np } = pendingSaveRef.current;
-        const payload: StudyData = { subjects: s, settings: st, tempNotes: tn, courseNotes: cn, notePagesIndex: np, savedAt: Date.now() };
+        const { subjects: s, settings: st, tempNotes: tn, overallNote: on, notePagesIndex: np } = pendingSaveRef.current;
+        const payload: StudyData = { subjects: s, settings: st, tempNotes: tn, overallNote: on, notePagesIndex: np, savedAt: Date.now() };
         const lsKey = `@study_data_${activeCourseId}_${user.email}`;
         localStorage.setItem(lsKey, JSON.stringify(payload));
       }
@@ -989,41 +984,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setTempNotes(prev => mapTempTree(prev, n => n.id === id ? null : n));
   };
 
-  // ─── Course Notes (Progress page) ───────────────────────────────────────
-  const addCourseNote = (text: string, parentId?: string | null) => {
-    const newNote: TempNoteItem = {
-      id: uid(),
-      text: text.trim(),
-      done: false,
-      createdAt: Date.now(),
-      children: [],
-    };
-    if (!newNote.text) return;
-    if (!parentId) {
-      setCourseNotes(prev => [newNote, ...prev]);
-      return;
-    }
-    setCourseNotes(prev => mapTempTree(prev, n =>
-      n.id === parentId ? { ...n, children: [newNote, ...(n.children || [])] } : n
-    ));
-  };
-
-  const updateCourseNote = (id: string, text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    setCourseNotes(prev => mapTempTree(prev, n =>
-      n.id === id ? { ...n, text: trimmed } : n
-    ));
-  };
-
-  const toggleCourseNoteDone = (id: string) => {
-    setCourseNotes(prev => mapTempTree(prev, n =>
-      n.id === id ? { ...n, done: !n.done } : n
-    ));
-  };
-
-  const deleteCourseNote = (id: string) => {
-    setCourseNotes(prev => mapTempTree(prev, n => n.id === id ? null : n));
+  // ─── Overall Note (Progress page) ───────────────────────────────────────
+  const setOverallNote = (note: string) => {
+    setOverallNoteState(note);
   };
 
   // ─── A4 Note Pages (each page stored as a separate Firestore doc) ────
@@ -1140,7 +1103,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       addConcept, deleteConcept, toggleConceptComplete, updateConceptMeta,
       addPoint, deletePoint, togglePointComplete, updatePointMeta,
       tempNotes, addTempNote, updateTempNote, toggleTempNoteDone, deleteTempNote,
-      courseNotes, addCourseNote, updateCourseNote, toggleCourseNoteDone, deleteCourseNote,
+      overallNote, setOverallNote,
       notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage,
     }}>
       {children}

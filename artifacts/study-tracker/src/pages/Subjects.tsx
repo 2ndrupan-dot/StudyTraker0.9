@@ -6,7 +6,7 @@ import {
   Plus, Trash2, ChevronRight,
   BookOpen, Layers, List, Lightbulb, Dot, FolderPlus,
   CheckCircle2, Circle, Pencil, Lock,
-  BookOpenCheck, Star, AlertTriangle, StickyNote, Filter, RotateCcw, Hand,
+  BookOpenCheck, Star, AlertTriangle, StickyNote, Filter, RotateCcw, GripVertical,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor, KeyboardSensor,
@@ -283,10 +283,10 @@ function SortableItemWrapper({ id, children }: { id: string; children: (handle: 
       {...attributes}
       {...listeners}
       onClick={e => e.stopPropagation()}
-      className="touch-none cursor-grab active:cursor-grabbing shrink-0 p-1 rounded text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors select-none"
+      className="touch-none cursor-grab active:cursor-grabbing shrink-0 self-stretch flex items-center px-1.5 text-muted-foreground/30 hover:text-muted-foreground/60 hover:bg-muted/30 transition-colors select-none border-l border-border/30 ml-1"
       title="ড্র্যাগ করে সরান"
     >
-      <Hand size={15} />
+      <GripVertical size={14} />
     </button>
   );
   return <div ref={setNodeRef} style={style}>{children(handle)}</div>;
@@ -309,7 +309,7 @@ export function Subjects() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 400, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -827,7 +827,6 @@ export function Subjects() {
                     {/* Action buttons — compact two-row layout */}
                     <div className="flex flex-col items-end gap-0.5 pl-2 shrink-0">
                       <div className="flex items-center gap-0.5">
-                        {subjHandle}
                         <ItemActions
                           path={subjPath}
                           important={subj.important}
@@ -866,6 +865,7 @@ export function Subjects() {
                         </motion.div>
                       </div>
                     </div>
+                    {subjHandle}
                   </div>
 
                   {/* Chapters */}
@@ -933,7 +933,6 @@ export function Subjects() {
                                     </p>
                                   </div>
                                   <div className="flex items-center gap-0.5 shrink-0">
-                                    {chHandle}
                                     <ItemActions
                                       path={chPath}
                                       important={chapter.important}
@@ -958,6 +957,7 @@ export function Subjects() {
                                     <motion.div animate={{ rotate: chExpanded ? 90 : 0 }} transition={{ duration: 0.18 }}>
                                       <ChevronRight size={15} className="text-muted-foreground" />
                                     </motion.div>
+                                    {chHandle}
                                   </div>
                                 </div>
 
@@ -1020,7 +1020,6 @@ export function Subjects() {
                                                   </p>
                                                 </div>
                                                 <div className="flex items-center gap-0.5 shrink-0">
-                                                  {topHandle}
                                                   <ItemActions
                                                     path={topPath}
                                                     important={topic.important}
@@ -1045,6 +1044,7 @@ export function Subjects() {
                                                   <motion.div animate={{ rotate: tExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
                                                     <ChevronRight size={13} className="text-muted-foreground" />
                                                   </motion.div>
+                                                  {topHandle}
                                                 </div>
                                               </div>
 
@@ -1102,7 +1102,6 @@ export function Subjects() {
                                                                 </p>
                                                               </div>
                                                               <div className="flex items-center gap-0.5 shrink-0">
-                                                                {subHandle}
                                                                 <ItemActions
                                                                   path={subPath}
                                                                   important={sub.important}
@@ -1121,6 +1120,7 @@ export function Subjects() {
                                                                 <motion.div animate={{ rotate: subExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
                                                                   <ChevronRight size={11} className="text-muted-foreground" />
                                                                 </motion.div>
+                                                                {subHandle}
                                                               </div>
                                                             </div>
 
@@ -1173,7 +1173,6 @@ export function Subjects() {
                                                                               </p>
                                                                             </div>
                                                                             <div className="flex items-center gap-0.5 shrink-0">
-                                                                              {conHandle}
                                                                               <ItemActions
                                                                                 path={conPath}
                                                                                 important={concept.important}
@@ -1192,6 +1191,7 @@ export function Subjects() {
                                                                               <motion.div animate={{ rotate: cExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
                                                                                 <ChevronRight size={10} className="text-muted-foreground" />
                                                                               </motion.div>
+                                                                              {conHandle}
                                                                             </div>
                                                                           </div>
 
@@ -1227,7 +1227,6 @@ export function Subjects() {
                                                                                           {point.title}
                                                                                         </span>
                                                                                         <span className="text-[7px] font-bold text-muted-foreground/40 bg-secondary/60 px-1 py-0.5 rounded border border-border/20 shrink-0">L6</span>
-                                                                                        {ptHandle}
                                                                                         <ItemActions
                                                                                           path={ptPath}
                                                                                           important={point.important}
@@ -1245,6 +1244,7 @@ export function Subjects() {
                                                                                             <Trash2 size={9} />
                                                                                           </button>
                                                                                         </div>
+                                                                                        {ptHandle}
                                                                                       </div>
                                                                                       {(point.important || point.weak || point.note) && (
                                                                                         <div className="ml-6">

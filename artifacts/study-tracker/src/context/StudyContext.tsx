@@ -262,7 +262,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         }
 
         setDataLoaded(true);
-        isInitialLoad.current = false;
+        // Delay so React finishes batching all setState calls above before
+        // the save-useEffect can run (prevents saving empty [] subjects on load)
+        setTimeout(() => { isInitialLoad.current = false; }, 200);
       } else {
         // Poll update — only apply if from another device (savedAt is newer than our last save)
         if (fsData.savedAt && fsData.savedAt <= lastSavedAt.current) return;
@@ -301,7 +303,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           setNotePagesIndex(localData.notePagesIndex || []);
         }
         setDataLoaded(true);
-        isInitialLoad.current = false;
+        setTimeout(() => { isInitialLoad.current = false; }, 200);
       });
 
     // ── Poll every 60 seconds for changes from other devices ──

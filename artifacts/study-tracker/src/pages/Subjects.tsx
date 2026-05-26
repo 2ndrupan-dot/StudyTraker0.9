@@ -6,7 +6,7 @@ import {
   Plus, Trash2, ChevronRight,
   BookOpen, Layers, List, Lightbulb, Dot, FolderPlus,
   CheckCircle2, Circle, Pencil, Lock,
-  BookOpenCheck, Star, AlertTriangle, StickyNote, Filter, RotateCcw, GripVertical,
+  BookOpenCheck, Star, AlertTriangle, StickyNote, Filter, RotateCcw, Hand,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor, KeyboardSensor,
@@ -286,7 +286,7 @@ function SortableItemWrapper({ id, children }: { id: string; children: (handle: 
       className="touch-none cursor-grab active:cursor-grabbing shrink-0 p-1 rounded text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors select-none"
       title="ড্র্যাগ করে সরান"
     >
-      <GripVertical size={14} />
+      <Hand size={15} />
     </button>
   );
   return <div ref={setNodeRef} style={style}>{children(handle)}</div>;

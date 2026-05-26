@@ -277,11 +277,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           setTimeout(() => { isInitialLoad.current = false; }, 100);
         } else {
           // ── Subsequent snapshots: apply only if from another device ──
-          // Skip if this snapshot was triggered by our own save
           if (!fsData) return;
-          if (fsData.savedAt && fsData.savedAt === lastSavedAt.current) return;
-          // Also skip if data has pending local writes (our write echoed back)
+          // Skip Firestore's local optimistic write echo
           if (snap.metadata.hasPendingWrites) return;
+          // Skip our own confirmed save coming back
+          if (fsData.savedAt && fsData.savedAt === lastSavedAt.current) return;
+          // Skip if user has unsaved local edits in progress (debounce timer running)
+          // This prevents remote snapshots from disrupting in-progress chapter/topic additions
+          if (saveTimerRef.current !== null) return;
 
           setSubjects(fsData.subjects || []);
           setSettings(prev => ({ ...prev, ...fsData.settings }));

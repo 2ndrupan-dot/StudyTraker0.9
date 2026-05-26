@@ -6,6 +6,7 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import { Highlight } from '@tiptap/extension-highlight';
 import { cn } from '@/lib/utils';
+import { useLang } from '@/context/LangContext';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, RemoveFormatting, Palette, Highlighter, ChevronDown,
@@ -83,12 +84,12 @@ function getActiveHighlight(editor: Editor): string | null {
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
-const FONT_SIZES = [
-  { label: 'Small',   value: '11px' },
-  { label: 'Normal',  value: '14px' },
-  { label: 'Medium',  value: '17px' },
-  { label: 'Large',   value: '21px' },
-  { label: 'X-Large', value: '26px' },
+const FONT_SIZE_VALUES = [
+  { tKey: 'fontSizeSmall'  as const, value: '11px' },
+  { tKey: 'fontSizeNormal' as const, value: '14px' },
+  { tKey: 'fontSizeMedium' as const, value: '17px' },
+  { tKey: 'fontSizeLarge'  as const, value: '21px' },
+  { tKey: 'fontSizeXLarge' as const, value: '26px' },
 ];
 
 const TEXT_COLORS = [
@@ -133,24 +134,30 @@ function usePopover() {
 }
 
 // ─── Font Size Dropdown ───────────────────────────────────────────────────────
-function FontSizeSelect({ editor }: { editor: Editor }) {
+function FontSizeSelect({
+  editor,
+  t,
+}: {
+  editor: Editor;
+  t: (key: any) => string;
+}) {
   const { open, setOpen, ref } = usePopover();
 
   // Check both selection-active AND stored-pending font size
-  const activeSizeFromSelection = FONT_SIZES.find(s =>
+  const activeSizeFromSelection = FONT_SIZE_VALUES.find(s =>
     editor.isActive('textStyle', { fontSize: s.value })
   );
   const storedSize = getStoredFontSize(editor);
-  const activeSizeFromStored = storedSize ? FONT_SIZES.find(s => s.value === storedSize) : null;
+  const activeSizeFromStored = storedSize ? FONT_SIZE_VALUES.find(s => s.value === storedSize) : null;
   const active = activeSizeFromSelection ?? activeSizeFromStored ?? null;
 
-  const label = active?.label ?? 'Size';
+  const label = active ? t(active.tKey) : t('fontSize');
 
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
-        title="Font size"
+        title={t('fontSize')}
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o); }}
         className={cn(
           'flex items-center gap-0.5 h-7 px-2 rounded-lg text-xs font-semibold transition-colors',
@@ -178,9 +185,9 @@ function FontSizeSelect({ editor }: { editor: Editor }) {
               !active ? 'text-primary font-bold bg-primary/5' : 'text-muted-foreground'
             )}
           >
-            Default
+            {t('fontSizeDefault')}
           </button>
-          {FONT_SIZES.map(s => (
+          {FONT_SIZE_VALUES.map(s => (
             <button
               key={s.value}
               type="button"
@@ -197,7 +204,7 @@ function FontSizeSelect({ editor }: { editor: Editor }) {
               )}
               style={{ fontSize: s.value }}
             >
-              {s.label}
+              {t(s.tKey)}
             </button>
           ))}
         </div>
@@ -314,6 +321,7 @@ export function RichTextEditor({
   placeholder = 'Write something...',
   className, minHeight = '8rem', autoFocus = false,
 }: RichTextEditorProps) {
+  const { t } = useLang();
   // Re-render counter driven by editor transactions so stored marks are always fresh
   const [, setTick] = useState(0);
 
@@ -357,7 +365,7 @@ export function RichTextEditor({
       <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border/50 bg-secondary/40">
 
         {/* Font size */}
-        <FontSizeSelect editor={editor} />
+        <FontSizeSelect editor={editor} t={t} />
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 

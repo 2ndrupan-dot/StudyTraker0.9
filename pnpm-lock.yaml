@@ -452,6 +452,9 @@ importers:
       gsap:
         specifier: ^3.14.2
         version: 3.14.2
+      prosemirror-state:
+        specifier: ^1.4.4
+        version: 1.4.4
     devDependencies:
       '@hookform/resolvers':
         specifier: ^3.10.0

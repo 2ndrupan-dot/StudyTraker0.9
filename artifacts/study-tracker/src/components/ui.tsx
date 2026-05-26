@@ -1,7 +1,8 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2, Eye, Edit2 } from 'lucide-react';
+import { X, Maximize2, Minimize2 } from 'lucide-react';
+import { RichTextEditor, RichTextPreview } from '@/components/RichTextEditor';
 
 export const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' }>(
   ({ className, variant = 'primary', ...props }, ref) => {
@@ -112,28 +113,7 @@ export const Modal = ({
   );
 };
 
-// ─── Helper: render text with clickable URLs ──────────────────────────────────
-function renderWithLinks(text: string) {
-  const parts = text.split(/(https?:\/\/[^\s]+)/g);
-  return parts.map((part, i) =>
-    /^https?:\/\//.test(part) ? (
-      <a
-        key={i}
-        href={part}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-primary underline break-all"
-        onClick={e => e.stopPropagation()}
-      >
-        {part}
-      </a>
-    ) : (
-      <span key={i}>{part}</span>
-    )
-  );
-}
-
-// ─── Note Editor Modal (with expand to A4 full-screen + link preview) ─────────
+// ─── Note Editor Modal (Rich Text — expand to A4 full-screen) ────────────────
 export const NoteEditorModal = ({
   isOpen, onClose, value, onChange, onClear, onSave,
   title, placeholder, clearLabel, saveLabel, icon: Icon,
@@ -151,45 +131,10 @@ export const NoteEditorModal = ({
   icon?: any;
 }) => {
   const [expanded, setExpanded] = React.useState(false);
-  const [preview, setPreview] = React.useState(true);
 
   React.useEffect(() => {
-    if (!isOpen) { setExpanded(false); setPreview(true); }
+    if (!isOpen) setExpanded(false);
   }, [isOpen]);
-
-  const handleSave = () => {
-    onSave();
-    setPreview(true);
-  };
-
-  const toggleBtn = (
-    <button
-      onClick={() => setPreview(p => !p)}
-      className={cn(
-        "p-2 rounded-full transition-colors",
-        preview
-          ? "text-muted-foreground hover:bg-secondary"
-          : "text-primary bg-primary/10 hover:bg-primary/20"
-      )}
-      title={preview ? "Edit" : "Preview links"}
-    >
-      {preview ? <Edit2 size={18} /> : <Eye size={18} />}
-    </button>
-  );
-
-  const previewDiv = (extraClass: string) => (
-    <div
-      className={cn(
-        "w-full p-3 rounded-xl border border-border/60 bg-background text-sm text-foreground overflow-y-auto whitespace-pre-wrap break-words leading-relaxed",
-        extraClass
-      )}
-    >
-      {value
-        ? renderWithLinks(value)
-        : <span className="text-muted-foreground">{placeholder}</span>
-      }
-    </div>
-  );
 
   return (
     <AnimatePresence>
@@ -233,7 +178,6 @@ export const NoteEditorModal = ({
                     )}
                     <h2 className="text-lg font-bold text-foreground flex-1 min-w-0 truncate">{title}</h2>
                     <div className="flex items-center gap-1 shrink-0">
-                      {toggleBtn}
                       <button
                         onClick={() => setExpanded(false)}
                         className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
@@ -252,21 +196,18 @@ export const NoteEditorModal = ({
 
                   {/* Body */}
                   <div className="flex-1 flex flex-col p-6 gap-4 overflow-hidden min-h-0">
-                    {preview
-                      ? previewDiv("flex-1 min-h-0")
-                      : <textarea
-                          autoFocus
-                          value={value}
-                          onChange={e => onChange(e.target.value)}
-                          placeholder={placeholder}
-                          className="flex-1 w-full p-4 rounded-xl border border-border/60 bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none min-h-0"
-                        />
-                    }
+                    <RichTextEditor
+                      value={value}
+                      onChange={onChange}
+                      placeholder={placeholder}
+                      className="flex-1 min-h-0"
+                      autoFocus
+                    />
                     <div className="flex gap-2 shrink-0">
                       <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>
                         {clearLabel}
                       </Button>
-                      <Button className="flex-1" onClick={handleSave}>
+                      <Button className="flex-1" onClick={onSave}>
                         {saveLabel}
                       </Button>
                     </div>
@@ -295,11 +236,10 @@ export const NoteEditorModal = ({
                     <h2 className="text-lg font-bold text-foreground">{title}</h2>
                   </div>
                   <div className="flex items-center gap-1 -mr-2">
-                    {toggleBtn}
                     <button
                       onClick={() => setExpanded(true)}
                       className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
-                      title="Expand to A4"
+                      title="Expand to full screen"
                     >
                       <Maximize2 size={18} />
                     </button>
@@ -314,22 +254,18 @@ export const NoteEditorModal = ({
 
                 {/* Body */}
                 <div className="p-6 space-y-4">
-                  {preview
-                    ? previewDiv("min-h-[7rem]")
-                    : <textarea
-                        autoFocus
-                        value={value}
-                        onChange={e => onChange(e.target.value)}
-                        rows={5}
-                        placeholder={placeholder}
-                        className="w-full p-3 rounded-xl border border-border/60 bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-                      />
-                  }
+                  <RichTextEditor
+                    value={value}
+                    onChange={onChange}
+                    placeholder={placeholder}
+                    minHeight="7rem"
+                    autoFocus
+                  />
                   <div className="flex gap-2">
                     <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>
                       {clearLabel}
                     </Button>
-                    <Button className="flex-1" onClick={handleSave}>
+                    <Button className="flex-1" onClick={onSave}>
                       {saveLabel}
                     </Button>
                   </div>

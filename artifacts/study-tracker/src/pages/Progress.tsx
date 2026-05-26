@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { RichTextPreview } from '@/components/RichTextEditor';
 import { useAuth } from '@/context/AuthContext';
 import { useStudy } from '@/context/StudyContext';
 import { useCourse } from '@/context/CourseContext';
@@ -63,7 +64,9 @@ function OverallNotesCard() {
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-indigo-600/80 uppercase tracking-wider mb-0.5">{t('overallNotes')}</p>
             {hasNote ? (
-              <p className="text-sm text-foreground leading-relaxed line-clamp-2 whitespace-pre-wrap">{overallNote}</p>
+              <div className="text-sm text-foreground line-clamp-2 overflow-hidden">
+                <RichTextPreview html={overallNote} />
+              </div>
             ) : (
               <p className="text-sm text-muted-foreground italic">{t('overallNotePlaceholder')}</p>
             )}

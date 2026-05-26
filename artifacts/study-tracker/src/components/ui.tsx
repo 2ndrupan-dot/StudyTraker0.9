@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2, Pencil, Eye, FileText, ExternalLink, StickyNote } from 'lucide-react';
+import { X, Maximize2, Minimize2, Pencil, Eye, FileText, ExternalLink, StickyNote, ChevronRight } from 'lucide-react';
 import { RichTextEditor, RichTextPreview } from '@/components/RichTextEditor';
 import { useStudy } from '@/context/StudyContext';
 import { useLocation } from 'wouter';
@@ -197,6 +197,37 @@ export const NotePagePreviewModal = ({
   );
 };
 
+// ─── Helper: build ancestor breadcrumb titles for an item path ───────────────
+function buildItemBreadcrumb(subjects: any[], path: any): string[] {
+  const crumbs: string[] = [];
+  const s = subjects.find((x: any) => x.id === path.subjectId);
+  if (!s) return crumbs;
+  crumbs.push(s.title);
+  if (path.level === 'subject') return crumbs.slice(0, -1); // item IS the subject
+
+  const c = s.chapters?.find((x: any) => x.id === path.chapterId);
+  if (!c) return crumbs;
+  crumbs.push(c.title);
+  if (path.level === 'chapter') return crumbs.slice(0, -1);
+
+  const t = c.topics?.find((x: any) => x.id === path.topicId);
+  if (!t) return crumbs;
+  crumbs.push(t.title);
+  if (path.level === 'topic') return crumbs.slice(0, -1);
+
+  const st = t.subtopics?.find((x: any) => x.id === path.subtopicId);
+  if (!st) return crumbs;
+  crumbs.push(st.title);
+  if (path.level === 'subtopic') return crumbs.slice(0, -1);
+
+  const co = st.concepts?.find((x: any) => x.id === path.conceptId);
+  if (!co) return crumbs;
+  crumbs.push(co.title);
+  if (path.level === 'concept') return crumbs.slice(0, -1);
+
+  return crumbs; // point — show all ancestors
+}
+
 // ─── Helper: walk subjects tree and extract a specific item's note ────────────
 function findItemNoteHtml(subjects: any[], path: any): string {
   const s = subjects.find((x: any) => x.id === path.subjectId);
@@ -221,7 +252,7 @@ function findItemNoteHtml(subjects: any[], path: any): string {
 // ─── Note Editor Modal (Rich Text — expand to A4 full-screen) ────────────────
 export const NoteEditorModal = ({
   isOpen, onClose, value, onChange, onClear, onSave,
-  title, placeholder, clearLabel, saveLabel, icon: Icon,
+  title, placeholder, clearLabel, saveLabel, icon: Icon, breadcrumb,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -234,6 +265,7 @@ export const NoteEditorModal = ({
   clearLabel: string;
   saveLabel: string;
   icon?: any;
+  breadcrumb?: string[];
 }) => {
   const { setNote, subjects } = useStudy();
   const [, setLocation] = useLocation();
@@ -242,7 +274,7 @@ export const NoteEditorModal = ({
 
   // Note-ref preview state (for clicking note links inside the preview)
   const [notePreview, setNotePreview] = React.useState<{
-    id: string; title: string; html?: string; itemPath?: any;
+    id: string; title: string; html?: string; itemPath?: any; breadcrumb?: string[];
   } | null>(null);
 
   // Reset both states when modal closes
@@ -252,9 +284,10 @@ export const NoteEditorModal = ({
 
   const handleNoteRef = (noteId: string, noteTitle: string, noteHtml?: string, itemPath?: any) => {
     if (itemPath) {
-      // Item note — fetch latest from study context, open with edit support
+      // Item note — fetch latest from study context, open with edit + breadcrumb
       const currentHtml = findItemNoteHtml(subjects, itemPath) || (noteHtml ?? '');
-      setNotePreview({ id: '__item__', title: noteTitle, html: currentHtml, itemPath });
+      const crumbs = buildItemBreadcrumb(subjects, itemPath);
+      setNotePreview({ id: '__item__', title: noteTitle, html: currentHtml, itemPath, breadcrumb: crumbs });
     } else if (noteId && noteId !== '__item__') {
       // A4 note page — navigate to full editor and close this modal
       onClose();
@@ -332,7 +365,19 @@ export const NoteEditorModal = ({
                     {/* Header */}
                     <div className="flex items-center gap-3 px-6 py-4 border-b border-border/50 shrink-0">
                       {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary shrink-0"><Icon size={20} /></div>}
-                      <h2 className="text-lg font-bold text-foreground flex-1 min-w-0 truncate">{title}</h2>
+                      <div className="flex-1 min-w-0">
+                        {breadcrumb && breadcrumb.length > 0 && (
+                          <div className="flex items-center flex-wrap gap-0.5 mb-0.5">
+                            {breadcrumb.map((crumb, i) => (
+                              <React.Fragment key={i}>
+                                {i > 0 && <ChevronRight size={10} className="text-muted-foreground/60 shrink-0" />}
+                                <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">{crumb}</span>
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        )}
+                        <h2 className="text-lg font-bold text-foreground truncate">{title}</h2>
+                      </div>
                       <HeaderActions isExpanded={true} />
                     </div>
 
@@ -380,11 +425,23 @@ export const NoteEditorModal = ({
                 >
                   {/* Header */}
                   <div className="flex items-center justify-between px-6 py-4 border-b border-border/50">
-                    <div className="flex items-center gap-3">
-                      {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary"><Icon size={20} /></div>}
-                      <h2 className="text-lg font-bold text-foreground">{title}</h2>
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary shrink-0"><Icon size={20} /></div>}
+                      <div className="min-w-0">
+                        {breadcrumb && breadcrumb.length > 0 && (
+                          <div className="flex items-center flex-wrap gap-0.5 mb-0.5">
+                            {breadcrumb.map((crumb, i) => (
+                              <React.Fragment key={i}>
+                                {i > 0 && <ChevronRight size={10} className="text-muted-foreground/60 shrink-0" />}
+                                <span className="text-[10px] text-muted-foreground truncate max-w-[100px]">{crumb}</span>
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        )}
+                        <h2 className="text-lg font-bold text-foreground truncate">{title}</h2>
+                      </div>
                     </div>
-                    <div className="-mr-2">
+                    <div className="-mr-2 shrink-0">
                       <HeaderActions isExpanded={false} />
                     </div>
                   </div>
@@ -425,13 +482,14 @@ export const NoteEditorModal = ({
         )}
       </AnimatePresence>
 
-      {/* Item note ref — full NoteEditorModal with edit+save */}
+      {/* Item note ref — full NoteEditorModal with edit+save+breadcrumb */}
       {notePreview?.itemPath && (
         <NoteEditorModal
           isOpen={!!notePreview}
           onClose={() => setNotePreview(null)}
           title={notePreview.title}
           icon={StickyNote}
+          breadcrumb={notePreview.breadcrumb}
           value={notePreview.html ?? ''}
           onChange={(v) => setNotePreview(p => p ? { ...p, html: v } : null)}
           onClear={() => setNotePreview(p => p ? { ...p, html: '' } : null)}

@@ -743,6 +743,18 @@ export function RichTextEditor({
   const [showNoteRefPicker, setShowNoteRefPicker] = useState(false);
   const noteRefPickerRef = useRef<HTMLDivElement>(null);
 
+  // Close popovers when clicking anywhere outside them
+  useEffect(() => {
+    if (!showLinkPopover && !showNoteRefPicker) return;
+    const handler = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (showLinkPopover && !linkPopoverRef.current?.contains(t))   setShowLinkPopover(false);
+      if (showNoteRefPicker && !noteRefPickerRef.current?.contains(t)) setShowNoteRefPicker(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showLinkPopover, showNoteRefPicker]);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ code: false, codeBlock: false }),
@@ -888,6 +900,19 @@ export function RichTextEditor({
       <div
         className="flex-1 px-3 py-2.5 overflow-y-auto cursor-text relative"
         style={{ minHeight }}
+        onMouseDown={(e) => {
+          const t = e.target as HTMLElement;
+          // Clicking outside ProseMirror (in padding) — collapse selection
+          if (!t.closest('.ProseMirror')) {
+            setShowLinkPopover(false);
+            setShowNoteRefPicker(false);
+            setTimeout(() => {
+              if (!editor.state.selection.empty) {
+                editor.commands.setTextSelection(editor.state.selection.anchor);
+              }
+            }, 0);
+          }
+        }}
         onClick={(e) => {
           const t = e.target as HTMLElement;
           if (t.closest('a') || t.closest('[data-note-id]')) {

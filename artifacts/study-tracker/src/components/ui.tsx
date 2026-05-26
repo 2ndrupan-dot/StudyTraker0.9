@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2 } from 'lucide-react';
+import { X, Maximize2, Minimize2, Pencil, Eye } from 'lucide-react';
 import { RichTextEditor, RichTextPreview } from '@/components/RichTextEditor';
 
 export const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' }>(
@@ -131,10 +131,48 @@ export const NoteEditorModal = ({
   icon?: any;
 }) => {
   const [expanded, setExpanded] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
 
+  // Reset both states when modal closes
   React.useEffect(() => {
-    if (!isOpen) setExpanded(false);
+    if (!isOpen) { setExpanded(false); setEditing(false); }
   }, [isOpen]);
+
+  // Shared header action buttons (pencil/eye + expand/minimize + close)
+  const HeaderActions = ({ isExpanded }: { isExpanded: boolean }) => (
+    <div className="flex items-center gap-1 shrink-0">
+      {/* Toggle edit / view */}
+      <button
+        onClick={() => setEditing(e => !e)}
+        className={cn(
+          "p-2 rounded-full transition-colors",
+          editing
+            ? "text-primary bg-primary/10 hover:bg-primary/20"
+            : "text-muted-foreground hover:bg-secondary"
+        )}
+        title={editing ? "Switch to view mode" : "Edit note"}
+      >
+        {editing ? <Eye size={18} /> : <Pencil size={16} />}
+      </button>
+
+      {/* Expand / Minimize */}
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
+        title={isExpanded ? "Minimize" : "Expand to full screen"}
+      >
+        {isExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+      </button>
+
+      {/* Close */}
+      <button
+        onClick={onClose}
+        className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
+      >
+        <X size={20} />
+      </button>
+    </div>
+  );
 
   return (
     <AnimatePresence>
@@ -147,10 +185,7 @@ export const NoteEditorModal = ({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={onClose}
-            className={cn(
-              "fixed inset-0 z-50 transition-colors",
-              expanded ? "bg-black/50" : ""
-            )}
+            className={cn("fixed inset-0 z-50 transition-colors", expanded ? "bg-black/50" : "")}
           />
 
           <AnimatePresence mode="wait">
@@ -171,46 +206,39 @@ export const NoteEditorModal = ({
                 >
                   {/* Header */}
                   <div className="flex items-center gap-3 px-6 py-4 border-b border-border/50 shrink-0">
-                    {Icon && (
-                      <div className="p-2 bg-primary/10 rounded-full text-primary shrink-0">
-                        <Icon size={20} />
-                      </div>
-                    )}
+                    {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary shrink-0"><Icon size={20} /></div>}
                     <h2 className="text-lg font-bold text-foreground flex-1 min-w-0 truncate">{title}</h2>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => setExpanded(false)}
-                        className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
-                        title="Minimize"
-                      >
-                        <Minimize2 size={18} />
-                      </button>
-                      <button
-                        onClick={onClose}
-                        className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
-                      >
-                        <X size={20} />
-                      </button>
-                    </div>
+                    <HeaderActions isExpanded={true} />
                   </div>
 
                   {/* Body */}
                   <div className="flex-1 flex flex-col p-6 gap-4 overflow-hidden min-h-0">
-                    <RichTextEditor
-                      value={value}
-                      onChange={onChange}
-                      placeholder={placeholder}
-                      className="flex-1 min-h-0"
-                      autoFocus
-                    />
-                    <div className="flex gap-2 shrink-0">
-                      <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>
-                        {clearLabel}
-                      </Button>
-                      <Button className="flex-1" onClick={onSave}>
-                        {saveLabel}
-                      </Button>
-                    </div>
+                    {editing ? (
+                      <>
+                        <RichTextEditor
+                          value={value}
+                          onChange={onChange}
+                          placeholder={placeholder}
+                          className="flex-1 min-h-0"
+                          autoFocus
+                        />
+                        <div className="flex gap-2 shrink-0">
+                          <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>
+                          <Button className="flex-1" onClick={onSave}>{saveLabel}</Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex-1 overflow-y-auto">
+                        {value ? (
+                          <RichTextPreview html={value} className="text-base leading-relaxed" />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+                            <Pencil size={32} className="opacity-30" />
+                            <p className="text-sm">{placeholder ?? 'No note yet. Click the pencil to add one.'}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -228,47 +256,45 @@ export const NoteEditorModal = ({
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-border/50">
                   <div className="flex items-center gap-3">
-                    {Icon && (
-                      <div className="p-2 bg-primary/10 rounded-full text-primary">
-                        <Icon size={20} />
-                      </div>
-                    )}
+                    {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary"><Icon size={20} /></div>}
                     <h2 className="text-lg font-bold text-foreground">{title}</h2>
                   </div>
-                  <div className="flex items-center gap-1 -mr-2">
-                    <button
-                      onClick={() => setExpanded(true)}
-                      className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
-                      title="Expand to full screen"
-                    >
-                      <Maximize2 size={18} />
-                    </button>
-                    <button
-                      onClick={onClose}
-                      className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
-                    >
-                      <X size={20} />
-                    </button>
+                  <div className="-mr-2">
+                    <HeaderActions isExpanded={false} />
                   </div>
                 </div>
 
                 {/* Body */}
                 <div className="p-6 space-y-4">
-                  <RichTextEditor
-                    value={value}
-                    onChange={onChange}
-                    placeholder={placeholder}
-                    minHeight="7rem"
-                    autoFocus
-                  />
-                  <div className="flex gap-2">
-                    <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>
-                      {clearLabel}
-                    </Button>
-                    <Button className="flex-1" onClick={onSave}>
-                      {saveLabel}
-                    </Button>
-                  </div>
+                  {editing ? (
+                    <>
+                      <RichTextEditor
+                        value={value}
+                        onChange={onChange}
+                        placeholder={placeholder}
+                        minHeight="7rem"
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>
+                        <Button className="flex-1" onClick={onSave}>{saveLabel}</Button>
+                      </div>
+                    </>
+                  ) : (
+                    <div
+                      className="min-h-[7rem] cursor-pointer"
+                      onClick={() => setEditing(true)}
+                    >
+                      {value ? (
+                        <RichTextPreview html={value} className="text-sm leading-relaxed" />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-28 gap-2 text-muted-foreground">
+                          <Pencil size={24} className="opacity-30" />
+                          <p className="text-xs">{placeholder ?? 'No note yet. Tap to add one.'}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </motion.div>
             )}

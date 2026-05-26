@@ -174,6 +174,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoad = useRef(true);
   const lastSavedAt = useRef<number>(0);
+  // Prevents the save-useEffect from echo-saving data that just arrived from a
+  // remote onSnapshot. Without this, every incoming remote update would be
+  // immediately re-saved to Firestore with a new timestamp, creating a sync loop.
+  const skipNextSaveRef = useRef(false);
 
   // Always-current refs so flushSave never captures stale closures
   const userRef = useRef(user);
@@ -299,17 +303,18 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           // the save-useEffect can run (prevents saving empty [] subjects on load)
           setTimeout(() => { isInitialLoad.current = false; }, 200);
         } else {
-          // ── Real-time update ──
-          // Skip if this snapshot is not newer than what we already have.
-          // This covers:
-          //   • Our own save echo (lastSavedAt was set in flushSave)
-          //   • Firestore's server-confirmation snapshot after offline-cache load
-          //     (lastSavedAt was pushed forward optimistically in the save-useEffect
-          //      the moment the user made any edit, so it beats any stale server stamp)
-          //   • Our own optimistic local-cache write (hasPendingWrites=true)
+          // ── Real-time update from another device ──
+          // Skip if not newer, if it's our own pending write, or same data we have.
           if (!fsData) return;
           if (snap.metadata.hasPendingWrites) return;
           if (fsData.savedAt && fsData.savedAt <= lastSavedAt.current) return;
+
+          // Mark that the next save-useEffect run should NOT echo this back to
+          // Firestore — applying remote data must never create a save loop.
+          // Also update lastSavedAt to the remote timestamp so any stale server
+          // snapshots arriving after this are ignored.
+          lastSavedAt.current = fsData.savedAt;
+          skipNextSaveRef.current = true;
 
           setSubjects(fsData.subjects || []);
           setSettings(prev => ({ ...prev, ...fsData.settings }));
@@ -376,17 +381,27 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user || !dataLoaded || isInitialLoad.current) return;
-    // Never save an accidental empty reset
     if (subjects.length === 0) return;
 
+    // Remote update arrived via onSnapshot — persist to localStorage so it
+    // survives a reload, but do NOT echo it back to Firestore (that would
+    // create an infinite save loop between devices).
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      const lsKey = localKey('data');
+      // Use lastSavedAt.current (= the remote savedAt, set in onSnapshot) so the
+      // localStorage entry keeps the original timestamp — not a fresh Date.now().
+      const remotePayload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, savedAt: lastSavedAt.current };
+      if (lsKey) localStorage.setItem(lsKey, JSON.stringify(remotePayload));
+      return;
+    }
+
+    // User-initiated change — save to localStorage immediately, then debounce
+    // the Firestore write.  Push lastSavedAt forward right now so any stale
+    // server snapshot arriving during the 400 ms debounce window is ignored.
     const payload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, savedAt: Date.now() };
     const lsKey = localKey('data');
     if (lsKey) localStorage.setItem(lsKey, JSON.stringify(payload));
-
-    // Push lastSavedAt forward immediately (before the 400ms Firestore debounce).
-    // This ensures any server snapshot that arrives during the debounce window
-    // (e.g. Firestore's server-confirmation after the offline-cache snapshot)
-    // is treated as "already seen" and cannot overwrite the user's new data.
     lastSavedAt.current = payload.savedAt;
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);

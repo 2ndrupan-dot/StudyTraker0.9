@@ -7,7 +7,17 @@ import { Layout } from '@/components/Layout';
 import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote } from 'lucide-react';
 import { Modal, ConfirmModal, Input, Button, NoteEditorModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
+
+function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = '—'): string {
+  if (!dateStr) return fallback;
+  try {
+    const d = parseISO(dateStr);
+    return isValid(d) ? format(d, fmt) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 const cardVariants = {
   hidden: { opacity: 0, x: 48 },
@@ -415,7 +425,7 @@ export function Progress() {
                     <span className="font-bold text-foreground text-sm">{s.title}</span>
                   </div>
                   <span className="text-[10px] font-bold bg-secondary px-2 py-1 rounded text-muted-foreground">
-                    {format(parseISO(s.deadline), 'MMM d')}
+                    {safeFormat(s.deadline, 'MMM d')}
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -542,7 +552,7 @@ export function Progress() {
                 <div>
                   <p className="text-[10px] text-muted-foreground font-medium">{t('courseStartDateCurrent')}</p>
                   <p className="text-sm font-bold text-primary">
-                    {format(parseISO(settings.courseStartDate), 'MMM d, yyyy')}
+                    {safeFormat(settings.courseStartDate, 'MMM d, yyyy')}
                   </p>
                 </div>
                 {settings.resetScheduled && (

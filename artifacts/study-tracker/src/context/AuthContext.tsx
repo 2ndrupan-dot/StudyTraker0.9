@@ -97,7 +97,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Try to load profile photo stored in Firestore
         const photo = await loadPhotoFromFirestore(fbUser.uid);
         if (photo) appUser.photoURL = photo;
-        setUser(appUser);
+        setUser(prev => {
+          // Keep the same object reference if nothing changed — prevents
+          // StudyContext from resetting on token-refresh / reconnect events
+          if (
+            prev &&
+            prev.id === appUser.id &&
+            prev.name === appUser.name &&
+            prev.email === appUser.email &&
+            prev.photoURL === appUser.photoURL
+          ) return prev;
+          return appUser;
+        });
       } else {
         setUser(null);
       }

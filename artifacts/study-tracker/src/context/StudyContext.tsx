@@ -175,6 +175,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const isInitialLoad = useRef(true);
   const lastSavedAt = useRef<number>(0);
 
+  // Always-current refs so flushSave never captures stale closures
+  const userRef = useRef(user);
+  const activeCourseIdRef = useRef(activeCourseId);
+  useEffect(() => { userRef.current = user; }, [user]);
+  useEffect(() => { activeCourseIdRef.current = activeCourseId; }, [activeCourseId]);
+
   const localKey = (suffix: string) => (user && activeCourseId) ? `@study_${suffix}_${activeCourseId}_${user.email}` : null;
 
   // Load data from Firestore, comparing with localStorage to pick the freshest
@@ -337,9 +343,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     overallNoteToSave: string,
     notePagesIndexToSave: NotePageMeta[],
   ) => {
-    if (!user || !activeCourseId) return;
+    // Use refs so this always has the latest user/courseId regardless of closure age
+    const currentUser = userRef.current;
+    const currentCourseId = activeCourseIdRef.current;
+    if (!currentUser || !currentCourseId) return;
+    // Never save an empty subjects array — guard against accidental reset
+    if (subjectsToSave.length === 0) return;
     const savedAt = Date.now();
     lastSavedAt.current = savedAt;
+    const lsKey = `@study_data_${currentCourseId}_${currentUser.email}`;
     const payload: StudyData = {
       subjects: subjectsToSave,
       settings: settingsToSave,
@@ -348,10 +360,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       notePagesIndex: notePagesIndexToSave,
       savedAt,
     };
-    const lsKey = localKey('data');
-    if (lsKey) localStorage.setItem(lsKey, JSON.stringify(payload));
+    localStorage.setItem(lsKey, JSON.stringify(payload));
     try {
-      const docRef = doc(db, 'users', user.id, 'studyData', activeCourseId);
+      const docRef = doc(db, 'users', currentUser.id, 'studyData', currentCourseId);
       await setDoc(docRef, payload, { merge: false });
     } catch { /* localStorage backup already done */ }
     setSyncing(false);
@@ -359,6 +370,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user || !dataLoaded || isInitialLoad.current) return;
+    // Never save an accidental empty reset
+    if (subjects.length === 0) return;
 
     const payload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, savedAt: Date.now() };
     const lsKey = localKey('data');

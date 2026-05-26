@@ -414,15 +414,22 @@ function NoteRefPicker({
 
 // ─── Link Popover (external URL) ──────────────────────────────────────────────
 function LinkPopover({
-  editor, onClose,
+  editor, onClose, initialEmpty, initialText, initialFrom, initialTo,
 }: {
   editor: Editor;
   onClose: () => void;
+  initialEmpty: boolean;
+  initialText: string;
+  initialFrom: number;
+  initialTo: number;
 }) {
   const { t } = useLang();
   const currentHref = editor.getAttributes('link').href || '';
+  const isEditingExisting = !!currentHref && !currentHref.startsWith('note://');
   const [url, setUrl] = useState(currentHref && !currentHref.startsWith('note://') ? currentHref : 'https://');
-  const [label, setLabel] = useState('');
+  const [label, setLabel] = useState(initialText);
+
+  const showLabelField = initialEmpty || isEditingExisting;
 
   const submit = () => {
     const href = url.trim();
@@ -431,13 +438,18 @@ function LinkPopover({
       onClose();
       return;
     }
-    if (editor.state.selection.empty) {
+    if (initialEmpty) {
       const text = label.trim() || href;
       editor.commands.insertContent(
         `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`
       );
+    } else if (isEditingExisting && label.trim() && label.trim() !== initialText) {
+      editor.chain().focus().setTextSelection({ from: initialFrom, to: initialTo }).run();
+      editor.chain().focus().insertContent(
+        `<a href="${href}" target="_blank" rel="noopener noreferrer">${label.trim()}</a>`
+      ).run();
     } else {
-      editor.chain().focus().setLink({ href }).run();
+      editor.chain().focus().setTextSelection({ from: initialFrom, to: initialTo }).setLink({ href }).run();
     }
     onClose();
   };
@@ -452,7 +464,7 @@ function LinkPopover({
         onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose(); }}
         className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background mb-2 outline-none focus:border-primary"
       />
-      {editor.state.selection.empty && (
+      {showLabelField && (
         <input
           placeholder={t('linkTextOptional')}
           value={label}
@@ -758,6 +770,7 @@ export function RichTextEditor({
   // Link popover
   const [showLinkPopover, setShowLinkPopover] = useState(false);
   const linkPopoverRef = useRef<HTMLDivElement>(null);
+  const [linkSelection, setLinkSelection] = useState<{ empty: boolean; text: string; from: number; to: number }>({ empty: true, text: '', from: 0, to: 0 });
 
   // Note ref picker
   const [showNoteRefPicker, setShowNoteRefPicker] = useState(false);
@@ -871,14 +884,27 @@ export function RichTextEditor({
         {/* External URL link */}
         <div className="relative" ref={linkPopoverRef}>
           <ToolbarBtn
-            onClick={() => { setShowLinkPopover(o => !o); setShowNoteRefPicker(false); }}
+            onClick={() => {
+              const { from, to, empty } = editor.state.selection;
+              const text = empty ? '' : editor.state.doc.textBetween(from, to, ' ');
+              setLinkSelection({ empty, text, from, to });
+              setShowLinkPopover(o => !o);
+              setShowNoteRefPicker(false);
+            }}
             active={editor.isActive('link')}
             title={t('insertLink')}
           >
             <Link2 size={13} />
           </ToolbarBtn>
           {showLinkPopover && (
-            <LinkPopover editor={editor} onClose={() => setShowLinkPopover(false)} />
+            <LinkPopover
+              editor={editor}
+              onClose={() => setShowLinkPopover(false)}
+              initialEmpty={linkSelection.empty}
+              initialText={linkSelection.text}
+              initialFrom={linkSelection.from}
+              initialTo={linkSelection.to}
+            />
           )}
         </div>
 

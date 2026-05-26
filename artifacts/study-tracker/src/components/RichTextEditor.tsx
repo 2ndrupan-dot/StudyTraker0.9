@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useEditor, EditorContent, Extension, Editor } from '@tiptap/react';
 import { Node, mergeAttributes } from '@tiptap/core';
+import { Plugin, PluginKey } from 'prosemirror-state';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -100,6 +101,25 @@ const CustomLink = Link.extend({
         });
       },
     };
+  },
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('preventLinkNavigate'),
+        props: {
+          handleDOMEvents: {
+            click: (_view, event) => {
+              if ((event.target as HTMLElement).closest('a')) {
+                event.preventDefault();
+                event.stopPropagation();
+                return true;
+              }
+              return false;
+            },
+          },
+        },
+      }),
+    ];
   },
 }).configure({
   openOnClick: false,

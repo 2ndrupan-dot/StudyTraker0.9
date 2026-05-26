@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useEditor, EditorContent, Extension } from '@tiptap/react';
+import { useEditor, EditorContent, Extension, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -11,7 +11,7 @@ import {
   List, ListOrdered, RemoveFormatting, Palette, Highlighter, ChevronDown,
 } from 'lucide-react';
 
-// ─── Custom FontSize extension (uses TextStyle inline styles) ─────────────────
+// ─── Custom FontSize extension ────────────────────────────────────────────────
 const FontSize = Extension.create({
   name: 'fontSize',
   addOptions() { return { types: ['textStyle'] }; },
@@ -37,13 +37,58 @@ const FontSize = Extension.create({
   },
 });
 
+// ─── Active state helpers (check both cursor marks AND stored/pending marks) ──
+
+/**
+ * Returns true if the mark is active on the selection OR queued as a stored
+ * mark (i.e. the user toggled it at an empty cursor before typing).
+ */
+function isActiveOrStored(editor: Editor, markName: string, attrs?: Record<string, unknown>): boolean {
+  if (editor.isActive(markName, attrs)) return true;
+  const stored = editor.view.state.storedMarks;
+  if (!stored) return false;
+  return stored.some(mark => {
+    if (mark.type.name !== markName) return false;
+    if (!attrs) return true;
+    return Object.entries(attrs).every(([k, v]) => mark.attrs[k] === v);
+  });
+}
+
+/** Get the fontSize from stored marks (pending mark before typing). */
+function getStoredFontSize(editor: Editor): string | null {
+  const stored = editor.view.state.storedMarks;
+  if (!stored) return null;
+  const ts = stored.find(m => m.type.name === 'textStyle');
+  return (ts?.attrs?.fontSize as string) ?? null;
+}
+
+/** Get active text color considering stored marks too. */
+function getActiveColor(editor: Editor): string | null {
+  const fromActive = TEXT_COLORS.find(c => c.value && editor.isActive('textStyle', { color: c.value }))?.value ?? null;
+  if (fromActive) return fromActive;
+  const stored = editor.view.state.storedMarks;
+  if (!stored) return null;
+  const ts = stored.find(m => m.type.name === 'textStyle');
+  return (ts?.attrs?.color as string) ?? null;
+}
+
+/** Get active highlight color considering stored marks too. */
+function getActiveHighlight(editor: Editor): string | null {
+  const fromActive = HIGHLIGHT_COLORS.find(c => c.value && editor.isActive('highlight', { color: c.value }))?.value ?? null;
+  if (fromActive) return fromActive;
+  const stored = editor.view.state.storedMarks;
+  if (!stored) return null;
+  const h = stored.find(m => m.type.name === 'highlight');
+  return (h?.attrs?.color as string) ?? null;
+}
+
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const FONT_SIZES = [
-  { label: 'ছোট',      value: '11px' },
-  { label: 'সাধারণ',   value: '14px' },
-  { label: 'মাঝারি',   value: '17px' },
-  { label: 'বড়',      value: '21px' },
-  { label: 'অনেক বড়', value: '26px' },
+  { label: 'Small',   value: '11px' },
+  { label: 'Normal',  value: '14px' },
+  { label: 'Medium',  value: '17px' },
+  { label: 'Large',   value: '21px' },
+  { label: 'X-Large', value: '26px' },
 ];
 
 const TEXT_COLORS = [
@@ -73,7 +118,7 @@ const HIGHLIGHT_COLORS = [
   { label: 'Teal',   value: '#99F6E4' },
 ];
 
-// ─── Shared Popover (click-outside aware) ────────────────────────────────────
+// ─── Shared click-outside hook ────────────────────────────────────────────────
 function usePopover() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -88,19 +133,24 @@ function usePopover() {
 }
 
 // ─── Font Size Dropdown ───────────────────────────────────────────────────────
-function FontSizeSelect({ editor }: { editor: any }) {
+function FontSizeSelect({ editor }: { editor: Editor }) {
   const { open, setOpen, ref } = usePopover();
 
-  const active = FONT_SIZES.find(s =>
+  // Check both selection-active AND stored-pending font size
+  const activeSizeFromSelection = FONT_SIZES.find(s =>
     editor.isActive('textStyle', { fontSize: s.value })
   );
-  const label = active?.label ?? 'সাইজ';
+  const storedSize = getStoredFontSize(editor);
+  const activeSizeFromStored = storedSize ? FONT_SIZES.find(s => s.value === storedSize) : null;
+  const active = activeSizeFromSelection ?? activeSizeFromStored ?? null;
+
+  const label = active?.label ?? 'Size';
 
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
-        title="লেখার সাইজ"
+        title="Font size"
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o); }}
         className={cn(
           'flex items-center gap-0.5 h-7 px-2 rounded-lg text-xs font-semibold transition-colors',
@@ -115,15 +165,20 @@ function FontSizeSelect({ editor }: { editor: any }) {
 
       {open && (
         <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border/60 rounded-xl shadow-xl overflow-hidden min-w-[110px]">
+          {/* Default / clear */}
           <button
             type="button"
-            onMouseDown={e => { e.preventDefault(); editor.chain().focus().unsetFontSize().run(); setOpen(false); }}
+            onMouseDown={e => {
+              e.preventDefault();
+              editor.chain().focus().unsetFontSize().run();
+              setOpen(false);
+            }}
             className={cn(
               'w-full text-left px-3 py-2 text-xs hover:bg-secondary transition-colors',
-              !active ? 'text-primary font-bold' : 'text-muted-foreground'
+              !active ? 'text-primary font-bold bg-primary/5' : 'text-muted-foreground'
             )}
           >
-            ডিফল্ট
+            Default
           </button>
           {FONT_SIZES.map(s => (
             <button
@@ -136,7 +191,9 @@ function FontSizeSelect({ editor }: { editor: any }) {
               }}
               className={cn(
                 'w-full text-left px-3 py-2 hover:bg-secondary transition-colors',
-                active?.value === s.value ? 'text-primary font-bold bg-primary/5' : 'text-foreground'
+                active?.value === s.value
+                  ? 'text-primary font-bold bg-primary/5'
+                  : 'text-foreground'
               )}
               style={{ fontSize: s.value }}
             >
@@ -155,7 +212,7 @@ function ColorPopover({
 }: {
   colors: { label: string; value: string }[];
   onSelect: (v: string) => void;
-  activeColor?: string;
+  activeColor?: string | null;
   icon: React.ElementType;
   title: string;
 }) {
@@ -169,7 +226,9 @@ function ColorPopover({
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o); }}
         className={cn(
           'relative flex items-center justify-center w-7 h-7 rounded-lg transition-colors',
-          open ? 'bg-primary/15 text-primary' : 'hover:bg-secondary text-muted-foreground hover:text-foreground'
+          open || activeColor
+            ? 'bg-primary/15 text-primary'
+            : 'hover:bg-secondary text-muted-foreground hover:text-foreground'
         )}
       >
         <Icon size={14} />
@@ -255,6 +314,9 @@ export function RichTextEditor({
   placeholder = 'Write something...',
   className, minHeight = '8rem', autoFocus = false,
 }: RichTextEditorProps) {
+  // Re-render counter driven by editor transactions so stored marks are always fresh
+  const [, setTick] = useState(0);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ code: false, codeBlock: false }),
@@ -266,6 +328,8 @@ export function RichTextEditor({
     ],
     content: toSafeHtml(value),
     onUpdate: ({ editor }) => onChange(editor.isEmpty ? '' : editor.getHTML()),
+    // Fire a re-render on every transaction (including storedMarks changes)
+    onTransaction: () => setTick(t => t + 1),
     autofocus: autoFocus,
     editorProps: { attributes: { class: 'rich-editor-content outline-none' } },
   });
@@ -279,8 +343,13 @@ export function RichTextEditor({
 
   if (!editor) return null;
 
-  const activeTextColor  = TEXT_COLORS.find(c => c.value && editor.isActive('textStyle', { color: c.value }))?.value;
-  const activeHighlight  = HIGHLIGHT_COLORS.find(c => c.value && editor.isActive('highlight', { color: c.value }))?.value;
+  // Derive active states (selection + stored/pending marks)
+  const isBold      = isActiveOrStored(editor, 'bold');
+  const isItalic    = isActiveOrStored(editor, 'italic');
+  const isUnder     = isActiveOrStored(editor, 'underline');
+  const isStrike    = isActiveOrStored(editor, 'strike');
+  const activeColor = getActiveColor(editor);
+  const activeHL    = getActiveHighlight(editor);
 
   return (
     <div className={cn('flex flex-col rounded-xl border border-border/60 bg-background overflow-hidden', className)}>
@@ -292,11 +361,11 @@ export function RichTextEditor({
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 
-        {/* Formatting */}
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()}      active={editor.isActive('bold')}      title="বোল্ড (গাঢ়)"><Bold size={13} /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()}    active={editor.isActive('italic')}    title="ইটালিক (বাঁকা)"><Italic size={13} /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive('underline')} title="আন্ডারলাইন"><UnderlineIcon size={13} /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleStrike().run()}    active={editor.isActive('strike')}    title="স্ট্রাইকথ্রু (কেটে দেওয়া)"><Strikethrough size={13} /></ToolbarBtn>
+        {/* Text formatting */}
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()}      active={isBold}   title="Bold"><Bold size={13} /></ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()}    active={isItalic} title="Italic"><Italic size={13} /></ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={isUnder}  title="Underline"><UnderlineIcon size={13} /></ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleStrike().run()}    active={isStrike} title="Strikethrough"><Strikethrough size={13} /></ToolbarBtn>
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 
@@ -304,28 +373,28 @@ export function RichTextEditor({
         <ColorPopover
           colors={TEXT_COLORS}
           onSelect={v => v ? editor.chain().focus().setColor(v).run() : editor.chain().focus().unsetColor().run()}
-          activeColor={activeTextColor}
+          activeColor={activeColor}
           icon={Palette}
-          title="লেখার রঙ"
+          title="Text Color"
         />
         <ColorPopover
           colors={HIGHLIGHT_COLORS}
           onSelect={v => v ? editor.chain().focus().setHighlight({ color: v }).run() : editor.chain().focus().unsetHighlight().run()}
-          activeColor={activeHighlight}
+          activeColor={activeHL}
           icon={Highlighter}
-          title="হাইলাইট রঙ"
+          title="Highlight"
         />
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 
         {/* Lists */}
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()}  active={editor.isActive('bulletList')}  title="বুলেট লিস্ট"><List size={13} /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="নম্বর লিস্ট"><ListOrdered size={13} /></ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()}  active={editor.isActive('bulletList')}  title="Bullet List"><List size={13} /></ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Numbered List"><ListOrdered size={13} /></ToolbarBtn>
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 
         {/* Clear */}
-        <ToolbarBtn onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()} title="সব ফরম্যাট মুছে দাও">
+        <ToolbarBtn onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()} title="Clear Formatting">
           <RemoveFormatting size={13} />
         </ToolbarBtn>
       </div>

@@ -186,6 +186,11 @@
   border-radius: 3px;
   padding: 0 2px;
 }
+/* Semi-transparent selection so text colours & highlights remain visible */
+.rich-editor-content ::selection {
+  background-color: rgba(99, 102, 241, 0.28);
+  color: inherit;
+}
 .rich-editor-content a {
   color: hsl(var(--primary));
   text-decoration: underline;

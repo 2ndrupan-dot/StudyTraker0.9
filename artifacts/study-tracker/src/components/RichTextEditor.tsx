@@ -5,12 +5,17 @@ import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import { Highlight } from '@tiptap/extension-highlight';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableCell from '@tiptap/extension-table-cell';
+import TableHeader from '@tiptap/extension-table-header';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, RemoveFormatting, Palette, Highlighter, ChevronDown,
-  Undo2, Redo2,
+  Undo2, Redo2, Table2, Plus, Trash2, ArrowRightToLine, ArrowDownToLine,
+  ArrowLeftFromLine, ArrowUpFromLine,
 } from 'lucide-react';
 
 // ─── Custom FontSize extension ────────────────────────────────────────────────
@@ -132,6 +137,87 @@ function usePopover() {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
   return { open, setOpen, ref };
+}
+
+// ─── Table Popover ────────────────────────────────────────────────────────────
+function TableMenu({ editor }: { editor: Editor }) {
+  const { open, setOpen, ref } = usePopover();
+  const inTable = editor.isActive('table');
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        title="Table"
+        onMouseDown={e => { e.preventDefault(); setOpen(o => !o); }}
+        className={cn(
+          'flex items-center justify-center w-7 h-7 rounded-lg transition-colors',
+          open || inTable
+            ? 'bg-primary/15 text-primary'
+            : 'hover:bg-secondary text-muted-foreground hover:text-foreground'
+        )}
+      >
+        <Table2 size={14} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border/60 rounded-xl shadow-xl overflow-hidden min-w-[180px]">
+          {!inTable ? (
+            /* Insert table */
+            <button
+              type="button"
+              onMouseDown={e => {
+                e.preventDefault();
+                editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+                setOpen(false);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-secondary transition-colors"
+            >
+              <Plus size={14} /> Insert table (3×3)
+            </button>
+          ) : (
+            /* Table editing actions */
+            <>
+              <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide border-b border-border/40">Columns</p>
+              <button type="button" onMouseDown={e => { e.preventDefault(); editor.chain().focus().addColumnBefore().run(); setOpen(false); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-secondary transition-colors">
+                <ArrowLeftFromLine size={13} /> Add column left
+              </button>
+              <button type="button" onMouseDown={e => { e.preventDefault(); editor.chain().focus().addColumnAfter().run(); setOpen(false); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-secondary transition-colors">
+                <ArrowRightToLine size={13} /> Add column right
+              </button>
+              <button type="button" onMouseDown={e => { e.preventDefault(); editor.chain().focus().deleteColumn().run(); setOpen(false); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors">
+                <Trash2 size={13} /> Delete column
+              </button>
+
+              <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide border-y border-border/40">Rows</p>
+              <button type="button" onMouseDown={e => { e.preventDefault(); editor.chain().focus().addRowBefore().run(); setOpen(false); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-secondary transition-colors">
+                <ArrowUpFromLine size={13} /> Add row above
+              </button>
+              <button type="button" onMouseDown={e => { e.preventDefault(); editor.chain().focus().addRowAfter().run(); setOpen(false); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-secondary transition-colors">
+                <ArrowDownToLine size={13} /> Add row below
+              </button>
+              <button type="button" onMouseDown={e => { e.preventDefault(); editor.chain().focus().deleteRow().run(); setOpen(false); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors">
+                <Trash2 size={13} /> Delete row
+              </button>
+
+              <div className="border-t border-border/40">
+                <button type="button" onMouseDown={e => { e.preventDefault(); editor.chain().focus().deleteTable().run(); setOpen(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-destructive hover:bg-destructive/10 transition-colors">
+                  <Trash2 size={13} /> Delete table
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Font Size Dropdown ───────────────────────────────────────────────────────
@@ -334,6 +420,10 @@ export function RichTextEditor({
       FontSize,
       Color,
       Highlight.configure({ multicolor: true }),
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
     ],
     content: toSafeHtml(value),
     onUpdate: ({ editor }) => onChange(editor.isEmpty ? '' : editor.getHTML()),
@@ -399,6 +489,11 @@ export function RichTextEditor({
         {/* Lists */}
         <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()}  active={editor.isActive('bulletList')}  title="Bullet List"><List size={13} /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Numbered List"><ListOrdered size={13} /></ToolbarBtn>
+
+        <div className="w-px h-4 bg-border/60 mx-1" />
+
+        {/* Table */}
+        <TableMenu editor={editor} />
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 

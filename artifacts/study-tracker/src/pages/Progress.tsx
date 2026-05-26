@@ -4,10 +4,11 @@ import { useStudy } from '@/context/StudyContext';
 import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
-import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, Trash2, BookOpenCheck } from 'lucide-react';
+import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, Trash2, BookOpenCheck, NotebookPen, ChevronRight, ChevronDown, Check, X } from 'lucide-react';
 import { Modal, ConfirmModal, Input, Button } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
+import type { TempNoteItem } from '@/lib/types';
 
 const cardVariants = {
   hidden: { opacity: 0, x: 48 },
@@ -16,6 +17,265 @@ const cardVariants = {
     transition: { delay: i * 0.07, duration: 0.45, ease: [0.22, 1, 0.36, 1] }
   }),
 };
+
+// ─── Course Notes Component ─────────────────────────────────────────────────
+interface CourseNoteRowProps {
+  item: TempNoteItem;
+  depth: number;
+  onToggle: (id: string) => void;
+  onUpdate: (id: string, text: string) => void;
+  onAddChild: (text: string, parentId: string) => void;
+  onDelete: (id: string) => void;
+}
+
+function CourseNoteRow({ item, depth, onToggle, onUpdate, onAddChild, onDelete }: CourseNoteRowProps) {
+  const { t } = useLang();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(item.text);
+  const [showChildInput, setShowChildInput] = useState(false);
+  const [childText, setChildText] = useState('');
+  const [expanded, setExpanded] = useState(false);
+  const childCount = item.children?.length ?? 0;
+  const toggle = () => { if (childCount > 0) setExpanded(e => !e); };
+
+  const submitEdit = () => {
+    if (draft.trim() && draft.trim() !== item.text) onUpdate(item.id, draft);
+    setEditing(false);
+  };
+  const submitChild = () => {
+    if (!childText.trim()) return;
+    onAddChild(childText, item.id);
+    setChildText('');
+    setShowChildInput(false);
+  };
+
+  return (
+    <li>
+      <div className="flex items-center gap-1.5 rounded-lg hover:bg-secondary/30 px-1.5 py-1" style={{ marginLeft: depth * 16 }}>
+        <button
+          onClick={() => onToggle(item.id)}
+          className="w-4 h-4 rounded border-2 border-border flex items-center justify-center shrink-0 hover:border-primary transition-colors"
+          style={{ backgroundColor: item.done ? 'var(--color-primary)' : 'transparent', borderColor: item.done ? 'var(--color-primary)' : undefined }}
+        >
+          {item.done && <Check size={10} className="text-primary-foreground" strokeWidth={3} />}
+        </button>
+        <button
+          type="button"
+          onClick={toggle}
+          className={`shrink-0 text-muted-foreground transition-colors ${childCount > 0 ? 'hover:text-foreground' : 'pointer-events-none opacity-0'}`}
+        >
+          {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        </button>
+
+        {editing ? (
+          <div className="flex-1 flex items-center gap-1">
+            <input
+              autoFocus
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') submitEdit();
+                if (e.key === 'Escape') { setEditing(false); setDraft(item.text); }
+              }}
+              className="flex-1 px-2 py-1 rounded-lg border border-border bg-background text-xs"
+            />
+            <button onClick={submitEdit} className="text-primary"><Check size={13} /></button>
+            <button onClick={() => { setEditing(false); setDraft(item.text); }} className="text-muted-foreground"><X size={13} /></button>
+          </div>
+        ) : (
+          <>
+            <span
+              onClick={toggle}
+              className={`flex-1 text-xs leading-relaxed select-none ${childCount > 0 ? 'cursor-pointer' : ''} ${item.done ? 'line-through text-muted-foreground' : 'text-foreground'}`}
+            >
+              {item.text}
+            </span>
+            <div className="flex items-center gap-0.5 shrink-0 text-muted-foreground">
+              {childCount > 0 && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary leading-none mr-0.5">
+                  {childCount}
+                </span>
+              )}
+              <button onClick={() => setShowChildInput(s => !s)} title={t('addSubItem')} className="p-1 rounded hover:bg-card hover:text-primary">
+                <Plus size={11} />
+              </button>
+              <button onClick={() => setEditing(true)} className="p-1 rounded hover:bg-card hover:text-primary">
+                <Pencil size={11} />
+              </button>
+              <button onClick={() => onDelete(item.id)} className="p-1 rounded hover:bg-card hover:text-rose-600">
+                <Trash2 size={11} />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {showChildInput && (
+        <div className="flex items-center gap-1.5 mt-1" style={{ marginLeft: (depth + 1) * 16 + 8 }}>
+          <input
+            autoFocus
+            value={childText}
+            onChange={e => setChildText(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') submitChild();
+              if (e.key === 'Escape') { setShowChildInput(false); setChildText(''); }
+            }}
+            placeholder={t('addSubItem')}
+            className="flex-1 px-2 py-1 rounded-lg border border-border bg-background text-xs"
+          />
+          <button onClick={submitChild} className="text-primary"><Check size={12} /></button>
+          <button onClick={() => { setShowChildInput(false); setChildText(''); }} className="text-muted-foreground"><X size={12} /></button>
+        </div>
+      )}
+
+      <AnimatePresence initial={false}>
+        {expanded && childCount > 0 && (
+          <motion.ul
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden mt-0.5 space-y-0.5"
+          >
+            {item.children.map(child => (
+              <CourseNoteRow
+                key={child.id}
+                item={child}
+                depth={depth + 1}
+                onToggle={onToggle}
+                onUpdate={onUpdate}
+                onAddChild={onAddChild}
+                onDelete={onDelete}
+              />
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
+    </li>
+  );
+}
+
+function CourseNotesSection() {
+  const { courseNotes, addCourseNote, updateCourseNote, toggleCourseNoteDone, deleteCourseNote } = useStudy();
+  const { t } = useLang();
+  const [collapsed, setCollapsed] = useState(false);
+  const [showInput, setShowInput] = useState(false);
+  const [text, setText] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const submit = () => {
+    if (!text.trim()) return;
+    addCourseNote(text);
+    setText('');
+    setShowInput(false);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mt-6 bg-card border border-border/60 rounded-2xl overflow-hidden"
+    >
+      <button
+        type="button"
+        onClick={() => setCollapsed(c => !c)}
+        className="w-full flex items-center gap-2 px-4 py-3 hover:bg-secondary/30 transition-colors"
+      >
+        <div className="w-8 h-8 rounded-xl bg-indigo-500/10 flex items-center justify-center">
+          <NotebookPen size={15} className="text-indigo-600" />
+        </div>
+        <div className="flex-1 text-left">
+          <div className="text-sm font-bold text-foreground">{t('courseNotes')}</div>
+          <div className="text-[10px] text-muted-foreground">{t('courseNotesDesc')}</div>
+        </div>
+        {courseNotes.length > 0 && (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-700">
+            {courseNotes.length}
+          </span>
+        )}
+        {collapsed ? <ChevronRight size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}
+      </button>
+
+      <AnimatePresence initial={false}>
+        {!collapsed && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            className="overflow-hidden"
+          >
+            <div className="px-3 pb-3 pt-1 border-t border-border/40 space-y-2">
+              {showInput ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={text}
+                    onChange={e => setText(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') submit();
+                      if (e.key === 'Escape') { setShowInput(false); setText(''); }
+                    }}
+                    placeholder={t('courseNotePlaceholder')}
+                    className="flex-1 px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                  <button onClick={submit} className="px-2.5 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold">
+                    <Check size={14} />
+                  </button>
+                  <button onClick={() => { setShowInput(false); setText(''); }} className="px-2.5 py-2 rounded-xl bg-secondary text-muted-foreground text-xs font-bold">
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowInput(true)}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed border-border text-muted-foreground text-xs font-semibold hover:bg-secondary/40 transition-colors"
+                >
+                  <Plus size={14} />
+                  {t('addCourseNote')}
+                </button>
+              )}
+
+              {courseNotes.length === 0 ? (
+                <p className="text-center text-[11px] text-muted-foreground py-2">{t('noCourseNotes')}</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {courseNotes.map(n => (
+                    <CourseNoteRow
+                      key={n.id}
+                      item={n}
+                      depth={0}
+                      onToggle={toggleCourseNoteDone}
+                      onUpdate={updateCourseNote}
+                      onAddChild={addCourseNote}
+                      onDelete={(id) => setConfirmDelete(id)}
+                    />
+                  ))}
+                </ul>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => {
+          if (confirmDelete) deleteCourseNote(confirmDelete);
+          setConfirmDelete(null);
+        }}
+        title={t('deleteCourseNote')}
+        message={t('deleteCourseNote')}
+        confirmText={t('delete')}
+        cancelText={t('cancel')}
+        isDanger
+      />
+    </motion.div>
+  );
+}
 
 export function Progress() {
   const { user, logout, updateProfile, updateProfilePhoto } = useAuth();
@@ -367,6 +627,9 @@ export function Progress() {
             );
           })}
         </div>
+
+        {/* Course Notes */}
+        <CourseNotesSection />
       </div>
 
       {/* Profile Modal */}

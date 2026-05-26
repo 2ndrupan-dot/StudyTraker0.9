@@ -218,8 +218,8 @@ function TempNoteRow({ item, depth, onToggle, onUpdate, onAddChild, onDelete }: 
                   {childCount}
                 </span>
               )}
-              {/* Action buttons — hover only */}
-              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 text-muted-foreground">
+              {/* Action buttons — always visible */}
+              <div className="flex items-center gap-0.5 text-muted-foreground">
                 <button
                   onClick={() => setShowChildInput(s => !s)}
                   title={t('addSubItem')}

@@ -254,6 +254,14 @@ export const translations = {
     deleteTempNote: "Delete this note?",
     noTempNotes: "No quick notes yet.",
 
+    // Course Notes (Progress page)
+    courseNotes: "Course Notes",
+    courseNotesDesc: "Personal notes for this course. Synced across all devices.",
+    addCourseNote: "Add note",
+    courseNotePlaceholder: "Write a note for this course…",
+    deleteCourseNote: "Delete this note?",
+    noCourseNotes: "No course notes yet.",
+
     // Global search
     searchPlaceholder: "Search subjects, chapters, notes…",
     searchTitle: "Search",
@@ -586,6 +594,14 @@ export const translations = {
     cancelItem: "বাতিল",
     deleteTempNote: "এই নোটটি মুছবেন?",
     noTempNotes: "এখনও কোনো ছোট নোট নেই।",
+
+    // Course Notes (Progress page)
+    courseNotes: "কোর্স নোট",
+    courseNotesDesc: "এই কোর্সের ব্যক্তিগত নোট। সব ডিভাইসে sync হবে।",
+    addCourseNote: "নোট যোগ",
+    courseNotePlaceholder: "এই কোর্স সম্পর্কে নোট লিখুন…",
+    deleteCourseNote: "এই নোটটি মুছবেন?",
+    noCourseNotes: "এখনও কোনো কোর্স নোট নেই।",
 
     // Global search
     searchPlaceholder: "বিষয়, চ্যাপ্টার, নোটে খুঁজুন…",

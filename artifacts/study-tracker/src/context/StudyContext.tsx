@@ -353,6 +353,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setSyncing(true);
     pendingSaveRef.current = { subjects, settings, tempNotes, overallNote, notePagesIndex };
     saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
       const pending = pendingSaveRef.current;
       if (pending) flushSave(pending.subjects, pending.settings, pending.tempNotes, pending.overallNote, pending.notePagesIndex);
     }, 400);

@@ -3,7 +3,7 @@ import { Subject, Chapter, Topic, Subtopic, Concept, Point, CourseSettings, Mark
 import { useAuth } from './AuthContext';
 import { useCourse } from './CourseContext';
 import { addDays, formatISO } from 'date-fns';
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { applyTimeAdjustment, isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone } from '@/lib/timeEngine';
 import type { DifficultyLevel } from '@/lib/types';
@@ -183,7 +183,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   const localKey = (suffix: string) => (user && activeCourseId) ? `@study_${suffix}_${activeCourseId}_${user.email}` : null;
 
-  // Load data from Firestore, comparing with localStorage to pick the freshest
+  // Load data from Firestore and listen for real-time changes from other devices
   useEffect(() => {
     if (!user || !activeCourseId) {
       setSubjects([]);
@@ -205,87 +205,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setDataLoaded(false);
 
     const docRef = doc(db, 'users', user.id, 'studyData', activeCourseId);
+    let isFirstSnapshot = true;
 
-    const applyFsData = (fsData: StudyData | null, isInitial: boolean) => {
-      if (!fsData) {
-        if (isInitial) { setDataLoaded(true); isInitialLoad.current = false; }
-        return;
-      }
-
-      if (isInitial) {
-        const lsRaw = localKey('data');
-        const localData = lsRaw ? getLocalData(lsRaw) : null;
-
-        let legacySubjects: Subject[] | null = null;
-        let legacySettings: CourseSettings | null = null;
-        if (!localData) {
-          try {
-            const ls = localStorage.getItem(`@study_subjects_${user.email}`);
-            const lc = localStorage.getItem(`@study_course_${user.email}`);
-            if (ls) legacySubjects = JSON.parse(ls);
-            if (lc) legacySettings = JSON.parse(lc);
-          } catch { /* ignore */ }
-        }
-
-        const best = pickNewerData(fsData, localData);
-
-        if (best) {
-          const loadedSettings = { ...best.settings } as CourseSettings;
-          let loadedSubjects = best.subjects || [];
-          if (loadedSettings.resetScheduled && loadedSettings.courseStartDate) {
-            const startDate = new Date(loadedSettings.courseStartDate);
-            startDate.setHours(0, 0, 0, 0);
-            if (new Date() >= startDate) {
-              const resetResult = doResetProgress(loadedSubjects, loadedSettings, user?.email);
-              loadedSubjects = resetResult.subjects;
-              loadedSettings.resetScheduled = false;
-            }
-          }
-          setSubjects(loadedSubjects);
-          setSettings(prev => ({ ...prev, ...loadedSettings }));
-          setTempNotes(best.tempNotes || []);
-          setOverallNoteState(best.overallNote || '');
-          setNotePagesIndex(best.notePagesIndex || []);
-        } else if (legacySubjects) {
-          const migrated = legacySubjects.map((s: any) => ({
-            ...s,
-            chapters: (s.topics || s.chapters || []).map((ch: any) => ({
-              id: ch.id,
-              title: ch.title,
-              totalMinutes: ch.totalMinutes || 0,
-              completed: ch.completed || false,
-              topics: (ch.subtopics || ch.topics || []).map((t: any) => ({
-                id: t.id,
-                title: t.title,
-                totalMinutes: 0,
-                completed: t.completed || false,
-                subtopics: t.subtopics || [],
-              })),
-            })),
-          }));
-          setSubjects(migrated);
-          if (legacySettings) setSettings(prev => ({ ...prev, ...legacySettings }));
-        }
-
-        setDataLoaded(true);
-        // Delay so React finishes batching all setState calls above before
-        // the save-useEffect can run (prevents saving empty [] subjects on load)
-        setTimeout(() => { isInitialLoad.current = false; }, 200);
-      } else {
-        // Poll update — only apply if from another device (savedAt is newer than our last save)
-        if (fsData.savedAt && fsData.savedAt <= lastSavedAt.current) return;
-
-        setSubjects(fsData.subjects || []);
-        setSettings(prev => ({ ...prev, ...fsData.settings }));
-        setTempNotes(fsData.tempNotes || []);
-        setOverallNoteState(fsData.overallNote || '');
-        setNotePagesIndex(fsData.notePagesIndex || []);
-      }
-    };
-
-    // ── Initial load ──
-    getDoc(docRef)
-      .then(snap => {
+    // ── Real-time listener — fires immediately on mount (initial load)
+    //    and again whenever any device writes to this document ──
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snap) => {
         const fsData: StudyData | null = snap.exists()
           ? {
               subjects: snap.data().subjects || [],
@@ -296,9 +222,92 @@ export function StudyProvider({ children }: { children: ReactNode }) {
               savedAt: snap.data().savedAt,
             }
           : null;
-        applyFsData(fsData, true);
-      })
-      .catch(() => {
+
+        if (isFirstSnapshot) {
+          // ── Initial load: pick the freshest between Firestore and localStorage ──
+          isFirstSnapshot = false;
+
+          if (!fsData) {
+            setDataLoaded(true);
+            setTimeout(() => { isInitialLoad.current = false; }, 200);
+            return;
+          }
+
+          const lsRaw = localKey('data');
+          const localData = lsRaw ? getLocalData(lsRaw) : null;
+
+          let legacySubjects: Subject[] | null = null;
+          let legacySettings: CourseSettings | null = null;
+          if (!localData) {
+            try {
+              const ls = localStorage.getItem(`@study_subjects_${user.email}`);
+              const lc = localStorage.getItem(`@study_course_${user.email}`);
+              if (ls) legacySubjects = JSON.parse(ls);
+              if (lc) legacySettings = JSON.parse(lc);
+            } catch { /* ignore */ }
+          }
+
+          const best = pickNewerData(fsData, localData);
+
+          if (best) {
+            const loadedSettings = { ...best.settings } as CourseSettings;
+            let loadedSubjects = best.subjects || [];
+            if (loadedSettings.resetScheduled && loadedSettings.courseStartDate) {
+              const startDate = new Date(loadedSettings.courseStartDate);
+              startDate.setHours(0, 0, 0, 0);
+              if (new Date() >= startDate) {
+                const resetResult = doResetProgress(loadedSubjects, loadedSettings, user?.email);
+                loadedSubjects = resetResult.subjects;
+                loadedSettings.resetScheduled = false;
+              }
+            }
+            setSubjects(loadedSubjects);
+            setSettings(prev => ({ ...prev, ...loadedSettings }));
+            setTempNotes(best.tempNotes || []);
+            setOverallNoteState(best.overallNote || '');
+            setNotePagesIndex(best.notePagesIndex || []);
+          } else if (legacySubjects) {
+            const migrated = legacySubjects.map((s: any) => ({
+              ...s,
+              chapters: (s.topics || s.chapters || []).map((ch: any) => ({
+                id: ch.id,
+                title: ch.title,
+                totalMinutes: ch.totalMinutes || 0,
+                completed: ch.completed || false,
+                topics: (ch.subtopics || ch.topics || []).map((t: any) => ({
+                  id: t.id,
+                  title: t.title,
+                  totalMinutes: 0,
+                  completed: t.completed || false,
+                  subtopics: t.subtopics || [],
+                })),
+              })),
+            }));
+            setSubjects(migrated);
+            if (legacySettings) setSettings(prev => ({ ...prev, ...legacySettings }));
+          }
+
+          setDataLoaded(true);
+          // Delay so React finishes batching all setState calls above before
+          // the save-useEffect can run (prevents saving empty [] subjects on load)
+          setTimeout(() => { isInitialLoad.current = false; }, 200);
+        } else {
+          // ── Real-time update from another device ──
+          // Skip if this snapshot was triggered by our own save (savedAt matches)
+          if (!fsData) return;
+          if (fsData.savedAt && fsData.savedAt === lastSavedAt.current) return;
+
+          setSubjects(fsData.subjects || []);
+          setSettings(prev => ({ ...prev, ...fsData.settings }));
+          setTempNotes(fsData.tempNotes || []);
+          setOverallNoteState(fsData.overallNote || '');
+          setNotePagesIndex(fsData.notePagesIndex || []);
+        }
+      },
+      () => {
+        // Firestore error (offline / permission denied) — fall back to localStorage
+        if (!isFirstSnapshot) return;
+        isFirstSnapshot = false;
         const lsRaw = localKey('data');
         const localData = lsRaw ? getLocalData(lsRaw) : null;
         if (localData) {
@@ -310,27 +319,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         }
         setDataLoaded(true);
         setTimeout(() => { isInitialLoad.current = false; }, 200);
-      });
+      },
+    );
 
-    // ── Poll every 60 seconds for changes from other devices ──
-    const pollInterval = setInterval(async () => {
-      if (!user || !activeCourseId) return;
-      try {
-        const snap = await getDoc(docRef);
-        if (!snap.exists()) return;
-        const fsData: StudyData = {
-          subjects: snap.data().subjects || [],
-          settings: snap.data().settings || {},
-          tempNotes: snap.data().tempNotes || [],
-          overallNote: snap.data().overallNote || '',
-          notePagesIndex: snap.data().notePagesIndex || [],
-          savedAt: snap.data().savedAt,
-        };
-        applyFsData(fsData, false);
-      } catch { /* ignore poll errors */ }
-    }, 60000);
-
-    return () => clearInterval(pollInterval);
+    return () => unsubscribe();
   }, [user, activeCourseId]);
 
   // Save data (debounced for Firestore, immediate for localStorage)

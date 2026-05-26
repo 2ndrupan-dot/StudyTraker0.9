@@ -197,6 +197,27 @@ export const NotePagePreviewModal = ({
   );
 };
 
+// ─── Helper: walk subjects tree and extract a specific item's note ────────────
+function findItemNoteHtml(subjects: any[], path: any): string {
+  const s = subjects.find((x: any) => x.id === path.subjectId);
+  if (!s) return '';
+  if (path.level === 'subject') return s.note || '';
+  const c = s.chapters?.find((x: any) => x.id === path.chapterId);
+  if (!c) return '';
+  if (path.level === 'chapter') return c.note || '';
+  const t = c.topics?.find((x: any) => x.id === path.topicId);
+  if (!t) return '';
+  if (path.level === 'topic') return t.note || '';
+  const st = t.subtopics?.find((x: any) => x.id === path.subtopicId);
+  if (!st) return '';
+  if (path.level === 'subtopic') return st.note || '';
+  const co = st.concepts?.find((x: any) => x.id === path.conceptId);
+  if (!co) return '';
+  if (path.level === 'concept') return co.note || '';
+  const pt = co.points?.find((x: any) => x.id === path.pointId);
+  return pt?.note || '';
+}
+
 // ─── Note Editor Modal (Rich Text — expand to A4 full-screen) ────────────────
 export const NoteEditorModal = ({
   isOpen, onClose, value, onChange, onClear, onSave,
@@ -214,22 +235,30 @@ export const NoteEditorModal = ({
   saveLabel: string;
   icon?: any;
 }) => {
+  const { setNote, subjects } = useStudy();
+  const [, setLocation] = useLocation();
   const [expanded, setExpanded] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
 
   // Note-ref preview state (for clicking note links inside the preview)
-  const [notePreview, setNotePreview] = React.useState<{ id: string; title: string; html?: string } | null>(null);
+  const [notePreview, setNotePreview] = React.useState<{
+    id: string; title: string; html?: string; itemPath?: any;
+  } | null>(null);
 
   // Reset both states when modal closes
   React.useEffect(() => {
     if (!isOpen) { setExpanded(false); setEditing(false); setNotePreview(null); }
   }, [isOpen]);
 
-  const handleNoteRef = (noteId: string, noteTitle: string, noteHtml?: string) => {
-    if (noteHtml !== undefined) {
-      setNotePreview({ id: '__item__', title: noteTitle, html: noteHtml });
-    } else if (noteId) {
-      setNotePreview({ id: noteId, title: noteTitle });
+  const handleNoteRef = (noteId: string, noteTitle: string, noteHtml?: string, itemPath?: any) => {
+    if (itemPath) {
+      // Item note — fetch latest from study context, open with edit support
+      const currentHtml = findItemNoteHtml(subjects, itemPath) || (noteHtml ?? '');
+      setNotePreview({ id: '__item__', title: noteTitle, html: currentHtml, itemPath });
+    } else if (noteId && noteId !== '__item__') {
+      // A4 note page — navigate to full editor and close this modal
+      onClose();
+      setLocation('/notes/' + noteId);
     }
   };
 
@@ -396,29 +425,24 @@ export const NoteEditorModal = ({
         )}
       </AnimatePresence>
 
-      {/* Note page preview (opened when clicking a note-ref link in view mode) */}
-      {notePreview && (
-        notePreview.html !== undefined ? (
-          /* Item note (subject/chapter/topic) — show HTML inline */
-          <Modal
-            isOpen={!!notePreview}
-            onClose={() => setNotePreview(null)}
-            title={notePreview.title}
-            icon={StickyNote}
-          >
-            <div className="max-h-80 overflow-y-auto">
-              <RichTextPreview html={notePreview.html} className="text-sm leading-relaxed" />
-            </div>
-          </Modal>
-        ) : (
-          /* A4 note page — load from Firestore */
-          <NotePagePreviewModal
-            isOpen={!!notePreview}
-            onClose={() => setNotePreview(null)}
-            noteId={notePreview.id}
-            noteTitle={notePreview.title}
-          />
-        )
+      {/* Item note ref — full NoteEditorModal with edit+save */}
+      {notePreview?.itemPath && (
+        <NoteEditorModal
+          isOpen={!!notePreview}
+          onClose={() => setNotePreview(null)}
+          title={notePreview.title}
+          icon={StickyNote}
+          value={notePreview.html ?? ''}
+          onChange={(v) => setNotePreview(p => p ? { ...p, html: v } : null)}
+          onClear={() => setNotePreview(p => p ? { ...p, html: '' } : null)}
+          onSave={() => {
+            if (notePreview?.itemPath) setNote(notePreview.itemPath as any, notePreview.html ?? '');
+            setNotePreview(null);
+          }}
+          placeholder="No note yet."
+          clearLabel="Clear"
+          saveLabel="Save"
+        />
       )}
     </>
   );

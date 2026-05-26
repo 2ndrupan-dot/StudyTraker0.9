@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useEditor, EditorContent, Extension, Editor } from '@tiptap/react';
-import { Mark, mergeAttributes } from '@tiptap/core';
+import { Node, mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -22,24 +22,45 @@ import {
   ChevronLeft, ChevronRight, StickyNote,
 } from 'lucide-react';
 
-// ─── Custom NoteRef mark (internal note page link) ────────────────────────────
-const NoteRef = Mark.create({
+// ─── NoteRef inline node (atomic chip — cursor cannot enter) ──────────────────
+const NoteRef = Node.create({
   name: 'noteRef',
-  priority: 1001,
-  keepOnSplit: false,
-  exitable: true,
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: true,
   addAttributes() {
     return {
-      'data-note-id': { default: null },
+      'data-note-id':    { default: null },
       'data-note-title': { default: null },
-      'data-note-html': { default: null },
+      'data-note-html':  { default: null },
+      'data-item-path':  { default: null },
     };
   },
   parseHTML() {
-    return [{ tag: 'span[data-note-id]' }];
+    return [{
+      tag: 'span[data-note-id]',
+      getAttrs: (el) => {
+        const h = el as HTMLElement;
+        return {
+          'data-note-id':    h.getAttribute('data-note-id'),
+          'data-note-title': h.getAttribute('data-note-title'),
+          'data-note-html':  h.getAttribute('data-note-html'),
+          'data-item-path':  h.getAttribute('data-item-path'),
+        };
+      },
+    }];
   },
-  renderHTML({ HTMLAttributes }) {
-    return ['span', mergeAttributes({ class: 'note-ref' }, HTMLAttributes), 0];
+  renderHTML({ node }) {
+    const id    = node.attrs['data-note-id'];
+    const title = node.attrs['data-note-title'] || 'Note';
+    const emoji = id === '__item__' ? '📝' : '📄';
+    return ['span', mergeAttributes({ class: 'note-ref', contenteditable: 'false' }, {
+      'data-note-id':    node.attrs['data-note-id'],
+      'data-note-title': node.attrs['data-note-title'],
+      'data-note-html':  node.attrs['data-note-html'],
+      'data-item-path':  node.attrs['data-item-path'],
+    }), `${emoji} ${title}`];
   },
 });
 
@@ -203,7 +224,7 @@ function NoteRefPicker({
   onSelectPage, onSelectItemNote, onClose,
 }: {
   onSelectPage: (id: string, title: string) => void;
-  onSelectItemNote: (title: string, html: string) => void;
+  onSelectItemNote: (title: string, html: string, itemPath: any) => void;
   onClose: () => void;
 }) {
   const { subjects, notePagesIndex } = useStudy();
@@ -340,7 +361,23 @@ function NoteRefPicker({
               {item.note?.trim() && (
                 <button
                   type="button"
-                  onMouseDown={e => { e.preventDefault(); onSelectItemNote(item.title, item.note); onClose(); }}
+                  onMouseDown={e => {
+                    e.preventDefault();
+                    const path: any = { level: level.slice(0, -1) as any };
+                    if (selSubject)  path.subjectId  = selSubject.id;
+                    if (selChapter)  path.chapterId  = selChapter.id;
+                    if (selTopic)    path.topicId    = selTopic.id;
+                    if (selSubtopic) path.subtopicId = selSubtopic.id;
+                    if (selConcept)  path.conceptId  = selConcept.id;
+                    if (level === 'subjects') { path.subjectId = item.id; path.level = 'subject'; }
+                    else if (level === 'chapters') path.chapterId  = item.id;
+                    else if (level === 'topics')   path.topicId    = item.id;
+                    else if (level === 'subtopics') path.subtopicId = item.id;
+                    else if (level === 'concepts')  path.conceptId  = item.id;
+                    else if (level === 'points')    path.pointId    = item.id;
+                    onSelectItemNote(item.title, item.note, path);
+                    onClose();
+                  }}
                   className="p-1.5 mr-1 rounded-lg hover:bg-amber-500/10 text-amber-500 shrink-0 transition-colors"
                   title="Insert note reference"
                 >
@@ -737,37 +774,17 @@ export function RichTextEditor({
 
   if (!editor) return null;
 
-  // Insert a note-ref span (page = A4 note page, item = subject/chapter/topic note)
-  const insertNoteRef = (id: string, title: string, noteHtml?: string) => {
-    if (noteHtml !== undefined) {
-      // Item note reference — stores HTML encoded in attribute
-      const encoded = encodeURIComponent(noteHtml);
-      const safeTitle = title.replace(/"/g, '&quot;');
-      if (editor.state.selection.empty) {
-        editor.commands.insertContent(
-          `<span class="note-ref" data-note-id="__item__" data-note-title="${safeTitle}" data-note-html="${encoded}">📝 ${title}</span>`
-        );
-      } else {
-        editor.chain().focus().setMark('noteRef', {
-          'data-note-id': '__item__',
-          'data-note-title': title,
-          'data-note-html': encoded,
-        }).run();
-      }
-    } else {
-      // A4 page reference
-      const safeTitle = title.replace(/"/g, '&quot;');
-      if (editor.state.selection.empty) {
-        editor.commands.insertContent(
-          `<span class="note-ref" data-note-id="${id}" data-note-title="${safeTitle}">📄 ${title}</span>`
-        );
-      } else {
-        editor.chain().focus().setMark('noteRef', {
-          'data-note-id': id,
-          'data-note-title': title,
-        }).run();
-      }
-    }
+  // Insert a note-ref node (atomic chip — cursor cannot enter)
+  const insertNoteRef = (id: string, title: string, noteHtml?: string, itemPath?: any) => {
+    editor.chain().focus().insertContent({
+      type: 'noteRef',
+      attrs: {
+        'data-note-id':    id,
+        'data-note-title': title,
+        'data-note-html':  noteHtml !== undefined ? encodeURIComponent(noteHtml) : null,
+        'data-item-path':  itemPath ? JSON.stringify(itemPath) : null,
+      },
+    }).run();
   };
 
   const isBold      = isActiveOrStored(editor, 'bold');
@@ -845,7 +862,7 @@ export function RichTextEditor({
           {showNoteRefPicker && (
             <NoteRefPicker
               onSelectPage={(id, title) => { insertNoteRef(id, title); setShowNoteRefPicker(false); }}
-              onSelectItemNote={(title, html) => { insertNoteRef('__item__', title, html); setShowNoteRefPicker(false); }}
+              onSelectItemNote={(title, html, itemPath) => { insertNoteRef('__item__', title, html, itemPath); setShowNoteRefPicker(false); }}
               onClose={() => setShowNoteRefPicker(false)}
             />
           )}
@@ -890,7 +907,7 @@ export function RichTextPreview({
 }: {
   html: string;
   className?: string;
-  onNoteRef?: (noteId: string, noteTitle: string, noteHtml?: string) => void;
+  onNoteRef?: (noteId: string, noteTitle: string, noteHtml?: string, itemPath?: any) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -908,7 +925,9 @@ export function RichTextPreview({
         const noteTitle = noteEl.getAttribute('data-note-title') || '';
         const noteHtmlEncoded = noteEl.getAttribute('data-note-html');
         const noteHtml = noteHtmlEncoded ? decodeURIComponent(noteHtmlEncoded) : undefined;
-        onNoteRef?.(noteId, noteTitle, noteHtml);
+        const itemPathStr = noteEl.getAttribute('data-item-path');
+        const itemPath = itemPathStr ? (() => { try { return JSON.parse(itemPathStr); } catch { return undefined; } })() : undefined;
+        onNoteRef?.(noteId, noteTitle, noteHtml, itemPath);
         return;
       }
 

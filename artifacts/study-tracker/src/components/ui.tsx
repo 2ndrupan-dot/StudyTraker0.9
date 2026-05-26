@@ -281,10 +281,7 @@ export const NoteEditorModal = ({
                       </div>
                     </>
                   ) : (
-                    <div
-                      className="min-h-[7rem] cursor-pointer"
-                      onClick={() => setEditing(true)}
-                    >
+                    <div className="min-h-[7rem]">
                       {value ? (
                         <RichTextPreview html={value} className="text-sm leading-relaxed" />
                       ) : (

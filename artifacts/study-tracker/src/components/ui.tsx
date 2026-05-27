@@ -339,11 +339,14 @@ export const NoteEditorModal = ({
             {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: expanded ? 1 : 0.01 }}
+              animate={{ opacity: expanded ? 1 : 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              onClick={onClose}
-              className={cn("fixed inset-0 z-50 transition-colors", expanded ? "bg-black/50" : "")}
+              onClick={expanded ? onClose : undefined}
+              className={cn(
+                "fixed inset-0 z-50 transition-colors",
+                expanded ? "bg-black/50" : "pointer-events-none"
+              )}
             />
 
             <AnimatePresence mode="wait">

@@ -6,7 +6,7 @@ import {
   Plus, Trash2, ChevronRight,
   BookOpen, Layers, List, Lightbulb, Dot, FolderPlus,
   CheckCircle2, Circle, Pencil, Lock,
-  BookOpenCheck, Star, AlertTriangle, StickyNote, Filter, RotateCcw, GripVertical,
+  BookOpenCheck, Star, AlertTriangle, StickyNote, Filter, RotateCcw, GripVertical, ArrowUpDown,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor, KeyboardSensor,
@@ -268,7 +268,7 @@ function minutesToSliders(totalMins: number) {
 }
 
 // ─── Sortable Item Wrapper ──────────────────────────────────────────────────
-function SortableItemWrapper({ id, children }: { id: string; children: (handle: React.ReactNode) => React.ReactNode }) {
+function SortableItemWrapper({ id, reorderMode, children }: { id: string; reorderMode: boolean; children: (handle: React.ReactNode) => React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -281,10 +281,14 @@ function SortableItemWrapper({ id, children }: { id: string; children: (handle: 
     <button
       type="button"
       {...attributes}
-      {...listeners}
+      {...(reorderMode ? listeners : {})}
       onClick={e => e.stopPropagation()}
-      className="touch-none cursor-grab active:cursor-grabbing shrink-0 self-stretch flex items-center px-1.5 text-muted-foreground/30 hover:text-muted-foreground/60 hover:bg-muted/30 transition-colors select-none border-l border-border/30 ml-1"
-      title="ড্র্যাগ করে সরান"
+      className={`touch-none shrink-0 self-stretch flex items-center px-1.5 transition-colors select-none border-l border-border/30 ml-1 ${
+        reorderMode
+          ? 'cursor-grab active:cursor-grabbing text-primary/70 hover:text-primary hover:bg-primary/10'
+          : 'cursor-default text-muted-foreground/20'
+      }`}
+      title={reorderMode ? 'ড্র্যাগ করে সরান' : 'Reorder Mode চালু করুন'}
     >
       <GripVertical size={14} />
     </button>
@@ -306,6 +310,8 @@ export function Subjects() {
     reorderSubjects, reorderChapters, reorderTopics, reorderSubtopics, reorderConcepts, reorderPoints,
   } = useStudy();
   const { t } = useLang();
+
+  const [reorderMode, setReorderMode] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -510,15 +516,31 @@ export function Subjects() {
           className="mb-6 flex items-center justify-between"
         >
           <h1 className="text-2xl font-bold text-foreground">{t('subjects')}</h1>
-          <motion.div whileTap={{ scale: 0.95 }}>
-            <Button
-              variant="primary"
-              className="py-2 px-3 h-auto rounded-xl text-xs gap-1.5 shadow-md"
-              onClick={() => openAdd('subject', {})}
-            >
-              <Plus size={16} /> {t('addSubject')}
-            </Button>
-          </motion.div>
+          <div className="flex items-center gap-2">
+            <motion.div whileTap={{ scale: 0.95 }}>
+              <button
+                type="button"
+                onClick={() => setReorderMode(v => !v)}
+                className={`p-2 rounded-xl border transition-all ${
+                  reorderMode
+                    ? 'bg-primary text-primary-foreground border-primary shadow-md'
+                    : 'bg-card text-muted-foreground border-border/60 hover:bg-secondary'
+                }`}
+                title={reorderMode ? 'Reorder Mode বন্ধ করুন' : 'Reorder Mode চালু করুন'}
+              >
+                <ArrowUpDown size={16} />
+              </button>
+            </motion.div>
+            <motion.div whileTap={{ scale: 0.95 }}>
+              <Button
+                variant="primary"
+                className="py-2 px-3 h-auto rounded-xl text-xs gap-1.5 shadow-md"
+                onClick={() => openAdd('subject', {})}
+              >
+                <Plus size={16} /> {t('addSubject')}
+              </Button>
+            </motion.div>
+          </div>
         </motion.header>
 
         {/* ─── Quick to-do notes (Temp Notes) ──────────────────────── */}
@@ -750,7 +772,7 @@ export function Subjects() {
               const subjPath: MarkPath = { subjectId: subj.id, level: 'subject' };
 
               return (
-                <SortableItemWrapper key={subj.id} id={subj.id}>
+                <SortableItemWrapper key={subj.id} id={subj.id} reorderMode={reorderMode}>
                 {(subjHandle) => (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -896,7 +918,7 @@ export function Subjects() {
                             chapter.topics.forEach(t => { chSubtopics += t.subtopics.length; chCompletedSubs += t.subtopics.filter(s => isSubtopicContentDone(s)).length; });
                             const chPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, level: 'chapter' };
                             return (
-                              <SortableItemWrapper key={chapter.id} id={chapter.id}>
+                              <SortableItemWrapper key={chapter.id} id={chapter.id} reorderMode={reorderMode}>
                               {(chHandle) => (
                               <motion.div {...itemAnim} className={`bg-card border rounded-xl overflow-hidden shadow-sm ${chLocked ? 'border-border/30 opacity-70' : 'border-border/50'} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`}>
                                 <div
@@ -983,7 +1005,7 @@ export function Subjects() {
                                           topic.subtopics.forEach(s => { topConcepts += s.concepts.length; topCompletedConcepts += s.concepts.filter(c => c.completed).length; });
                                           const topPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, level: 'topic' };
                                           return (
-                                            <SortableItemWrapper key={topic.id} id={topic.id}>
+                                            <SortableItemWrapper key={topic.id} id={topic.id} reorderMode={reorderMode}>
                                             {(topHandle) => (
                                             <motion.div {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${topLocked ? 'border-border/20 opacity-60' : 'border-border/40'} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`}>
                                               <div
@@ -1070,7 +1092,7 @@ export function Subjects() {
                                                         sub.concepts.forEach(c => { subPoints += c.points.length; subCompletedPoints += c.points.filter(p => p.completed).length; });
                                                         const subPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, level: 'subtopic' };
                                                         return (
-                                                          <SortableItemWrapper key={sub.id} id={sub.id}>
+                                                          <SortableItemWrapper key={sub.id} id={sub.id} reorderMode={reorderMode}>
                                                           {(subHandle) => (
                                                           <motion.div {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${subLocked ? 'border-border/15 opacity-55' : 'border-border/30'} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
                                                             <div
@@ -1143,7 +1165,7 @@ export function Subjects() {
                                                                       const completedPoints = concept.points.filter(p => p.completed).length;
                                                                       const conPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, level: 'concept' };
                                                                       return (
-                                                                        <SortableItemWrapper key={concept.id} id={concept.id}>
+                                                                        <SortableItemWrapper key={concept.id} id={concept.id} reorderMode={reorderMode}>
                                                                         {(conHandle) => (
                                                                         <motion.div {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${conLocked ? 'border-border/10 opacity-50' : 'border-border/20'} ${concept.important ? 'ring-1 ring-yellow-300/40' : ''} ${concept.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
                                                                           <div
@@ -1212,7 +1234,7 @@ export function Subjects() {
                                                                                     const ptLocked = conLocked || !isPointUnlocked(concept, ptIdx);
                                                                                     const ptPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id, level: 'point' };
                                                                                     return (
-                                                                                    <SortableItemWrapper key={point.id} id={point.id}>
+                                                                                    <SortableItemWrapper key={point.id} id={point.id} reorderMode={reorderMode}>
                                                                                     {(ptHandle) => (
                                                                                     <motion.div
                                                                                       {...itemAnim}

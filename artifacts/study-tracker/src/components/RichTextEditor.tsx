@@ -367,7 +367,26 @@ function NoteRefPicker({
         {currentItems.length === 0 ? (
           <p className="px-3 py-3 text-[11px] text-muted-foreground text-center">Nothing here.</p>
         ) : (
-          currentItems.map(item => (
+          currentItems.map(item => {
+            const handleNoteSelect = (e: React.MouseEvent | React.TouchEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const path: any = { level: level.slice(0, -1) as any };
+              if (selSubject)  path.subjectId  = selSubject.id;
+              if (selChapter)  path.chapterId  = selChapter.id;
+              if (selTopic)    path.topicId    = selTopic.id;
+              if (selSubtopic) path.subtopicId = selSubtopic.id;
+              if (selConcept)  path.conceptId  = selConcept.id;
+              if (level === 'subjects') { path.subjectId = item.id; path.level = 'subject'; }
+              else if (level === 'chapters') path.chapterId  = item.id;
+              else if (level === 'topics')   path.topicId    = item.id;
+              else if (level === 'subtopics') path.subtopicId = item.id;
+              else if (level === 'concepts')  path.conceptId  = item.id;
+              else if (level === 'points')    path.pointId    = item.id;
+              onSelectItemNote(item.title, item.note, path);
+              onClose();
+            };
+            return (
             <div key={item.id} className="flex items-center hover:bg-secondary/60 transition-colors group">
               <button
                 type="button"
@@ -382,31 +401,21 @@ function NoteRefPicker({
                 {level !== 'subjects' && selSubject?.color && (
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: selSubject.color }} />
                 )}
-                <span className="text-xs truncate">{item.title}</span>
+                <div
+                  className="flex-1 min-w-0 overflow-x-auto"
+                  style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+                >
+                  <span className="text-xs whitespace-nowrap">{item.title}</span>
+                </div>
                 {hasChildren(item) && (
-                  <ChevronRight size={11} className="text-muted-foreground ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <ChevronRight size={11} className="text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                 )}
               </button>
               {item.note?.trim() && (
                 <button
                   type="button"
-                  onMouseDown={e => {
-                    e.preventDefault();
-                    const path: any = { level: level.slice(0, -1) as any };
-                    if (selSubject)  path.subjectId  = selSubject.id;
-                    if (selChapter)  path.chapterId  = selChapter.id;
-                    if (selTopic)    path.topicId    = selTopic.id;
-                    if (selSubtopic) path.subtopicId = selSubtopic.id;
-                    if (selConcept)  path.conceptId  = selConcept.id;
-                    if (level === 'subjects') { path.subjectId = item.id; path.level = 'subject'; }
-                    else if (level === 'chapters') path.chapterId  = item.id;
-                    else if (level === 'topics')   path.topicId    = item.id;
-                    else if (level === 'subtopics') path.subtopicId = item.id;
-                    else if (level === 'concepts')  path.conceptId  = item.id;
-                    else if (level === 'points')    path.pointId    = item.id;
-                    onSelectItemNote(item.title, item.note, path);
-                    onClose();
-                  }}
+                  onMouseDown={handleNoteSelect}
+                  onTouchEnd={handleNoteSelect}
                   className="p-1.5 mr-1 rounded-lg hover:bg-amber-500/10 text-amber-500 shrink-0 transition-colors"
                   title="Insert note reference"
                 >
@@ -414,7 +423,8 @@ function NoteRefPicker({
                 </button>
               )}
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>,
@@ -820,7 +830,9 @@ export function RichTextEditor({
   const openNoteRefPicker = () => {
     if (!showNoteRefPicker && noteRefPickerRef.current) {
       const r = noteRefPickerRef.current.getBoundingClientRect();
-      setNoteRefCoords({ top: r.bottom + 4, left: r.left });
+      const POPOVER_W = 288; // w-72
+      const clampedLeft = Math.min(r.left, window.innerWidth - POPOVER_W - 8);
+      setNoteRefCoords({ top: r.bottom + 4, left: Math.max(8, clampedLeft) });
     }
     setShowNoteRefPicker(o => !o);
     setShowLinkPopover(false);

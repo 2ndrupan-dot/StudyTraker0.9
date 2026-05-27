@@ -322,7 +322,21 @@ export const NoteEditorModal = ({
     th, td { border: 1px solid #d1d5db; padding: 6px 10px; font-size: 13px; }
     th { background: #f9fafb; font-weight: bold; }
     blockquote { border-left: 3px solid #d1d5db; padding-left: 14px; color: #6b7280; margin-bottom: 10px; }
-    @media print { body { padding: 24px; } }
+    span[data-note-id] {
+      display: inline;
+      color: #4d79f5;
+      background: rgba(77, 121, 245, 0.12);
+      border: 1px solid rgba(77, 121, 245, 0.28);
+      padding: 1px 7px;
+      border-radius: 5px;
+      font-size: 0.88em;
+      font-weight: 500;
+      font-family: sans-serif;
+    }
+    @media print {
+      body { padding: 24px; }
+      span[data-note-id] { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   </style>
 </head>
 <body>

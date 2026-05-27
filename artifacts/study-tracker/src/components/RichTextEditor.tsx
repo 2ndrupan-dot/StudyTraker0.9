@@ -243,13 +243,12 @@ function usePopover() {
 
 // ─── Note Ref Picker (hierarchical, like NoteSearchModal) ────────────────────
 function NoteRefPicker({
-  onSelectPage, onSelectItemNote, onClose, coords, pickerRef,
+  onSelectPage, onSelectItemNote, onClose, coords,
 }: {
   onSelectPage: (id: string, title: string) => void;
   onSelectItemNote: (title: string, html: string, itemPath: any) => void;
   onClose: () => void;
   coords: { top: number; left: number };
-  pickerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const { subjects, notePagesIndex } = useStudy();
   const { t } = useLang();
@@ -307,9 +306,10 @@ function NoteRefPicker({
 
   return ReactDOM.createPortal(
     <div
-      ref={pickerRef}
       style={{ top: coords.top, left: coords.left }}
       className="fixed z-[9999] bg-card border border-border/60 rounded-xl shadow-xl overflow-hidden w-72"
+      onMouseDown={e => e.stopPropagation()}
+      onTouchStart={e => e.stopPropagation()}
     >
       {/* Header */}
       <div className="px-3 pt-2 pb-1.5 border-b border-border/40">
@@ -814,8 +814,7 @@ export function RichTextEditor({
 
   // Note ref picker
   const [showNoteRefPicker, setShowNoteRefPicker] = useState(false);
-  const noteRefPickerRef = useRef<HTMLDivElement>(null);       // trigger button wrapper
-  const noteRefPickerPortalRef = useRef<HTMLDivElement>(null); // portal content
+  const noteRefPickerRef = useRef<HTMLDivElement>(null); // trigger button wrapper
   const [noteRefCoords, setNoteRefCoords] = useState({ top: 0, left: 0 });
 
   const openNoteRefPicker = () => {
@@ -829,24 +828,14 @@ export function RichTextEditor({
 
   // Close popovers when clicking/touching anywhere outside them
   useEffect(() => {
-    if (!showLinkPopover && !showNoteRefPicker) return;
-    const handler = (e: MouseEvent | TouchEvent) => {
-      const t = (e instanceof TouchEvent ? e.touches[0]?.target : e.target) as Node | null;
-      if (!t) return;
+    if (!showLinkPopover) return;
+    const handler = (e: MouseEvent) => {
+      const t = e.target as Node;
       if (showLinkPopover && !linkPopoverRef.current?.contains(t)) setShowLinkPopover(false);
-      if (showNoteRefPicker &&
-          !noteRefPickerRef.current?.contains(t) &&
-          !noteRefPickerPortalRef.current?.contains(t)) {
-        setShowNoteRefPicker(false);
-      }
     };
-    document.addEventListener('mousedown', handler as EventListener);
-    document.addEventListener('touchstart', handler as EventListener, { passive: true });
-    return () => {
-      document.removeEventListener('mousedown', handler as EventListener);
-      document.removeEventListener('touchstart', handler as EventListener);
-    };
-  }, [showLinkPopover, showNoteRefPicker]);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showLinkPopover]);
 
   const editor = useEditor({
     extensions: [
@@ -998,13 +987,23 @@ export function RichTextEditor({
             <FileText size={13} />
           </ToolbarBtn>
           {showNoteRefPicker && (
-            <NoteRefPicker
-              onSelectPage={(id, title) => { insertNoteRef(id, title); setShowNoteRefPicker(false); }}
-              onSelectItemNote={(title, html, itemPath) => { insertNoteRef('__item__', title, html, itemPath); setShowNoteRefPicker(false); }}
-              onClose={() => setShowNoteRefPicker(false)}
-              coords={noteRefCoords}
-              pickerRef={noteRefPickerPortalRef}
-            />
+            <>
+              {/* Invisible overlay — catches any click/touch outside the picker */}
+              {ReactDOM.createPortal(
+                <div
+                  className="fixed inset-0 z-[9998]"
+                  onMouseDown={e => { e.preventDefault(); setShowNoteRefPicker(false); }}
+                  onTouchStart={() => setShowNoteRefPicker(false)}
+                />,
+                document.body
+              )}
+              <NoteRefPicker
+                onSelectPage={(id, title) => { insertNoteRef(id, title); setShowNoteRefPicker(false); }}
+                onSelectItemNote={(title, html, itemPath) => { insertNoteRef('__item__', title, html, itemPath); setShowNoteRefPicker(false); }}
+                onClose={() => setShowNoteRefPicker(false)}
+                coords={noteRefCoords}
+              />
+            </>
           )}
         </div>
 

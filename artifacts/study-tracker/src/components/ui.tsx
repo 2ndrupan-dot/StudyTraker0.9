@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2, Pencil, Eye, FileText, ExternalLink, StickyNote, ChevronRight } from 'lucide-react';
+import { X, Maximize2, Minimize2, Pencil, Eye, FileText, ExternalLink, StickyNote, ChevronRight, FileDown } from 'lucide-react';
 import { RichTextEditor, RichTextPreview } from '@/components/RichTextEditor';
 import { useStudy } from '@/context/StudyContext';
 import { useLocation } from 'wouter';
@@ -295,9 +295,58 @@ export const NoteEditorModal = ({
     }
   };
 
+  const handleDownloadPdf = () => {
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const safeTitle = title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    win.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${safeTitle}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 0 auto; padding: 48px 48px 64px; color: #111; }
+    h1 { font-size: 22px; font-weight: bold; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }
+    p { margin-bottom: 10px; line-height: 1.7; font-size: 14px; }
+    strong { font-weight: bold; }
+    em { font-style: italic; }
+    u { text-decoration: underline; }
+    s { text-decoration: line-through; }
+    ul, ol { padding-left: 22px; margin-bottom: 10px; }
+    li { margin-bottom: 4px; font-size: 14px; line-height: 1.6; }
+    h2 { font-size: 18px; font-weight: bold; margin: 20px 0 10px; }
+    h3 { font-size: 16px; font-weight: bold; margin: 16px 0 8px; }
+    a { color: #2563eb; text-decoration: underline; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+    th, td { border: 1px solid #d1d5db; padding: 6px 10px; font-size: 13px; }
+    th { background: #f9fafb; font-weight: bold; }
+    blockquote { border-left: 3px solid #d1d5db; padding-left: 14px; color: #6b7280; margin-bottom: 10px; }
+    @media print { body { padding: 24px; } }
+  </style>
+</head>
+<body>
+  <h1>${safeTitle}</h1>
+  ${value || '<p style="color:#9ca3af">No content yet.</p>'}
+</body>
+</html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 300);
+  };
+
   // Shared header action buttons (pencil/eye + expand/minimize + close)
   const HeaderActions = ({ isExpanded }: { isExpanded: boolean }) => (
     <div className="flex items-center gap-1 shrink-0">
+      {/* Download as PDF */}
+      <button
+        onClick={handleDownloadPdf}
+        className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
+        title="Download as PDF"
+      >
+        <FileDown size={16} />
+      </button>
+
       {/* Toggle edit / view */}
       <button
         onClick={() => setEditing(e => !e)}

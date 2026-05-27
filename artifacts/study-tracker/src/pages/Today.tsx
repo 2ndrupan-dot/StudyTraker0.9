@@ -369,28 +369,28 @@ const PRESSURE_COLORS: Record<string, string> = {
   ahead:    'bg-blue-500/10 border-blue-300 text-blue-700',
 };
 
-// localStorage keys
-const planKey     = (email: string) => `@study_today_plan_v2_${email}`;
-const pendKey     = (email: string) => `@study_pending_v2_${email}`;
-const revisionKey = (email: string) => `@study_revisions_v1_${email}`;
+// localStorage keys — course-specific so each course has its own isolated cache
+const planKey     = (email: string, courseId: string) => `@study_today_plan_v3_${email}_${courseId}`;
+const pendKey     = (email: string, courseId: string) => `@study_pending_v3_${email}_${courseId}`;
+const revisionKey = (email: string, courseId: string) => `@study_revisions_v2_${email}_${courseId}`;
 
-function loadStoredPlan(email: string): { date: string; tasks: PlanTask[] } | null {
-  try { return JSON.parse(localStorage.getItem(planKey(email)) ?? 'null'); } catch { return null; }
+function loadStoredPlan(email: string, courseId: string): { date: string; tasks: PlanTask[] } | null {
+  try { return JSON.parse(localStorage.getItem(planKey(email, courseId)) ?? 'null'); } catch { return null; }
 }
-function savePlan(email: string, date: string, tasks: PlanTask[]) {
-  localStorage.setItem(planKey(email), JSON.stringify({ date, tasks }));
+function savePlan(email: string, courseId: string, date: string, tasks: PlanTask[]) {
+  localStorage.setItem(planKey(email, courseId), JSON.stringify({ date, tasks }));
 }
-function loadPending(email: string): PendingItem[] {
-  try { return JSON.parse(localStorage.getItem(pendKey(email)) ?? '[]'); } catch { return []; }
+function loadPending(email: string, courseId: string): PendingItem[] {
+  try { return JSON.parse(localStorage.getItem(pendKey(email, courseId)) ?? '[]'); } catch { return []; }
 }
-function savePending(email: string, items: PendingItem[]) {
-  localStorage.setItem(pendKey(email), JSON.stringify(items));
+function savePending(email: string, courseId: string, items: PendingItem[]) {
+  localStorage.setItem(pendKey(email, courseId), JSON.stringify(items));
 }
-function loadRevisions(email: string): RevisionEntry[] {
-  try { return JSON.parse(localStorage.getItem(revisionKey(email)) ?? '[]'); } catch { return []; }
+function loadRevisions(email: string, courseId: string): RevisionEntry[] {
+  try { return JSON.parse(localStorage.getItem(revisionKey(email, courseId)) ?? '[]'); } catch { return []; }
 }
-function saveRevisions(email: string, entries: RevisionEntry[]) {
-  localStorage.setItem(revisionKey(email), JSON.stringify(entries));
+function saveRevisions(email: string, courseId: string, entries: RevisionEntry[]) {
+  localStorage.setItem(revisionKey(email, courseId), JSON.stringify(entries));
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -476,19 +476,22 @@ export function Today() {
 
   // Dual-write: localStorage (instant/offline) + Firestore (cross-device sync)
   const syncPlan = useCallback((date: string, tasks: PlanTask[]) => {
-    savePlan(email, date, tasks);
+    if (!activeCourseId) return;
+    savePlan(email, activeCourseId, date, tasks);
     writePlan(date, tasks);
-  }, [email, writePlan]);
+  }, [email, activeCourseId, writePlan]);
 
   const syncPending = useCallback((items: PendingItem[]) => {
-    savePending(email, items);
+    if (!activeCourseId) return;
+    savePending(email, activeCourseId, items);
     writePending(items);
-  }, [email, writePending]);
+  }, [email, activeCourseId, writePending]);
 
   const syncRevisions = useCallback((entries: RevisionEntry[]) => {
-    saveRevisions(email, entries);
+    if (!activeCourseId) return;
+    saveRevisions(email, activeCourseId, entries);
     writeRevisions(entries);
-  }, [email, writeRevisions]);
+  }, [email, activeCourseId, writeRevisions]);
 
   // ── Midnight auto-refresh ──────────────────────────────────────────────────
   useEffect(() => {
@@ -510,8 +513,9 @@ export function Today() {
   useEffect(() => {
     if (!user?.id || !activeCourseId) return;
     const todayDateStr = format(new Date(), 'yyyy-MM-dd');
+    const courseId = activeCourseId;
     const unsubscribe = onSnapshot(
-      doc(db, 'users', user.id, 'todayData', activeCourseId),
+      doc(db, 'users', user.id, 'todayData', courseId),
       (snap) => {
         // Ignore echoes from our own writes
         if (Date.now() - lastWriteRef.current < WRITE_GRACE_MS) return;
@@ -520,10 +524,10 @@ export function Today() {
         const remPending: PendingItem[] = Array.isArray(d.pending) ? d.pending : [];
         const remRevisions: RevisionEntry[] = Array.isArray(d.revisions) ? d.revisions : [];
         const remPlan: { date: string; tasks: PlanTask[] } | null = d.plan ?? null;
-        // Cache to localStorage for faster next load on this device
-        savePending(email, remPending);
-        saveRevisions(email, remRevisions);
-        if (remPlan) savePlan(email, remPlan.date, remPlan.tasks);
+        // Cache to localStorage using course-specific keys
+        savePending(email, courseId, remPending);
+        saveRevisions(email, courseId, remRevisions);
+        if (remPlan) savePlan(email, courseId, remPlan.date, remPlan.tasks);
         // Update React state only after initial load is done (avoid conflict with init)
         if (!planReadyRef.current) return;
         setPendingItems(remPending);
@@ -622,13 +626,30 @@ export function Today() {
     return {};
   };
 
+  // ── Reset state on course switch ───────────────────────────────────────────
+  const prevCourseIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevCourseIdRef.current !== null && prevCourseIdRef.current !== activeCourseId) {
+      setPlanReady(false);
+      planReadyRef.current = false;
+      setLockedPlan([]);
+      setPendingItems([]);
+      setRevisions([]);
+      setExtraLoadedMins(0);
+      setExpandedSubjectId(null);
+      itemIdsRef.current = null;
+      prevHoursRef.current = null;
+    }
+    prevCourseIdRef.current = activeCourseId;
+  }, [activeCourseId]);
+
   // ── Initial load ───────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!dataLoaded) return;
+    if (!dataLoaded || !activeCourseId) return;
 
-    const stored = loadStoredPlan(email);
-    let currentPending = loadPending(email);
-    let currentRevisions = loadRevisions(email);
+    const stored = loadStoredPlan(email, activeCourseId);
+    let currentPending = loadPending(email, activeCourseId);
+    let currentRevisions = loadRevisions(email, activeCourseId);
 
     // Expire pending items older than 10 days
     currentPending = currentPending.filter(p => pendingDaysLeft(p, todayStr) > 0);
@@ -696,7 +717,7 @@ export function Today() {
     setPendingItems(currentPending);
     setRevisions(currentRevisions);
     setPlanReady(true);
-  }, [dataLoaded, email, reloadDay]); // eslint-disable-line
+  }, [dataLoaded, email, activeCourseId, reloadDay]); // eslint-disable-line
 
   // ── React to structural additions ──────────────────────────────────────────
   useEffect(() => {

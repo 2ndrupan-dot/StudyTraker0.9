@@ -40,6 +40,7 @@ interface StudyContextType {
   setCourseTotalDays: (days: number) => void;
   setDailyStudyHours: (hours: number) => void;
   setCourseStartDate: (date: string) => void;
+  setTimezone: (tz: string) => void;
   addSubject: (subject: Omit<Subject, 'id' | 'completed' | 'chapters'>) => void;
   updateSubjectDays: (subjectId: string, days: number) => void;
   deleteSubject: (subjectId: string) => void;
@@ -523,6 +524,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const setDailyStudyHours = (hours: number) => {
     setSettings(prev => ({ ...prev, dailyStudyHours: hours }));
     setSubjects(curr => applyTimeAdjustment(curr, hours, settings.courseTotalDays));
+  };
+
+  const setTimezone = (tz: string) => {
+    setSettings(prev => ({ ...prev, timezone: tz }));
   };
 
   const setCourseStartDate = (date: string) => {
@@ -1249,7 +1254,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     <StudyContext.Provider value={{
       subjects, settings, dataLoaded, syncing, online,
       setNote, toggleImportant, toggleWeak,
-      setCourseTotalDays, setDailyStudyHours, setCourseStartDate,
+      setCourseTotalDays, setDailyStudyHours, setCourseStartDate, setTimezone,
       addSubject, updateSubjectDays, deleteSubject, updateSubjectMeta, resetSubjectProgress,
       reorderSubjects, reorderChapters, reorderTopics, reorderSubtopics, reorderConcepts, reorderPoints,
       addChapter, deleteChapter, toggleChapterComplete, updateChapterMeta,

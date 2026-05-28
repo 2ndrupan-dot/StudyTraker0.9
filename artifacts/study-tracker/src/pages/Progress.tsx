@@ -6,7 +6,9 @@ import type { MarkPath } from '@/lib/types';
 import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
-import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, FileText, ExternalLink } from 'lucide-react';
+import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, FileText, ExternalLink, Globe } from 'lucide-react';
+import { TimezoneSelector } from '@/components/TimezoneSelector';
+import { getTimezoneEntry, getCurrentOffset } from '@/lib/timezones';
 import { Modal, ConfirmModal, Input, Button, NoteEditorModal, NotePagePreviewModal } from '@/components/ui';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -326,11 +328,12 @@ function OverallNotesCard() {
 
 export function Progress() {
   const { user, logout, updateProfile, updateProfilePhoto } = useAuth();
-  const { subjects, settings, setCourseStartDate } = useStudy();
+  const { subjects, settings, setCourseStartDate, setTimezone } = useStudy();
   const { courses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse } = useCourse();
   const { t, lang, setLang } = useLang();
 
   const [modals, setModals] = useState({ profile: false, settings: false, logout: false, addCourse: false, switchCourse: false });
+  const [tzSelectorOpen, setTzSelectorOpen] = useState(false);
   const [noteSearchOpen, setNoteSearchOpen] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: user?.name || '', currentPass: '', newPass: '' });
   const [profileError, setProfileError] = useState('');
@@ -780,6 +783,40 @@ export function Progress() {
             </div>
           </div>
 
+          {/* Timezone */}
+          <div className="border-t border-border/40 pt-5">
+            <div className="flex items-center gap-2 mb-1">
+              <Globe size={15} className="text-primary" />
+              <p className="text-sm font-semibold text-foreground">{t('timezoneLabel')}</p>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">{t('timezoneDesc')}</p>
+            <button
+              onClick={() => setTzSelectorOpen(true)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 bg-secondary/70 border border-border/50 rounded-xl hover:bg-secondary transition-colors text-left"
+            >
+              {settings.timezone ? (
+                <>
+                  <span className="text-xl shrink-0">{getTimezoneEntry(settings.timezone)?.flag ?? '🌐'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">
+                      {getTimezoneEntry(settings.timezone)?.country ?? settings.timezone}
+                    </p>
+                    <p className="text-[11px] font-mono text-muted-foreground">{getCurrentOffset(settings.timezone)}</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="text-xl shrink-0">📱</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{t('timezoneDeviceDefault')}</p>
+                    <p className="text-[11px] font-mono text-muted-foreground">{Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
+                  </div>
+                </>
+              )}
+              <ChevronRight size={15} className="text-muted-foreground shrink-0" />
+            </button>
+          </div>
+
           {/* Course Starting Date */}
           <div className="border-t border-border/40 pt-5">
             <div className="flex items-center gap-2 mb-1">
@@ -834,6 +871,15 @@ export function Progress() {
           </div>
         </div>
       </Modal>
+
+      {/* Timezone Selector */}
+      <TimezoneSelector
+        isOpen={tzSelectorOpen}
+        onClose={() => setTzSelectorOpen(false)}
+        value={settings.timezone}
+        onChange={tz => setTimezone(tz)}
+        lang={lang}
+      />
 
       {/* Add New Course Modal */}
       <Modal

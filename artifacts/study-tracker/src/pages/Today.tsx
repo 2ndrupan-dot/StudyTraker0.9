@@ -180,7 +180,7 @@ function generateSmartPlan(
     const hasAnyIncomplete = subj.chapters.some(ch => !isChapterContentDone(ch));
     if (!hasAnyIncomplete) continue;
 
-    const daysLeft = Math.max(0, differenceInDays(parseISO(subj.deadline), parseISO(todayIST())));
+    const daysLeft = Math.max(0, differenceInDays(parseISO(subj.deadline), parseISO(todayStr)));
 
     let total = 0, incomplete = 0, hasInProgress = false;
     for (const ch of subj.chapters) {
@@ -433,7 +433,7 @@ export function Today() {
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const dailyBudgetMins = (settings.dailyStudyHours ?? 3) * 60;
-  const todayStr = todayIST();
+  const todayStr = todayIST(settings.timezone);
 
   const prevHoursRef = useRef<number | null>(null);
   const itemIdsRef = useRef<Set<string> | null>(null);
@@ -500,7 +500,7 @@ export function Today() {
       return setTimeout(() => {
         setReloadDay(d => d + 1);
         scheduleRefresh(); // reschedule for next IST midnight
-      }, msUntilISTMidnight());
+      }, msUntilISTMidnight(settings.timezone));
     };
     const timer = scheduleRefresh();
     return () => clearTimeout(timer);
@@ -509,7 +509,7 @@ export function Today() {
   // ── Real-time Firestore listener (cross-device sync) ──────────────────────
   useEffect(() => {
     if (!user?.id || !activeCourseId) return;
-    const todayDateStr = todayIST();
+    const todayDateStr = todayIST(settings.timezone);
     const courseId = activeCourseId;
     const unsubscribe = onSnapshot(
       doc(db, 'users', user.id, 'todayData', courseId),
@@ -673,7 +673,7 @@ export function Today() {
       const getDateCounts = (revList: typeof currentRevisions, excludeId: string) => {
         const counts: Record<string, number> = {};
         for (let i = 1; i <= 14; i++) {
-          const d = toDateStrIST(addDaysIST(nowIST(), i));
+          const d = toDateStrIST(addDaysIST(nowIST(settings.timezone), i));
           counts[d] = revList.filter(r => !r.done && r.scheduledDate === d && r.id !== excludeId).length;
         }
         return counts;
@@ -817,7 +817,7 @@ export function Today() {
     // Count revisions per future date
     const dateCounts: Record<string, number> = {};
     for (let i = 1; i <= 14; i++) {
-      const d = toDateStrIST(addDaysIST(nowIST(), i));
+      const d = toDateStrIST(addDaysIST(nowIST(settings.timezone), i));
       dateCounts[d] = revisions.filter(r => !r.done && r.scheduledDate === d && r.id !== id).length;
     }
     const bestDate = Object.entries(dateCounts).sort((a, b) => a[1] - b[1])[0][0];
@@ -857,7 +857,7 @@ export function Today() {
       subjectColor: task.subjectColor,
       breadcrumb: task.breadcrumb,
       level: task.level,
-      scheduledDate: toDateStrIST(addDaysIST(nowIST(), days)),
+      scheduledDate: toDateStrIST(addDaysIST(nowIST(settings.timezone), days)),
       revisionMins: Math.max(Math.round(task.estimatedMins * 0.5), MIN_POINT),
       done: false,
     }));
@@ -1286,7 +1286,7 @@ export function Today() {
           <div className="flex items-start justify-between mb-3">
             <div>
               <h1 className="text-2xl font-bold text-foreground leading-tight">{t('todayPlan')}</h1>
-              <p className="text-muted-foreground text-sm font-medium mt-0.5">{formatTodayDisplayIST()}</p>
+              <p className="text-muted-foreground text-sm font-medium mt-0.5">{formatTodayDisplayIST(settings.timezone)}</p>
             </div>
 
             {/* Right side icons */}

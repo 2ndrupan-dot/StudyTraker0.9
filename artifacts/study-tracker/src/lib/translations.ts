@@ -184,6 +184,13 @@ export const translations = {
     courseResetProceeed: "Yes, continue",
     courseResetAbsoluteSure: "Yes, I'm absolutely sure",
 
+    // Timezone
+    timezone: "Timezone",
+    timezoneLabel: "Your Timezone",
+    timezoneDesc: "Set your timezone so Today's plan resets at the correct midnight.",
+    timezoneChange: "Change Timezone",
+    timezoneDeviceDefault: "Device default",
+
     // Online / Offline status
     online: "Online",
     offline: "Offline",
@@ -545,6 +552,13 @@ export const translations = {
     courseResetCountdown: "রিসেট নির্ধারিত",
     courseResetProceeed: "হ্যাঁ, এগিয়ে যান",
     courseResetAbsoluteSure: "হ্যাঁ, আমি সম্পূর্ণ নিশ্চিত",
+
+    // Timezone
+    timezone: "টাইম জোন",
+    timezoneLabel: "আপনার টাইম জোন",
+    timezoneDesc: "আপনার দেশের সময় অনুযায়ী টাইম জোন সেট করুন — Today প্ল্যান সঠিক মধ্যরাতে রিফ্রেশ হবে।",
+    timezoneChange: "টাইম জোন পরিবর্তন করুন",
+    timezoneDeviceDefault: "ডিভাইসের ডিফল্ট",
 
     // Online / Offline status
     online: "অনলাইন",

@@ -81,6 +81,7 @@ export interface CourseSettings {
   dailyStudyHours: number;
   courseStartDate?: string;
   resetScheduled?: boolean;
+  timezone?: string;
 }
 
 // Minimum time limits per level (minutes)

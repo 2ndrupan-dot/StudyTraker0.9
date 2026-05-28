@@ -812,9 +812,22 @@ export function Progress() {
                 </>
               ) : (
                 <>
-                  <Globe size={20} className="text-muted-foreground shrink-0" />
+                  {(() => {
+                    const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    const entry = getTimezoneEntry(deviceTz);
+                    const flagUrl = entry?.code ? getFlagUrl(entry.code) : null;
+                    return flagUrl
+                      ? <img src={flagUrl} alt={entry?.country ?? ''} className="w-7 h-5 rounded-sm object-cover shrink-0" />
+                      : <Globe size={20} className="text-muted-foreground shrink-0" />;
+                  })()}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground">{t('timezoneDeviceDefault')}</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {(() => {
+                        const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                        const entry = getTimezoneEntry(deviceTz);
+                        return entry ? entry.country : deviceTz;
+                      })()}
+                    </p>
                     <p className="text-[11px] font-mono text-muted-foreground">{Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
                   </div>
                 </>

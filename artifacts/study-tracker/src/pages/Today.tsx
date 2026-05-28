@@ -9,7 +9,8 @@ import {
   ChevronDown, AlertTriangle, X, RotateCcw, TrendingUp, PlayCircle,
   Lock, Flame, ThumbsUp, RefreshCw, Plus, StickyNote, Star, AlertOctagon,
 } from 'lucide-react';
-import { format, differenceInDays, parseISO, addDays } from 'date-fns';
+import { differenceInDays, parseISO } from 'date-fns';
+import { todayIST, nowIST, toDateStrIST, addDaysIST, formatTodayDisplayIST, msUntilISTMidnight } from '@/lib/istTime';
 import { Modal, Input, Button, NoteEditorModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Subject, MarkPath, MarkLevel } from '@/lib/types';
@@ -179,7 +180,7 @@ function generateSmartPlan(
     const hasAnyIncomplete = subj.chapters.some(ch => !isChapterContentDone(ch));
     if (!hasAnyIncomplete) continue;
 
-    const daysLeft = Math.max(0, differenceInDays(parseISO(subj.deadline), new Date()));
+    const daysLeft = Math.max(0, differenceInDays(parseISO(subj.deadline), parseISO(todayIST())));
 
     let total = 0, incomplete = 0, hasInProgress = false;
     for (const ch of subj.chapters) {
@@ -432,7 +433,7 @@ export function Today() {
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const dailyBudgetMins = (settings.dailyStudyHours ?? 3) * 60;
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const todayStr = todayIST();
 
   const prevHoursRef = useRef<number | null>(null);
   const itemIdsRef = useRef<Set<string> | null>(null);
@@ -493,17 +494,13 @@ export function Today() {
     writeRevisions(entries);
   }, [email, activeCourseId, writeRevisions]);
 
-  // ── Midnight auto-refresh ──────────────────────────────────────────────────
+  // ── Midnight auto-refresh (IST — triggers at 12:00 AM IST) ────────────────
   useEffect(() => {
     const scheduleRefresh = () => {
-      const now = new Date();
-      const midnight = new Date(now);
-      midnight.setDate(midnight.getDate() + 1);
-      midnight.setHours(0, 0, 1, 0); // 1 second past midnight
       return setTimeout(() => {
         setReloadDay(d => d + 1);
-        scheduleRefresh(); // reschedule for next midnight
-      }, midnight.getTime() - now.getTime());
+        scheduleRefresh(); // reschedule for next IST midnight
+      }, msUntilISTMidnight());
     };
     const timer = scheduleRefresh();
     return () => clearTimeout(timer);
@@ -512,7 +509,7 @@ export function Today() {
   // ── Real-time Firestore listener (cross-device sync) ──────────────────────
   useEffect(() => {
     if (!user?.id || !activeCourseId) return;
-    const todayDateStr = format(new Date(), 'yyyy-MM-dd');
+    const todayDateStr = todayIST();
     const courseId = activeCourseId;
     const unsubscribe = onSnapshot(
       doc(db, 'users', user.id, 'todayData', courseId),
@@ -676,7 +673,7 @@ export function Today() {
       const getDateCounts = (revList: typeof currentRevisions, excludeId: string) => {
         const counts: Record<string, number> = {};
         for (let i = 1; i <= 14; i++) {
-          const d = format(addDays(new Date(), i), 'yyyy-MM-dd');
+          const d = toDateStrIST(addDaysIST(nowIST(), i));
           counts[d] = revList.filter(r => !r.done && r.scheduledDate === d && r.id !== excludeId).length;
         }
         return counts;
@@ -820,7 +817,7 @@ export function Today() {
     // Count revisions per future date
     const dateCounts: Record<string, number> = {};
     for (let i = 1; i <= 14; i++) {
-      const d = format(addDays(new Date(), i), 'yyyy-MM-dd');
+      const d = toDateStrIST(addDaysIST(nowIST(), i));
       dateCounts[d] = revisions.filter(r => !r.done && r.scheduledDate === d && r.id !== id).length;
     }
     const bestDate = Object.entries(dateCounts).sort((a, b) => a[1] - b[1])[0][0];
@@ -860,7 +857,7 @@ export function Today() {
       subjectColor: task.subjectColor,
       breadcrumb: task.breadcrumb,
       level: task.level,
-      scheduledDate: format(addDays(new Date(), days), 'yyyy-MM-dd'),
+      scheduledDate: toDateStrIST(addDaysIST(nowIST(), days)),
       revisionMins: Math.max(Math.round(task.estimatedMins * 0.5), MIN_POINT),
       done: false,
     }));
@@ -1289,7 +1286,7 @@ export function Today() {
           <div className="flex items-start justify-between mb-3">
             <div>
               <h1 className="text-2xl font-bold text-foreground leading-tight">{t('todayPlan')}</h1>
-              <p className="text-muted-foreground text-sm font-medium mt-0.5">{format(new Date(), 'EEEE, MMMM d')}</p>
+              <p className="text-muted-foreground text-sm font-medium mt-0.5">{formatTodayDisplayIST()}</p>
             </div>
 
             {/* Right side icons */}

@@ -1,65 +1,62 @@
-// Indian Standard Time (IST) = UTC+5:30 = +19800000 ms
-// All functions here use IST regardless of the device's local timezone.
-
-const IST_OFFSET_MS = 19800000; // 5.5 * 60 * 60 * 1000
+// All time functions use the device's local timezone automatically.
+// No hardcoded timezone — works correctly whether accessed from India,
+// Bangladesh, or any other country.
 
 /**
- * Returns a Date whose getUTC* methods reflect the current IST civil time.
- * e.g. if IST is 2026-05-28 10:30 PM, getUTCFullYear/Month/Date returns 2026/4/28
+ * Returns the current local Date.
  */
 export function nowIST(): Date {
-  return new Date(Date.now() + IST_OFFSET_MS);
+  return new Date();
 }
 
 /**
- * Returns today's date string in IST as 'yyyy-MM-dd'.
- * Safe regardless of device timezone.
+ * Returns today's date string as 'yyyy-MM-dd' in the device's local timezone.
  */
 export function todayIST(): string {
-  return toDateStrIST(nowIST());
+  return toDateStrIST(new Date());
 }
 
 /**
- * Converts an IST-adjusted Date (from nowIST / addDaysIST) to 'yyyy-MM-dd'.
+ * Converts a Date to 'yyyy-MM-dd' using the device's local timezone.
  */
-export function toDateStrIST(istDate: Date): string {
-  const y = istDate.getUTCFullYear();
-  const m = String(istDate.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(istDate.getUTCDate()).padStart(2, '0');
+export function toDateStrIST(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
 
 /**
- * Adds `days` calendar days to an IST-adjusted Date.
+ * Adds `days` calendar days to a Date (DST-safe via setDate).
  */
-export function addDaysIST(istBase: Date, days: number): Date {
-  return new Date(istBase.getTime() + days * 86400000);
+export function addDaysIST(base: Date, days: number): Date {
+  const result = new Date(base);
+  result.setDate(result.getDate() + days);
+  return result;
 }
 
 /**
- * Display string for today in IST (e.g. "Wednesday, May 28").
+ * Display string for today in the device's local timezone (e.g. "Wednesday, May 28").
  */
 export function formatTodayDisplayIST(): string {
-  return new Intl.DateTimeFormat('en-IN', {
+  return new Intl.DateTimeFormat(undefined, {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
-    timeZone: 'Asia/Kolkata',
   }).format(new Date());
 }
 
 /**
- * Milliseconds from now until the next IST midnight (00:00:01 IST).
- * Used to schedule the auto-refresh at the correct IST day boundary.
+ * Milliseconds from now until the next local midnight (00:00:01 local time).
+ * Used to schedule the auto-refresh at the correct local day boundary.
  */
 export function msUntilISTMidnight(): number {
-  const ist = nowIST();
-  // Next day at 00:00:01 IST = subtract IST offset from UTC representation
-  const nextMidnightUTC = Date.UTC(
-    ist.getUTCFullYear(),
-    ist.getUTCMonth(),
-    ist.getUTCDate() + 1,
+  const now = new Date();
+  const nextMidnight = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
     0, 0, 1, 0,
-  ) - IST_OFFSET_MS;
-  return Math.max(1000, nextMidnightUTC - Date.now());
+  );
+  return Math.max(1000, nextMidnight.getTime() - now.getTime());
 }

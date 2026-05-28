@@ -499,12 +499,12 @@ export function Today() {
     const scheduleRefresh = () => {
       return setTimeout(() => {
         setReloadDay(d => d + 1);
-        scheduleRefresh(); // reschedule for next IST midnight
+        scheduleRefresh(); // reschedule for next midnight in selected timezone
       }, msUntilISTMidnight(settings.timezone));
     };
     const timer = scheduleRefresh();
     return () => clearTimeout(timer);
-  }, []);
+  }, [settings.timezone]);
 
   // ── Real-time Firestore listener (cross-device sync) ──────────────────────
   useEffect(() => {

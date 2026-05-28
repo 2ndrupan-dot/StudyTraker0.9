@@ -8,7 +8,7 @@ import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
 import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, FileText, ExternalLink, Globe } from 'lucide-react';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
-import { getTimezoneEntry, getCurrentOffset } from '@/lib/timezones';
+import { getTimezoneEntry, getCurrentOffset, getFlagUrl } from '@/lib/timezones';
 import { Modal, ConfirmModal, Input, Button, NoteEditorModal, NotePagePreviewModal } from '@/components/ui';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -796,7 +796,13 @@ export function Progress() {
             >
               {settings.timezone ? (
                 <>
-                  <span className="text-xl shrink-0">{getTimezoneEntry(settings.timezone)?.flag ?? '🌐'}</span>
+                  {(() => {
+                    const entry = getTimezoneEntry(settings.timezone);
+                    const flagUrl = entry?.code ? getFlagUrl(entry.code) : null;
+                    return flagUrl
+                      ? <img src={flagUrl} alt={entry?.country ?? ''} className="w-7 h-5 rounded-sm object-cover shrink-0" />
+                      : <Globe size={20} className="text-muted-foreground shrink-0" />;
+                  })()}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">
                       {getTimezoneEntry(settings.timezone)?.country ?? settings.timezone}
@@ -806,7 +812,7 @@ export function Progress() {
                 </>
               ) : (
                 <>
-                  <span className="text-xl shrink-0">📱</span>
+                  <Globe size={20} className="text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-foreground">{t('timezoneDeviceDefault')}</p>
                     <p className="text-[11px] font-mono text-muted-foreground">{Intl.DateTimeFormat().resolvedOptions().timeZone}</p>

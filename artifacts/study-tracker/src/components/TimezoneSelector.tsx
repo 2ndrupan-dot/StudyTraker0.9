@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Globe, Search, Check, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TIMEZONES, filterTimezones, getTimezoneEntry, getCurrentOffset } from '@/lib/timezones';
+import { TIMEZONES, filterTimezones, getTimezoneEntry, getCurrentOffset, getFlagUrl } from '@/lib/timezones';
 
 interface Props {
   isOpen: boolean;
@@ -9,6 +9,22 @@ interface Props {
   value?: string;
   onChange: (iana: string) => void;
   lang?: 'en' | 'bn';
+}
+
+function FlagImg({ code, alt, size = 20 }: { code: string; alt: string; size?: number }) {
+  const url = getFlagUrl(code);
+  if (!url) return <Globe size={size} className="text-muted-foreground" />;
+  return (
+    <img
+      src={url}
+      alt={alt}
+      width={size + 8}
+      height={Math.round((size + 8) * 0.75)}
+      className="rounded-sm object-cover shrink-0"
+      style={{ width: size + 8, height: Math.round((size + 8) * 0.75) }}
+      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+    />
+  );
 }
 
 export function TimezoneSelector({ isOpen, onClose, value, onChange, lang = 'en' }: Props) {
@@ -83,8 +99,8 @@ export function TimezoneSelector({ isOpen, onClose, value, onChange, lang = 'en'
             {/* Current / Device info */}
             <div className="px-5 pb-3 shrink-0 space-y-2">
               {currentEntry && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-primary/8 border border-primary/20 rounded-xl">
-                  <span className="text-lg">{currentEntry.flag}</span>
+                <div className="flex items-center gap-3 px-3 py-2 bg-primary/8 border border-primary/20 rounded-xl">
+                  <FlagImg code={currentEntry.code} alt={currentEntry.country} size={18} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-muted-foreground">{isBn ? 'বর্তমান' : 'Current'}</p>
                     <p className="text-sm font-semibold text-primary truncate">{currentEntry.country}</p>
@@ -94,9 +110,9 @@ export function TimezoneSelector({ isOpen, onClose, value, onChange, lang = 'en'
               )}
               <button
                 onClick={() => handleSelect(deviceTz)}
-                className="w-full flex items-center gap-2 px-3 py-2 bg-secondary/60 border border-border/40 rounded-xl hover:bg-secondary transition-colors text-left"
+                className="w-full flex items-center gap-3 px-3 py-2 bg-secondary/60 border border-border/40 rounded-xl hover:bg-secondary transition-colors text-left"
               >
-                <span className="text-base">📱</span>
+                <Globe size={18} className="text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-muted-foreground">{isBn ? 'ডিভাইসের সময়' : 'Use device timezone'}</p>
                   <p className="text-xs font-mono text-foreground/70 truncate">{deviceTz}</p>
@@ -147,7 +163,7 @@ export function TimezoneSelector({ isOpen, onClose, value, onChange, lang = 'en'
                                 : 'hover:bg-secondary/80 border border-transparent'
                             }`}
                           >
-                            <span className="text-xl shrink-0">{tz.flag}</span>
+                            <FlagImg code={tz.code} alt={tz.country} size={18} />
                             <div className="flex-1 min-w-0">
                               <p className={`text-sm font-semibold truncate ${isSelected ? 'text-primary' : 'text-foreground'}`}>
                                 {tz.country}

@@ -106,7 +106,7 @@ function getLocalData(key: string): StudyData | null {
   }
 }
 
-function doResetProgress(subjs: Subject[], currentSettings: CourseSettings, userEmail: string | undefined): { subjects: Subject[]; settings: CourseSettings } {
+function doResetProgress(subjs: Subject[], currentSettings: CourseSettings, userEmail: string | undefined, courseId?: string): { subjects: Subject[]; settings: CourseSettings } {
   const resetSubjects = subjs.map(s => ({
     ...s,
     completed: false,
@@ -131,6 +131,13 @@ function doResetProgress(subjs: Subject[], currentSettings: CourseSettings, user
   const resetSettings: CourseSettings = { ...currentSettings, resetScheduled: false };
   if (userEmail) {
     try {
+      // Clear current-format keys (course-specific)
+      if (courseId) {
+        localStorage.removeItem(`@study_today_plan_v3_${userEmail}_${courseId}`);
+        localStorage.setItem(`@study_pending_v3_${userEmail}_${courseId}`, '[]');
+        localStorage.setItem(`@study_revisions_v2_${userEmail}_${courseId}`, '[]');
+      }
+      // Also clear old-format keys for backward compatibility
       ['today_plan_v2', 'pending_v2', 'revisions_v1'].forEach(k => {
         localStorage.removeItem(`@study_${k}_${userEmail}`);
       });
@@ -267,7 +274,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
               const startDate = new Date(loadedSettings.courseStartDate);
               startDate.setHours(0, 0, 0, 0);
               if (new Date() >= startDate) {
-                const resetResult = doResetProgress(loadedSubjects, loadedSettings, user?.email);
+                const resetResult = doResetProgress(loadedSubjects, loadedSettings, user?.email, activeCourseId);
                 loadedSubjects = resetResult.subjects;
                 loadedSettings.resetScheduled = false;
               }
@@ -519,7 +526,21 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   };
 
   const setCourseStartDate = (date: string) => {
-    setSettings(prev => ({ ...prev, courseStartDate: date, resetScheduled: true }));
+    // Immediately reset all subjects and clear today/pending/revision data
+    setSubjects(prev => {
+      const { subjects: resetSubjs } = doResetProgress(prev, settings, user?.email, activeCourseId);
+      return resetSubjs;
+    });
+    setSettings(prev => ({ ...prev, courseStartDate: date, resetScheduled: false }));
+
+    // Sync cleared today data to Firestore so other devices also reset
+    if (user?.id && activeCourseId) {
+      setDoc(
+        doc(db, 'users', user.id, 'todayData', activeCourseId),
+        { plan: { date: '', tasks: [] }, pending: [], revisions: [] },
+        { merge: false },
+      ).catch(e => console.warn('[setCourseStartDate] Firestore todayData reset failed:', e));
+    }
   };
 
   const addSubject = (data: Omit<Subject, 'id' | 'completed' | 'chapters'>) => {
@@ -565,23 +586,63 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         })),
       };
     }));
-    // Clear today's plan so it regenerates fresh; filter pending & revisions for this subject
-    if (user?.email) {
+
+    // Clear / filter today plan, pending, and revisions for this subject
+    // using the current course-specific localStorage keys, then sync to Firestore
+    if (user?.email && activeCourseId) {
+      const email = user.email;
+      const courseId = activeCourseId;
+      const pKey   = `@study_today_plan_v3_${email}_${courseId}`;
+      const pendK  = `@study_pending_v3_${email}_${courseId}`;
+      const revK   = `@study_revisions_v2_${email}_${courseId}`;
+
+      let filteredPlanTasks: any[] = [];
+      let planDate = '';
+      let filteredPend: any[] = [];
+      let filteredRev: any[] = [];
+
       try {
-        localStorage.removeItem(`@study_today_plan_v2_${user.email}`);
-        const pendRaw = localStorage.getItem(`@study_pending_v2_${user.email}`);
-        if (pendRaw) {
-          const pend = JSON.parse(pendRaw);
-          const filtered = Array.isArray(pend) ? pend.filter((t: any) => t.subjectId !== subjId) : [];
-          localStorage.setItem(`@study_pending_v2_${user.email}`, JSON.stringify(filtered));
+        // Filter today's plan — remove tasks belonging to this subject
+        const planRaw = localStorage.getItem(pKey);
+        if (planRaw) {
+          const parsed = JSON.parse(planRaw) as { date: string; tasks: any[] };
+          planDate = parsed.date ?? '';
+          filteredPlanTasks = Array.isArray(parsed.tasks)
+            ? parsed.tasks.filter((t: any) => t.subjectId !== subjId)
+            : [];
+          localStorage.setItem(pKey, JSON.stringify({ date: planDate, tasks: filteredPlanTasks }));
         }
-        const revRaw = localStorage.getItem(`@study_revisions_v1_${user.email}`);
-        if (revRaw) {
-          const rev = JSON.parse(revRaw);
-          const filtered = Array.isArray(rev) ? rev.filter((r: any) => r.subjectId !== subjId) : [];
-          localStorage.setItem(`@study_revisions_v1_${user.email}`, JSON.stringify(filtered));
-        }
+
+        // Filter pending items belonging to this subject
+        const pendRaw = localStorage.getItem(pendK);
+        filteredPend = pendRaw
+          ? (JSON.parse(pendRaw) as any[]).filter((t: any) => t.task?.subjectId !== subjId)
+          : [];
+        localStorage.setItem(pendK, JSON.stringify(filteredPend));
+
+        // Filter revisions belonging to this subject
+        // RevisionEntry.id format: "${task.key}_rev_${days}" where task.key starts with "${subjectId}|"
+        const revRaw = localStorage.getItem(revK);
+        filteredRev = revRaw
+          ? (JSON.parse(revRaw) as any[]).filter(
+              (r: any) => !String(r.id ?? '').startsWith(subjId + '|'),
+            )
+          : [];
+        localStorage.setItem(revK, JSON.stringify(filteredRev));
       } catch { /* ignore */ }
+
+      // Sync to Firestore so other devices also reflect the reset immediately
+      if (user?.id) {
+        setDoc(
+          doc(db, 'users', user.id, 'todayData', courseId),
+          {
+            plan: { date: planDate, tasks: filteredPlanTasks },
+            pending: filteredPend,
+            revisions: filteredRev,
+          },
+          { merge: false },
+        ).catch(e => console.warn('[resetSubjectProgress] Firestore todayData sync failed:', e));
+      }
     }
   };
 

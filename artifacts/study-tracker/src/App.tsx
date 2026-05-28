@@ -1,5 +1,5 @@
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LangProvider } from "./context/LangContext";
 import { CourseProvider, useCourse } from "./context/CourseContext";
@@ -64,6 +64,21 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
+// ── Route persistence: remember last visited page across PWA reloads ──────────
+const LAST_ROUTE_KEY = '@study_last_route';
+const RESTORABLE_ROUTES = ['/today', '/subjects', '/progress'];
+
+function RouteTracker() {
+  const { user } = useAuth();
+  const [location] = useLocation();
+  useEffect(() => {
+    if (user && RESTORABLE_ROUTES.includes(location)) {
+      localStorage.setItem(LAST_ROUTE_KEY, location);
+    }
+  }, [location, user]);
+  return null;
+}
+
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
   useEffect(() => {
@@ -74,6 +89,16 @@ function Redirect({ to }: { to: string }) {
 
 function Router() {
   const { user, loading } = useAuth();
+  const [restored, setRestored] = useState(false);
+
+  // On first authenticated load, go back to wherever the user was
+  const savedRoute = !loading && user && !restored
+    ? (() => {
+        setRestored(true);
+        const r = localStorage.getItem(LAST_ROUTE_KEY);
+        return r && RESTORABLE_ROUTES.includes(r) ? r : '/today';
+      })()
+    : null;
 
   if (loading) {
     return (
@@ -92,25 +117,28 @@ function Router() {
   }
 
   return (
-    <Switch>
-      <Route path="/auth">
-        {user ? <Redirect to="/today" /> : <Auth />}
-      </Route>
+    <>
+      <RouteTracker />
+      <Switch>
+        <Route path="/auth">
+          {user ? <Redirect to={savedRoute ?? '/today'} /> : <Auth />}
+        </Route>
 
-      <Route path="/today"><ProtectedRoute component={Today} /></Route>
-      <Route path="/subjects"><ProtectedRoute component={Subjects} /></Route>
-      <Route path="/progress"><ProtectedRoute component={Progress} /></Route>
-      <Route path="/">
-        <Redirect to={user ? "/today" : "/auth"} />
-      </Route>
-      <Route path="/tabs">
-        <Redirect to={user ? "/today" : "/auth"} />
-      </Route>
+        <Route path="/today"><ProtectedRoute component={Today} /></Route>
+        <Route path="/subjects"><ProtectedRoute component={Subjects} /></Route>
+        <Route path="/progress"><ProtectedRoute component={Progress} /></Route>
+        <Route path="/">
+          <Redirect to={user ? (savedRoute ?? '/today') : '/auth'} />
+        </Route>
+        <Route path="/tabs">
+          <Redirect to={user ? (savedRoute ?? '/today') : '/auth'} />
+        </Route>
 
-      <Route>
-        <Redirect to="/" />
-      </Route>
-    </Switch>
+        <Route>
+          <Redirect to="/" />
+        </Route>
+      </Switch>
+    </>
   );
 }
 

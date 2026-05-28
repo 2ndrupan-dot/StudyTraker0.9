@@ -688,13 +688,26 @@ function ColorPopover({
   title: string;
 }) {
   const { open, setOpen, ref } = usePopover();
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [alignRight, setAlignRight] = useState(false);
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      // Popover is ~150px wide; flip to right-align if it would overflow viewport
+      setAlignRight(rect.left + 150 > window.innerWidth - 8);
+    }
+    setOpen(o => !o);
+  };
 
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={btnRef}
         type="button"
         title={title}
-        onMouseDown={e => { e.preventDefault(); setOpen(o => !o); }}
+        onMouseDown={handleToggle}
         className={cn(
           'relative flex items-center justify-center w-7 h-7 rounded-lg transition-colors',
           open || activeColor
@@ -711,7 +724,12 @@ function ColorPopover({
         )}
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border/60 rounded-xl shadow-xl p-2 grid grid-cols-5 gap-1 min-w-[140px]">
+        <div
+          className={cn(
+            'absolute top-full mt-1 z-50 bg-card border border-border/60 rounded-xl shadow-xl p-2 grid grid-cols-5 gap-1 min-w-[140px]',
+            alignRight ? 'right-0' : 'left-0'
+          )}
+        >
           {colors.map(c => (
             <button
               key={c.value || 'none'}
@@ -777,13 +795,14 @@ interface RichTextEditorProps {
   placeholder?: string;
   className?: string;
   minHeight?: string;
+  maxHeight?: string;
   autoFocus?: boolean;
 }
 
 export function RichTextEditor({
   value, onChange,
   placeholder = 'Write something...',
-  className, minHeight = '8rem', autoFocus = false,
+  className, minHeight = '8rem', maxHeight, autoFocus = false,
 }: RichTextEditorProps) {
   const { t } = useLang();
   const [, setTick] = useState(0);
@@ -1038,7 +1057,7 @@ export function RichTextEditor({
       {/* ── Editor area ── */}
       <div
         className="flex-1 px-3 py-2.5 overflow-y-auto cursor-text relative"
-        style={{ minHeight }}
+        style={{ minHeight, ...(maxHeight ? { maxHeight } : {}) }}
         onMouseDown={(e) => {
           const t = e.target as HTMLElement;
           // Clicking outside ProseMirror (in padding) — collapse selection

@@ -483,11 +483,12 @@ export const NoteEditorModal = ({
                   animate={{ y: 0 }}
                   exit={{ y: '100%' }}
                   transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-                  className="fixed bottom-0 left-0 right-0 z-50 max-w-md mx-auto bg-card rounded-t-3xl pb-8 shadow-[0_-8px_40px_rgba(0,0,0,0.18)] border-t border-x border-border/60 pointer-events-auto"
+                  className="fixed bottom-0 left-0 right-0 z-50 max-w-md mx-auto bg-card rounded-t-3xl shadow-[0_-8px_40px_rgba(0,0,0,0.18)] border-t border-x border-border/60 pointer-events-auto flex flex-col"
+                  style={{ maxHeight: '85vh' }}
                   onClick={e => e.stopPropagation()}
                 >
-                  {/* Header */}
-                  <div className="flex items-center justify-between px-6 py-4 border-b border-border/50">
+                  {/* Header — always visible, never pushed off-screen */}
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 shrink-0">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary shrink-0"><Icon size={20} /></div>}
                       <div className="min-w-0">
@@ -509,8 +510,8 @@ export const NoteEditorModal = ({
                     </div>
                   </div>
 
-                  {/* Body */}
-                  <div className="p-6 space-y-4">
+                  {/* Body — scrollable so header stays visible */}
+                  <div className="flex-1 min-h-0 overflow-y-auto p-6 pb-8 space-y-4">
                     {editing ? (
                       <>
                         <RichTextEditor
@@ -518,9 +519,10 @@ export const NoteEditorModal = ({
                           onChange={onChange}
                           placeholder={placeholder}
                           minHeight="7rem"
+                          maxHeight="45vh"
                           autoFocus
                         />
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 shrink-0">
                           <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>
                           <Button className="flex-1" onClick={onSave}>{saveLabel}</Button>
                         </div>

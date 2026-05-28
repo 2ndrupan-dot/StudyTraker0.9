@@ -968,9 +968,15 @@ export function Today() {
     else if (task.level === 'topic'    && tId)                          toggleTopicComplete(sId, cId, tId);
     else                                                                 toggleChapterComplete(sId, cId);
 
-    // Schedule revisions only when marking as complete (not undo)
     if (!wasCompleted) {
+      // Marking complete → schedule revisions
       scheduleRevisions(task);
+    } else {
+      // Undo complete → remove any revision entries created for this task
+      const revKeys = new Set(REVISION_DAYS.map(days => `${task.key}_rev_${days}`));
+      const updated = revisions.filter(r => !revKeys.has(r.id));
+      setRevisions(updated);
+      syncRevisions(updated);
     }
   };
 

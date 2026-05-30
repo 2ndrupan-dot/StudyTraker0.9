@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
@@ -352,6 +352,30 @@ export function Subjects() {
   const [expandedTopic, setExpandedTopic] = useState<string | null>(null);
   const [expandedSubtopic, setExpandedSubtopic] = useState<string | null>(null);
   const [expandedConcept, setExpandedConcept] = useState<string | null>(null);
+
+  // Auto-expand to a specific item when navigating from Global Search
+  useEffect(() => {
+    const stored = sessionStorage.getItem('study_nav_target');
+    if (!stored) return;
+    try {
+      const nav = JSON.parse(stored);
+      if (!['subject','chapter','topic','subtopic','concept','point','tempNote'].includes(nav.kind)) return;
+      sessionStorage.removeItem('study_nav_target');
+      if (nav.subjectId) setExpandedSubj(nav.subjectId);
+      if (nav.chapterId) setExpandedChapter(nav.chapterId);
+      if (nav.topicId) setExpandedTopic(nav.topicId);
+      if (nav.subtopicId) setExpandedSubtopic(nav.subtopicId);
+      if (nav.conceptId) setExpandedConcept(nav.conceptId);
+      // Scroll to the deepest expanded item after a brief delay
+      const targetId = nav.pointId || nav.conceptId || nav.subtopicId || nav.topicId || nav.chapterId || nav.subjectId;
+      if (targetId) {
+        setTimeout(() => {
+          const el = document.getElementById(`study-item-${targetId}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 350);
+      }
+    } catch {}
+  }, []); // eslint-disable-line
 
   const toggleSubj = (id: string) => {
     setExpandedSubj(e => e === id ? null : id);
@@ -775,6 +799,7 @@ export function Subjects() {
                 <SortableItemWrapper key={subj.id} id={subj.id} reorderMode={reorderMode}>
                 {(subjHandle) => (
                 <motion.div
+                  id={`study-item-${subj.id}`}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.96 }}
@@ -920,7 +945,7 @@ export function Subjects() {
                             return (
                               <SortableItemWrapper key={chapter.id} id={chapter.id} reorderMode={reorderMode}>
                               {(chHandle) => (
-                              <motion.div {...itemAnim} className={`bg-card border rounded-xl overflow-hidden shadow-sm ${chLocked ? 'border-border/30 opacity-70' : 'border-border/50'} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`}>
+                              <motion.div id={`study-item-${chapter.id}`} {...itemAnim} className={`bg-card border rounded-xl overflow-hidden shadow-sm ${chLocked ? 'border-border/30 opacity-70' : 'border-border/50'} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`}>
                                 <div
                                   className="p-3 flex items-center gap-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row"
                                   onClick={() => toggleChapter(chapter.id)}
@@ -1007,7 +1032,7 @@ export function Subjects() {
                                           return (
                                             <SortableItemWrapper key={topic.id} id={topic.id} reorderMode={reorderMode}>
                                             {(topHandle) => (
-                                            <motion.div {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${topLocked ? 'border-border/20 opacity-60' : 'border-border/40'} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`}>
+                                            <motion.div id={`study-item-${topic.id}`} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${topLocked ? 'border-border/20 opacity-60' : 'border-border/40'} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`}>
                                               <div
                                                 className="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-secondary/20 group/row"
                                                 onClick={() => toggleTopic(topic.id)}
@@ -1094,7 +1119,7 @@ export function Subjects() {
                                                         return (
                                                           <SortableItemWrapper key={sub.id} id={sub.id} reorderMode={reorderMode}>
                                                           {(subHandle) => (
-                                                          <motion.div {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${subLocked ? 'border-border/15 opacity-55' : 'border-border/30'} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
+                                                          <motion.div id={`study-item-${sub.id}`} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${subLocked ? 'border-border/15 opacity-55' : 'border-border/30'} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
                                                             <div
                                                               className="px-2.5 py-2 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20 group/row"
                                                               onClick={() => toggleSubtopicExpand(sub.id)}
@@ -1167,7 +1192,7 @@ export function Subjects() {
                                                                       return (
                                                                         <SortableItemWrapper key={concept.id} id={concept.id} reorderMode={reorderMode}>
                                                                         {(conHandle) => (
-                                                                        <motion.div {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${conLocked ? 'border-border/10 opacity-50' : 'border-border/20'} ${concept.important ? 'ring-1 ring-yellow-300/40' : ''} ${concept.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
+                                                                        <motion.div id={`study-item-${concept.id}`} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${conLocked ? 'border-border/10 opacity-50' : 'border-border/20'} ${concept.important ? 'ring-1 ring-yellow-300/40' : ''} ${concept.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
                                                                           <div
                                                                             className="px-2 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20 group/row"
                                                                             onClick={() => toggleConceptExpand(concept.id)}
@@ -1237,6 +1262,7 @@ export function Subjects() {
                                                                                     <SortableItemWrapper key={point.id} id={point.id} reorderMode={reorderMode}>
                                                                                     {(ptHandle) => (
                                                                                     <motion.div
+                                                                                      id={`study-item-${point.id}`}
                                                                                       {...itemAnim}
                                                                                       className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-lg hover:bg-card group/row ${ptLocked ? 'opacity-45' : ''} ${point.important ? 'ring-1 ring-yellow-300/40' : ''} ${point.weak ? 'ring-1 ring-rose-300/40' : ''}`}
                                                                                     >

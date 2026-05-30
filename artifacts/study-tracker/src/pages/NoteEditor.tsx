@@ -5,6 +5,7 @@ import {
   ArrowLeft, Type, Link as LinkIcon, Image as ImageIcon, FileText, Plus, Minus,
   Trash2, Copy, Check, Bold, Italic, AlignLeft, AlignCenter, AlignRight,
   ZoomIn, ZoomOut, Maximize2, Upload, ExternalLink, Save, X,
+  Search, ChevronUp, ChevronDown,
 } from 'lucide-react';
 import { useStudy, newId } from '@/context/StudyContext';
 import { useAuth } from '@/context/AuthContext';
@@ -37,10 +38,16 @@ export function NoteEditor() {
   const [pdfUrl, setPdfUrl] = useState('');
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
+  // Find-in-page search
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [matchIds, setMatchIds] = useState<string[]>([]);
+  const [matchIdx, setMatchIdx] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<number | null>(null);
 
   // Load page
@@ -241,6 +248,54 @@ export function NoteEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
+  // Open find-in-page with Ctrl/Cmd+F
+  useEffect(() => {
+    const onFind = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setSearchOpen(s => { if (!s) setSearchQuery(''); return !s; });
+      }
+    };
+    window.addEventListener('keydown', onFind);
+    return () => window.removeEventListener('keydown', onFind);
+  }, []);
+
+  // Pre-populate search if navigated here from Global Search
+  useEffect(() => {
+    const stored = sessionStorage.getItem('study_nav_target');
+    if (!stored) return;
+    try {
+      const nav = JSON.parse(stored);
+      if (nav.kind === 'notePage' && nav.query) {
+        sessionStorage.removeItem('study_nav_target');
+        setTimeout(() => { setSearchOpen(true); setSearchQuery(nav.query); }, 300);
+      }
+    } catch {}
+  }, []); // eslint-disable-line
+
+  // Compute match element IDs when query changes
+  useEffect(() => {
+    if (!searchQuery.trim() || !page) { setMatchIds([]); setMatchIdx(0); return; }
+    const q = searchQuery.toLowerCase();
+    const ids = page.elements
+      .filter(el => el.type === 'text' && el.text?.toLowerCase().includes(q))
+      .map(el => el.id);
+    setMatchIds(ids);
+    setMatchIdx(0);
+  }, [searchQuery, page]);
+
+  // Scroll canvas to current match
+  useEffect(() => {
+    if (!page || matchIds.length === 0 || !scrollContainerRef.current) return;
+    const el = page.elements.find(e => e.id === matchIds[matchIdx]);
+    if (!el) return;
+    const scrollY = el.y * zoom;
+    scrollContainerRef.current.scrollTo({ top: Math.max(0, scrollY - 120), behavior: 'smooth' });
+  }, [matchIdx, matchIds]); // eslint-disable-line
+
+  const goNextMatch = () => setMatchIdx(i => matchIds.length === 0 ? 0 : (i + 1) % matchIds.length);
+  const goPrevMatch = () => setMatchIdx(i => matchIds.length === 0 ? 0 : (i - 1 + matchIds.length) % matchIds.length);
+
   if (loading || !page) {
     return (
       <div className="min-h-[100dvh] bg-background flex items-center justify-center">
@@ -438,8 +493,43 @@ export function NoteEditor() {
         </div>
       )}
 
+      {/* ─── Find-in-page bar ─── */}
+      {searchOpen && (
+        <div className="sticky top-[97px] z-30 bg-card/95 backdrop-blur border-b border-border/60 px-3 py-2 flex items-center gap-2 shadow-sm">
+          <Search size={14} className="text-muted-foreground shrink-0" />
+          <input
+            autoFocus
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') { setSearchOpen(false); setSearchQuery(''); setMatchIds([]); }
+              if (e.key === 'Enter') { e.shiftKey ? goPrevMatch() : goNextMatch(); }
+            }}
+            placeholder="Find in page…"
+            className="flex-1 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground"
+          />
+          {matchIds.length > 0 && (
+            <span className="text-xs text-muted-foreground whitespace-nowrap">{matchIdx + 1} / {matchIds.length}</span>
+          )}
+          {searchQuery.trim() && matchIds.length === 0 && (
+            <span className="text-xs text-rose-500 whitespace-nowrap">No results</span>
+          )}
+          <button onClick={goPrevMatch} disabled={matchIds.length === 0} className="p-1 rounded hover:bg-secondary text-muted-foreground disabled:opacity-40" title="Previous (Shift+Enter)">
+            <ChevronUp size={14} />
+          </button>
+          <button onClick={goNextMatch} disabled={matchIds.length === 0} className="p-1 rounded hover:bg-secondary text-muted-foreground disabled:opacity-40" title="Next (Enter)">
+            <ChevronDown size={14} />
+          </button>
+          <button onClick={() => { setSearchOpen(false); setSearchQuery(''); setMatchIds([]); setMatchIdx(0); }} className="p-1 rounded hover:bg-secondary text-muted-foreground" title="Close (Esc)">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* ─── Canvas area ─── */}
       <div
+        ref={scrollContainerRef}
         className="flex-1 overflow-auto p-4 flex justify-center"
         onClick={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}
       >
@@ -474,6 +564,8 @@ export function NoteEditor() {
               key={el.id}
               element={el}
               isSelected={selectedId === el.id}
+              isSearchMatch={matchIds.includes(el.id)}
+              isCurrentMatch={matchIds[matchIdx] === el.id}
               canvasW={A4_W}
               canvasH={totalH}
               onSelect={(id) => setSelectedId(id)}
@@ -553,10 +645,12 @@ function ToolBtn({ onClick, icon, label, disabled }: { onClick: () => void; icon
 
 // ─── Single element with drag + 8 resize handles ─────────────────────────
 function ElementBox({
-  element, isSelected, canvasW, canvasH, onSelect, onPatch,
+  element, isSelected, isSearchMatch, isCurrentMatch, canvasW, canvasH, onSelect, onPatch,
 }: {
   element: NoteElement;
   isSelected: boolean;
+  isSearchMatch?: boolean;
+  isCurrentMatch?: boolean;
   canvasW: number;
   canvasH: number;
   onSelect: (id: string) => void;
@@ -627,7 +721,12 @@ function ElementBox({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      className={`absolute touch-none ${isSelected ? 'ring-2 ring-primary z-30' : 'ring-1 ring-transparent hover:ring-border z-10'} cursor-move`}
+      className={`absolute touch-none ${
+        isSelected ? 'ring-2 ring-primary z-30' :
+        isCurrentMatch ? 'ring-2 ring-amber-500 bg-amber-100/30 z-20' :
+        isSearchMatch ? 'ring-2 ring-amber-400/60 z-10' :
+        'ring-1 ring-transparent hover:ring-border z-10'
+      } cursor-move`}
       style={{ left: element.x, top: element.y, width: element.width, height: element.height }}
     >
       {/* Content */}

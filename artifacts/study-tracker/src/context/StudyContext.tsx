@@ -77,8 +77,9 @@ interface StudyContextType {
 
   // Temp Notes (hierarchical to-do)
   tempNotes: TempNoteItem[];
-  addTempNote: (text: string, parentId?: string | null) => void;
+  addTempNote: (text: string, parentId?: string | null, noteHtml?: string) => string;
   updateTempNote: (id: string, text: string) => void;
+  updateTempNoteContent: (id: string, noteHtml: string) => void;
   toggleTempNoteDone: (id: string) => void;
   deleteTempNote: (id: string) => void;
 
@@ -1107,22 +1108,30 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     return out;
   };
 
-  const addTempNote = (text: string, parentId?: string | null) => {
+  const addTempNote = (text: string, parentId?: string | null, noteHtml?: string): string => {
+    const id = uid();
     const newNote: TempNoteItem = {
-      id: uid(),
+      id,
       text: text.trim(),
+      ...(noteHtml ? { note: noteHtml } : {}),
       done: false,
       createdAt: Date.now(),
       children: [],
     };
-    if (!newNote.text) return;
+    if (!newNote.text) return '';
     if (!parentId) {
-      // newest first
       setTempNotes(prev => [newNote, ...prev]);
-      return;
+      return id;
     }
     setTempNotes(prev => mapTempTree(prev, n =>
       n.id === parentId ? { ...n, children: [newNote, ...(n.children || [])] } : n
+    ));
+    return id;
+  };
+
+  const updateTempNoteContent = (id: string, noteHtml: string) => {
+    setTempNotes(prev => mapTempTree(prev, n =>
+      n.id === id ? { ...n, note: noteHtml } : n
     ));
   };
 
@@ -1262,7 +1271,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       addSubtopic, deleteSubtopic, toggleSubtopicComplete, updateSubtopicMeta,
       addConcept, deleteConcept, toggleConceptComplete, updateConceptMeta,
       addPoint, deletePoint, togglePointComplete, updatePointMeta,
-      tempNotes, addTempNote, updateTempNote, toggleTempNoteDone, deleteTempNote,
+      tempNotes, addTempNote, updateTempNote, updateTempNoteContent, toggleTempNoteDone, deleteTempNote,
       overallNote, setOverallNote,
       notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage,
     }}>

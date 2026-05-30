@@ -15,7 +15,7 @@ import { Modal, Input, Button, NoteEditorModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Subject, MarkPath, MarkLevel } from '@/lib/types';
 import { ItemActions } from '@/components/ItemActions';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useCourse } from '@/context/CourseContext';
 import {
@@ -696,13 +696,59 @@ export function Today() {
     } else {
       if (stored && stored.date !== todayStr) {
         const stillIncomplete = stored.tasks.filter(t => !isTaskCompleted(subjects, t));
-        if (stillIncomplete.length > 0) {
+        // Regular tasks (not from Load More) → pending immediately
+        const regularIncomplete = stillIncomplete.filter(t => !t.loadedFrom);
+        if (regularIncomplete.length > 0) {
           const existingKeys = new Set(currentPending.map(p => p.task.key));
-          const newPending: PendingItem[] = stillIncomplete
+          const newPending: PendingItem[] = regularIncomplete
             .filter(t => !existingKeys.has(t.key))
             .map(task => ({ task, plannedDate: stored.date, addedDate: todayStr }));
           currentPending = [...currentPending, ...newPending];
           syncPending(currentPending);
+        }
+        // Load-More tasks: verify against Firestore before adding to pending.
+        // This prevents cross-device bug where a returned task appears in pending
+        // because another device had a stale localStorage plan.
+        const loadMoreIncomplete = stillIncomplete.filter(t => t.loadedFrom);
+        if (loadMoreIncomplete.length > 0) {
+          const capturedPlannedDate = stored.date;
+          const capturedUserId = user?.id;
+          const capturedCourseId = activeCourseId;
+          const capturedTodayStr = todayStr;
+          setTimeout(async () => {
+            if (!capturedUserId || !capturedCourseId) return;
+            try {
+              const snap = await getDoc(doc(db, 'users', capturedUserId, 'todayData', capturedCourseId));
+              const data = snap.exists() ? snap.data() : null;
+              const firestorePlan: { date: string; tasks: PlanTask[] } | null = data?.plan ?? null;
+              // Only confirm tasks still present in Firestore's plan for that date
+              const confirmedTasks = (firestorePlan?.date === capturedPlannedDate)
+                ? loadMoreIncomplete.filter(t => firestorePlan!.tasks.some(ft => ft.key === t.key))
+                : loadMoreIncomplete; // offline / no plan: trust local as fallback
+              setPendingItems(prev => {
+                const prevKeys = new Set(prev.map(p => p.task.key));
+                const toAdd = confirmedTasks
+                  .filter(t => !prevKeys.has(t.key))
+                  .map(task => ({ task, plannedDate: capturedPlannedDate, addedDate: capturedTodayStr }));
+                if (toAdd.length === 0) return prev;
+                const next = [...prev, ...toAdd];
+                syncPending(next);
+                return next;
+              });
+            } catch {
+              // Network unavailable: add as fallback to avoid losing track
+              setPendingItems(prev => {
+                const prevKeys = new Set(prev.map(p => p.task.key));
+                const toAdd = loadMoreIncomplete
+                  .filter(t => !prevKeys.has(t.key))
+                  .map(task => ({ task, plannedDate: capturedPlannedDate, addedDate: capturedTodayStr }));
+                if (toAdd.length === 0) return prev;
+                const next = [...prev, ...toAdd];
+                syncPending(next);
+                return next;
+              });
+            }
+          }, WRITE_GRACE_MS + 500);
         }
       }
       const fresh = generateSmartPlan(subjects, dailyBudgetMins, currentPending, todayStr);

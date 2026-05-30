@@ -1,12 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Search, X, BookOpen, Layers, List, Lightbulb, Hash, StickyNote, FileText, FolderPlus, ChevronRight } from 'lucide-react';
+import { Search, X, BookOpen, Layers, List, Lightbulb, Hash, StickyNote, FileText, FolderPlus, ChevronRight, NotebookPen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
 import type { Subject, TempNoteItem } from '@/lib/types';
 
-type ResultKind = 'subject' | 'chapter' | 'topic' | 'subtopic' | 'concept' | 'point' | 'tempNote' | 'notePage';
+type ResultKind = 'subject' | 'chapter' | 'topic' | 'subtopic' | 'concept' | 'point' | 'tempNote' | 'notePage' | 'overallNote';
+
+interface NavTarget {
+  kind: ResultKind;
+  subjectId?: string;
+  chapterId?: string;
+  topicId?: string;
+  subtopicId?: string;
+  conceptId?: string;
+  pointId?: string;
+}
 
 interface SearchResult {
   id: string;
@@ -16,6 +26,7 @@ interface SearchResult {
   snippet?: string;
   href: string;
   Icon: React.ElementType;
+  navTarget?: NavTarget;
 }
 
 const kindIcon: Record<ResultKind, React.ElementType> = {
@@ -27,6 +38,7 @@ const kindIcon: Record<ResultKind, React.ElementType> = {
   point: Hash,
   tempNote: StickyNote,
   notePage: FileText,
+  overallNote: NotebookPen,
 };
 
 const kindColor: Record<ResultKind, string> = {
@@ -38,7 +50,12 @@ const kindColor: Record<ResultKind, string> = {
   point: 'text-green-600 bg-green-500/10',
   tempNote: 'text-rose-600 bg-rose-500/10',
   notePage: 'text-indigo-600 bg-indigo-500/10',
+  overallNote: 'text-indigo-600 bg-indigo-500/10',
 };
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
 
 function highlight(text: string, q: string): React.ReactNode {
   if (!q) return text;
@@ -56,7 +73,7 @@ function highlight(text: string, q: string): React.ReactNode {
 }
 
 export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { subjects, tempNotes, notePagesIndex } = useStudy();
+  const { subjects, tempNotes, notePagesIndex, overallNote } = useStudy();
   const { t, lang } = useLang();
   const [, setLocation] = useLocation();
   const [query, setQuery] = useState('');
@@ -83,60 +100,67 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
     if (q.length < 2) return [];
     const qLow = q.toLowerCase();
     const matches = (s?: string) => !!s && s.toLowerCase().includes(qLow);
+    const matchesHtml = (html?: string) => !!html && stripHtml(html).toLowerCase().includes(qLow);
     const out: SearchResult[] = [];
 
     // Subjects + tree
     for (const subj of subjects) {
       const subjBread = [subj.title];
-      if (matches(subj.title) || matches(subj.note)) {
+      if (matches(subj.title) || matchesHtml(subj.note)) {
         out.push({
           id: subj.id, kind: 'subject', title: subj.title, breadcrumb: [],
-          snippet: matches(subj.note) ? subj.note : undefined,
+          snippet: matchesHtml(subj.note) ? stripHtml(subj.note!) : undefined,
           href: '/subjects', Icon: kindIcon.subject,
+          navTarget: { kind: 'subject', subjectId: subj.id },
         });
       }
       for (const ch of subj.chapters) {
-        if (matches(ch.title) || matches(ch.note)) {
+        if (matches(ch.title) || matchesHtml(ch.note)) {
           out.push({
             id: ch.id, kind: 'chapter', title: ch.title, breadcrumb: subjBread,
-            snippet: matches(ch.note) ? ch.note : undefined,
+            snippet: matchesHtml(ch.note) ? stripHtml(ch.note!) : undefined,
             href: '/subjects', Icon: kindIcon.chapter,
+            navTarget: { kind: 'chapter', subjectId: subj.id, chapterId: ch.id },
           });
         }
         const chBread = [...subjBread, ch.title];
         for (const tp of ch.topics) {
-          if (matches(tp.title) || matches(tp.note)) {
+          if (matches(tp.title) || matchesHtml(tp.note)) {
             out.push({
               id: tp.id, kind: 'topic', title: tp.title, breadcrumb: chBread,
-              snippet: matches(tp.note) ? tp.note : undefined,
+              snippet: matchesHtml(tp.note) ? stripHtml(tp.note!) : undefined,
               href: '/subjects', Icon: kindIcon.topic,
+              navTarget: { kind: 'topic', subjectId: subj.id, chapterId: ch.id, topicId: tp.id },
             });
           }
           const tpBread = [...chBread, tp.title];
           for (const sub of tp.subtopics) {
-            if (matches(sub.title) || matches(sub.note)) {
+            if (matches(sub.title) || matchesHtml(sub.note)) {
               out.push({
                 id: sub.id, kind: 'subtopic', title: sub.title, breadcrumb: tpBread,
-                snippet: matches(sub.note) ? sub.note : undefined,
+                snippet: matchesHtml(sub.note) ? stripHtml(sub.note!) : undefined,
                 href: '/subjects', Icon: kindIcon.subtopic,
+                navTarget: { kind: 'subtopic', subjectId: subj.id, chapterId: ch.id, topicId: tp.id, subtopicId: sub.id },
               });
             }
             const subBread = [...tpBread, sub.title];
             for (const c of sub.concepts) {
-              if (matches(c.title) || matches(c.note)) {
+              if (matches(c.title) || matchesHtml(c.note)) {
                 out.push({
                   id: c.id, kind: 'concept', title: c.title, breadcrumb: subBread,
-                  snippet: matches(c.note) ? c.note : undefined,
+                  snippet: matchesHtml(c.note) ? stripHtml(c.note!) : undefined,
                   href: '/subjects', Icon: kindIcon.concept,
+                  navTarget: { kind: 'concept', subjectId: subj.id, chapterId: ch.id, topicId: tp.id, subtopicId: sub.id, conceptId: c.id },
                 });
               }
               const cBread = [...subBread, c.title];
               for (const p of c.points) {
-                if (matches(p.title) || matches(p.note)) {
+                if (matches(p.title) || matchesHtml(p.note)) {
                   out.push({
                     id: p.id, kind: 'point', title: p.title, breadcrumb: cBread,
-                    snippet: matches(p.note) ? p.note : undefined,
+                    snippet: matchesHtml(p.note) ? stripHtml(p.note!) : undefined,
                     href: '/subjects', Icon: kindIcon.point,
+                    navTarget: { kind: 'point', subjectId: subj.id, chapterId: ch.id, topicId: tp.id, subtopicId: sub.id, conceptId: c.id, pointId: p.id },
                   });
                 }
               }
@@ -149,10 +173,12 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
     // Temp notes (recurse)
     const walkTemp = (items: TempNoteItem[], crumbs: string[]) => {
       for (const it of items) {
-        if (matches(it.text)) {
+        if (matches(it.text) || matchesHtml(it.note)) {
           out.push({
             id: it.id, kind: 'tempNote', title: it.text, breadcrumb: crumbs,
+            snippet: matchesHtml(it.note) ? stripHtml(it.note!) : undefined,
             href: '/subjects', Icon: kindIcon.tempNote,
+            navTarget: { kind: 'tempNote' },
           });
         }
         if (it.children?.length) walkTemp(it.children, [...crumbs, it.text.slice(0, 30)]);
@@ -167,13 +193,27 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
           id: np.id, kind: 'notePage', title: np.title || t('untitledPage'),
           breadcrumb: [t('notePagesTitle')],
           href: `/notes/${np.id}`, Icon: kindIcon.notePage,
+          navTarget: { kind: 'notePage' },
         });
       }
     }
 
+    // Overall note (Progress page)
+    const overallPlain = stripHtml(overallNote);
+    if (overallNote && overallPlain.toLowerCase().includes(qLow)) {
+      out.push({
+        id: 'overallNote', kind: 'overallNote',
+        title: t('overallNotes'),
+        breadcrumb: [t('progress')],
+        snippet: overallPlain.slice(0, 120),
+        href: '/progress', Icon: kindIcon.overallNote,
+        navTarget: { kind: 'overallNote' },
+      });
+    }
+
     // Sort: prefer subjects/chapters before deeper levels, then by closeness of match
     const order: Record<ResultKind, number> = {
-      subject: 0, chapter: 1, topic: 2, subtopic: 3, concept: 4, point: 5, tempNote: 1.5, notePage: 1.5,
+      subject: 0, chapter: 1, topic: 2, subtopic: 3, concept: 4, point: 5, tempNote: 1.5, notePage: 1.5, overallNote: 0.5,
     };
     out.sort((a, b) => {
       const ai = a.title.toLowerCase().indexOf(qLow);
@@ -183,10 +223,14 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
     });
 
     return out.slice(0, 80);
-  }, [query, subjects, tempNotes, notePagesIndex, t]);
+  }, [query, subjects, tempNotes, notePagesIndex, overallNote, t]);
 
   const handleSelect = (r: SearchResult) => {
     onClose();
+    // Store navigation intent for target page to auto-expand/open
+    if (r.navTarget) {
+      sessionStorage.setItem('study_nav_target', JSON.stringify({ ...r.navTarget, query: query.trim() }));
+    }
     setLocation(r.href);
   };
 

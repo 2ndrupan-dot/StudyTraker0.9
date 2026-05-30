@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { RichTextPreview } from '@/components/RichTextEditor';
 import { useAuth } from '@/context/AuthContext';
 import { useStudy } from '@/context/StudyContext';
@@ -271,6 +271,19 @@ function OverallNotesCard() {
     setDraft(overallNote);
     setModalOpen(true);
   };
+
+  // Auto-open when navigated here from Global Search
+  useEffect(() => {
+    const stored = sessionStorage.getItem('study_nav_target');
+    if (!stored) return;
+    try {
+      const nav = JSON.parse(stored);
+      if (nav.kind === 'overallNote') {
+        sessionStorage.removeItem('study_nav_target');
+        setTimeout(() => openModal(), 150);
+      }
+    } catch {}
+  }, []); // eslint-disable-line
   const closeModal = () => { setModalOpen(false); setDraft(''); };
   const saveNote = () => {
     setOverallNote(draft);

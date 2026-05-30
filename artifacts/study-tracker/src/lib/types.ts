@@ -110,6 +110,7 @@ export interface MarkPath {
 export interface TempNoteItem {
   id: string;
   text: string;
+  note?: string;        // rich text HTML content (optional)
   done: boolean;
   createdAt: number;
   children: TempNoteItem[];

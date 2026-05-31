@@ -585,15 +585,25 @@ export function Progress() {
                 <Plus size={12} />
                 {t('addCourse')}
               </button>
-              {courses.length > 1 && (
+              <div className="flex gap-1.5">
                 <button
-                  onClick={() => setModals({ ...modals, switchCourse: true })}
-                  className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-2.5 py-1.5 rounded-xl"
+                  onClick={() => activeCourse && setRenamingCourse({ id: activeCourse.id, name: activeCourse.name })}
+                  className="flex items-center gap-1 text-xs font-semibold text-muted-foreground bg-secondary hover:bg-secondary/70 transition-colors px-2.5 py-1.5 rounded-xl"
+                  title={t('renameCourse')}
                 >
-                  <ArrowLeftRight size={12} />
-                  {t('switchCourse')}
+                  <Pencil size={12} />
+                  {t('rename')}
                 </button>
-              )}
+                {courses.length > 1 && (
+                  <button
+                    onClick={() => setModals({ ...modals, switchCourse: true })}
+                    className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-2.5 py-1.5 rounded-xl"
+                  >
+                    <ArrowLeftRight size={12} />
+                    {t('switchCourse')}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </motion.div>

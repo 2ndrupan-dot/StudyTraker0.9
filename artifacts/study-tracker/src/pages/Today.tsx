@@ -648,11 +648,16 @@ export function Today() {
     let currentPending = loadPending(email, activeCourseId);
     let currentRevisions = loadRevisions(email, activeCourseId);
 
-    // Expire pending items older than 10 days
+    // Expire pending items older than 10 days.
+    // Only sync to Firestore if items were actually removed — writing back stale
+    // localStorage data (with a not-yet-dismissed item) would overwrite the remote
+    // dismissal and then block the onSnapshot update via the write-grace period.
+    const pendingCountBefore = currentPending.length;
     currentPending = currentPending.filter(p => pendingDaysLeft(p, todayStr) > 0);
-    syncPending(currentPending);
+    if (currentPending.length !== pendingCountBefore) syncPending(currentPending);
 
     // Clean up completed revisions older than 30 days
+    const revisionsCountBefore = currentRevisions.length;
     currentRevisions = currentRevisions.filter(r => {
       if (!r.done) return true;
       try {
@@ -689,7 +694,10 @@ export function Today() {
       });
     }
 
-    syncRevisions(currentRevisions);
+    // Only write revisions to Firestore if something actually changed
+    if (currentRevisions.length !== revisionsCountBefore || toReschedule.length > 0) {
+      syncRevisions(currentRevisions);
+    }
 
     if (stored && stored.date === todayStr) {
       setLockedPlan(stored.tasks);
@@ -1662,16 +1670,15 @@ export function Today() {
                                     <div key={rev.id} className="bg-card rounded-xl border border-purple-200/60 overflow-hidden shadow-sm">
                                       <div className="h-1 w-full" style={{ backgroundColor: rev.subjectColor }} />
                                       <div className="px-3 pt-2.5 pb-2.5">
-                                        {rev.breadcrumb.length > 0 && (
-                                          <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground mb-1">
-                                            {rev.breadcrumb.map((crumb, i) => (
-                                              <React.Fragment key={i}>
-                                                {i > 0 && <ChevronRight size={7} className="opacity-40" />}
-                                                <span className="max-w-[100px] truncate">{crumb}</span>
-                                              </React.Fragment>
-                                            ))}
-                                          </div>
-                                        )}
+                                        <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground mb-1">
+                                          <span className="max-w-[110px] truncate font-semibold" style={{ color: rev.subjectColor }}>{rev.subjectTitle}</span>
+                                          {rev.breadcrumb.map((crumb, i) => (
+                                            <React.Fragment key={i}>
+                                              <ChevronRight size={7} className="opacity-40" />
+                                              <span className="max-w-[100px] truncate">{crumb}</span>
+                                            </React.Fragment>
+                                          ))}
+                                        </div>
                                         <p className="font-bold text-sm text-foreground leading-snug mb-2">{rev.mainTitle}</p>
                                         <div className="flex items-center justify-between mb-2">
                                           <span className="text-muted-foreground text-[11px] font-semibold bg-secondary px-2 py-1 rounded-lg flex items-center gap-1">
@@ -1746,16 +1753,15 @@ export function Today() {
                                       <div key={item.task.key} className="bg-card rounded-xl border border-orange-200/60 overflow-hidden shadow-sm">
                                         <div className="h-1 w-full" style={{ backgroundColor: item.task.subjectColor }} />
                                         <div className="px-3 pt-2.5 pb-2.5">
-                                          {item.task.breadcrumb.length > 0 && (
-                                            <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground mb-1">
-                                              {item.task.breadcrumb.map((crumb, i) => (
-                                                <React.Fragment key={i}>
-                                                  {i > 0 && <ChevronRight size={7} className="opacity-40" />}
-                                                  <span className="max-w-[100px] truncate">{crumb}</span>
-                                                </React.Fragment>
-                                              ))}
-                                            </div>
-                                          )}
+                                          <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground mb-1">
+                                            <span className="max-w-[110px] truncate font-semibold" style={{ color: item.task.subjectColor }}>{item.task.subjectTitle}</span>
+                                            {item.task.breadcrumb.map((crumb, i) => (
+                                              <React.Fragment key={i}>
+                                                <ChevronRight size={7} className="opacity-40" />
+                                                <span className="max-w-[100px] truncate">{crumb}</span>
+                                              </React.Fragment>
+                                            ))}
+                                          </div>
                                           <p className="font-bold text-sm text-foreground leading-snug mb-1">{item.task.mainTitle}</p>
                                           <p className="text-[10px] text-orange-500 font-semibold mb-2.5">
                                             {isBn ? `${dLeft} দিন বাকি` : `${dLeft} day${dLeft !== 1 ? 's' : ''} left`}
@@ -1856,16 +1862,15 @@ export function Today() {
                       >
                         <div className="h-1 w-full" style={{ backgroundColor: item.task.subjectColor }} />
                         <div className="px-4 pt-3 pb-3">
-                          {item.task.breadcrumb.length > 0 && (
-                            <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground mb-1.5">
-                              {item.task.breadcrumb.map((crumb, i) => (
-                                <React.Fragment key={i}>
-                                  {i > 0 && <ChevronRight size={8} className="opacity-40" />}
-                                  <span className="max-w-[100px] truncate">{crumb}</span>
-                                </React.Fragment>
-                              ))}
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground mb-1.5">
+                            <span className="max-w-[110px] truncate font-semibold" style={{ color: item.task.subjectColor }}>{item.task.subjectTitle}</span>
+                            {item.task.breadcrumb.map((crumb, i) => (
+                              <React.Fragment key={i}>
+                                <ChevronRight size={8} className="opacity-40" />
+                                <span className="max-w-[100px] truncate">{crumb}</span>
+                              </React.Fragment>
+                            ))}
+                          </div>
                           <p className="font-bold text-sm text-foreground leading-snug mb-1">{item.task.mainTitle}</p>
                           <div className="flex items-center gap-2 mb-3">
                             <span className="text-[10px] text-orange-500 font-bold bg-orange-500/10 px-2 py-0.5 rounded-full">
@@ -2024,16 +2029,15 @@ export function Today() {
                     >
                       <div className="h-1 w-full" style={{ backgroundColor: rev.subjectColor }} />
                       <div className="px-4 pt-3 pb-3">
-                        {rev.breadcrumb.length > 0 && (
-                          <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground mb-1.5">
-                            {rev.breadcrumb.map((crumb, i) => (
-                              <React.Fragment key={i}>
-                                {i > 0 && <ChevronRight size={8} className="opacity-40" />}
-                                <span className="max-w-[100px] truncate">{crumb}</span>
-                              </React.Fragment>
-                            ))}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground mb-1.5">
+                          <span className="max-w-[110px] truncate font-semibold" style={{ color: rev.subjectColor }}>{rev.subjectTitle}</span>
+                          {rev.breadcrumb.map((crumb, i) => (
+                            <React.Fragment key={i}>
+                              <ChevronRight size={8} className="opacity-40" />
+                              <span className="max-w-[100px] truncate">{crumb}</span>
+                            </React.Fragment>
+                          ))}
+                        </div>
                         <h3 className="font-bold text-sm text-foreground leading-snug mb-2.5">
                           {rev.mainTitle}
                         </h3>

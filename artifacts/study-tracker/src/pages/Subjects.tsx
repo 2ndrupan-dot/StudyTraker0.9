@@ -814,7 +814,7 @@ export function Subjects() {
                     <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: subj.color }} />
                     <div className="pl-3 flex-1 min-w-0">
                       {/* Title */}
-                      <h3 className="font-bold text-foreground text-base leading-tight truncate mb-0.5">{subj.title}</h3>
+                      <h3 className="font-bold text-foreground text-base leading-tight line-clamp-2 break-words mb-0.5">{subj.title}</h3>
                       {/* Badges row — L1, days, status badges, marks */}
                       <div className="flex items-center gap-1 flex-wrap mb-1">
                         <span className="text-[9px] font-bold text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded border border-border/40">L1</span>

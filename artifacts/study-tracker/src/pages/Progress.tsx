@@ -574,7 +574,7 @@ export function Progress() {
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold text-primary/70 uppercase tracking-wider">{t('currentCourse')}</p>
-                <p className="font-bold text-foreground text-sm truncate">{activeCourse?.name ?? '—'}</p>
+                <p className="font-bold text-foreground text-sm line-clamp-2 break-words">{activeCourse?.name ?? '—'}</p>
               </div>
             </div>
             <div className="flex flex-col gap-1.5 shrink-0 items-end">
@@ -1009,7 +1009,7 @@ export function Progress() {
                       <BookMarked size={15} className={isActive ? 'text-primary' : 'text-muted-foreground'} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`font-semibold text-sm truncate ${isActive ? 'text-primary' : 'text-foreground'}`}>
+                      <p className={`font-semibold text-sm line-clamp-2 break-words ${isActive ? 'text-primary' : 'text-foreground'}`}>
                         {course.name}
                       </p>
                       {isActive && (

@@ -592,7 +592,7 @@ export function Progress() {
                   title={t('renameCourse')}
                 >
                   <Pencil size={12} />
-                  {t('rename')}
+                  <span className="hidden sm:inline">{t('rename')}</span>
                 </button>
                 {courses.length > 1 && (
                   <button

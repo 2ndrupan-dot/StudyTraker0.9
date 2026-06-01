@@ -15,7 +15,7 @@ import { Modal, Input, Button, NoteEditorModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Subject, MarkPath, MarkLevel } from '@/lib/types';
 import { ItemActions } from '@/components/ItemActions';
-import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, getDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useCourse } from '@/context/CourseContext';
 import {
@@ -394,6 +394,24 @@ function saveRevisions(email: string, courseId: string, entries: RevisionEntry[]
   localStorage.setItem(revisionKey(email, courseId), JSON.stringify(entries));
 }
 
+// ─── Dismissed-keys localStorage helpers ─────────────────────────────────────
+// These track which pending task keys / revision IDs have been explicitly dismissed
+// by the user on any device, so that offline devices don't re-add them on next load.
+const dismissedPKeyLS = (email: string, courseId: string) => `@study_dismissed_pkeys_v1_${email}_${courseId}`;
+const dismissedRIdLS  = (email: string, courseId: string) => `@study_dismissed_rids_v1_${email}_${courseId}`;
+function loadDismissedPendingKeys(email: string, courseId: string): string[] {
+  try { return JSON.parse(localStorage.getItem(dismissedPKeyLS(email, courseId)) ?? '[]'); } catch { return []; }
+}
+function saveDismissedPendingKeys(email: string, courseId: string, keys: string[]) {
+  localStorage.setItem(dismissedPKeyLS(email, courseId), JSON.stringify(keys));
+}
+function loadDismissedRevisionIds(email: string, courseId: string): string[] {
+  try { return JSON.parse(localStorage.getItem(dismissedRIdLS(email, courseId)) ?? '[]'); } catch { return []; }
+}
+function saveDismissedRevisionIds(email: string, courseId: string, ids: string[]) {
+  localStorage.setItem(dismissedRIdLS(email, courseId), JSON.stringify(ids));
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 export function Today() {
   const {
@@ -475,6 +493,21 @@ export function Today() {
       .catch(e => console.warn('[todaySync] writeRevisions:', e));
   }, [user?.id, activeCourseId]); // eslint-disable-line
 
+  // Append a dismissed pending key to Firestore (arrayUnion, no grace-period — doesn't
+  // touch pending/revision arrays so onSnapshot echoes are harmless).
+  const addDismissedPendingKey = useCallback(async (key: string) => {
+    if (!user?.id || !activeCourseId) return;
+    await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { dismissedPendingKeys: arrayUnion(key) }, { merge: true })
+      .catch(e => console.warn('[todaySync] addDismissedPendingKey:', e));
+  }, [user?.id, activeCourseId]); // eslint-disable-line
+
+  // Append a dismissed revision ID to Firestore (arrayUnion, no grace-period).
+  const addDismissedRevisionId = useCallback(async (id: string) => {
+    if (!user?.id || !activeCourseId) return;
+    await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { dismissedRevisionIds: arrayUnion(id) }, { merge: true })
+      .catch(e => console.warn('[todaySync] addDismissedRevisionId:', e));
+  }, [user?.id, activeCourseId]); // eslint-disable-line
+
   // Dual-write: localStorage (instant/offline) + Firestore (cross-device sync)
   const syncPlan = useCallback((date: string, tasks: PlanTask[]) => {
     if (!activeCourseId) return;
@@ -525,6 +558,11 @@ export function Today() {
         savePending(email, courseId, remPending);
         saveRevisions(email, courseId, remRevisions);
         if (remPlan) savePlan(email, courseId, remPlan.date, remPlan.tasks);
+        // Cache dismissed keys locally so they are available before the next initial load
+        const remDPKeys: string[] = Array.isArray(d.dismissedPendingKeys) ? d.dismissedPendingKeys : [];
+        const remDRIds: string[]  = Array.isArray(d.dismissedRevisionIds)  ? d.dismissedRevisionIds  : [];
+        saveDismissedPendingKeys(email, courseId, remDPKeys);
+        saveDismissedRevisionIds(email, courseId, remDRIds);
         // Update React state only after initial load is done (avoid conflict with init)
         if (!planReadyRef.current) return;
         setPendingItems(remPending);
@@ -656,6 +694,15 @@ export function Today() {
     currentPending = currentPending.filter(p => pendingDaysLeft(p, todayStr) > 0);
     if (currentPending.length !== pendingCountBefore) syncPending(currentPending);
 
+    // Apply dismissed revision IDs (synced from Firestore via onSnapshot → localStorage).
+    // Mark them done locally so they are neither shown to the user nor auto-rescheduled.
+    const dismissedRevIds = new Set(loadDismissedRevisionIds(email, activeCourseId));
+    if (dismissedRevIds.size > 0) {
+      currentRevisions = currentRevisions.map(r =>
+        !r.done && dismissedRevIds.has(r.id) ? { ...r, done: true } : r
+      );
+    }
+
     // Clean up completed revisions older than 30 days
     const revisionsCountBefore = currentRevisions.length;
     currentRevisions = currentRevisions.filter(r => {
@@ -708,8 +755,11 @@ export function Today() {
         const regularIncomplete = stillIncomplete.filter(t => !t.loadedFrom);
         if (regularIncomplete.length > 0) {
           const existingKeys = new Set(currentPending.map(p => p.task.key));
+          // Skip tasks dismissed on any device — their keys were persisted to Firestore
+          // and synced to localStorage by onSnapshot before this initial load ran.
+          const dismissedPKeys = new Set(loadDismissedPendingKeys(email, activeCourseId));
           const newPending: PendingItem[] = regularIncomplete
-            .filter(t => !existingKeys.has(t.key))
+            .filter(t => !existingKeys.has(t.key) && !dismissedPKeys.has(t.key))
             .map(task => ({ task, plannedDate: stored.date, addedDate: todayStr }));
           currentPending = [...currentPending, ...newPending];
           syncPending(currentPending);
@@ -733,10 +783,12 @@ export function Today() {
               const confirmedTasks = (firestorePlan?.date === capturedPlannedDate)
                 ? loadMoreIncomplete.filter(t => firestorePlan!.tasks.some(ft => ft.key === t.key))
                 : loadMoreIncomplete; // offline / no plan: trust local as fallback
+              // Also filter against dismissed keys: read directly from Firestore data
+              const fsDP = new Set<string>(Array.isArray(data?.dismissedPendingKeys) ? data!.dismissedPendingKeys : []);
               setPendingItems(prev => {
                 const prevKeys = new Set(prev.map(p => p.task.key));
                 const toAdd = confirmedTasks
-                  .filter(t => !prevKeys.has(t.key))
+                  .filter(t => !prevKeys.has(t.key) && !fsDP.has(t.key))
                   .map(task => ({ task, plannedDate: capturedPlannedDate, addedDate: capturedTodayStr }));
                 if (toAdd.length === 0) return prev;
                 const next = [...prev, ...toAdd];
@@ -744,11 +796,12 @@ export function Today() {
                 return next;
               });
             } catch {
-              // Network unavailable: add as fallback to avoid losing track
+              // Network unavailable: fall back to localStorage dismissed keys
+              const localDP = new Set(loadDismissedPendingKeys(email, capturedCourseId ?? ''));
               setPendingItems(prev => {
                 const prevKeys = new Set(prev.map(p => p.task.key));
                 const toAdd = loadMoreIncomplete
-                  .filter(t => !prevKeys.has(t.key))
+                  .filter(t => !prevKeys.has(t.key) && !localDP.has(t.key))
                   .map(task => ({ task, plannedDate: capturedPlannedDate, addedDate: capturedTodayStr }));
                 if (toAdd.length === 0) return prev;
                 const next = [...prev, ...toAdd];
@@ -831,6 +884,15 @@ export function Today() {
     const updated = pendingItems.filter(p => p.task.key !== key);
     setPendingItems(updated);
     syncPending(updated);
+    // Persist the dismissal so any offline device that later comes online
+    // will not re-add this task to pending when it processes yesterday's plan.
+    if (activeCourseId) {
+      const existing = loadDismissedPendingKeys(email, activeCourseId);
+      if (!existing.includes(key)) {
+        saveDismissedPendingKeys(email, activeCourseId, [...existing, key]);
+      }
+      addDismissedPendingKey(key);
+    }
   };
 
   const confirmDismissPending = (key: string) => {
@@ -859,6 +921,14 @@ export function Today() {
     const updated = revisions.map(r => r.id === id ? { ...r, done: true } : r);
     setRevisions(updated);
     syncRevisions(updated);
+    // Persist the completion so offline devices don't auto-reschedule this revision
+    if (activeCourseId) {
+      const existing = loadDismissedRevisionIds(email, activeCourseId);
+      if (!existing.includes(id)) {
+        saveDismissedRevisionIds(email, activeCourseId, [...existing, id]);
+      }
+      addDismissedRevisionId(id);
+    }
   };
 
   // Keep for backward compat (revision panel uses this name)
@@ -883,6 +953,14 @@ export function Today() {
     const merged = [...updated, rescheduled];
     setRevisions(merged);
     syncRevisions(merged);
+    // Persist the original ID as dismissed so offline devices don't reschedule it again
+    if (activeCourseId) {
+      const existing = loadDismissedRevisionIds(email, activeCourseId);
+      if (!existing.includes(id)) {
+        saveDismissedRevisionIds(email, activeCourseId, [...existing, id]);
+      }
+      addDismissedRevisionId(id);
+    }
   };
 
   const confirmCompleteRevision = (id: string) => {

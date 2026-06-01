@@ -68,8 +68,8 @@ export interface RevisionEntry {
 const PENDING_EXPIRY_DAYS = 2;
 const INITIAL_REVISION_DAYS = 5;   // task complete → first revision after N days
 const DISMISS_DAYS = 5;             // dismissed/missed → same stage, N days later
-// Days to next stage after completing stage N (index = current stage, fallback = 30)
-const STAGE_NEXT_DAYS = [10, 15, 20, 30];
+// Days to next stage after completing stage N (index = current stage, fallback = 15)
+const STAGE_NEXT_DAYS = [10, 15, 20, 15];
 const MIN_POINT = 3, MIN_CONCEPT = 5, MIN_SUBTOPIC = 7;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -996,7 +996,7 @@ export function Today() {
     if (!current) return;
     const currentStage = current.stage ?? 0;
     const nextStage = currentStage + 1;
-    const nextDays = STAGE_NEXT_DAYS[currentStage] ?? 30;
+    const nextDays = STAGE_NEXT_DAYS[currentStage] ?? 15;
     const nextScheduledDate = toDateStrIST(addDaysIST(nowIST(settings.timezone), nextDays));
     const nextId = `${current.taskKey}_rev_s${nextStage}_${nextScheduledDate}`;
     let updated = revisions.map(r => r.id === id ? { ...r, done: true } : r);

@@ -889,6 +889,7 @@ export function RichTextEditor({
     content: toSafeHtml(value),
     onUpdate: ({ editor }) => {
       const html = editor.isEmpty ? '' : editor.getHTML();
+      console.log('[RichTextEditor] onUpdate HTML:', html.substring(0, 400));
       lastEditorHtmlRef.current = toSafeHtml(html);
       onChange(html);
     },
@@ -1098,7 +1099,7 @@ export function RichTextEditor({
   );
 }
 
-// ─── Preview (read-only) ──────────────────────────────────────────────────────
+// ─── Preview (read-only TipTap editor — exact same rendering as edit mode) ────
 export function RichTextPreview({
   html, className, onNoteRef,
 }: {
@@ -1106,14 +1107,47 @@ export function RichTextPreview({
   className?: string;
   onNoteRef?: (noteId: string, noteTitle: string, noteHtml?: string, itemPath?: any) => void;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  // Use a read-only TipTap editor so the preview renders identically to edit mode
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ code: false, codeBlock: false }),
+      Underline,
+      TextStyle,
+      FontSize,
+      Color,
+      Highlight.configure({ multicolor: true }),
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      CustomLink,
+      NoteRef,
+    ],
+    content: toSafeHtml(html),
+    editable: false,
+    editorProps: {
+      attributes: {
+        class: cn('rich-editor-content text-sm text-foreground outline-none', className),
+      },
+    },
+  });
 
+  // Sync content when html prop changes
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    if (!editor) return;
+    const incoming = toSafeHtml(html);
+    const current = editor.isEmpty ? '' : editor.getHTML();
+    if (incoming !== current) {
+      editor.commands.setContent(incoming, false);
+    }
+  }, [editor, html]);
+
+  // Handle clicks on note-refs and links
+  useEffect(() => {
+    if (!editor) return;
+    const el = editor.view.dom as HTMLElement;
 
     const handleClick = (e: MouseEvent) => {
-      // Handle note-ref spans
       const noteEl = (e.target as HTMLElement).closest('[data-note-id]');
       if (noteEl) {
         e.preventDefault();
@@ -1128,7 +1162,6 @@ export function RichTextPreview({
         return;
       }
 
-      // Handle regular links — open in new tab
       const link = (e.target as HTMLElement).closest('a');
       if (link) {
         const href = link.getAttribute('href') || '';
@@ -1141,13 +1174,7 @@ export function RichTextPreview({
 
     el.addEventListener('click', handleClick);
     return () => el.removeEventListener('click', handleClick);
-  }, [onNoteRef]);
+  }, [editor, onNoteRef]);
 
-  return (
-    <div
-      ref={containerRef}
-      className={cn('rich-editor-content text-sm text-foreground', className)}
-      dangerouslySetInnerHTML={{ __html: toSafeHtml(html) }}
-    />
-  );
+  return <EditorContent editor={editor} />;
 }

@@ -868,6 +868,8 @@ export function RichTextEditor({
     return () => document.removeEventListener('mousedown', handler);
   }, [showLinkPopover]);
 
+  const lastEditorHtmlRef = useRef(toSafeHtml(value));
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ code: false, codeBlock: false }),
@@ -885,7 +887,11 @@ export function RichTextEditor({
       LinkSelectionHighlight,
     ],
     content: toSafeHtml(value),
-    onUpdate: ({ editor }) => onChange(editor.isEmpty ? '' : editor.getHTML()),
+    onUpdate: ({ editor }) => {
+      const html = editor.isEmpty ? '' : editor.getHTML();
+      lastEditorHtmlRef.current = toSafeHtml(html);
+      onChange(html);
+    },
     onTransaction: () => setTick(t => t + 1),
     autofocus: autoFocus,
     editorProps: { attributes: { class: 'rich-editor-content outline-none', spellcheck: 'false' } },
@@ -894,8 +900,9 @@ export function RichTextEditor({
   useEffect(() => {
     if (!editor) return;
     const incoming = toSafeHtml(value);
-    const current = editor.isEmpty ? '' : editor.getHTML();
-    if (incoming !== current) editor.commands.setContent(incoming, false);
+    if (incoming === lastEditorHtmlRef.current) return;
+    lastEditorHtmlRef.current = incoming;
+    editor.commands.setContent(incoming, false);
   }, [value]);
 
   // When the link popover is dismissed (click-outside), clear the decoration highlight

@@ -691,11 +691,15 @@ export function Today() {
     // device dismisses or completes a pending item.  Filtering here ensures that
     // even a device that was offline for many days will not re-write stale items
     // back to Firestore when it finally comes online.
+    // IMPORTANT: only update localStorage here — Firestore already has the correct
+    // state (without dismissed items), so writing back would pollute it.
     const dismissedPKeysInit = new Set(loadDismissedPendingKeys(email, activeCourseId));
     if (dismissedPKeysInit.size > 0) {
       const beforeDismiss = currentPending.length;
       currentPending = currentPending.filter(p => !dismissedPKeysInit.has(p.task.key));
-      if (currentPending.length !== beforeDismiss) syncPending(currentPending);
+      if (currentPending.length !== beforeDismiss) {
+        savePending(email, activeCourseId, currentPending); // localStorage only, not Firestore
+      }
     }
 
     // Expire pending items older than 10 days.
@@ -769,15 +773,60 @@ export function Today() {
         // Regular tasks (not from Load More) → pending immediately
         const regularIncomplete = stillIncomplete.filter(t => !t.loadedFrom);
         if (regularIncomplete.length > 0) {
+          const capturedRegularIncomplete = regularIncomplete;
+          const capturedPlannedDate2 = stored.date;
+          const capturedTodayStr2 = todayStr;
+          const capturedUserId2 = user?.id;
+          const capturedCourseId2 = activeCourseId;
+          const capturedEmail2 = email;
+
+          // Optimistic local update using whatever dismissed keys are in localStorage now.
+          // This is used for the immediate UI and offline fallback.
           const existingKeys = new Set(currentPending.map(p => p.task.key));
-          // Skip tasks dismissed on any device — their keys were persisted to Firestore
-          // and synced to localStorage by onSnapshot before this initial load ran.
-          const dismissedPKeys = new Set(loadDismissedPendingKeys(email, activeCourseId));
-          const newPending: PendingItem[] = regularIncomplete
-            .filter(t => !existingKeys.has(t.key) && !dismissedPKeys.has(t.key))
+          const localDPKeys = new Set(loadDismissedPendingKeys(email, activeCourseId));
+          const newPendingOptimistic: PendingItem[] = regularIncomplete
+            .filter(t => !existingKeys.has(t.key) && !localDPKeys.has(t.key))
             .map(task => ({ task, plannedDate: stored.date, addedDate: todayStr }));
-          currentPending = [...currentPending, ...newPending];
-          syncPending(currentPending);
+          currentPending = [...currentPending, ...newPendingOptimistic];
+          // Write to localStorage immediately (works offline, gives instant UI)
+          // but DO NOT write to Firestore yet — wait for onSnapshot to deliver the
+          // authoritative dismissed keys from other devices first.
+          savePending(email, activeCourseId, currentPending);
+
+          // After WRITE_GRACE_MS, onSnapshot should have arrived with the real
+          // Firestore state.  Fetch it directly, apply the correct dismissed keys,
+          // and write only genuinely new items — regardless of how long the device
+          // was offline (1 day, 15 days, or more).
+          setTimeout(async () => {
+            if (!capturedUserId2 || !capturedCourseId2) return;
+            try {
+              const snap = await getDoc(doc(db, 'users', capturedUserId2, 'todayData', capturedCourseId2));
+              const data = snap.exists() ? snap.data() : null;
+              const firestorePending: PendingItem[] = Array.isArray(data?.pending) ? data!.pending : [];
+              const firestoreDP = new Set<string>(
+                Array.isArray(data?.dismissedPendingKeys) ? data!.dismissedPendingKeys : []
+              );
+              // Use Firestore pending as authoritative base and add only items that
+              // are genuinely new (not yet in Firestore and not dismissed anywhere).
+              const firestoreKeys = new Set(firestorePending.map(p => p.task.key));
+              const toAdd = capturedRegularIncomplete
+                .filter(t => !firestoreKeys.has(t.key) && !firestoreDP.has(t.key))
+                .map(task => ({ task, plannedDate: capturedPlannedDate2, addedDate: capturedTodayStr2 }));
+              const merged = [...firestorePending, ...toAdd];
+              setPendingItems(merged);
+              syncPending(merged);
+            } catch {
+              // Offline: re-read localStorage dismissed keys (best effort)
+              const latestLocalDP = new Set(loadDismissedPendingKeys(capturedEmail2, capturedCourseId2 ?? ''));
+              setPendingItems(prev => {
+                const filtered = latestLocalDP.size > 0
+                  ? prev.filter(p => !latestLocalDP.has(p.task.key))
+                  : prev;
+                if (filtered.length !== prev.length) syncPending(filtered);
+                return filtered;
+              });
+            }
+          }, WRITE_GRACE_MS + 500);
         }
         // Load-More tasks: verify against Firestore before adding to pending.
         // This prevents cross-device bug where a returned task appears in pending

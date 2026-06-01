@@ -686,6 +686,18 @@ export function Today() {
     let currentPending = loadPending(email, activeCourseId);
     let currentRevisions = loadRevisions(email, activeCourseId);
 
+    // ── Pending: apply dismissals from other devices first ───────────────────
+    // dismissedPendingKeys is synced to localStorage by onSnapshot whenever any
+    // device dismisses or completes a pending item.  Filtering here ensures that
+    // even a device that was offline for many days will not re-write stale items
+    // back to Firestore when it finally comes online.
+    const dismissedPKeysInit = new Set(loadDismissedPendingKeys(email, activeCourseId));
+    if (dismissedPKeysInit.size > 0) {
+      const beforeDismiss = currentPending.length;
+      currentPending = currentPending.filter(p => !dismissedPKeysInit.has(p.task.key));
+      if (currentPending.length !== beforeDismiss) syncPending(currentPending);
+    }
+
     // Expire pending items older than 10 days.
     // Only sync to Firestore if items were actually removed — writing back stale
     // localStorage data (with a not-yet-dismissed item) would overwrite the remote
@@ -694,8 +706,11 @@ export function Today() {
     currentPending = currentPending.filter(p => pendingDaysLeft(p, todayStr) > 0);
     if (currentPending.length !== pendingCountBefore) syncPending(currentPending);
 
-    // Apply dismissed revision IDs (synced from Firestore via onSnapshot → localStorage).
-    // Mark them done locally so they are neither shown to the user nor auto-rescheduled.
+    // ── Revisions: apply dismissals from other devices first ─────────────────
+    // dismissedRevisionIds is synced to localStorage by onSnapshot whenever any
+    // device completes or reschedules a revision.  Marking them done here ensures
+    // they are neither shown to the user nor auto-rescheduled, regardless of how
+    // long this device was offline.
     const dismissedRevIds = new Set(loadDismissedRevisionIds(email, activeCourseId));
     if (dismissedRevIds.size > 0) {
       currentRevisions = currentRevisions.map(r =>

@@ -50,7 +50,7 @@ export interface PendingItem {
   addedDate?: string;
 }
 
-// Revision entry: scheduled for Day+2, Day+5, Day+10 after completion
+// Revision entry: spaced-repetition schedule (stage-based, adaptive intervals)
 export interface RevisionEntry {
   id: string;
   taskKey: string;
@@ -61,11 +61,15 @@ export interface RevisionEntry {
   level: PlanLevel;
   scheduledDate: string; // yyyy-MM-dd
   revisionMins: number;  // 50% of original
+  stage: number;         // 0=first revision, increments on each completion
   done: boolean;
 }
 
 const PENDING_EXPIRY_DAYS = 2;
-const REVISION_DAYS = [2, 5, 10];
+const INITIAL_REVISION_DAYS = 5;   // task complete → first revision after N days
+const DISMISS_DAYS = 5;             // dismissed/missed → same stage, N days later
+// Days to next stage after completing stage N (index = current stage, fallback = 30)
+const STAGE_NEXT_DAYS = [10, 15, 20, 30];
 const MIN_POINT = 3, MIN_CONCEPT = 5, MIN_SUBTOPIC = 7;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -732,37 +736,43 @@ export function Today() {
       } catch { return true; }
     });
 
-    // Auto-reschedule missed revisions older than 10 days
-    const toReschedule = currentRevisions.filter(r => {
+    // Auto-dismiss overdue revisions (scheduledDate < today → same stage, DISMISS_DAYS later)
+    // This runs at midnight: any revision not acted on is treated as dismissed.
+    const toAutoDismiss = currentRevisions.filter(r => {
       if (r.done) return false;
-      try {
-        return differenceInDays(parseISO(todayStr), parseISO(r.scheduledDate)) > 10;
-      } catch { return false; }
+      try { return r.scheduledDate < todayStr; } catch { return false; }
     });
-    if (toReschedule.length > 0) {
-      // For each one, find a low-pressure future day
-      const getDateCounts = (revList: typeof currentRevisions, excludeId: string) => {
-        const counts: Record<string, number> = {};
-        for (let i = 1; i <= 14; i++) {
-          const d = toDateStrIST(addDaysIST(nowIST(settings.timezone), i));
-          counts[d] = revList.filter(r => !r.done && r.scheduledDate === d && r.id !== excludeId).length;
-        }
-        return counts;
-      };
-      toReschedule.forEach(rev => {
-        const counts = getDateCounts(currentRevisions, rev.id);
-        const bestDate = Object.entries(counts).sort((a, b) => a[1] - b[1])[0][0];
-        const newId = `${rev.taskKey}_rev_auto_${bestDate}`;
+    if (toAutoDismiss.length > 0) {
+      toAutoDismiss.forEach(rev => {
+        const stage = rev.stage ?? 0;
+        const newScheduledDate = toDateStrIST(addDaysIST(nowIST(settings.timezone), DISMISS_DAYS));
+        const newId = `${rev.taskKey}_rev_s${stage}_${newScheduledDate}`;
         currentRevisions = currentRevisions
           .map(r => r.id === rev.id ? { ...r, done: true } : r)
           .filter(r => r.id !== newId);
-        currentRevisions = [...currentRevisions, { ...rev, id: newId, scheduledDate: bestDate, done: false }];
+        currentRevisions = [...currentRevisions, { ...rev, id: newId, stage, scheduledDate: newScheduledDate, done: false }];
       });
     }
 
     // Only write revisions to Firestore if something actually changed
-    if (currentRevisions.length !== revisionsCountBefore || toReschedule.length > 0) {
+    if (currentRevisions.length !== revisionsCountBefore || toAutoDismiss.length > 0) {
       syncRevisions(currentRevisions);
+    }
+
+    // ── New-day: auto-dismiss all remaining pending items at midnight ─────────
+    // Any pending item not acted on (completed or dismissed) by midnight is
+    // permanently dismissed — same as if the user had clicked Dismiss themselves.
+    if (stored && stored.date !== todayStr && currentPending.length > 0) {
+      const keysToAutoDismiss = currentPending.map(p => p.task.key);
+      const localDPKeys = loadDismissedPendingKeys(email, activeCourseId);
+      const mergedDPKeys = [...new Set([...localDPKeys, ...keysToAutoDismiss])];
+      saveDismissedPendingKeys(email, activeCourseId, mergedDPKeys);
+      if (user?.id && activeCourseId) {
+        setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId),
+          { dismissedPendingKeys: arrayUnion(...keysToAutoDismiss) },
+          { merge: true }).catch(e => console.warn('[autoDismiss pending]', e));
+      }
+      currentPending = [];
     }
 
     if (stored && stored.date === todayStr) {
@@ -980,12 +990,22 @@ export function Today() {
     });
   };
 
-  // Complete revision → mark done:true permanently
+  // Complete revision → mark done + schedule next stage
   const completeRevision = (id: string) => {
-    const updated = revisions.map(r => r.id === id ? { ...r, done: true } : r);
+    const current = revisions.find(r => r.id === id);
+    if (!current) return;
+    const currentStage = current.stage ?? 0;
+    const nextStage = currentStage + 1;
+    const nextDays = STAGE_NEXT_DAYS[currentStage] ?? 30;
+    const nextScheduledDate = toDateStrIST(addDaysIST(nowIST(settings.timezone), nextDays));
+    const nextId = `${current.taskKey}_rev_s${nextStage}_${nextScheduledDate}`;
+    let updated = revisions.map(r => r.id === id ? { ...r, done: true } : r);
+    if (!updated.some(r => r.id === nextId)) {
+      updated = [...updated, { ...current, id: nextId, stage: nextStage, scheduledDate: nextScheduledDate, done: false }];
+    }
     setRevisions(updated);
     syncRevisions(updated);
-    // Persist the completion so offline devices don't auto-reschedule this revision
+    // Persist so offline devices don't auto-reschedule the completed entry
     if (activeCourseId) {
       const existing = loadDismissedRevisionIds(email, activeCourseId);
       if (!existing.includes(id)) {
@@ -995,28 +1015,19 @@ export function Today() {
     }
   };
 
-  // Keep for backward compat (revision panel uses this name)
-  const dismissRevision = completeRevision;
-
-  // Dismiss + reschedule to a future low-pressure day (1–14 days, fewest revisions)
+  // Dismiss revision → same stage, DISMISS_DAYS later (no progression)
   const rescheduleRevision = (id: string) => {
     const current = revisions.find(r => r.id === id);
     if (!current) return;
-    // Count revisions per future date
-    const dateCounts: Record<string, number> = {};
-    for (let i = 1; i <= 14; i++) {
-      const d = toDateStrIST(addDaysIST(nowIST(settings.timezone), i));
-      dateCounts[d] = revisions.filter(r => !r.done && r.scheduledDate === d && r.id !== id).length;
-    }
-    const bestDate = Object.entries(dateCounts).sort((a, b) => a[1] - b[1])[0][0];
-    const newId = `${current.taskKey}_rev_reschedule_${bestDate}`;
-    const updated = revisions
-      .map(r => r.id === id ? { ...r, done: true } : r) // mark original done
-      .filter(r => r.id !== newId);                       // remove duplicate if any
-    const rescheduled: RevisionEntry = { ...current, id: newId, scheduledDate: bestDate, done: false };
-    const merged = [...updated, rescheduled];
-    setRevisions(merged);
-    syncRevisions(merged);
+    const stage = current.stage ?? 0;
+    const newScheduledDate = toDateStrIST(addDaysIST(nowIST(settings.timezone), DISMISS_DAYS));
+    const newId = `${current.taskKey}_rev_s${stage}_${newScheduledDate}`;
+    let updated = revisions
+      .map(r => r.id === id ? { ...r, done: true } : r)
+      .filter(r => r.id !== newId);
+    updated = [...updated, { ...current, id: newId, stage, scheduledDate: newScheduledDate, done: false }];
+    setRevisions(updated);
+    syncRevisions(updated);
     // Persist the original ID as dismissed so offline devices don't reschedule it again
     if (activeCourseId) {
       const existing = loadDismissedRevisionIds(email, activeCourseId);
@@ -1026,6 +1037,9 @@ export function Today() {
       addDismissedRevisionId(id);
     }
   };
+
+  // dismiss = same as reschedule (same stage, 5 days later)
+  const dismissRevision = rescheduleRevision;
 
   const confirmCompleteRevision = (id: string) => {
     setConfirmDialog({
@@ -1041,24 +1055,28 @@ export function Today() {
     });
   };
 
-  // Schedule revision tasks when a task is marked complete
+  // Schedule first revision when a task is marked complete (stage 0, INITIAL_REVISION_DAYS later)
   const scheduleRevisions = (task: PlanTask) => {
     const existing = revisions;
-    const existingIds = new Set(existing.map(r => r.id));
-    const newRevisions: RevisionEntry[] = REVISION_DAYS.map(days => ({
-      id: `${task.key}_rev_${days}`,
+    // Don't create if an active (undone) revision for this task already exists
+    if (existing.some(r => r.taskKey === task.key && !r.done)) return;
+    const scheduledDate = toDateStrIST(addDaysIST(nowIST(settings.timezone), INITIAL_REVISION_DAYS));
+    const id = `${task.key}_rev_s0_${scheduledDate}`;
+    if (existing.some(r => r.id === id)) return;
+    const entry: RevisionEntry = {
+      id,
       taskKey: task.key,
       mainTitle: task.mainTitle,
       subjectTitle: task.subjectTitle,
       subjectColor: task.subjectColor,
       breadcrumb: task.breadcrumb,
       level: task.level,
-      scheduledDate: toDateStrIST(addDaysIST(nowIST(settings.timezone), days)),
+      scheduledDate,
       revisionMins: Math.max(Math.round(task.estimatedMins * 0.5), MIN_POINT),
+      stage: 0,
       done: false,
-    }));
-    const toAdd = newRevisions.filter(r => !existingIds.has(r.id));
-    const merged = [...existing, ...toAdd];
+    };
+    const merged = [...existing, entry];
     setRevisions(merged);
     syncRevisions(merged);
   };
@@ -1165,9 +1183,8 @@ export function Today() {
       // Marking complete → schedule revisions
       scheduleRevisions(task);
     } else {
-      // Undo complete → remove any revision entries created for this task
-      const revKeys = new Set(REVISION_DAYS.map(days => `${task.key}_rev_${days}`));
-      const updated = revisions.filter(r => !revKeys.has(r.id));
+      // Undo complete → remove all undone revision entries for this task
+      const updated = revisions.filter(r => !(r.taskKey === task.key && !r.done));
       setRevisions(updated);
       syncRevisions(updated);
     }

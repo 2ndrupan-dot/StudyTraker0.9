@@ -172,16 +172,28 @@
 .rich-editor-content u { text-decoration: underline; }
 .rich-editor-content s { text-decoration: line-through; }
 .rich-editor-content ul {
-  list-style: disc;
-  padding-left: 1.4em;
+  list-style: disc !important;
+  padding-left: 1.4em !important;
   margin: 0.35em 0;
 }
 .rich-editor-content ol {
-  list-style: decimal;
-  padding-left: 1.4em;
+  list-style: decimal !important;
+  padding-left: 1.4em !important;
   margin: 0.35em 0;
 }
-.rich-editor-content li { margin: 0.15em 0; }
+.rich-editor-content li {
+  display: list-item !important;
+  margin: 0.15em 0;
+}
+.rich-editor-content li > p {
+  display: block;
+  margin: 0;
+}
+.rich-editor-content li > ul,
+.rich-editor-content li > ol {
+  display: block;
+  margin-top: 0.1em;
+}
 .rich-editor-content mark {
   border-radius: 3px;
   padding: 0 2px;

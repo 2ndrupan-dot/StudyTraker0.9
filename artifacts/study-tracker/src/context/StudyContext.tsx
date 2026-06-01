@@ -561,11 +561,65 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     ));
   };
 
-  const deleteSubject = (subjId: string) =>
-    setSubjects(prev => redistributeDays(prev.filter(s => s.id !== subjId), settings.courseTotalDays));
+  // ─── Revision helpers ──────────────────────────────────────────────────
+  const purgeRevisions = (prefix: string) => {
+    if (!user?.email || !activeCourseId) return;
+    const email = user.email;
+    const courseId = activeCourseId;
+    const revK = `@study_revisions_v2_${email}_${courseId}`;
+    let filtered: any[] = [];
+    try {
+      const raw = localStorage.getItem(revK);
+      const all: any[] = raw ? JSON.parse(raw) : [];
+      filtered = all.filter((r: any) => {
+        const key = String(r.taskKey ?? '');
+        return key !== prefix && !key.startsWith(prefix + '|');
+      });
+      localStorage.setItem(revK, JSON.stringify(filtered));
+    } catch { return; }
+    if (user?.id) {
+      setDoc(
+        doc(db, 'users', user.id, 'todayData', courseId),
+        { revisions: filtered },
+        { merge: true },
+      ).catch(e => console.warn('[purgeRevisions] Firestore sync failed:', e));
+    }
+  };
 
-  const updateSubjectMeta = (subjId: string, title: string) =>
+  const patchRevisions = (updateFn: (r: any) => any) => {
+    if (!user?.email || !activeCourseId) return;
+    const email = user.email;
+    const courseId = activeCourseId;
+    const revK = `@study_revisions_v2_${email}_${courseId}`;
+    let updated: any[] = [];
+    try {
+      const raw = localStorage.getItem(revK);
+      const all: any[] = raw ? JSON.parse(raw) : [];
+      updated = all.map(updateFn);
+      localStorage.setItem(revK, JSON.stringify(updated));
+    } catch { return; }
+    if (user?.id) {
+      setDoc(
+        doc(db, 'users', user.id, 'todayData', courseId),
+        { revisions: updated },
+        { merge: true },
+      ).catch(e => console.warn('[patchRevisions] Firestore sync failed:', e));
+    }
+  };
+
+  const deleteSubject = (subjId: string) => {
+    setSubjects(prev => redistributeDays(prev.filter(s => s.id !== subjId), settings.courseTotalDays));
+    purgeRevisions(subjId);
+  };
+
+  const updateSubjectMeta = (subjId: string, title: string) => {
     setSubjects(prev => prev.map(s => s.id === subjId ? { ...s, title } : s));
+    patchRevisions(r => {
+      const key = String(r.taskKey ?? '');
+      if (!key.startsWith(subjId + '|')) return r;
+      return { ...r, subjectTitle: title };
+    });
+  };
 
   const resetSubjectProgress = (subjId: string) => {
     setSubjects(prev => prev.map(s => {
@@ -762,6 +816,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       });
       return redistributeDays(updated, settings.courseTotalDays);
     });
+    purgeRevisions(`${subjId}|${chId}`);
   };
 
   const toggleChapterComplete = (subjId: string, chId: string) => {
@@ -776,12 +831,24 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const updateChapterMeta = (subjId: string, chId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) =>
+  const updateChapterMeta = (subjId: string, chId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => {
     setSubjects(updateChapterFn(subjId, chId, ch => ({
       ...ch, title,
       ...(estimatedMinutes !== undefined ? { estimatedMinutes } : {}),
       ...(difficulty !== undefined ? { difficulty } : {}),
     })));
+    const chapterKey = `${subjId}|${chId}`;
+    patchRevisions(r => {
+      const key = String(r.taskKey ?? '');
+      if (key === chapterKey) return { ...r, mainTitle: title };
+      if (key.startsWith(chapterKey + '|')) {
+        const bc = Array.isArray(r.breadcrumb) ? [...r.breadcrumb] : [];
+        bc[0] = title;
+        return { ...r, breadcrumb: bc };
+      }
+      return r;
+    });
+  };
 
   // ─── Topic methods ─────────────────────────────────────────────────────
   const addTopic = (subjId: string, chId: string, data: Omit<Topic, 'id' | 'completed' | 'subtopics'>) => {
@@ -812,6 +879,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       });
       return redistributeDays(updated, settings.courseTotalDays);
     });
+    purgeRevisions(`${subjId}|${chId}|${tId}`);
   };
 
   const toggleTopicComplete = (subjId: string, chId: string, tId: string) => {
@@ -831,12 +899,24 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const updateTopicMeta = (subjId: string, chId: string, tId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) =>
+  const updateTopicMeta = (subjId: string, chId: string, tId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => {
     setSubjects(updateTopicFn(subjId, chId, tId, t => ({
       ...t, title,
       ...(estimatedMinutes !== undefined ? { estimatedMinutes } : {}),
       ...(difficulty !== undefined ? { difficulty } : {}),
     })));
+    const topicKey = `${subjId}|${chId}|${tId}`;
+    patchRevisions(r => {
+      const key = String(r.taskKey ?? '');
+      if (key === topicKey) return { ...r, mainTitle: title };
+      if (key.startsWith(topicKey + '|')) {
+        const bc = Array.isArray(r.breadcrumb) ? [...r.breadcrumb] : [];
+        bc[1] = title;
+        return { ...r, breadcrumb: bc };
+      }
+      return r;
+    });
+  };
 
   // ─── Subtopic methods ──────────────────────────────────────────────────
   const addSubtopic = (subjId: string, chId: string, tId: string, data: Omit<Subtopic, 'id' | 'completed' | 'concepts'>) => {
@@ -869,6 +949,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       });
       return checkSubjectCompletion({ ...s, chapters: newChapters });
     }));
+    purgeRevisions(`${subjId}|${chId}|${tId}|${subId}`);
   };
 
   const toggleSubtopicComplete = (subjId: string, chId: string, tId: string, subId: string) => {
@@ -894,12 +975,24 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const updateSubtopicMeta = (subjId: string, chId: string, tId: string, subId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) =>
+  const updateSubtopicMeta = (subjId: string, chId: string, tId: string, subId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => {
     setSubjects(updateSubtopicFn(subjId, chId, tId, subId, sub => ({
       ...sub, title,
       ...(estimatedMinutes !== undefined ? { estimatedMinutes } : {}),
       ...(difficulty !== undefined ? { difficulty } : {}),
     })));
+    const subtopicKey = `${subjId}|${chId}|${tId}|${subId}`;
+    patchRevisions(r => {
+      const key = String(r.taskKey ?? '');
+      if (key === subtopicKey) return { ...r, mainTitle: title };
+      if (key.startsWith(subtopicKey + '|')) {
+        const bc = Array.isArray(r.breadcrumb) ? [...r.breadcrumb] : [];
+        bc[2] = title;
+        return { ...r, breadcrumb: bc };
+      }
+      return r;
+    });
+  };
 
   // ─── Concept methods ───────────────────────────────────────────────────
   const addConcept = (subjId: string, chId: string, tId: string, subId: string, data: Omit<Concept, 'id' | 'completed' | 'points'>) => {
@@ -933,6 +1026,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       const newConcepts = sub.concepts.filter(c => c.id !== cId);
       return { ...sub, concepts: newConcepts, completed: newConcepts.length > 0 && newConcepts.every(c => c.completed) };
     }));
+    purgeRevisions(`${subjId}|${chId}|${tId}|${subId}|${cId}`);
   };
 
   const toggleConceptComplete = (subjId: string, chId: string, tId: string, subId: string, cId: string) => {
@@ -948,12 +1042,24 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const updateConceptMeta = (subjId: string, chId: string, tId: string, subId: string, cId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) =>
+  const updateConceptMeta = (subjId: string, chId: string, tId: string, subId: string, cId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => {
     setSubjects(updateConceptFn(subjId, chId, tId, subId, cId, c => ({
       ...c, title,
       ...(estimatedMinutes !== undefined ? { estimatedMinutes } : {}),
       ...(difficulty !== undefined ? { difficulty } : {}),
     })));
+    const conceptKey = `${subjId}|${chId}|${tId}|${subId}|${cId}`;
+    patchRevisions(r => {
+      const key = String(r.taskKey ?? '');
+      if (key === conceptKey) return { ...r, mainTitle: title };
+      if (key.startsWith(conceptKey + '|')) {
+        const bc = Array.isArray(r.breadcrumb) ? [...r.breadcrumb] : [];
+        bc[3] = title;
+        return { ...r, breadcrumb: bc };
+      }
+      return r;
+    });
+  };
 
   // ─── Point methods ─────────────────────────────────────────────────────
   const addPoint = (subjId: string, chId: string, tId: string, subId: string, cId: string, data: Omit<Point, 'id' | 'completed'>) => {
@@ -993,6 +1099,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       const newPoints = c.points.filter(p => p.id !== pId);
       return { ...c, points: newPoints, completed: newPoints.length > 0 && newPoints.every(p => p.completed) };
     }));
+    purgeRevisions(`${subjId}|${chId}|${tId}|${subId}|${cId}|${pId}`);
   };
 
   const togglePointComplete = (subjId: string, chId: string, tId: string, subId: string, cId: string, pId: string) => {
@@ -1004,10 +1111,16 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const updatePointMeta = (subjId: string, chId: string, tId: string, subId: string, cId: string, pId: string, title: string, difficulty?: DifficultyLevel) =>
+  const updatePointMeta = (subjId: string, chId: string, tId: string, subId: string, cId: string, pId: string, title: string, difficulty?: DifficultyLevel) => {
     setSubjects(updateConceptFn(subjId, chId, tId, subId, cId, c => ({
       ...c, points: c.points.map(p => p.id === pId ? { ...p, title, ...(difficulty !== undefined ? { difficulty } : {}) } : p)
     })));
+    const pointKey = `${subjId}|${chId}|${tId}|${subId}|${cId}|${pId}`;
+    patchRevisions(r => {
+      if (String(r.taskKey ?? '') === pointKey) return { ...r, mainTitle: title };
+      return r;
+    });
+  };
 
   // ─── Note / Important / Weak ───────────────────────────────────────────
   // Generic patcher: mutates only the targeted node based on path.level

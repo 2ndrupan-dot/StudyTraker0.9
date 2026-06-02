@@ -475,6 +475,39 @@ export function Today() {
   const planReadyRef = useRef(false);
   useEffect(() => { planReadyRef.current = planReady; }, [planReady]);
 
+  // Store Firestore snapshots that arrive before planReady so they can be
+  // applied immediately after the initial load completes.
+  const pendingFSSnapRef = useRef<{
+    remPending: PendingItem[];
+    remRevisions: RevisionEntry[];
+    remPlan: { date: string; tasks: PlanTask[] } | null;
+    remDPKeys: string[];
+    remDRIds: string[];
+  } | null>(null);
+
+  // After planReady, apply any Firestore snapshot that arrived early (cross-device sync)
+  useEffect(() => {
+    if (!planReady) return;
+    const snap = pendingFSSnapRef.current;
+    if (!snap) return;
+    pendingFSSnapRef.current = null;
+    // Apply dismissed keys to filter current pending/revision state
+    if (snap.remDPKeys.length > 0) {
+      const dSet = new Set(snap.remDPKeys);
+      setPendingItems(prev => {
+        const filtered = prev.filter(p => !dSet.has(p.task.key));
+        return filtered.length !== prev.length ? filtered : prev;
+      });
+    }
+    if (snap.remDRIds.length > 0) {
+      const dSet = new Set(snap.remDRIds);
+      setRevisions(prev => {
+        const updated = prev.map(r => !r.done && dSet.has(r.id) ? { ...r, done: true } : r);
+        return updated.some((r, i) => r !== prev[i]) ? updated : prev;
+      });
+    }
+  }, [planReady]); // eslint-disable-line
+
   // ── Firestore write helpers (fire-and-forget) ──────────────────────────────
   const writePlan = useCallback(async (date: string, tasks: PlanTask[]) => {
     if (!user?.id || !activeCourseId) return;
@@ -551,24 +584,51 @@ export function Today() {
     const unsubscribe = onSnapshot(
       doc(db, 'users', user.id, 'todayData', courseId),
       (snap) => {
-        // Ignore echoes from our own writes
-        if (Date.now() - lastWriteRef.current < WRITE_GRACE_MS) return;
         if (!snap.exists()) return;
         const d = snap.data();
         const remPending: PendingItem[] = Array.isArray(d.pending) ? d.pending : [];
         const remRevisions: RevisionEntry[] = Array.isArray(d.revisions) ? d.revisions : [];
         const remPlan: { date: string; tasks: PlanTask[] } | null = d.plan ?? null;
-        // Cache to localStorage using course-specific keys
+        const remDPKeys: string[] = Array.isArray(d.dismissedPendingKeys) ? d.dismissedPendingKeys : [];
+        const remDRIds: string[]  = Array.isArray(d.dismissedRevisionIds)  ? d.dismissedRevisionIds  : [];
+
+        // ALWAYS persist to localStorage — regardless of grace period or planReady.
+        // This ensures dismissed keys are available the next time the app opens,
+        // even if the device was killed right after this snapshot fired.
         savePending(email, courseId, remPending);
         saveRevisions(email, courseId, remRevisions);
         if (remPlan) savePlan(email, courseId, remPlan.date, remPlan.tasks);
-        // Cache dismissed keys locally so they are available before the next initial load
-        const remDPKeys: string[] = Array.isArray(d.dismissedPendingKeys) ? d.dismissedPendingKeys : [];
-        const remDRIds: string[]  = Array.isArray(d.dismissedRevisionIds)  ? d.dismissedRevisionIds  : [];
         saveDismissedPendingKeys(email, courseId, remDPKeys);
         saveDismissedRevisionIds(email, courseId, remDRIds);
-        // Update React state only after initial load is done (avoid conflict with init)
-        if (!planReadyRef.current) return;
+
+        // If the initial load hasn't finished yet, stash this snapshot.
+        // The planReady useEffect above will apply dismissed keys once init is done.
+        if (!planReadyRef.current) {
+          pendingFSSnapRef.current = { remPending, remRevisions, remPlan, remDPKeys, remDRIds };
+          return;
+        }
+
+        // Ignore full state update for our own write echoes — but still apply
+        // dismissed keys so cross-device dismissals propagate during the grace period.
+        if (Date.now() - lastWriteRef.current < WRITE_GRACE_MS) {
+          if (remDPKeys.length > 0) {
+            const dSet = new Set(remDPKeys);
+            setPendingItems(prev => {
+              const filtered = prev.filter(p => !dSet.has(p.task.key));
+              return filtered.length !== prev.length ? filtered : prev;
+            });
+          }
+          if (remDRIds.length > 0) {
+            const dSet = new Set(remDRIds);
+            setRevisions(prev => {
+              const updated = prev.map(r => !r.done && dSet.has(r.id) ? { ...r, done: true } : r);
+              return updated.some((r, i) => r !== prev[i]) ? updated : prev;
+            });
+          }
+          return;
+        }
+
+        // Remote update — replace state with authoritative Firestore data
         setPendingItems(remPending);
         setRevisions(remRevisions);
         if (remPlan && remPlan.date === todayDateStr) {

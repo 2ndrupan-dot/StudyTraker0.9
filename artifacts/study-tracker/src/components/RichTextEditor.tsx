@@ -1136,6 +1136,7 @@ export function RichTextPreview({
   useEffect(() => {
     if (!editor) return;
     const incoming = toSafeHtml(html);
+    console.log('[RichTextPreview] received html:', incoming.substring(0, 600));
     const current = editor.isEmpty ? '' : editor.getHTML();
     if (incoming !== current) {
       editor.commands.setContent(incoming, false);

@@ -70,6 +70,7 @@ export function MarksBadgeRow({
   size?: 'xs' | 'sm';
   onClickNote?: () => void;
 }) {
+  const { t } = useLang();
   if (!important && !weak && !note) return null;
   const px = size === 'xs' ? 'text-[9px] px-1 py-0' : 'text-[10px] px-1.5 py-0.5';
   return (
@@ -88,11 +89,10 @@ export function MarksBadgeRow({
         <button
           type="button"
           onClick={e => { e.stopPropagation(); onClickNote?.(); }}
-          className={`flex items-center gap-0.5 ${px} rounded font-bold text-amber-700 bg-amber-400/15 border border-amber-300/60 hover:bg-amber-400/25 max-w-[200px] truncate`}
-          title={note}
+          className={`flex items-center gap-0.5 ${px} rounded font-bold text-amber-700 bg-amber-400/15 border border-amber-300/60 hover:bg-amber-400/25`}
         >
           <StickyNote size={size === 'xs' ? 8 : 9} />
-          <span className="truncate">{note}</span>
+          <span>{t('note')}</span>
         </button>
       )}
     </div>

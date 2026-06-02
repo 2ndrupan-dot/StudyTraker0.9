@@ -225,6 +225,37 @@ const Indent = Extension.create({
         if ($from.parent.type.name === 'listItem') return false;
         return (this.editor.commands as any).outdent();
       },
+      // Space: convert to NBSP when at line start or after another space/NBSP
+      ' ': () => {
+        const { selection } = this.editor.state;
+        if (!selection.empty) return false;
+        const { $from } = selection;
+
+        // At the very beginning of a paragraph
+        if ($from.parentOffset === 0) {
+          this.editor.commands.insertContent('\u00A0');
+          return true;
+        }
+
+        const nodeBefore = $from.nodeBefore;
+
+        // Right after a hard break (<br> / Shift+Enter)
+        if (nodeBefore && nodeBefore.type.name === 'hardBreak') {
+          this.editor.commands.insertContent('\u00A0');
+          return true;
+        }
+
+        // Right after a space or non-breaking space (consecutive spaces)
+        if (nodeBefore && nodeBefore.isText) {
+          const lastChar = (nodeBefore.text ?? '').slice(-1);
+          if (lastChar === ' ' || lastChar === '\u00A0') {
+            this.editor.commands.insertContent('\u00A0');
+            return true;
+          }
+        }
+
+        return false; // Regular space everywhere else
+      },
     };
   },
 });

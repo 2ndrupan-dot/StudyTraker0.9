@@ -14,6 +14,7 @@ import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { Link } from '@tiptap/extension-link';
+import { TextAlign } from '@tiptap/extension-text-align';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
@@ -23,6 +24,8 @@ import {
   Undo2, Redo2, Table2, Plus, Trash2, ArrowRightToLine, ArrowDownToLine,
   ArrowLeftFromLine, ArrowUpFromLine, Link2, Unlink, FileText,
   ChevronLeft, ChevronRight, StickyNote,
+  AlignLeft, AlignCenter, AlignRight, AlignJustify,
+  IndentIncrease, IndentDecrease,
 } from 'lucide-react';
 
 // ─── NoteRef inline node (atomic chip — cursor cannot enter) ──────────────────
@@ -151,6 +154,76 @@ const FontSize = Extension.create({
       unsetFontSize: () => ({ chain }: any) =>
         chain().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run(),
     } as any;
+  },
+});
+
+// ─── Custom Indent extension ──────────────────────────────────────────────────
+const INDENT_STEP = 30; // px per indent level
+
+const Indent = Extension.create({
+  name: 'indent',
+  addOptions() {
+    return { types: ['paragraph', 'heading'] };
+  },
+  addGlobalAttributes() {
+    return [{
+      types: this.options.types,
+      attributes: {
+        indent: {
+          default: 0,
+          parseHTML: (el: HTMLElement) => {
+            const ml = el.style.marginLeft;
+            if (!ml) return 0;
+            const val = parseInt(ml, 10);
+            return isNaN(val) ? 0 : Math.round(val / INDENT_STEP);
+          },
+          renderHTML: (attrs: Record<string, unknown>) => {
+            const level = attrs.indent as number;
+            if (!level || level <= 0) return {};
+            return { style: `margin-left: ${level * INDENT_STEP}px` };
+          },
+        },
+      },
+    }];
+  },
+  addCommands() {
+    const updateIndent = (delta: number) =>
+      ({ tr, state, dispatch }: any) => {
+        const { selection } = state;
+        let changed = false;
+        state.doc.nodesBetween(selection.from, selection.to, (node: any, pos: number) => {
+          if ((this.options.types as string[]).includes(node.type.name)) {
+            const current = (node.attrs.indent as number) ?? 0;
+            const next = Math.max(0, Math.min(current + delta, 10));
+            if (next !== current) {
+              tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: next });
+              changed = true;
+            }
+            return false;
+          }
+          return true;
+        });
+        if (changed && dispatch) { dispatch(tr); return true; }
+        return false;
+      };
+    return {
+      indent: () => updateIndent(1),
+      outdent: () => updateIndent(-1),
+    } as any;
+  },
+  addKeyboardShortcuts() {
+    return {
+      Tab: () => {
+        const { $from } = this.editor.state.selection;
+        if ($from.parent.type.name === 'listItem') return false;
+        return (this.editor.commands as any).indent();
+      },
+      'Shift-Tab': () => {
+        const { $from } = this.editor.state.selection;
+        if ($from.parent.type.name === 'listItem') return false;
+        return (this.editor.commands as any).outdent();
+      },
+    };
   },
 });
 
@@ -878,6 +951,8 @@ export function RichTextEditor({
       FontSize,
       Color,
       Highlight.configure({ multicolor: true }),
+      TextAlign.configure({ types: ['paragraph', 'heading'] }),
+      Indent,
       Table.configure({ resizable: true }),
       TableRow,
       TableHeader,
@@ -1060,6 +1135,30 @@ export function RichTextEditor({
         <ToolbarBtn onClick={() => editor.chain().focus().redo().run()} active={false} title="Redo (Ctrl+Y)">
           <Redo2 size={13} />
         </ToolbarBtn>
+
+        <div className="w-px h-4 bg-border/60 mx-1" />
+
+        <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign('left').run()} active={editor.isActive({ textAlign: 'left' })} title="Align Left">
+          <AlignLeft size={13} />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign('center').run()} active={editor.isActive({ textAlign: 'center' })} title="Align Center">
+          <AlignCenter size={13} />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} title="Align Right">
+          <AlignRight size={13} />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign('justify').run()} active={editor.isActive({ textAlign: 'justify' })} title="Justify">
+          <AlignJustify size={13} />
+        </ToolbarBtn>
+
+        <div className="w-px h-4 bg-border/60 mx-1" />
+
+        <ToolbarBtn onClick={() => (editor.commands as any).outdent()} active={false} title="Decrease Indent (Shift+Tab)">
+          <IndentDecrease size={13} />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => (editor.commands as any).indent()} active={false} title="Increase Indent (Tab)">
+          <IndentIncrease size={13} />
+        </ToolbarBtn>
       </div>
 
       {/* ── Editor area ── */}
@@ -1116,6 +1215,8 @@ export function RichTextPreview({
       FontSize,
       Color,
       Highlight.configure({ multicolor: true }),
+      TextAlign.configure({ types: ['paragraph', 'heading'] }),
+      Indent,
       Table.configure({ resizable: true }),
       TableRow,
       TableHeader,

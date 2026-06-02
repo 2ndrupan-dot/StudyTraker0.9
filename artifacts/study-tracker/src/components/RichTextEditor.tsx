@@ -216,7 +216,9 @@ const Indent = Extension.create({
       Tab: () => {
         const { $from } = this.editor.state.selection;
         if ($from.parent.type.name === 'listItem') return false;
-        return (this.editor.commands as any).indent();
+        // Non-breaking spaces survive HTML serialisation and never collapse
+        this.editor.commands.insertContent('\u00A0\u00A0\u00A0\u00A0');
+        return true;
       },
       'Shift-Tab': () => {
         const { $from } = this.editor.state.selection;

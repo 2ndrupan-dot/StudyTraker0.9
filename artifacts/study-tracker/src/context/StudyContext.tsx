@@ -1272,6 +1272,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   };
 
   // ─── A4 Note Pages (each page stored as a separate Firestore doc) ────
+  // Serial write queue — ensures notePages Firestore writes happen one at a time,
+  // preventing a large note's pending write from blocking a subsequent note's write.
+  const noteWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  // Pages that have been deleted while a save was queued — queued saves for
+  // deleted pages are skipped to avoid resurrecting the document.
+  const deletedNotePageIds = useRef<Set<string>>(new Set());
+
   const notePageDocRef = (id: string) =>
     user ? doc(db, 'users', user.id, 'notePages', id) : null;
 
@@ -1316,13 +1323,21 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteNotePage = async (id: string): Promise<void> => {
+    // Mark deleted immediately so any queued save for this page is skipped.
+    deletedNotePageIds.current.add(id);
     setNotePagesIndex(prev => prev.filter(p => p.id !== id));
     const lk = localPageKey(id);
     if (lk) localStorage.removeItem(lk);
-    const ref = notePageDocRef(id);
-    if (ref) {
-      try { await deleteDoc(ref); } catch { /* ignore */ }
-    }
+    // Route the Firestore delete through the same queue so it is strictly ordered
+    // after any in-progress write for this page, preventing a resurrection race.
+    noteWriteQueueRef.current = noteWriteQueueRef.current.then(async () => {
+      const ref = notePageDocRef(id);
+      if (ref) {
+        try { await deleteDoc(ref); } catch { /* ignore offline */ }
+      }
+      // Clean up the tombstone once the delete has been processed.
+      deletedNotePageIds.current.delete(id);
+    });
   };
 
   const loadNotePage = async (id: string): Promise<NotePage | null> => {
@@ -1358,18 +1373,42 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   const saveNotePage = async (page: NotePage): Promise<void> => {
     const updated: NotePage = { ...page, updatedAt: Date.now() };
-    const lk = localPageKey(page.id);
+    const pageId = page.id;
+    // 1. Save to localStorage immediately — data is safe on-device right away.
+    //    The caller (NoteEditor) awaits this function and shows "Saved" once it
+    //    resolves; localStorage persistence is sufficient for that signal.
+    const lk = localPageKey(pageId);
     if (lk) localStorage.setItem(lk, JSON.stringify(updated));
-    // Update index meta
+    // 2. Update in-memory index (triggers main studyData debounce save)
     setNotePagesIndex(prev => prev.map(p =>
-      p.id === page.id
+      p.id === pageId
         ? { ...p, title: updated.title, pageCount: updated.pageCount, updatedAt: updated.updatedAt }
         : p
     ));
-    const ref = notePageDocRef(page.id);
-    if (ref) {
-      try { await setDoc(ref, updated); } catch { /* offline – local saved */ }
-    }
+    const ref = notePageDocRef(pageId);
+    if (!ref) return;
+    // 3. Enqueue the Firestore write so all notePages writes execute one at a time.
+    //    This prevents a large note's in-flight write from blocking a subsequent
+    //    note's write (the root cause of the "second note never syncs" bug).
+    //    We do NOT await the queue here — the caller gets an immediate resolve
+    //    after localStorage is persisted.
+    noteWriteQueueRef.current = noteWriteQueueRef.current.then(async () => {
+      // Skip if the page was deleted while this write was waiting in the queue.
+      if (deletedNotePageIds.current.has(pageId)) return;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await setDoc(ref, updated);
+          return; // success — exit retry loop
+        } catch (err) {
+          if (attempt < 3) {
+            // True exponential backoff: 800 ms → 1600 ms
+            await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt - 1)));
+          } else {
+            console.error('[saveNotePage] Firestore write failed after 3 attempts for page', pageId, err);
+          }
+        }
+      }
+    });
   };
 
   return (

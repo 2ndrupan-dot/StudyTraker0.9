@@ -1514,6 +1514,7 @@ export function Subjects() {
         isOpen={!!notePath}
         onClose={closeNote}
         title={t('editNote')}
+        notePath={notePath}
         icon={StickyNote}
         value={noteDraft}
         onChange={setNoteDraft}

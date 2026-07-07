@@ -228,6 +228,27 @@ function buildItemBreadcrumb(subjects: any[], path: any): string[] {
   return crumbs; // point — show all ancestors
 }
 
+// Returns the title of the item itself (not its ancestors)
+function getItemOwnTitle(subjects: any[], path: any): string {
+  const s = subjects.find((x: any) => x.id === path.subjectId);
+  if (!s) return '';
+  if (path.level === 'subject') return s.title;
+  const c = s.chapters?.find((x: any) => x.id === path.chapterId);
+  if (!c) return '';
+  if (path.level === 'chapter') return c.title;
+  const t = c.topics?.find((x: any) => x.id === path.topicId);
+  if (!t) return '';
+  if (path.level === 'topic') return t.title;
+  const st = t.subtopics?.find((x: any) => x.id === path.subtopicId);
+  if (!st) return '';
+  if (path.level === 'subtopic') return st.title;
+  const co = st.concepts?.find((x: any) => x.id === path.conceptId);
+  if (!co) return '';
+  if (path.level === 'concept') return co.title;
+  const pt = co.points?.find((x: any) => x.id === path.pointId);
+  return pt?.title || '';
+}
+
 // ─── Helper: walk subjects tree and extract a specific item's note ────────────
 function findItemNoteHtml(subjects: any[], path: any): string {
   const s = subjects.find((x: any) => x.id === path.subjectId);
@@ -252,7 +273,7 @@ function findItemNoteHtml(subjects: any[], path: any): string {
 // ─── Note Editor Modal (Rich Text — expand to A4 full-screen) ────────────────
 export const NoteEditorModal = ({
   isOpen, onClose, value, onChange, onClear, onSave,
-  title, placeholder, clearLabel, saveLabel, icon: Icon, breadcrumb,
+  title, placeholder, clearLabel, saveLabel, icon: Icon, breadcrumb, notePath,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -266,6 +287,8 @@ export const NoteEditorModal = ({
   saveLabel: string;
   icon?: any;
   breadcrumb?: string[];
+  /** When provided, the PDF download uses the actual item title instead of the generic modal title */
+  notePath?: any;
 }) => {
   const { setNote, subjects } = useStudy();
   const [, setLocation] = useLocation();
@@ -298,14 +321,25 @@ export const NoteEditorModal = ({
   const handleDownloadPdf = () => {
     const win = window.open('', '_blank');
     if (!win) return;
-    const safeTitle = title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // Use the actual item/topic title when a notePath is provided; fall back to the modal title
+    let pdfTitle = title;
+    if (notePath) {
+      const itemTitle = getItemOwnTitle(subjects, notePath);
+      if (itemTitle) pdfTitle = itemTitle;
+    }
+    const safeTitle = pdfTitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     win.document.write(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>${safeTitle}</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    /* Force all background colours and text colours to print — essential for
+       highlights (Tiptap <mark style="background-color:…">) and coloured text
+       (<span style="color:…">) to appear correctly in the saved PDF. */
+    * { box-sizing: border-box; margin: 0; padding: 0;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important; }
     body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 0 auto; padding: 48px 48px 64px; color: #111; }
     h1 { font-size: 22px; font-weight: bold; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }
     p { margin-bottom: 10px; line-height: 1.7; font-size: 14px; }
@@ -322,6 +356,8 @@ export const NoteEditorModal = ({
     th, td { border: 1px solid #d1d5db; padding: 6px 10px; font-size: 13px; }
     th { background: #f9fafb; font-weight: bold; }
     blockquote { border-left: 3px solid #d1d5db; padding-left: 14px; color: #6b7280; margin-bottom: 10px; }
+    /* Tiptap highlight: <mark style="background-color: …"> */
+    mark { display: inline; border-radius: 2px; padding: 0 1px; }
     span[data-note-id] {
       display: inline;
       color: #4d79f5;
@@ -335,7 +371,6 @@ export const NoteEditorModal = ({
     }
     @media print {
       body { padding: 24px; }
-      span[data-note-id] { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>
 </head>

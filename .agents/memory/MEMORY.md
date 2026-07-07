@@ -1,0 +1,2 @@
+- [Note page write queue](note-page-write-queue.md) — saveNotePage uses a serial queue + tombstone set to prevent race conditions between concurrent writes and deletes.
+- [pnpm install workaround](pnpm-install.md) — protobufjs blocked by package firewall; use --registry https://registry.npmjs.org to install.

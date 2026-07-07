@@ -2353,6 +2353,7 @@ export function Today() {
         isOpen={noteModal.open}
         onClose={closeNoteModal}
         title={t('editNote')}
+        notePath={noteModal.path}
         icon={StickyNote}
         value={noteModal.draft}
         onChange={v => setNoteModal(s => ({ ...s, draft: v }))}

@@ -319,8 +319,6 @@ export const NoteEditorModal = ({
   };
 
   const handleDownloadPdf = () => {
-    const win = window.open('', '_blank');
-    if (!win) return;
     // Use the actual item/topic title when a notePath is provided; fall back to the modal title
     let pdfTitle = title;
     if (notePath) {
@@ -328,7 +326,7 @@ export const NoteEditorModal = ({
       if (itemTitle) pdfTitle = itemTitle;
     }
     const safeTitle = pdfTitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    win.document.write(`<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -378,10 +376,25 @@ export const NoteEditorModal = ({
   <h1>${safeTitle}</h1>
   ${value || '<p style="color:#9ca3af">No content yet.</p>'}
 </body>
-</html>`);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); }, 300);
+</html>`;
+
+    // Open via a blob URL so the browser print footer shows the app domain
+    // instead of "about:blank" (which appears when using window.open('', '_blank')).
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    const win = window.open(blobUrl, '_blank');
+    if (!win) { URL.revokeObjectURL(blobUrl); return; }
+
+    // Revoke the blob URL once the window has loaded and printed.
+    win.addEventListener('load', () => {
+      win.focus();
+      setTimeout(() => {
+        win.print();
+        URL.revokeObjectURL(blobUrl);
+      }, 150);
+    });
+    // Safety timeout in case the load event misfires (some browsers skip it for blobs).
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
   };
 
   // Shared header action buttons (pencil/eye + expand/minimize + close)

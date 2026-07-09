@@ -277,6 +277,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     const notesDocRef = doc(db, 'users', user.id, 'courseNotes', activeCourseId);
     let isFirstSnapshot = true;
 
+    // Lifecycle guard: once the effect cleans up (course/user change or unmount),
+    // any in-flight async work that resolves later must not apply state.
+    let active = true;
+    // Monotonic counter: each snapshot increments this; async continuations check
+    // that their seq is still the latest before applying state, so out-of-order
+    // resolutions from slow Firestore reads are discarded automatically.
+    let seq = 0;
+
     /** Fetch the companion "courseNotes" document and merge its note content
      *  back into the given StudyData.  If the doc doesn't exist (old-format data
      *  that was saved before the note-separation change), the subjects already
@@ -300,128 +308,143 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
     // ── Real-time listener — fires immediately on mount (initial load)
     //    and again whenever any device writes to this document ──
+    // The callback itself is kept SYNCHRONOUS so Firestore can handle errors
+    // normally.  Async work (fetching the notes companion doc) is delegated to
+    // an inner async function guarded by `active` + `seq` so out-of-order
+    // resolutions and post-cleanup state updates are both safe to discard.
     const unsubscribe = onSnapshot(
       docRef,
-      async (snap) => {
+      (snap) => {
+        const mySeq = ++seq; // capture snapshot's position before any await
+
         const snapData = snap.data();
-        let fsData: StudyData | null = snap.exists() && snapData
-          ? {
-              subjects: snapData.subjects || [],
-              settings: snapData.settings || {},
-              tempNotes: snapData.tempNotes || [],
-              overallNote: snapData.overallNote || '',
-              notePagesIndex: snapData.notePagesIndex || [],
-              savedAt: snapData.savedAt,
-              hasNotesDoc: snapData.hasNotesDoc || false,
-            } as StudyData & { hasNotesDoc?: boolean }
-          : null;
+        const fsDataRaw: (StudyData & { hasNotesDoc?: boolean }) | null =
+          snap.exists() && snapData
+            ? {
+                subjects: snapData.subjects || [],
+                settings: snapData.settings || {},
+                tempNotes: snapData.tempNotes || [],
+                overallNote: snapData.overallNote || '',
+                notePagesIndex: snapData.notePagesIndex || [],
+                savedAt: snapData.savedAt,
+                hasNotesDoc: snapData.hasNotesDoc || false,
+              }
+            : null;
 
         if (isFirstSnapshot) {
           // ── Initial load: pick the freshest between Firestore and localStorage ──
           isFirstSnapshot = false;
 
-          if (!fsData) {
-            setDataLoaded(true);
-            setTimeout(() => { isInitialLoad.current = false; }, 200);
+          if (!fsDataRaw) {
+            if (active) {
+              setDataLoaded(true);
+              setTimeout(() => { isInitialLoad.current = false; }, 200);
+            }
             return;
           }
 
-          // Merge note content from the companion doc (if data was saved by new code)
-          fsData = await withNotesDoc(fsData);
+          // Kick off async notes-doc merge; guard with active + seq before applying.
+          (async () => {
+            const fsData = await withNotesDoc(fsDataRaw);
+            if (!active || mySeq !== seq) return; // stale or unmounted — discard
 
-          const lsRaw = localKey('data');
-          const localData = lsRaw ? getLocalData(lsRaw) : null;
+            const lsRaw = localKey('data');
+            const localData = lsRaw ? getLocalData(lsRaw) : null;
 
-          let legacySubjects: Subject[] | null = null;
-          let legacySettings: CourseSettings | null = null;
-          if (!localData) {
-            try {
-              const ls = localStorage.getItem(`@study_subjects_${user.email}`);
-              const lc = localStorage.getItem(`@study_course_${user.email}`);
-              if (ls) legacySubjects = JSON.parse(ls);
-              if (lc) legacySettings = JSON.parse(lc);
-            } catch { /* ignore */ }
-          }
-
-          const best = pickNewerData(fsData, localData);
-
-          // Anchor lastSavedAt to the freshest timestamp we know about.
-          // The save-useEffect will push this forward immediately whenever
-          // the user makes an edit, so server snapshots arriving before our
-          // own save is acknowledged can never overwrite user-added data.
-          lastSavedAt.current = best?.savedAt ?? fsData.savedAt ?? 0;
-
-          if (best) {
-            const loadedSettings = { ...best.settings } as CourseSettings;
-            let loadedSubjects = best.subjects || [];
-            if (loadedSettings.resetScheduled && loadedSettings.courseStartDate) {
-              const startDate = new Date(loadedSettings.courseStartDate);
-              startDate.setHours(0, 0, 0, 0);
-              if (new Date() >= startDate) {
-                const resetResult = doResetProgress(loadedSubjects, loadedSettings, user?.email, activeCourseId);
-                loadedSubjects = resetResult.subjects;
-                loadedSettings.resetScheduled = false;
-              }
+            let legacySubjects: Subject[] | null = null;
+            let legacySettings: CourseSettings | null = null;
+            if (!localData) {
+              try {
+                const ls = localStorage.getItem(`@study_subjects_${user.email}`);
+                const lc = localStorage.getItem(`@study_course_${user.email}`);
+                if (ls) legacySubjects = JSON.parse(ls);
+                if (lc) legacySettings = JSON.parse(lc);
+              } catch { /* ignore */ }
             }
-            setSubjects(loadedSubjects);
-            setSettings(prev => ({ ...prev, ...loadedSettings }));
-            setTempNotes(best.tempNotes || []);
-            setOverallNoteState(best.overallNote || '');
-            setNotePagesIndex(best.notePagesIndex || []);
-          } else if (legacySubjects) {
-            const migrated = legacySubjects.map((s: any) => ({
-              ...s,
-              chapters: (s.topics || s.chapters || []).map((ch: any) => ({
-                id: ch.id,
-                title: ch.title,
-                totalMinutes: ch.totalMinutes || 0,
-                completed: ch.completed || false,
-                topics: (ch.subtopics || ch.topics || []).map((t: any) => ({
-                  id: t.id,
-                  title: t.title,
-                  totalMinutes: 0,
-                  completed: t.completed || false,
-                  subtopics: t.subtopics || [],
-                })),
-              })),
-            }));
-            setSubjects(migrated);
-            if (legacySettings) setSettings(prev => ({ ...prev, ...legacySettings }));
-          }
 
-          setDataLoaded(true);
-          // Delay so React finishes batching all setState calls above before
-          // the save-useEffect can run (prevents saving empty [] subjects on load)
-          setTimeout(() => { isInitialLoad.current = false; }, 200);
+            const best = pickNewerData(fsData, localData);
+
+            // Anchor lastSavedAt to the freshest timestamp we know about.
+            // The save-useEffect will push this forward immediately whenever
+            // the user makes an edit, so server snapshots arriving before our
+            // own save is acknowledged can never overwrite user-added data.
+            lastSavedAt.current = best?.savedAt ?? fsData.savedAt ?? 0;
+
+            if (best) {
+              const loadedSettings = { ...best.settings } as CourseSettings;
+              let loadedSubjects = best.subjects || [];
+              if (loadedSettings.resetScheduled && loadedSettings.courseStartDate) {
+                const startDate = new Date(loadedSettings.courseStartDate);
+                startDate.setHours(0, 0, 0, 0);
+                if (new Date() >= startDate) {
+                  const resetResult = doResetProgress(loadedSubjects, loadedSettings, user?.email, activeCourseId);
+                  loadedSubjects = resetResult.subjects;
+                  loadedSettings.resetScheduled = false;
+                }
+              }
+              setSubjects(loadedSubjects);
+              setSettings(prev => ({ ...prev, ...loadedSettings }));
+              setTempNotes(best.tempNotes || []);
+              setOverallNoteState(best.overallNote || '');
+              setNotePagesIndex(best.notePagesIndex || []);
+            } else if (legacySubjects) {
+              const migrated = legacySubjects.map((s: any) => ({
+                ...s,
+                chapters: (s.topics || s.chapters || []).map((ch: any) => ({
+                  id: ch.id,
+                  title: ch.title,
+                  totalMinutes: ch.totalMinutes || 0,
+                  completed: ch.completed || false,
+                  topics: (ch.subtopics || ch.topics || []).map((t: any) => ({
+                    id: t.id,
+                    title: t.title,
+                    totalMinutes: 0,
+                    completed: t.completed || false,
+                    subtopics: t.subtopics || [],
+                  })),
+                })),
+              }));
+              setSubjects(migrated);
+              if (legacySettings) setSettings(prev => ({ ...prev, ...legacySettings }));
+            }
+
+            setDataLoaded(true);
+            // Delay so React finishes batching all setState calls above before
+            // the save-useEffect can run (prevents saving empty [] subjects on load)
+            setTimeout(() => { isInitialLoad.current = false; }, 200);
+          })();
         } else {
           // ── Real-time update from another device ──
           // Skip if not newer, if it's our own pending write, or same data we have.
-          if (!fsData) return;
+          if (!fsDataRaw) return;
           if (snap.metadata.hasPendingWrites) return;
-          if (fsData.savedAt && fsData.savedAt <= lastSavedAt.current) return;
+          if (fsDataRaw.savedAt && fsDataRaw.savedAt <= lastSavedAt.current) return;
 
-          // Merge note content from the companion doc before applying remote data.
-          fsData = await withNotesDoc(fsData);
+          // Kick off async notes-doc merge; guard with active + seq before applying.
+          (async () => {
+            const fsData = await withNotesDoc(fsDataRaw);
+            if (!active || mySeq !== seq) return; // stale or unmounted — discard
 
-          // Mark that the next save-useEffect run should NOT echo this back to
-          // Firestore — applying remote data must never create a save loop.
-          // Also update lastSavedAt to the remote timestamp so any stale server
-          // snapshots arriving after this are ignored.
-          lastSavedAt.current = fsData.savedAt ?? 0;
-          skipNextSaveRef.current = true;
+            // Mark that the next save-useEffect run should NOT echo this back to
+            // Firestore — applying remote data must never create a save loop.
+            // Also update lastSavedAt to the remote timestamp so any stale server
+            // snapshots arriving after this are ignored.
+            lastSavedAt.current = fsData.savedAt ?? 0;
+            skipNextSaveRef.current = true;
 
-          const rd = fsData; // narrowed non-null
-          setSubjects(rd.subjects || []);
-          setSettings(prev => ({ ...prev, ...rd.settings }));
-          setTempNotes(rd.tempNotes || []);
-          setOverallNoteState(rd.overallNote || '');
-          setNotePagesIndex(rd.notePagesIndex || []);
+            setSubjects(fsData.subjects || []);
+            setSettings(prev => ({ ...prev, ...fsData.settings }));
+            setTempNotes(fsData.tempNotes || []);
+            setOverallNoteState(fsData.overallNote || '');
+            setNotePagesIndex(fsData.notePagesIndex || []);
+          })();
         }
       },
       () => {
         // Firestore error (offline / permission denied) — fall back to localStorage
         if (!isFirstSnapshot) return;
         isFirstSnapshot = false;
+        if (!active) return;
         const lsRaw = localKey('data');
         const localData = lsRaw ? getLocalData(lsRaw) : null;
         if (localData) {
@@ -436,7 +459,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       },
     );
 
-    return () => unsubscribe();
+    return () => {
+      active = false; // prevent any in-flight async work from applying state
+      unsubscribe();
+    };
   }, [user, activeCourseId]);
 
   // Save data (debounced for Firestore, immediate for localStorage)
@@ -493,12 +519,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         notes,                    // flat map: itemId-key → HTML string
       }));
 
-      // Write both docs concurrently — notes doc first so if anything fails
-      // the main doc's hasNotesDoc flag isn't set without the data.
-      await Promise.all([
-        setDoc(notesDocRef, notesPayload, { merge: false }),
-        setDoc(docRef, mainPayload, { merge: false }),
-      ]);
+      // Write courseNotes FIRST, then studyData.  Sequential (not concurrent) so
+      // another device that receives the studyData snapshot can always getDoc the
+      // companion notes doc and find it already committed.  If we wrote both with
+      // Promise.all, a listener on another device could receive the main snapshot
+      // before courseNotes was committed and load stale (empty) notes.
+      await setDoc(notesDocRef, notesPayload, { merge: false });
+      await setDoc(docRef, mainPayload, { merge: false });
     } catch (err) {
       console.error('[StudyContext] Firestore save failed:', err);
     }

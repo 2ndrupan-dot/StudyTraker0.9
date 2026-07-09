@@ -295,6 +295,14 @@ export const NoteEditorModal = ({
   const [expanded, setExpanded] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
 
+  // Resolve the display title: prefer the actual item name from the subjects tree
+  // when notePath is available, so the modal header shows "Chapter X" not "Edit note".
+  const displayTitle = React.useMemo(() => {
+    if (!notePath) return title;
+    const itemTitle = getItemOwnTitle(subjects, notePath);
+    return itemTitle || title;
+  }, [notePath, subjects, title]);
+
   // Note-ref preview state (for clicking note links inside the preview)
   const [notePreview, setNotePreview] = React.useState<{
     id: string; title: string; html?: string; itemPath?: any; breadcrumb?: string[];
@@ -319,13 +327,7 @@ export const NoteEditorModal = ({
   };
 
   const handleDownloadPdf = () => {
-    // Use the actual item/topic title when a notePath is provided; fall back to the modal title
-    let pdfTitle = title;
-    if (notePath) {
-      const itemTitle = getItemOwnTitle(subjects, notePath);
-      if (itemTitle) pdfTitle = itemTitle;
-    }
-    const safeTitle = pdfTitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeTitle = displayTitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -335,10 +337,11 @@ export const NoteEditorModal = ({
     /* Force all background colours and text colours to print — essential for
        highlights (Tiptap <mark style="background-color:…">) and coloured text
        (<span style="color:…">) to appear correctly in the saved PDF. */
+    @page { size: A4; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important; }
-    body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 0 auto; padding: 48px 48px 64px; color: #111; }
+    body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 0 auto; padding: 48px 48px 80px; color: #111; }
     h1 { font-size: 22px; font-weight: bold; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }
     p { margin-bottom: 10px; line-height: 1.7; font-size: 14px; }
     strong { font-weight: bold; }
@@ -367,14 +370,33 @@ export const NoteEditorModal = ({
       font-weight: 500;
       font-family: sans-serif;
     }
-    @media print {
-      body { padding: 24px; }
+    /* Custom footer — fixed to bottom of every printed page */
+    .pdf-footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 44px;
+      background: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      font-size: 12px;
+      color: #6b7280;
+      font-family: sans-serif;
     }
+    .pdf-footer span { display: flex; align-items: center; gap: 5px; }
   </style>
 </head>
 <body>
   <h1>${safeTitle}</h1>
   ${value || '<p style="color:#9ca3af">No content yet.</p>'}
+  <div class="pdf-footer">
+    <span>📝 Created by : Rupan Nama</span>
+    <span>💬 WhatsApp : 9366963022</span>
+  </div>
 </body>
 </html>`;
 
@@ -487,7 +509,7 @@ export const NoteEditorModal = ({
                             ))}
                           </div>
                         )}
-                        <h2 className="text-lg font-bold text-foreground truncate">{title}</h2>
+                        <h2 className="text-lg font-bold text-foreground truncate">{displayTitle}</h2>
                       </div>
                       <HeaderActions isExpanded={true} />
                     </div>
@@ -550,7 +572,7 @@ export const NoteEditorModal = ({
                             ))}
                           </div>
                         )}
-                        <h2 className="text-lg font-bold text-foreground truncate">{title}</h2>
+                        <h2 className="text-lg font-bold text-foreground truncate">{displayTitle}</h2>
                       </div>
                     </div>
                     <div className="-mr-2 shrink-0">

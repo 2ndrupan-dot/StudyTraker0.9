@@ -328,6 +328,9 @@ export const NoteEditorModal = ({
 
   const handleDownloadPdf = () => {
     const safeTitle = displayTitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const now = new Date();
+    const safeDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      + ', ' + now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -356,15 +359,27 @@ export const NoteEditorModal = ({
     /* ── Header cell ── */
     .pdf-header-cell {
       height: 44px;
-      text-align: center;
       vertical-align: middle;
       font-size: 12px;
-      font-weight: 600;
-      color: #374151;
       font-family: sans-serif;
       background: #f9fafb;
       border-bottom: 1px solid #e5e7eb;
       padding: 0 48px;
+    }
+    .pdf-header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 100%;
+    }
+    .pdf-header-date {
+      color: #6b7280;
+      font-weight: 400;
+    }
+    .pdf-header-title {
+      color: #374151;
+      font-weight: 600;
+      text-align: right;
     }
 
     /* ── Footer cell ── */
@@ -424,7 +439,12 @@ export const NoteEditorModal = ({
 <body>
 <table class="pdf-layout">
   <thead>
-    <tr><td class="pdf-header-cell">${safeTitle}</td></tr>
+    <tr><td class="pdf-header-cell">
+      <div class="pdf-header-inner">
+        <span class="pdf-header-date">${safeDate}</span>
+        <span class="pdf-header-title">${safeTitle}</span>
+      </div>
+    </td></tr>
   </thead>
   <tfoot>
     <tr><td class="pdf-footer-cell">

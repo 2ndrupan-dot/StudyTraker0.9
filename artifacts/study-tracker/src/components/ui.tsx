@@ -337,13 +337,59 @@ export const NoteEditorModal = ({
     /* Force all background colours and text colours to print — essential for
        highlights (Tiptap <mark style="background-color:…">) and coloured text
        (<span style="color:…">) to appear correctly in the saved PDF. */
-    /* margin:0 suppresses ALL browser-native headers/footers (date, URL, page#, title) */
+    /* margin:0 suppresses ALL browser-native headers/footers (date, URL, page#, title).
+       thead/tfoot table trick makes header+footer repeat natively on every printed page
+       without content ever overlapping them. */
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important; }
-    body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 0 auto;
-           padding: 56px 48px 130px; color: #111; }
+    html, body { width: 100%; }
+    body { font-family: Georgia, 'Times New Roman', serif; color: #111; }
+
+    /* ── Layout table ── */
+    table.pdf-layout { width: 100%; border-collapse: collapse; }
+    thead { display: table-header-group; }
+    tfoot { display: table-footer-group; }
+    tbody { display: table-row-group; }
+
+    /* ── Header cell ── */
+    .pdf-header-cell {
+      height: 44px;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      font-family: sans-serif;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 0 48px;
+    }
+
+    /* ── Footer cell ── */
+    .pdf-footer-cell {
+      height: 44px;
+      vertical-align: middle;
+      font-size: 12px;
+      color: #6b7280;
+      font-family: sans-serif;
+      background: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+    }
+    .pdf-footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      height: 100%;
+    }
+    .pdf-footer-inner span { display: flex; align-items: center; gap: 5px; }
+
+    /* ── Content cell ── */
+    .pdf-content-cell { padding: 28px 48px 28px; }
+
+    /* ── Content typography ── */
     h1 { font-size: 22px; font-weight: bold; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }
     p { margin-bottom: 10px; line-height: 1.7; font-size: 14px; }
     strong { font-weight: bold; }
@@ -355,11 +401,12 @@ export const NoteEditorModal = ({
     h2 { font-size: 18px; font-weight: bold; margin: 20px 0 10px; }
     h3 { font-size: 16px; font-weight: bold; margin: 16px 0 8px; }
     a { color: #2563eb; text-decoration: underline; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-    th, td { border: 1px solid #d1d5db; padding: 6px 10px; font-size: 13px; }
-    th { background: #f9fafb; font-weight: bold; }
+    /* content tables — scoped class to avoid conflicting with pdf-layout */
+    .pdf-content-cell table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+    .pdf-content-cell th,
+    .pdf-content-cell td { border: 1px solid #d1d5db; padding: 6px 10px; font-size: 13px; }
+    .pdf-content-cell th { background: #f9fafb; font-weight: bold; }
     blockquote { border-left: 3px solid #d1d5db; padding-left: 14px; color: #6b7280; margin-bottom: 10px; }
-    /* Tiptap highlight: <mark style="background-color: …"> */
     mark { display: inline; border-radius: 2px; padding: 0 1px; }
     span[data-note-id] {
       display: inline;
@@ -372,49 +419,28 @@ export const NoteEditorModal = ({
       font-weight: 500;
       font-family: sans-serif;
     }
-    /* Custom header — title centred, repeats on every printed page */
-    .pdf-header {
-      position: fixed;
-      top: 0; left: 0; right: 0;
-      height: 44px;
-      background: #f9fafb;
-      border-bottom: 1px solid #e5e7eb;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      font-weight: 600;
-      color: #374151;
-      font-family: sans-serif;
-      text-align: center;
-      padding: 0 48px;
-    }
-    /* Custom footer — name + whatsapp, repeats on every printed page */
-    .pdf-footer {
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
-      height: 44px;
-      background: #f9fafb;
-      border-top: 1px solid #e5e7eb;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 24px;
-      font-size: 12px;
-      color: #6b7280;
-      font-family: sans-serif;
-    }
-    .pdf-footer span { display: flex; align-items: center; gap: 5px; }
   </style>
 </head>
 <body>
-  <div class="pdf-header">${safeTitle}</div>
-  <h1>${safeTitle}</h1>
-  ${value || '<p style="color:#9ca3af">No content yet.</p>'}
-  <div class="pdf-footer">
-    <span>📝 Created by : Rupan Nama</span>
-    <span>💬 WhatsApp : 9366963022</span>
-  </div>
+<table class="pdf-layout">
+  <thead>
+    <tr><td class="pdf-header-cell">${safeTitle}</td></tr>
+  </thead>
+  <tfoot>
+    <tr><td class="pdf-footer-cell">
+      <div class="pdf-footer-inner">
+        <span>📝 Created by : Rupan Nama</span>
+        <span>💬 WhatsApp : 9366963022</span>
+      </div>
+    </td></tr>
+  </tfoot>
+  <tbody>
+    <tr><td class="pdf-content-cell">
+      <h1>${safeTitle}</h1>
+      ${value || '<p style="color:#9ca3af">No content yet.</p>'}
+    </td></tr>
+  </tbody>
+</table>
 </body>
 </html>`;
 

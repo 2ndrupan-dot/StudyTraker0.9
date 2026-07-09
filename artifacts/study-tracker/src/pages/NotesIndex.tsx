@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
@@ -12,13 +12,34 @@ export function NotesIndex() {
   const { notePagesIndex, createNotePage, renameNotePage, deleteNotePage } = useStudy();
   const { t } = useLang();
   const [, setLocation] = useLocation();
+
+  // Inline create state
+  const [isCreating, setIsCreating] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const newTitleRef = useRef<HTMLInputElement>(null);
+
+  // Rename state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
+
+  // Delete confirm state
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  const startCreate = () => {
-    const id = createNotePage();
-    setLocation(`/notes/${id}`);
+  useEffect(() => {
+    if (isCreating) newTitleRef.current?.focus();
+  }, [isCreating]);
+
+  const handleCreate = () => {
+    const title = newTitle.trim();
+    if (!title) return;
+    createNotePage(title);
+    setNewTitle('');
+    setIsCreating(false);
+  };
+
+  const handleCancelCreate = () => {
+    setNewTitle('');
+    setIsCreating(false);
   };
 
   return (
@@ -33,18 +54,58 @@ export function NotesIndex() {
             <h1 className="text-2xl font-bold text-foreground">{t('notePagesTitle')}</h1>
             <p className="text-xs text-muted-foreground mt-0.5">A4 · {t('addText')} · {t('addLink')} · {t('addImage')} · {t('addPdf')}</p>
           </div>
-          <motion.div whileTap={{ scale: 0.95 }}>
-            <Button
-              variant="primary"
-              className="py-2 px-3 h-auto rounded-xl text-xs gap-1.5 shadow-md"
-              onClick={startCreate}
-            >
-              <Plus size={16} /> {t('createNotePage')}
-            </Button>
-          </motion.div>
+          {!isCreating && (
+            <motion.div whileTap={{ scale: 0.95 }}>
+              <Button
+                variant="primary"
+                className="py-2 px-3 h-auto rounded-xl text-xs gap-1.5 shadow-md"
+                onClick={() => setIsCreating(true)}
+              >
+                <Plus size={16} /> {t('createNotePage')}
+              </Button>
+            </motion.div>
+          )}
         </motion.header>
 
-        {notePagesIndex.length === 0 ? (
+        {/* Inline create title input */}
+        <AnimatePresence>
+          {isCreating && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mb-4 flex items-center gap-2 bg-card border border-primary/40 rounded-2xl px-4 py-3 shadow-sm"
+            >
+              <FileText size={16} className="text-primary shrink-0" />
+              <input
+                ref={newTitleRef}
+                value={newTitle}
+                onChange={e => setNewTitle(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleCreate();
+                  if (e.key === 'Escape') handleCancelCreate();
+                }}
+                placeholder={t('untitledPage')}
+                className="flex-1 bg-transparent text-sm font-semibold text-foreground placeholder:text-muted-foreground outline-none"
+              />
+              <button
+                onClick={handleCreate}
+                disabled={!newTitle.trim()}
+                className="p-1.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-40 transition-opacity"
+              >
+                <Check size={14} />
+              </button>
+              <button
+                onClick={handleCancelCreate}
+                className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {notePagesIndex.length === 0 && !isCreating ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -59,7 +120,7 @@ export function NotesIndex() {
             </motion.div>
             <h2 className="font-bold text-foreground mb-2">{t('notePagesTitle')}</h2>
             <p className="text-xs text-muted-foreground mb-6 max-w-xs">{t('notePagesEmpty')}</p>
-            <Button variant="primary" onClick={startCreate} className="rounded-xl">
+            <Button variant="primary" onClick={() => setIsCreating(true)} className="rounded-xl">
               <Plus size={16} /> {t('createNotePage')}
             </Button>
           </motion.div>
@@ -75,11 +136,12 @@ export function NotesIndex() {
                   exit={{ opacity: 0, scale: 0.96 }}
                   className="bg-card border border-border/60 rounded-2xl overflow-hidden hover:shadow-md transition-shadow"
                 >
-                  {/* A4 thumbnail */}
+                  {/* A4 thumbnail — click to open editor */}
                   <button
                     type="button"
                     onClick={() => setLocation(`/notes/${np.id}`)}
                     className="block w-full aspect-[210/297] max-h-40 bg-gradient-to-br from-white to-secondary/20 border-b border-border/60 relative overflow-hidden"
+                    aria-label="Open note"
                   >
                     <FileText size={36} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-border" />
                     {np.pageCount > 1 && (

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check } from 'lucide-react';
+import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
@@ -187,7 +187,7 @@ function InstallSection() {
 
 function NavItem({ path, icon: Icon, label }: { path: string; icon: any; label: string }) {
   const [location, setLocation] = useLocation();
-  const isActive = location === path || (location === '/tabs' && path === '/today');
+  const isActive = location === path || (location === '/tabs' && path === '/today') || (path !== '/today' && location.startsWith(path + '/'));
 
   return (
     <button
@@ -218,6 +218,7 @@ function SideNav({ onSearch }: { onSearch: () => void }) {
     { path: '/today', icon: CheckCircle2, label: t('today') },
     { path: '/subjects', icon: BookOpen, label: t('subjects') },
     { path: '/progress', icon: Target, label: t('progress') },
+    { path: '/notes', icon: FileText, label: t('notesTab') },
   ];
 
   return (
@@ -351,6 +352,7 @@ function BottomNav() {
     { path: '/today', icon: CheckCircle2, label: t('today') },
     { path: '/subjects', icon: BookOpen, label: t('subjects') },
     { path: '/progress', icon: Target, label: t('progress') },
+    { path: '/notes', icon: FileText, label: t('notesTab') },
   ];
 
   return (
@@ -360,7 +362,8 @@ function BottomNav() {
           {tabs.map(tab => {
             const isActive =
               location === tab.path ||
-              (location === '/tabs' && tab.path === '/today');
+              (location === '/tabs' && tab.path === '/today') ||
+              (tab.path !== '/today' && location.startsWith(tab.path + '/'));
             const Icon = tab.icon;
             return (
               <button

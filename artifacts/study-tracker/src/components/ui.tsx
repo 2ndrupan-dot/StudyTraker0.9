@@ -337,11 +337,11 @@ export const NoteEditorModal = ({
     /* Force all background colours and text colours to print — essential for
        highlights (Tiptap <mark style="background-color:…">) and coloured text
        (<span style="color:…">) to appear correctly in the saved PDF. */
-    @page { size: A4; margin: 0; }
+    @page { size: A4; margin: 0 0 60px 0; }
     * { box-sizing: border-box; margin: 0; padding: 0;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important; }
-    body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 0 auto; padding: 48px 48px 80px; color: #111; }
+    body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 0 auto; padding: 48px 48px 100px; color: #111; }
     h1 { font-size: 22px; font-weight: bold; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }
     p { margin-bottom: 10px; line-height: 1.7; font-size: 14px; }
     strong { font-weight: bold; }

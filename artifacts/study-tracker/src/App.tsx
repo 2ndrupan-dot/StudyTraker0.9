@@ -8,6 +8,8 @@ import { Auth } from "./pages/Auth";
 import { Today } from "./pages/Today";
 import { Subjects } from "./pages/Subjects";
 import { Progress } from "./pages/Progress";
+import { NotesIndex } from "./pages/NotesIndex";
+import { NoteEditor } from "./pages/NoteEditor";
 import { CreateCoursePage } from "./pages/CreateCoursePage";
 import { PWAUpdater } from "./components/PWAUpdater";
 import { PWAInstallProvider } from "./context/PWAInstallContext";
@@ -127,6 +129,8 @@ function Router() {
         <Route path="/today"><ProtectedRoute component={Today} /></Route>
         <Route path="/subjects"><ProtectedRoute component={Subjects} /></Route>
         <Route path="/progress"><ProtectedRoute component={Progress} /></Route>
+        <Route path="/notes/:id"><ProtectedRoute component={NoteEditor} /></Route>
+        <Route path="/notes"><ProtectedRoute component={NotesIndex} /></Route>
         <Route path="/">
           <Redirect to={user ? (savedRoute ?? '/today') : '/auth'} />
         </Route>

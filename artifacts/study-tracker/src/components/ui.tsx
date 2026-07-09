@@ -337,11 +337,13 @@ export const NoteEditorModal = ({
     /* Force all background colours and text colours to print — essential for
        highlights (Tiptap <mark style="background-color:…">) and coloured text
        (<span style="color:…">) to appear correctly in the saved PDF. */
-    @page { size: A4; margin: 14mm 0 60px 0; }
+    /* margin:0 suppresses ALL browser-native headers/footers (date, URL, page#, title) */
+    @page { size: A4; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important; }
-    body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 0 auto; padding: 0 48px 100px; color: #111; }
+    body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 0 auto;
+           padding: 56px 48px 80px; color: #111; }
     h1 { font-size: 22px; font-weight: bold; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }
     p { margin-bottom: 10px; line-height: 1.7; font-size: 14px; }
     strong { font-weight: bold; }
@@ -370,12 +372,27 @@ export const NoteEditorModal = ({
       font-weight: 500;
       font-family: sans-serif;
     }
-    /* Custom footer — fixed to bottom of every printed page */
+    /* Custom header — title centred, repeats on every printed page */
+    .pdf-header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 44px;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      font-family: sans-serif;
+      text-align: center;
+      padding: 0 48px;
+    }
+    /* Custom footer — name + whatsapp, repeats on every printed page */
     .pdf-footer {
       position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
+      bottom: 0; left: 0; right: 0;
       height: 44px;
       background: #f9fafb;
       border-top: 1px solid #e5e7eb;
@@ -391,6 +408,7 @@ export const NoteEditorModal = ({
   </style>
 </head>
 <body>
+  <div class="pdf-header">${safeTitle}</div>
   <h1>${safeTitle}</h1>
   ${value || '<p style="color:#9ca3af">No content yet.</p>'}
   <div class="pdf-footer">

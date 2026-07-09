@@ -343,7 +343,7 @@ export const NoteEditorModal = ({
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important; }
     body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 0 auto;
-           padding: 56px 48px 80px; color: #111; }
+           padding: 56px 48px 130px; color: #111; }
     h1 { font-size: 22px; font-weight: bold; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }
     p { margin-bottom: 10px; line-height: 1.7; font-size: 14px; }
     strong { font-weight: bold; }

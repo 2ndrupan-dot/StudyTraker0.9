@@ -402,7 +402,7 @@ export const NoteEditorModal = ({
     .pdf-footer-inner span { display: flex; align-items: center; gap: 5px; }
 
     /* ── Content cell ── */
-    .pdf-content-cell { padding: 28px 48px 28px; }
+    .pdf-content-cell { padding: 36px 48px 28px; }
 
     /* ── Content typography ── */
     h1 { font-size: 22px; font-weight: bold; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }

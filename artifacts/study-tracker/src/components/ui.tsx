@@ -366,6 +366,8 @@ export const NoteEditorModal = ({
       border-bottom: 1px solid #e5e7eb;
       padding: 0 48px;
     }
+    /* Spacer row inside thead — repeats on every page, adds gap between header border and content */
+    .pdf-header-spacer { height: 24px; background: #fff; }
     .pdf-header-inner {
       display: flex;
       align-items: center;
@@ -445,6 +447,7 @@ export const NoteEditorModal = ({
         <span class="pdf-header-title">${safeTitle}</span>
       </div>
     </td></tr>
+    <tr><td class="pdf-header-spacer"></td></tr>
   </thead>
   <tfoot>
     <tr><td class="pdf-footer-cell">

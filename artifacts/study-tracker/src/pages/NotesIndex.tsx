@@ -1,19 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useLocation } from 'wouter';
 import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
-import { Plus, FileText, Trash2, Pencil, Check, X, Calendar } from 'lucide-react';
+import { Plus, FileText, Trash2, Pencil, Check, X, StickyNote } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Button, ConfirmModal } from '@/components/ui';
-import { format } from 'date-fns';
+import { ConfirmModal, NoteEditorModal } from '@/components/ui';
+import type { NotePage } from '@/lib/types';
+
+// NotePageMeta is not exported from types — derive from context return type
+type NoteItem = ReturnType<typeof useStudy>['notePagesIndex'][number];
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
 
 export function NotesIndex() {
-  const { notePagesIndex, createNotePage, renameNotePage, deleteNotePage } = useStudy();
-  const { t } = useLang();
-  const [, setLocation] = useLocation();
+  const { notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage } = useStudy();
+  const { t, lang } = useLang();
 
-  // Inline create state
+  // Create state
   const [isCreating, setIsCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const newTitleRef = useRef<HTMLInputElement>(null);
@@ -22,8 +27,17 @@ export function NotesIndex() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
 
-  // Delete confirm state
+  // Delete confirm
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  // Note editor modal
+  const [noteModalId, setNoteModalId] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [currentPage, setCurrentPage] = useState<NotePage | null>(null);
+  const [noteLoading, setNoteLoading] = useState(false);
+
+  // Local cache: which note IDs have HTML content (populated after first open)
+  const [htmlCache, setHtmlCache] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (isCreating) newTitleRef.current?.focus();
@@ -37,187 +51,189 @@ export function NotesIndex() {
     setIsCreating(false);
   };
 
-  const handleCancelCreate = () => {
-    setNewTitle('');
-    setIsCreating(false);
+  // Track the last requested note id to discard stale concurrent responses
+  const openRequestRef = useRef<string | null>(null);
+
+  const openNote = async (meta: NoteItem) => {
+    if (noteLoading) return; // block rapid re-clicks
+    openRequestRef.current = meta.id;
+    setNoteLoading(true);
+    try {
+      const page = await loadNotePage(meta.id);
+      // Discard if a different note was requested while this was loading
+      if (openRequestRef.current !== meta.id) return;
+      const resolved: NotePage = page ?? {
+        id: meta.id,
+        title: meta.title,
+        elements: [],
+        pageCount: 1,
+        html: '',
+        createdAt: meta.createdAt,
+        updatedAt: meta.updatedAt,
+      };
+      setCurrentPage(resolved);
+      const html = resolved.html ?? '';
+      setNoteDraft(html);
+      setHtmlCache(prev => ({ ...prev, [meta.id]: html }));
+      setNoteModalId(meta.id);
+    } finally {
+      setNoteLoading(false);
+    }
   };
 
+  const saveNote = async () => {
+    if (!noteModalId || !currentPage) return;
+    const updated: NotePage = { ...currentPage, html: noteDraft };
+    await saveNotePage(updated);
+    setHtmlCache(prev => ({ ...prev, [noteModalId]: noteDraft }));
+    setNoteModalId(null);
+    setNoteDraft('');
+    setCurrentPage(null);
+  };
+
+  const closeNote = () => {
+    setNoteModalId(null);
+    setNoteDraft('');
+    setCurrentPage(null);
+  };
+
+  const noteModalItem = notePagesIndex.find(n => n.id === noteModalId);
+
   return (
-    <Layout>
-      <div className="p-5">
-        <motion.header
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6 flex items-center justify-between"
-        >
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">{t('notePagesTitle')}</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">A4 · {t('addText')} · {t('addLink')} · {t('addImage')} · {t('addPdf')}</p>
-          </div>
-          {!isCreating && (
-            <motion.div whileTap={{ scale: 0.95 }}>
-              <Button
-                variant="primary"
-                className="py-2 px-3 h-auto rounded-xl text-xs gap-1.5 shadow-md"
-                onClick={() => setIsCreating(true)}
-              >
-                <Plus size={16} /> {t('createNotePage')}
-              </Button>
-            </motion.div>
-          )}
-        </motion.header>
-
-        {/* Inline create title input */}
-        <AnimatePresence>
-          {isCreating && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="mb-4 flex items-center gap-2 bg-card border border-primary/40 rounded-2xl px-4 py-3 shadow-sm"
-            >
-              <FileText size={16} className="text-primary shrink-0" />
-              <input
-                ref={newTitleRef}
-                value={newTitle}
-                onChange={e => setNewTitle(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleCreate();
-                  if (e.key === 'Escape') handleCancelCreate();
-                }}
-                placeholder={t('untitledPage')}
-                className="flex-1 bg-transparent text-sm font-semibold text-foreground placeholder:text-muted-foreground outline-none"
-              />
-              <button
-                onClick={handleCreate}
-                disabled={!newTitle.trim()}
-                className="p-1.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-40 transition-opacity"
-              >
-                <Check size={14} />
-              </button>
-              <button
-                onClick={handleCancelCreate}
-                className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary transition-colors"
-              >
-                <X size={14} />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {notePagesIndex.length === 0 && !isCreating ? (
+    <>
+      <Layout>
+        <div className="p-5 max-w-2xl">
+          {/* Header */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center py-20 text-center px-6"
+            className="mb-5 flex items-center gap-3"
           >
-            <motion.div
-              animate={{ y: [0, -10, 0] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-              className="mb-6 w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center"
-            >
-              <FileText size={36} className="text-primary" />
-            </motion.div>
-            <h2 className="font-bold text-foreground mb-2">{t('notePagesTitle')}</h2>
-            <p className="text-xs text-muted-foreground mb-6 max-w-xs">{t('notePagesEmpty')}</p>
-            <Button variant="primary" onClick={() => setIsCreating(true)} className="rounded-xl">
-              <Plus size={16} /> {t('createNotePage')}
-            </Button>
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <StickyNote size={18} className="text-primary" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-foreground leading-tight">{t('notesTab')}</h1>
+              <p className="text-[11px] text-muted-foreground">{t('notePagesEmpty').split('।')[0]}</p>
+            </div>
           </motion.div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <AnimatePresence>
-              {notePagesIndex.map(np => (
-                <motion.div
-                  key={np.id}
-                  layout
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.96 }}
-                  className="bg-card border border-border/60 rounded-2xl overflow-hidden hover:shadow-md transition-shadow"
+
+          {/* Main card */}
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-card border border-border/60 rounded-2xl overflow-hidden"
+          >
+            <div className="px-3 py-3 space-y-1">
+
+              {/* "+ Add note" button */}
+              {!isCreating ? (
+                <button
+                  type="button"
+                  onClick={() => setIsCreating(true)}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-border text-muted-foreground text-xs font-semibold hover:bg-secondary/40 transition-colors"
                 >
-                  {/* A4 thumbnail — click to open editor */}
-                  <button
-                    type="button"
-                    onClick={() => setLocation(`/notes/${np.id}`)}
-                    className="block w-full aspect-[210/297] max-h-40 bg-gradient-to-br from-white to-secondary/20 border-b border-border/60 relative overflow-hidden"
-                    aria-label="Open note"
+                  <Plus size={14} />
+                  {t('addNote')}
+                </button>
+              ) : (
+                <AnimatePresence>
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="space-y-1"
                   >
-                    <FileText size={36} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-border" />
-                    {np.pageCount > 1 && (
-                      <span className="absolute top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-                        {np.pageCount}p
-                      </span>
-                    )}
-                  </button>
-
-                  {/* Title bar */}
-                  <div className="p-3">
-                    {editingId === np.id ? (
-                      <div className="flex items-center gap-1">
-                        <input
-                          autoFocus
-                          value={draftTitle}
-                          onChange={e => setDraftTitle(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                              renameNotePage(np.id, draftTitle);
-                              setEditingId(null);
-                            }
-                            if (e.key === 'Escape') setEditingId(null);
-                          }}
-                          className="flex-1 px-2 py-1 rounded-lg border border-border bg-background text-sm font-bold"
-                        />
-                        <button
-                          onClick={() => { renameNotePage(np.id, draftTitle); setEditingId(null); }}
-                          className="text-primary"
-                        ><Check size={15} /></button>
-                        <button onClick={() => setEditingId(null)} className="text-muted-foreground"><X size={15} /></button>
-                      </div>
-                    ) : (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        ref={newTitleRef}
+                        type="text"
+                        value={newTitle}
+                        onChange={e => setNewTitle(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleCreate();
+                          if (e.key === 'Escape') { setIsCreating(false); setNewTitle(''); }
+                        }}
+                        placeholder={lang === 'bn' ? 'নোটের শিরোনাম লিখুন…' : 'Enter note title…'}
+                        className="flex-1 px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
                       <button
-                        type="button"
-                        onClick={() => setLocation(`/notes/${np.id}`)}
-                        className="w-full text-left text-sm font-bold text-foreground truncate hover:text-primary transition-colors"
+                        onClick={handleCreate}
+                        disabled={!newTitle.trim()}
+                        className="px-2.5 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40"
                       >
-                        {np.title || t('untitledPage')}
+                        <Check size={14} />
                       </button>
-                    )}
-                    <div className="mt-1.5 flex items-center justify-between">
-                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                        <Calendar size={9} />
-                        {format(new Date(np.updatedAt), 'MMM d, HH:mm')}
-                      </span>
-                      <div className="flex items-center gap-0.5">
-                        <button
-                          onClick={() => { setEditingId(np.id); setDraftTitle(np.title); }}
-                          className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors"
-                          aria-label="rename"
-                        >
-                          <Pencil size={12} />
-                        </button>
-                        <button
-                          onClick={() => setConfirmDelete(np.id)}
-                          className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-rose-600 transition-colors"
-                          aria-label="delete"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => { setIsCreating(false); setNewTitle(''); }}
+                        className="px-2.5 py-2 rounded-xl bg-secondary text-muted-foreground text-xs font-bold"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        )}
-      </div>
+                    <p className="text-[10px] text-muted-foreground px-1">
+                      {lang === 'bn' ? 'শিরোনাম দিন — তৈরি হলে নোট আইকনে ক্লিক করে লিখুন' : 'Enter title — click the note icon to add content'}
+                    </p>
+                  </motion.div>
+                </AnimatePresence>
+              )}
 
+              {/* Notes list */}
+              {notePagesIndex.length === 0 && !isCreating ? (
+                <p className="text-center text-[11px] text-muted-foreground py-4">
+                  {lang === 'bn' ? 'এখনও কোনো নোট নেই।' : 'No notes yet.'}
+                </p>
+              ) : (
+                <ul className="mt-1 space-y-0.5">
+                  <AnimatePresence>
+                    {notePagesIndex.map(note => (
+                      <NoteRow
+                        key={note.id}
+                        note={note}
+                        isEditing={editingId === note.id}
+                        editDraft={draftTitle}
+                        isLoadingNote={noteLoading && noteModalId === null}
+                        hasContent={!!(htmlCache[note.id]?.trim())}
+                        onEditDraftChange={setDraftTitle}
+                        onOpenNote={() => openNote(note)}
+                        onStartRename={() => { setEditingId(note.id); setDraftTitle(note.title); }}
+                        onSaveRename={() => { renameNotePage(note.id, draftTitle); setEditingId(null); }}
+                        onCancelRename={() => setEditingId(null)}
+                        onDelete={() => setConfirmDelete(note.id)}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </ul>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      </Layout>
+
+      {/* Note editor modal */}
+      <NoteEditorModal
+        isOpen={!!noteModalId}
+        onClose={closeNote}
+        title={noteModalItem?.title ?? t('notesTab')}
+        icon={StickyNote}
+        value={noteDraft}
+        onChange={setNoteDraft}
+        onClear={() => setNoteDraft('')}
+        onSave={saveNote}
+        placeholder={t('notePlaceholder')}
+        clearLabel={t('clearNote')}
+        saveLabel={t('saveNote')}
+      />
+
+      {/* Delete confirm */}
       <ConfirmModal
         isOpen={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
         onConfirm={async () => {
-          if (confirmDelete) await deleteNotePage(confirmDelete);
+          if (confirmDelete) {
+            await deleteNotePage(confirmDelete);
+            setHtmlCache(prev => { const n = { ...prev }; delete n[confirmDelete]; return n; });
+          }
           setConfirmDelete(null);
         }}
         title={t('deletePage')}
@@ -226,6 +242,89 @@ export function NotesIndex() {
         cancelText={t('cancel')}
         isDanger
       />
-    </Layout>
+    </>
+  );
+}
+
+// ─── Single note row ──────────────────────────────────────────────────────────
+interface NoteRowProps {
+  note: NoteItem;
+  isEditing: boolean;
+  editDraft: string;
+  isLoadingNote: boolean;
+  hasContent: boolean;
+  onEditDraftChange: (v: string) => void;
+  onOpenNote: () => void;
+  onStartRename: () => void;
+  onSaveRename: () => void;
+  onCancelRename: () => void;
+  onDelete: () => void;
+}
+
+function NoteRow({
+  note, isEditing, editDraft, hasContent,
+  onEditDraftChange, onOpenNote, onStartRename, onSaveRename, onCancelRename, onDelete,
+}: NoteRowProps) {
+  return (
+    <motion.li
+      layout
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.97 }}
+      className="group"
+    >
+      <div className="rounded-lg hover:bg-secondary/30 px-1.5 py-1.5 border-l-2 border-border/40 ml-0.5">
+        <div className="flex items-center gap-2">
+          {/* Title / rename input */}
+          {isEditing ? (
+            <div className="flex-1 flex items-center gap-1">
+              <input
+                autoFocus
+                value={editDraft}
+                onChange={e => onEditDraftChange(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') onSaveRename();
+                  if (e.key === 'Escape') onCancelRename();
+                }}
+                className="flex-1 px-2 py-1 rounded-lg border border-border bg-background text-xs font-medium"
+              />
+              <button onClick={onSaveRename} className="text-primary p-0.5"><Check size={13} /></button>
+              <button onClick={onCancelRename} className="text-muted-foreground p-0.5"><X size={13} /></button>
+            </div>
+          ) : (
+            <span className="flex-1 text-xs font-medium text-foreground leading-relaxed select-none truncate">
+              {note.title}
+            </span>
+          )}
+
+          {/* Action icons */}
+          {!isEditing && (
+            <div className="flex items-center gap-0.5 shrink-0">
+              <button
+                onClick={onOpenNote}
+                title="Open note"
+                className={`p-1 rounded hover:bg-card transition-colors ${hasContent ? 'text-rose-500' : 'text-muted-foreground hover:text-primary'}`}
+              >
+                <FileText size={12} />
+              </button>
+              <button
+                onClick={onStartRename}
+                title="Rename"
+                className="p-1 rounded hover:bg-card text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Pencil size={12} />
+              </button>
+              <button
+                onClick={onDelete}
+                title="Delete"
+                className="p-1 rounded hover:bg-card text-muted-foreground hover:text-rose-600 transition-colors"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.li>
   );
 }

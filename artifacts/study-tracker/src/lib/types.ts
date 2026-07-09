@@ -143,6 +143,7 @@ export interface NotePage {
   title: string;
   elements: NoteElement[];
   pageCount: number;     // number of A4 pages stacked
+  html?: string;         // Tiptap rich-text HTML content
   createdAt: number;
   updatedAt: number;
 }

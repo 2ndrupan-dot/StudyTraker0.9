@@ -1502,6 +1502,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           title: d.title ?? 'Untitled page',
           elements: d.elements || [],
           pageCount: d.pageCount ?? 1,
+          html: d.html,
           createdAt: d.createdAt ?? Date.now(),
           updatedAt: d.updatedAt ?? Date.now(),
         };

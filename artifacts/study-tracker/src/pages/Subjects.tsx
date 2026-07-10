@@ -948,7 +948,7 @@ export function Subjects() {
                               <SortableItemWrapper key={chapter.id} id={chapter.id} reorderMode={reorderMode}>
                               {(chHandle) => (
                               <div className="relative">
-                              <div className="absolute -left-[14px] top-1/2 h-[2px] w-[14px] -translate-y-1/2 bg-indigo-400/60 pointer-events-none" />
+                              <div className="absolute -left-[14px] top-0 h-[18px] w-[14px] border-l-[2px] border-b-[2px] border-indigo-400/55 rounded-bl-[8px] pointer-events-none" />
                               <motion.div id={`study-item-${chapter.id}`} {...itemAnim} className={`bg-indigo-50/60 border-2 rounded-xl overflow-hidden shadow-sm ${chLocked ? 'border-indigo-300/40 opacity-70' : 'border-indigo-400/60'} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`}>
                                 <div
                                   className="p-3 flex items-center gap-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row relative"
@@ -1038,7 +1038,7 @@ export function Subjects() {
                                             <SortableItemWrapper key={topic.id} id={topic.id} reorderMode={reorderMode}>
                                             {(topHandle) => (
                                             <div className="relative">
-                                            <div className="absolute -left-[14px] top-1/2 h-[2px] w-[14px] -translate-y-1/2 bg-violet-400/60 pointer-events-none" />
+                                            <div className="absolute -left-[14px] top-0 h-[16px] w-[14px] border-l-[2px] border-b-[2px] border-violet-400/55 rounded-bl-[8px] pointer-events-none" />
                                             <motion.div id={`study-item-${topic.id}`} {...itemAnim} className={`bg-violet-50/60 border-2 rounded-lg overflow-hidden ${topLocked ? 'border-violet-300/30 opacity-60' : 'border-violet-400/55'} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`}>
                                               <div
                                                 className="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-secondary/20 group/row relative"
@@ -1128,7 +1128,7 @@ export function Subjects() {
                                                           <SortableItemWrapper key={sub.id} id={sub.id} reorderMode={reorderMode}>
                                                           {(subHandle) => (
                                                           <div className="relative">
-                                                          <div className="absolute -left-[14px] top-1/2 h-[2px] w-[14px] -translate-y-1/2 bg-sky-400/60 pointer-events-none" />
+                                                          <div className="absolute -left-[14px] top-0 h-[14px] w-[14px] border-l-[2px] border-b-[2px] border-sky-400/55 rounded-bl-[8px] pointer-events-none" />
                                                           <motion.div id={`study-item-${sub.id}`} {...itemAnim} className={`bg-sky-50/60 border-2 rounded-lg overflow-hidden ${subLocked ? 'border-sky-300/25 opacity-55' : 'border-sky-400/50'} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
                                                             <div
                                                               className="px-2.5 py-2 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"

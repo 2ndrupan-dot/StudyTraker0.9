@@ -75,6 +75,13 @@ function RouteTracker() {
   const { user } = useAuth();
   const [location] = useLocation();
   useEffect(() => {
+    // Reset scroll on every route change so sticky section headers (Today,
+    // Subjects, Progress, Notes) always start recalculated from the top
+    // instead of inheriting a stale offset that makes content appear to
+    // slide under the header.
+    window.scrollTo(0, 0);
+  }, [location]);
+  useEffect(() => {
     if (user && RESTORABLE_ROUTES.includes(location)) {
       localStorage.setItem(LAST_ROUTE_KEY, location);
     }

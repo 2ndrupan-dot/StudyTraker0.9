@@ -392,7 +392,7 @@ function NoteCard({
       layout
       exit={{ opacity: 0, scale: 0.96, y: -4 }}
     >
-      <ScrollReveal>
+      <ScrollReveal direction="right" delay={index * 0.08}>
       <div className={`group relative bg-gradient-to-r ${accent} border rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden`}>
         <div className="flex items-center gap-3 px-4 py-3.5">
 

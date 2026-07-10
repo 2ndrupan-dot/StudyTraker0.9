@@ -658,6 +658,8 @@ export function Progress() {
             return (
               <ScrollReveal
                 key={s.id}
+                direction="right"
+                delay={i * 0.08}
                 className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col gap-3"
               >
                 <div className="flex justify-between items-start">

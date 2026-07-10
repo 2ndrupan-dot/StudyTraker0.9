@@ -1443,11 +1443,11 @@ export function Today() {
         key={group.subjectId}
         className="rounded-2xl border-2 border-border/50 overflow-hidden shadow-sm"
       >
+        <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: group.subjectColor }} />
         <button
           onClick={() => toggleSubjectAccordion(group.subjectId)}
-          className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors bg-card hover:bg-secondary/30 active:bg-secondary/50"
+          className="w-full flex items-center gap-3 pl-5 pr-4 py-3 text-left transition-colors bg-card hover:bg-secondary/30 active:bg-secondary/50"
         >
-          <div className="w-1 self-stretch rounded-full shrink-0" style={{ backgroundColor: group.subjectColor }} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5 flex-wrap">
               <span className="font-bold text-sm truncate" style={{ color: group.subjectColor }}>

@@ -35,7 +35,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Mobile: full-screen with bottom nav */}
-      <div className="md:hidden w-full min-h-[100dvh] bg-background relative overflow-x-hidden pb-[80px]">
+      <div className="md:hidden w-full min-h-[100dvh] bg-background relative overflow-x-clip pb-[80px]">
         {children}
         <BottomNav />
         <FloatingSearchButton onClick={() => setSearchOpen(true)} />

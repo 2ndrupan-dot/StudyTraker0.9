@@ -1525,7 +1525,7 @@ export function Today() {
   return (
     <Layout>
       {/* ── Colorful gradient header banner ── */}
-      <div className="relative overflow-hidden rounded-b-2xl" style={{ background: 'linear-gradient(135deg, hsl(243 88% 62%) 0%, hsl(263 80% 58%) 50%, hsl(300 70% 58%) 100%)' }}>
+      <div className="sticky top-0 z-20 relative overflow-hidden rounded-b-2xl" style={{ background: 'linear-gradient(135deg, hsl(243 88% 62%) 0%, hsl(263 80% 58%) 50%, hsl(300 70% 58%) 100%)' }}>
         <div className="absolute top-[-30px] right-[-30px] w-40 h-40 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute bottom-[-20px] left-[20%] w-32 h-32 rounded-full bg-black/10 blur-2xl" />
         <div className="relative px-5 pt-5 pb-5">

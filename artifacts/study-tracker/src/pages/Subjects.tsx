@@ -535,7 +535,7 @@ export function Subjects() {
   return (
     <Layout>
       {/* ── Gradient header banner ── */}
-      <div className="relative overflow-hidden rounded-b-2xl" style={{ background: 'linear-gradient(135deg, hsl(192 85% 45%) 0%, hsl(210 80% 52%) 50%, hsl(243 88% 62%) 100%)' }}>
+      <div className="sticky top-0 z-20 relative overflow-hidden rounded-b-2xl" style={{ background: 'linear-gradient(135deg, hsl(192 85% 45%) 0%, hsl(210 80% 52%) 50%, hsl(243 88% 62%) 100%)' }}>
         <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl" />
         <div className="relative px-5 pt-5 pb-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 flex-1 min-w-0">

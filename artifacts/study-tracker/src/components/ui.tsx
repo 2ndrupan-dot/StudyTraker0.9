@@ -89,13 +89,22 @@ export const Modal = ({
               exit={align === 'bottom' ? { y: '100%' } : { opacity: 0, scale: 0.95 }}
               transition={{ type: 'spring', damping: 28, stiffness: 320 }}
               className={cn(
-                "w-full bg-card pointer-events-auto flex flex-col overflow-hidden",
+                "w-full pointer-events-auto",
                 align === 'bottom'
-                  ? "rounded-t-3xl pb-8 shadow-[0_-8px_40px_rgba(0,0,0,0.18)] border-t border-x border-border/60"
-                  : "rounded-3xl max-h-[85vh] shadow-2xl border border-border/60"
+                  ? "rounded-t-3xl shadow-[0_-8px_40px_rgba(0,0,0,0.18)]"
+                  : "rounded-3xl shadow-2xl p-[1.5px]"
               )}
+              style={align !== 'bottom' ? {
+                background: 'linear-gradient(135deg, hsl(243 88% 62%), hsl(263 80% 58%), hsl(326 80% 58%))'
+              } : undefined}
               onClick={e => e.stopPropagation()}
             >
+              <div className={cn(
+                "w-full bg-card flex flex-col overflow-hidden",
+                align === 'bottom'
+                  ? "rounded-t-3xl pb-8 border-t-[2px] border-x-[2px] border-indigo-500/70"
+                  : "rounded-[calc(1.5rem-1.5px)] max-h-[85vh]"
+              )}>
               <div className="flex items-center justify-between p-6 border-b border-border/50">
                 <div className="flex items-center gap-3">
                   {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary"><Icon size={20} /></div>}
@@ -110,6 +119,7 @@ export const Modal = ({
               </div>
               <div className="p-6 overflow-y-auto no-scrollbar">
                 {children}
+              </div>
               </div>
             </motion.div>
           </div>

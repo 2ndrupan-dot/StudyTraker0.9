@@ -4,6 +4,7 @@ import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
 import { Plus, FileText, Trash2, Pencil, Check, X, StickyNote, Loader2, ArrowUpDown, GripVertical } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ScrollReveal } from '@/components/ScrollReveal';
 import { ConfirmModal, NoteEditorModal } from '@/components/ui';
 import type { NotePage } from '@/lib/types';
 import {
@@ -389,12 +390,9 @@ function NoteCard({
   return (
     <motion.li
       layout
-      initial={{ opacity: 0, y: 14 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: false, amount: 0.05 }}
       exit={{ opacity: 0, scale: 0.96, y: -4 }}
-      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
     >
+      <ScrollReveal>
       <div className={`group relative bg-gradient-to-r ${accent} border rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden`}>
         <div className="flex items-center gap-3 px-4 py-3.5">
 
@@ -464,6 +462,7 @@ function NoteCard({
           {!isEditing && dragHandle}
         </div>
       </div>
+      </ScrollReveal>
     </motion.li>
   );
 }

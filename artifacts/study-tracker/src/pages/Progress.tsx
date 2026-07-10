@@ -12,6 +12,7 @@ import { getTimezoneEntry, getCurrentOffset, getFlagUrl } from '@/lib/timezones'
 import { Modal, ConfirmModal, Input, Button, NoteEditorModal, NotePagePreviewModal } from '@/components/ui';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ScrollReveal } from '@/components/ScrollReveal';
 import { format, parseISO, isValid } from 'date-fns';
 
 function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = '—'): string {
@@ -527,14 +528,10 @@ export function Progress() {
       </div>
       <div className="p-5">
         {/* User Card */}
-        <motion.div
-          custom={0}
-          variants={cardVariants}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: false, amount: 0.05 }}
+        <ScrollReveal className="mb-5">
+        <div
           onClick={openProfileModal}
-          className="bg-card rounded-3xl p-5 shadow-lg shadow-black/5 border border-border/50 mb-5 flex items-center gap-4 cursor-pointer hover:shadow-xl transition-all group"
+          className="bg-card rounded-3xl p-5 shadow-lg shadow-black/5 border border-border/50 flex items-center gap-4 cursor-pointer hover:shadow-xl transition-all group"
         >
           {/* Avatar */}
           <div className="relative shrink-0">
@@ -557,17 +554,12 @@ export function Progress() {
           <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center text-muted-foreground group-hover:bg-primary/10 transition-colors">
             <UserIcon size={16} />
           </div>
-        </motion.div>
+        </div>
+        </ScrollReveal>
 
         {/* Active Course Card */}
-        <motion.div
-          custom={-1}
-          variants={cardVariants}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: false, amount: 0.05 }}
-          className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-3xl p-4 border border-primary/20 mb-6 shadow-sm"
-        >
+        <ScrollReveal className="mb-6">
+        <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-3xl p-4 border border-primary/20 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
@@ -607,14 +599,15 @@ export function Progress() {
               </div>
             </div>
           </div>
-        </motion.div>
+        </div>
+        </ScrollReveal>
 
         {/* Overall Notes Card */}
         <OverallNotesCard />
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-4 mb-6">
-          <motion.div custom={1} variants={cardVariants} initial="hidden" whileInView="visible" viewport={{ once: false, amount: 0.05 }} className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
+          <ScrollReveal className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
             <div className="text-primary bg-primary/10 w-9 h-9 rounded-full flex items-center justify-center mb-3">
               <ShieldCheck size={18} />
             </div>
@@ -627,25 +620,19 @@ export function Progress() {
               {completedSubjects}
             </motion.p>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-1">{t('completed')} {t('subjects')}</p>
-          </motion.div>
-          <motion.div custom={2} variants={cardVariants} initial="hidden" whileInView="visible" viewport={{ once: false, amount: 0.05 }} className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
+          </ScrollReveal>
+          <ScrollReveal className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
             <div className="text-green-500 bg-green-500/10 w-9 h-9 rounded-full flex items-center justify-center mb-3">
               <BookOpen size={18} />
             </div>
             <p className="text-3xl font-bold text-foreground">{subjects.length}</p>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-1">{t('activeSubjects')}</p>
-          </motion.div>
+          </ScrollReveal>
         </div>
 
         {/* Big Progress */}
-        <motion.div
-          custom={3}
-          variants={cardVariants}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: false, amount: 0.05 }}
-          className="bg-card rounded-3xl p-6 shadow-md border border-border/50 mb-6 relative overflow-hidden"
-        >
+        <ScrollReveal className="mb-6">
+        <div className="bg-card rounded-3xl p-6 shadow-md border border-border/50 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
             <Target size={120} />
           </div>
@@ -671,7 +658,8 @@ export function Progress() {
           <p className="text-xs font-medium text-muted-foreground mt-3 relative z-10">
             {completedChapters} {t('completed')} / {totalChapters} {t('chapters')}
           </p>
-        </motion.div>
+        </div>
+        </ScrollReveal>
 
         {/* Subject Breakdown */}
         <h3 className="font-bold text-lg mb-4 text-foreground px-1">{t('subjects')}</h3>
@@ -681,13 +669,8 @@ export function Progress() {
             const cCount = s.chapters.filter(c => c.completed).length;
             const p = chCount === 0 ? 0 : Math.round((cCount / chCount) * 100);
             return (
-              <motion.div
+              <ScrollReveal
                 key={s.id}
-                custom={i + 4}
-                variants={cardVariants}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: false, amount: 0.05 }}
                 className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col gap-3"
               >
                 <div className="flex justify-between items-start">
@@ -711,7 +694,7 @@ export function Progress() {
                   </div>
                   <span className="text-xs font-bold text-muted-foreground w-8 text-right">{p}%</span>
                 </div>
-              </motion.div>
+              </ScrollReveal>
             );
           })}
         </div>

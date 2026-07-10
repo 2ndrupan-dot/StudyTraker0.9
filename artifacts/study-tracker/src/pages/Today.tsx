@@ -13,6 +13,7 @@ import { differenceInDays, parseISO } from 'date-fns';
 import { todayIST, nowIST, toDateStrIST, addDaysIST, formatTodayDisplayIST, msUntilISTMidnight } from '@/lib/istTime';
 import { Modal, Input, Button, NoteEditorModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ScrollReveal } from '@/components/ScrollReveal';
 import type { Subject, MarkPath, MarkLevel } from '@/lib/types';
 import { ItemActions } from '@/components/ItemActions';
 import { doc, onSnapshot, setDoc, getDoc, arrayUnion } from 'firebase/firestore';
@@ -1269,12 +1270,8 @@ export function Today() {
     const done = task.isCompleted;
 
     return (
-      <motion.div
+      <ScrollReveal
         key={task.key}
-        initial={{ opacity: 0, y: 14 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: false, amount: 0.05 }}
-        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
         className={`bg-card rounded-2xl border relative overflow-hidden ${done ? 'opacity-55 border-border/30' : 'border-border/60 shadow-sm card-hover'}`}
       >
         <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full" style={{ backgroundColor: task.subjectColor }} />
@@ -1409,7 +1406,7 @@ export function Today() {
             </div>
           </div>
         </div>
-      </motion.div>
+      </ScrollReveal>
     );
   };
 
@@ -1420,12 +1417,8 @@ export function Today() {
     const groupMins = group.incompleteTasks.reduce((s, t) => s + t.estimatedMins, 0);
 
     return (
-      <motion.div
+      <ScrollReveal
         key={group.subjectId}
-        initial={{ opacity: 0, y: 14 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: false, amount: 0.05 }}
-        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
         className="rounded-2xl border border-border/60 overflow-hidden shadow-sm"
       >
         <button
@@ -1471,7 +1464,7 @@ export function Today() {
             </motion.div>
           )}
         </AnimatePresence>
-      </motion.div>
+      </ScrollReveal>
     );
   };
 

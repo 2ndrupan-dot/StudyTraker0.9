@@ -23,6 +23,7 @@ import {
   isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone,
 } from '@/lib/timeEngine';
 import { Modal, ConfirmModal, Input, Button, NoteEditorModal } from '@/components/ui';
+import { ScrollReveal } from '@/components/ScrollReveal';
 import { ItemActions, MarksBadgeRow } from '@/components/ItemActions';
 import { TempNoteSection } from '@/components/TempNoteSection';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -801,13 +802,10 @@ export function Subjects() {
               return (
                 <SortableItemWrapper key={subj.id} id={subj.id} reorderMode={reorderMode}>
                 {(subjHandle) => (
+                <ScrollReveal>
                 <motion.div
                   id={`study-item-${subj.id}`}
-                  initial={{ opacity: 0, y: 22 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: false, amount: 0.05 }}
                   exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
                   className="bg-card rounded-2xl shadow-sm border border-border/60 overflow-hidden card-hover"
                 >
                   {/* Subject header */}
@@ -1389,6 +1387,7 @@ export function Subjects() {
                     )}
                   </AnimatePresence>
                 </motion.div>
+                </ScrollReveal>
                 )}
                 </SortableItemWrapper>
               );

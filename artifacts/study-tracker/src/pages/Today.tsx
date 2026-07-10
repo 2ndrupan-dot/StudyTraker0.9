@@ -1529,29 +1529,36 @@ export function Today() {
       <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(243 88% 62%) 0%, hsl(263 80% 58%) 50%, hsl(300 70% 58%) 100%)' }}>
         <div className="absolute top-[-30px] right-[-30px] w-40 h-40 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute bottom-[-20px] left-[20%] w-32 h-32 rounded-full bg-black/10 blur-2xl" />
-        <div className="relative px-4 pt-5 pb-4 flex items-start justify-between">
-          <div>
-            <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mb-1">{formatTodayDisplayIST(settings.timezone)}</p>
-            <h1 className="text-2xl font-bold text-white leading-tight drop-shadow">{t('todayPlan')}</h1>
+        <div className="relative px-5 pt-5 pb-5">
+          {/* Title row */}
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0">
+              <CheckCircle2 size={22} className="text-white" strokeWidth={2.2} />
+            </div>
+            <div>
+              <p className="text-white/70 text-[11px] font-semibold uppercase tracking-widest leading-none mb-1">{formatTodayDisplayIST(settings.timezone)}</p>
+              <h1 className="text-2xl font-bold text-white leading-tight" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('todayPlan')}</h1>
+            </div>
           </div>
-          <div className="flex items-center gap-2 mt-1">
-            <motion.button whileTap={{ scale: 0.97 }}
+          {/* Stat pills row */}
+          <div className="flex items-center gap-2">
+            <motion.button
+              whileTap={{ scale: 0.97 }}
               onClick={() => { setDaysInput(settings.courseTotalDays?.toString() || ''); setDaysModalOpen(true); }}
-              className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl bg-white/15 border border-white/20 hover:bg-white/25 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors"
             >
-              <Target size={13} className="text-white/80" />
-              <p className="text-[9px] text-white/70 font-bold uppercase tracking-wide">{t('courseCompletion')}</p>
-              <p className="font-bold text-[11px] text-white">
-                {settings.courseTotalDays ? `${settings.courseTotalDays}d` : '—'}
-              </p>
+              <Target size={12} className="text-white/80" />
+              <span className="text-white/80 text-[11px] font-medium">{t('courseCompletion')}:</span>
+              <span className="text-white text-[12px] font-bold">{settings.courseTotalDays ? `${settings.courseTotalDays}d` : '—'}</span>
             </motion.button>
-            <motion.button whileTap={{ scale: 0.97 }}
+            <motion.button
+              whileTap={{ scale: 0.97 }}
               onClick={() => { setHoursInput(settings.dailyStudyHours?.toString() || '3'); setHoursModalOpen(true); }}
-              className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl bg-white/15 border border-white/20 hover:bg-white/25 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors"
             >
-              <AlarmClock size={13} className="text-white/80" />
-              <p className="text-[9px] text-white/70 font-bold uppercase tracking-wide">{t('dailyStudyHours')}</p>
-              <p className="font-bold text-[11px] text-white">{settings.dailyStudyHours ?? 3}h</p>
+              <AlarmClock size={12} className="text-white/80" />
+              <span className="text-white/80 text-[11px] font-medium">{t('dailyStudyHours')}:</span>
+              <span className="text-white text-[12px] font-bold">{settings.dailyStudyHours ?? 3}h</span>
             </motion.button>
           </div>
         </div>

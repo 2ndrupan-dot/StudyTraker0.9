@@ -150,6 +150,7 @@ interface StudyContextType {
   deleteNotePage: (id: string) => Promise<void>;
   loadNotePage: (id: string) => Promise<NotePage | null>;
   saveNotePage: (page: NotePage) => Promise<void>;
+  reorderNotePages: (fromIdx: number, toIdx: number) => void;
 }
 
 const StudyContext = createContext<StudyContextType | undefined>(undefined);
@@ -844,6 +845,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         ).catch(e => console.warn('[resetSubjectProgress] Firestore todayData sync failed:', e));
       }
     }
+  };
+
+  const reorderNotePages = (fromIdx: number, toIdx: number) => {
+    setNotePagesIndex(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
   };
 
   // ─── Reorder methods ───────────────────────────────────────────────────
@@ -1583,7 +1593,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       addPoint, deletePoint, togglePointComplete, updatePointMeta,
       tempNotes, addTempNote, updateTempNote, updateTempNoteContent, toggleTempNoteDone, deleteTempNote,
       overallNote, setOverallNote,
-      notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage,
+      notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage, reorderNotePages,
     }}>
       {children}
     </StudyContext.Provider>

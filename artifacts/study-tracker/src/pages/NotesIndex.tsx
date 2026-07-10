@@ -2,16 +2,56 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
-import { Plus, FileText, Trash2, Pencil, Check, X, StickyNote, Loader2 } from 'lucide-react';
+import { Plus, FileText, Trash2, Pencil, Check, X, StickyNote, Loader2, ArrowUpDown, GripVertical } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ConfirmModal, NoteEditorModal } from '@/components/ui';
 import type { NotePage } from '@/lib/types';
+import {
+  DndContext, DragEndEvent, PointerSensor, TouchSensor, KeyboardSensor,
+  useSensor, useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext, sortableKeyboardCoordinates, useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 // NotePageMeta is not exported from types — derive from context return type
 type NoteItem = ReturnType<typeof useStudy>['notePagesIndex'][number];
 
+// ─── Sortable wrapper for a single note card ─────────────────────────────────
+function SortableNoteCard({ id, reorderMode, children }: {
+  id: string; reorderMode: boolean; children: (handle: React.ReactNode) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : undefined,
+    position: isDragging ? 'relative' : undefined,
+    opacity: isDragging ? 0.55 : undefined,
+  };
+  const handle = (
+    <button
+      type="button"
+      {...attributes}
+      {...(reorderMode ? listeners : {})}
+      onClick={e => e.stopPropagation()}
+      className={`touch-none shrink-0 flex items-center px-2 transition-colors select-none ${
+        reorderMode
+          ? 'cursor-grab active:cursor-grabbing text-primary/70 hover:text-primary'
+          : 'cursor-default opacity-0 pointer-events-none'
+      }`}
+    >
+      <GripVertical size={15} />
+    </button>
+  );
+  return <div ref={setNodeRef} style={style}>{children(handle)}</div>;
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 export function NotesIndex() {
-  const { notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage } = useStudy();
+  const { notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage, reorderNotePages } = useStudy();
   const { t, lang } = useLang();
 
   // Create state
@@ -35,6 +75,21 @@ export function NotesIndex() {
 
   // Local cache: which note IDs have HTML content (populated after first open)
   const [htmlCache, setHtmlCache] = useState<Record<string, string>>({});
+
+  // Reorder mode
+  const [reorderMode, setReorderMode] = useState(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const fromIdx = notePagesIndex.findIndex(n => n.id === active.id);
+    const toIdx   = notePagesIndex.findIndex(n => n.id === over.id);
+    if (fromIdx !== -1 && toIdx !== -1) reorderNotePages(fromIdx, toIdx);
+  };
 
   useEffect(() => {
     if (isCreating) newTitleRef.current?.focus();
@@ -124,18 +179,36 @@ export function NotesIndex() {
               </div>
             </div>
 
-            {/* Add button in header */}
+            {/* Header action buttons */}
             {!isCreating && (
-              <motion.button
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.97 }}
-                type="button"
-                onClick={() => setIsCreating(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold shadow-sm hover:opacity-90 transition-opacity"
-              >
-                <Plus size={14} />
-                {t('addNote')}
-              </motion.button>
+              <div className="flex items-center gap-2">
+                {noteCount > 1 && (
+                  <motion.button
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.97 }}
+                    type="button"
+                    onClick={() => setReorderMode(v => !v)}
+                    className={`p-2 rounded-xl border transition-colors shadow-sm ${
+                      reorderMode
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-card text-muted-foreground border-border hover:text-primary'
+                    }`}
+                    title={reorderMode ? 'Reorder বন্ধ করুন' : 'Reorder করুন'}
+                  >
+                    <ArrowUpDown size={15} />
+                  </motion.button>
+                )}
+                <motion.button
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.97 }}
+                  type="button"
+                  onClick={() => setIsCreating(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold shadow-sm hover:opacity-90 transition-opacity"
+                >
+                  <Plus size={14} />
+                  {t('addNote')}
+                </motion.button>
+              </div>
             )}
           </motion.div>
 
@@ -207,29 +280,38 @@ export function NotesIndex() {
             </motion.div>
           )}
 
-          {/* ── Notes grid ── */}
+          {/* ── Notes list ── */}
           {noteCount > 0 && (
-            <ul className="space-y-2">
-              <AnimatePresence>
-                {notePagesIndex.map((note, idx) => (
-                  <NoteCard
-                    key={note.id}
-                    note={note}
-                    index={idx}
-                    isEditing={editingId === note.id}
-                    editDraft={draftTitle}
-                    isLoadingThis={loadingNoteId === note.id}
-                    hasContent={!!(htmlCache[note.id]?.trim())}
-                    onEditDraftChange={setDraftTitle}
-                    onOpenNote={() => openNote(note)}
-                    onStartRename={() => { setEditingId(note.id); setDraftTitle(note.title); }}
-                    onSaveRename={() => { renameNotePage(note.id, draftTitle); setEditingId(null); }}
-                    onCancelRename={() => setEditingId(null)}
-                    onDelete={() => setConfirmDelete(note.id)}
-                  />
-                ))}
-              </AnimatePresence>
-            </ul>
+            <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+              <SortableContext items={notePagesIndex.map(n => n.id)} strategy={verticalListSortingStrategy}>
+                <ul className="space-y-2">
+                  <AnimatePresence>
+                    {notePagesIndex.map((note, idx) => (
+                      <SortableNoteCard key={note.id} id={note.id} reorderMode={reorderMode}>
+                        {handle => (
+                          <NoteCard
+                            note={note}
+                            index={idx}
+                            isEditing={editingId === note.id}
+                            editDraft={draftTitle}
+                            isLoadingThis={loadingNoteId === note.id}
+                            hasContent={!!(htmlCache[note.id]?.trim())}
+                            reorderMode={reorderMode}
+                            dragHandle={handle}
+                            onEditDraftChange={setDraftTitle}
+                            onOpenNote={() => openNote(note)}
+                            onStartRename={() => { setEditingId(note.id); setDraftTitle(note.title); }}
+                            onSaveRename={() => { renameNotePage(note.id, draftTitle); setEditingId(null); }}
+                            onCancelRename={() => setEditingId(null)}
+                            onDelete={() => setConfirmDelete(note.id)}
+                          />
+                        )}
+                      </SortableNoteCard>
+                    ))}
+                  </AnimatePresence>
+                </ul>
+              </SortableContext>
+            </DndContext>
           )}
         </div>
       </Layout>
@@ -278,6 +360,8 @@ interface NoteCardProps {
   editDraft: string;
   isLoadingThis: boolean;
   hasContent: boolean;
+  reorderMode: boolean;
+  dragHandle: React.ReactNode;
   onEditDraftChange: (v: string) => void;
   onOpenNote: () => void;
   onStartRename: () => void;
@@ -306,6 +390,7 @@ const ICON_COLORS = [
 
 function NoteCard({
   note, index, isEditing, editDraft, isLoadingThis, hasContent,
+  reorderMode, dragHandle,
   onEditDraftChange, onOpenNote, onStartRename, onSaveRename, onCancelRename, onDelete,
 }: NoteCardProps) {
   const accent = CARD_ACCENTS[index % CARD_ACCENTS.length];
@@ -319,8 +404,8 @@ function NoteCard({
       exit={{ opacity: 0, scale: 0.96, y: -4 }}
       transition={{ duration: 0.2, delay: 0.03 * Math.min(index, 6) }}
     >
-      <div className={`group relative bg-gradient-to-r ${accent} border rounded-2xl px-4 py-3.5 shadow-sm hover:shadow-md transition-shadow duration-200`}>
-        <div className="flex items-center gap-3">
+      <div className={`group relative bg-gradient-to-r ${accent} border rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden`}>
+        <div className="flex items-center gap-3 px-4 py-3.5">
 
           {/* Left icon */}
           <div className="shrink-0 w-8 h-8 rounded-xl bg-white/60 dark:bg-white/10 flex items-center justify-center shadow-sm">
@@ -352,16 +437,16 @@ function NoteCard({
             </div>
           ) : (
             <button
-              onClick={onOpenNote}
-              disabled={isLoadingThis}
-              className="flex-1 text-left text-sm font-semibold text-foreground leading-snug truncate hover:text-primary transition-colors disabled:opacity-60"
+              onClick={reorderMode ? undefined : onOpenNote}
+              disabled={isLoadingThis || reorderMode}
+              className="flex-1 text-left text-sm font-semibold text-foreground leading-snug truncate hover:text-primary transition-colors disabled:opacity-60 disabled:cursor-default"
             >
               {note.title}
             </button>
           )}
 
-          {/* Action icons */}
-          {!isEditing && (
+          {/* Action icons — hidden in reorder mode */}
+          {!isEditing && !reorderMode && (
             <div className="flex items-center gap-0.5 shrink-0">
               <motion.button
                 whileHover={{ scale: 1.15 }}
@@ -383,6 +468,9 @@ function NoteCard({
               </motion.button>
             </div>
           )}
+
+          {/* Drag handle — shown only in reorder mode */}
+          {!isEditing && dragHandle}
         </div>
       </div>
     </motion.li>

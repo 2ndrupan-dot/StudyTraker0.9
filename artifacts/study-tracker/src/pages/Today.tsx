@@ -1441,7 +1441,7 @@ export function Today() {
     return (
       <ScrollReveal
         key={group.subjectId}
-        className="rounded-2xl border-2 overflow-hidden shadow-sm" style={{ borderColor: group.subjectColor + '99' }}
+        className="rounded-2xl border-2 border-border/50 overflow-hidden shadow-sm"
       >
         <button
           onClick={() => toggleSubjectAccordion(group.subjectId)}

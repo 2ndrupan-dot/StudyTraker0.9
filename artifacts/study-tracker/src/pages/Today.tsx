@@ -1371,7 +1371,7 @@ export function Today() {
     return (
       <ScrollReveal
         key={task.key}
-        className={`bg-card rounded-2xl border-2 relative overflow-hidden ${done ? 'opacity-55' : 'shadow-sm card-hover'}`} style={{ borderColor: done ? 'rgba(148,163,184,0.3)' : task.level === 'chapter' ? 'rgba(99,102,241,0.6)' : task.level === 'topic' ? 'rgba(139,92,246,0.6)' : task.level === 'subtopic' ? 'rgba(14,165,233,0.6)' : task.level === 'concept' ? 'rgba(20,184,166,0.55)' : 'rgba(34,197,94,0.5)' }}
+        className={`bg-card rounded-2xl border-2 relative overflow-hidden ${done ? 'opacity-55' : 'shadow-sm card-hover'}`} style={{ borderColor: done ? 'rgba(148,163,184,0.3)' : task.subjectColor + '99' }}
       >
         <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full" style={{ backgroundColor: task.subjectColor }} />
         {done && <div className="absolute inset-0 bg-secondary/20 pointer-events-none" />}
@@ -1564,7 +1564,7 @@ export function Today() {
                     const isLast = taskIdx === group.incompleteTasks.length - 1;
                     return (
                       <div key={task.key} className="relative" data-last-item={isLast ? 'true' : undefined}>
-                        <div className="absolute -left-[19px] top-1/2 -translate-y-full h-[24px] w-[19px] border-l-[3px] border-b-[2px] rounded-bl-[10px] pointer-events-none" style={{ borderColor: task.level === 'chapter' ? 'rgba(99,102,241,0.6)' : task.level === 'topic' ? 'rgba(139,92,246,0.6)' : task.level === 'subtopic' ? 'rgba(14,165,233,0.6)' : task.level === 'concept' ? 'rgba(20,184,166,0.55)' : 'rgba(34,197,94,0.5)' }} />
+                        <div className="absolute -left-[19px] top-1/2 -translate-y-full h-[24px] w-[19px] border-l-[3px] border-b-[2px] rounded-bl-[10px] pointer-events-none" style={{ borderColor: task.subjectColor + '99' }} />
                         {renderCard({ ...task, isCompleted: false })}
                       </div>
                     );

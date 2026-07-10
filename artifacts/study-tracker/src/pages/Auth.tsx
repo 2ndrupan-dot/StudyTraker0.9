@@ -113,7 +113,7 @@ export function Auth() {
 
         <div className="text-center mb-5">
           <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow">StudyTrack</h1>
-          <p className="text-white/85 mt-1.5 text-sm font-medium">Manage your study</p>
+          <p className="text-white/85 mt-1.5 text-sm font-medium">Powered by : Rupan's Learning Hub</p>
         </div>
 
         {/* Language toggle */}

@@ -37,8 +37,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Mobile: full-screen with bottom nav */}
       <div className="md:hidden w-full min-h-[100dvh] bg-background relative overflow-x-clip pb-[80px]">
         {children}
-        <BottomNav />
-        <FloatingSearchButton onClick={() => setSearchOpen(true)} />
+        <BottomNav onSearchClick={() => setSearchOpen(true)} />
       </div>
 
       {/* Online / Sync status */}
@@ -343,22 +342,22 @@ function MobileInstallButton() {
   );
 }
 
-function BottomNav() {
+function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
   const [location, setLocation] = useLocation();
   const { t } = useLang();
   const { isInstalled } = usePWAInstall();
 
   const tabs = [
-    { path: '/today', icon: CheckCircle2, label: t('today') },
-    { path: '/subjects', icon: BookOpen, label: t('subjects') },
-    { path: '/progress', icon: Target, label: t('progress') },
-    { path: '/notes', icon: FileText, label: t('notesTab') },
+    { path: '/today',    icon: CheckCircle2, label: t('today') },
+    { path: '/subjects', icon: BookOpen,     label: t('subjects') },
+    { path: '/notes',    icon: FileText,     label: t('notesTab') },
+    { path: '/progress', icon: Target,       label: t('progress') },
   ];
 
   return (
     <>
       <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border pb-safe z-40 shadow-[0_-4px_24px_rgba(99,102,241,0.10)]">
-        <div className="flex items-center justify-around h-[68px] px-2 max-w-md mx-auto">
+        <div className="flex items-center justify-around h-[68px] px-1 max-w-md mx-auto">
           {tabs.map(tab => {
             const isActive =
               location === tab.path ||
@@ -391,9 +390,17 @@ function BottomNav() {
               </button>
             );
           })}
+
+          {/* Search — mobile only, opens modal instead of navigating */}
+          <button
+            onClick={onSearchClick}
+            className="flex-1 flex flex-col items-center justify-center gap-1 h-full relative"
+          >
+            <Search size={22} className="text-muted-foreground transition-all duration-300" strokeWidth={2} />
+            <span className="text-[10px] font-semibold text-muted-foreground">{t('searchTitle')}</span>
+          </button>
         </div>
       </div>
-
     </>
   );
 }

@@ -27,7 +27,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Desktop: sidebar layout */}
       <div className="hidden md:flex min-h-[100dvh] bg-background">
         <SideNav onSearch={() => setSearchOpen(true)} />
-        <main className="flex-1 ml-64 min-h-[100dvh] overflow-y-auto">
+        <main className="flex-1 ml-64 min-h-[100dvh]">
           <div className="max-w-4xl mx-auto">
             {children}
           </div>

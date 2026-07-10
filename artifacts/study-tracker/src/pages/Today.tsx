@@ -1772,7 +1772,7 @@ export function Today() {
 
             {/* ── View Details + Load More side by side ── */}
             <div className="mb-4">
-              <ScrollReveal direction="right" delay={incompleteSubjectGroups.length * 0.08} className="flex gap-2 mb-1">
+              <ScrollReveal direction="up" delay={incompleteSubjectGroups.length * 0.08} className="flex gap-2 mb-1">
                 {/* View Details — left */}
                 <motion.button
                   whileTap={{ scale: 0.97 }}

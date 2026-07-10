@@ -948,7 +948,7 @@ export function Subjects() {
                               <SortableItemWrapper key={chapter.id} id={chapter.id} reorderMode={reorderMode}>
                               {(chHandle) => (
                               <div className="relative">
-                              <div className="absolute -left-[21px] top-0 h-[22px] w-[21px] border-l-[3px] border-b-[2px] border-indigo-400/60 rounded-bl-[10px] pointer-events-none" />
+                              <div className="absolute -left-[19px] top-0 h-[22px] w-[19px] border-l-[3px] border-b-[2px] border-indigo-400/60 rounded-bl-[10px] pointer-events-none" />
                               <motion.div id={`study-item-${chapter.id}`} {...itemAnim} className={`bg-indigo-50/60 border-2 rounded-xl overflow-hidden shadow-sm ${chLocked ? 'opacity-70' : ''} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`} style={{ borderColor: chLocked ? "rgba(99,102,241,0.55)" : "rgba(99,102,241,0.65)" }}>
                                 <div
                                   className="p-3 flex items-center gap-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row relative"

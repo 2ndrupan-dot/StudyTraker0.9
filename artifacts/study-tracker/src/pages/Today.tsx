@@ -1556,7 +1556,7 @@ export function Today() {
               >
                 <Target size={12} className="text-white/80 shrink-0" />
                 <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('courseCompletion')}:</span>
-                <span className="text-white text-[12px] font-bold">{settings.courseTotalDays ? `${settings.courseTotalDays}d` : '—'}</span>
+                <span className="text-white text-[12px] font-bold">{settings.courseTotalDays ? `${settings.courseTotalDays} Days` : '—'}</span>
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.97 }}
@@ -1565,7 +1565,7 @@ export function Today() {
               >
                 <AlarmClock size={12} className="text-white/80 shrink-0" />
                 <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('dailyStudyHours')}:</span>
-                <span className="text-white text-[12px] font-bold">{settings.dailyStudyHours ?? 3}h</span>
+                <span className="text-white text-[12px] font-bold">{settings.dailyStudyHours ?? 3} Hours</span>
               </motion.button>
             </div>
           </div>

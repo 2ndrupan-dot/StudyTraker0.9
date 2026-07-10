@@ -153,7 +153,7 @@ export function NotesIndex() {
     <>
       <Layout>
         {/* ── Gradient header banner ── */}
-        <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(263 80% 55%) 0%, hsl(326 80% 58%) 50%, hsl(349 89% 60%) 100%)' }}>
+        <div className="relative overflow-hidden rounded-b-2xl" style={{ background: 'linear-gradient(135deg, hsl(263 80% 55%) 0%, hsl(326 80% 58%) 50%, hsl(349 89% 60%) 100%)' }}>
           <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl" />
           <div className="relative px-5 pt-5 pb-4 flex items-center justify-between">
             <div className="flex items-center gap-3">

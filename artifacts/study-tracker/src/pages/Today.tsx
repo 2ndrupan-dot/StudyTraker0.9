@@ -1526,7 +1526,7 @@ export function Today() {
   return (
     <Layout>
       {/* ── Colorful gradient header banner ── */}
-      <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(243 88% 62%) 0%, hsl(263 80% 58%) 50%, hsl(300 70% 58%) 100%)' }}>
+      <div className="relative overflow-hidden rounded-b-2xl" style={{ background: 'linear-gradient(135deg, hsl(243 88% 62%) 0%, hsl(263 80% 58%) 50%, hsl(300 70% 58%) 100%)' }}>
         <div className="absolute top-[-30px] right-[-30px] w-40 h-40 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute bottom-[-20px] left-[20%] w-32 h-32 rounded-full bg-black/10 blur-2xl" />
         <div className="relative px-5 pt-5 pb-5">
@@ -1541,23 +1541,23 @@ export function Today() {
             </div>
           </div>
           {/* Stat pills row */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={() => { setDaysInput(settings.courseTotalDays?.toString() || ''); setDaysModalOpen(true); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
             >
-              <Target size={12} className="text-white/80" />
-              <span className="text-white/80 text-[11px] font-medium">{t('courseCompletion')}:</span>
+              <Target size={12} className="text-white/80 shrink-0" />
+              <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('courseCompletion')}:</span>
               <span className="text-white text-[12px] font-bold">{settings.courseTotalDays ? `${settings.courseTotalDays}d` : '—'}</span>
             </motion.button>
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={() => { setHoursInput(settings.dailyStudyHours?.toString() || '3'); setHoursModalOpen(true); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
             >
-              <AlarmClock size={12} className="text-white/80" />
-              <span className="text-white/80 text-[11px] font-medium">{t('dailyStudyHours')}:</span>
+              <AlarmClock size={12} className="text-white/80 shrink-0" />
+              <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('dailyStudyHours')}:</span>
               <span className="text-white text-[12px] font-bold">{settings.dailyStudyHours ?? 3}h</span>
             </motion.button>
           </div>

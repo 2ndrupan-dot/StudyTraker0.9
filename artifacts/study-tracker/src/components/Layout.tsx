@@ -357,7 +357,7 @@ function BottomNav() {
 
   return (
     <>
-      <div className="fixed bottom-0 left-0 right-0 glass border-t border-white/40 pb-safe z-40 shadow-[0_-4px_24px_rgba(99,102,241,0.10)]">
+      <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border pb-safe z-40 shadow-[0_-4px_24px_rgba(99,102,241,0.10)]">
         <div className="flex items-center justify-around h-[68px] px-2 max-w-md mx-auto">
           {tabs.map(tab => {
             const isActive =

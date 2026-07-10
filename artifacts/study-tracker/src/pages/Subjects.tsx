@@ -534,16 +534,16 @@ export function Subjects() {
   return (
     <Layout>
       {/* ── Gradient header banner ── */}
-      <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(192 85% 45%) 0%, hsl(210 80% 52%) 50%, hsl(243 88% 62%) 100%)' }}>
+      <div className="relative overflow-hidden rounded-b-2xl" style={{ background: 'linear-gradient(135deg, hsl(192 85% 45%) 0%, hsl(210 80% 52%) 50%, hsl(243 88% 62%) 100%)' }}>
         <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl" />
-        <div className="relative px-5 pt-5 pb-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="relative px-5 pt-5 pb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
             <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0">
               <BookOpen size={22} className="text-white" strokeWidth={2.2} />
             </div>
-            <h1 className="text-2xl font-bold text-white leading-tight" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('subjects')}</h1>
+            <h1 className="text-2xl font-bold text-white leading-tight truncate" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('subjects')}</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <motion.div whileTap={{ scale: 0.95 }}>
               <button
                 type="button"

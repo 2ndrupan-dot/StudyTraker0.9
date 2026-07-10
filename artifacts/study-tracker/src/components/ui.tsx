@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2, Pencil, Eye, FileText, ExternalLink, StickyNote, ChevronRight, FileDown } from 'lucide-react';
+import { X, Maximize2, Minimize2, Pencil, Eye, FileText, ExternalLink, StickyNote, ChevronRight, FileDown, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { RichTextEditor, RichTextPreview } from '@/components/RichTextEditor';
 import { useStudy } from '@/context/StudyContext';
 import { useLocation } from 'wouter';
@@ -284,6 +284,52 @@ function findItemNoteHtml(subjects: any[], path: any): string {
   return pt?.note || '';
 }
 
+// ─── Find-in-note search bar (highlights + scrolls to matches) ───────────────
+function SearchBar({
+  searchQuery, setSearchQuery, matchCount, matchIdx, goNextMatch, goPrevMatch, closeSearch,
+}: {
+  searchQuery: string;
+  setSearchQuery: (v: string) => void;
+  matchCount: number;
+  matchIdx: number;
+  goNextMatch: () => void;
+  goPrevMatch: () => void;
+  closeSearch: () => void;
+}) {
+  return (
+    <div className="bg-card/95 backdrop-blur border-b border-border/50 px-4 py-2 flex items-center gap-2 shrink-0">
+      <Search size={14} className="text-muted-foreground shrink-0" />
+      <input
+        autoFocus
+        type="text"
+        value={searchQuery}
+        onChange={e => setSearchQuery(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Escape') closeSearch();
+          if (e.key === 'Enter') { e.shiftKey ? goPrevMatch() : goNextMatch(); }
+        }}
+        placeholder="নোটে খুঁজুন…"
+        className="flex-1 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground min-w-0"
+      />
+      {matchCount > 0 && (
+        <span className="text-xs text-muted-foreground whitespace-nowrap">{matchIdx + 1} / {matchCount}</span>
+      )}
+      {searchQuery.trim() && matchCount === 0 && (
+        <span className="text-xs text-rose-500 whitespace-nowrap">No results</span>
+      )}
+      <button onClick={goPrevMatch} disabled={matchCount === 0} className="p-1 rounded hover:bg-secondary text-muted-foreground disabled:opacity-40" title="Previous (Shift+Enter)">
+        <ChevronUp size={14} />
+      </button>
+      <button onClick={goNextMatch} disabled={matchCount === 0} className="p-1 rounded hover:bg-secondary text-muted-foreground disabled:opacity-40" title="Next (Enter)">
+        <ChevronDown size={14} />
+      </button>
+      <button onClick={closeSearch} className="p-1 rounded hover:bg-secondary text-muted-foreground" title="Close (Esc)">
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
+
 // ─── Note Editor Modal (Rich Text — expand to A4 full-screen) ────────────────
 export const NoteEditorModal = ({
   isOpen, onClose, value, onChange, onClear, onSave,
@@ -309,6 +355,97 @@ export const NoteEditorModal = ({
   const [expanded, setExpanded] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
 
+  // Find-in-note search (highlights matches inside the rendered preview and
+  // auto-scrolls to them, like Ctrl+F in a PDF viewer)
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [matchCount, setMatchCount] = React.useState(0);
+  const [matchIdx, setMatchIdx] = React.useState(0);
+  const previewContainerRef = React.useRef<HTMLDivElement>(null);
+  const marksRef = React.useRef<HTMLElement[]>([]);
+
+  const clearHighlights = React.useCallback(() => {
+    // Unwrap any highlight marks still attached to a live DOM tree — whether
+    // that's the current previewContainerRef or a now-detached preview from
+    // a previous render (e.g. after switching to edit mode). Always drop
+    // marksRef afterwards so detached nodes are never held onto.
+    marksRef.current.forEach(mark => {
+      const parent = mark.parentNode;
+      if (!parent) return;
+      parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+      parent.normalize();
+    });
+    const container = previewContainerRef.current;
+    if (container) {
+      container.querySelectorAll('mark.search-hl').forEach(mark => {
+        const parent = mark.parentNode;
+        if (!parent) return;
+        parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+        parent.normalize();
+      });
+    }
+    marksRef.current = [];
+  }, []);
+
+  const runHighlight = React.useCallback((query: string) => {
+    const container = previewContainerRef.current;
+    clearHighlights();
+    if (!container || !query.trim()) { setMatchCount(0); setMatchIdx(0); return; }
+    const q = query.toLowerCase();
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    const textNodes: Text[] = [];
+    let node: Node | null;
+    while ((node = walker.nextNode())) textNodes.push(node as Text);
+    const marks: HTMLElement[] = [];
+    textNodes.forEach(textNode => {
+      const text = textNode.textContent || '';
+      const lower = text.toLowerCase();
+      if (!lower.includes(q)) return;
+      const frag = document.createDocumentFragment();
+      let cursor = 0;
+      let pos = lower.indexOf(q);
+      while (pos !== -1) {
+        frag.appendChild(document.createTextNode(text.slice(cursor, pos)));
+        const mark = document.createElement('mark');
+        mark.className = 'search-hl';
+        mark.textContent = text.slice(pos, pos + q.length);
+        frag.appendChild(mark);
+        marks.push(mark);
+        cursor = pos + q.length;
+        pos = lower.indexOf(q, cursor);
+      }
+      frag.appendChild(document.createTextNode(text.slice(cursor)));
+      textNode.parentNode?.replaceChild(frag, textNode);
+    });
+    marksRef.current = marks;
+    setMatchCount(marks.length);
+    setMatchIdx(0);
+  }, [clearHighlights]);
+
+  // Re-run search whenever the query changes or the preview becomes visible
+  React.useEffect(() => {
+    if (!searchOpen || editing) return;
+    const timer = window.setTimeout(() => runHighlight(searchQuery), 30);
+    return () => window.clearTimeout(timer);
+  }, [searchOpen, editing, searchQuery, value, expanded, runHighlight]);
+
+  // Highlight the active match and scroll it into view
+  React.useEffect(() => {
+    marksRef.current.forEach((mark, i) => mark.classList.toggle('search-hl-active', i === matchIdx));
+    const current = marksRef.current[matchIdx];
+    if (current) current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [matchIdx, matchCount]);
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    clearHighlights();
+    setMatchCount(0);
+    setMatchIdx(0);
+  };
+  const goNextMatch = () => setMatchIdx(i => matchCount === 0 ? 0 : (i + 1) % matchCount);
+  const goPrevMatch = () => setMatchIdx(i => matchCount === 0 ? 0 : (i - 1 + matchCount) % matchCount);
+
   // Resolve the display title: prefer the actual item name from the subjects tree
   // when notePath is available, so the modal header shows "Chapter X" not "Edit note".
   const displayTitle = React.useMemo(() => {
@@ -324,8 +461,8 @@ export const NoteEditorModal = ({
 
   // Reset both states when modal closes
   React.useEffect(() => {
-    if (!isOpen) { setExpanded(false); setEditing(false); setNotePreview(null); }
-  }, [isOpen]);
+    if (!isOpen) { setExpanded(false); setEditing(false); setNotePreview(null); closeSearch(); }
+  }, [isOpen]); // eslint-disable-line
 
   const handleNoteRef = (noteId: string, noteTitle: string, noteHtml?: string, itemPath?: any) => {
     if (itemPath) {
@@ -508,6 +645,24 @@ export const NoteEditorModal = ({
         <FileDown size={16} />
       </button>
 
+      {/* Find in note */}
+      <button
+        onClick={() => {
+          if (searchOpen) { closeSearch(); return; }
+          if (editing) setEditing(false);
+          setSearchOpen(true);
+        }}
+        className={cn(
+          "p-2 rounded-full transition-colors",
+          searchOpen
+            ? "text-primary bg-primary/10 hover:bg-primary/20"
+            : "text-muted-foreground hover:bg-secondary"
+        )}
+        title="Search in note"
+      >
+        <Search size={16} />
+      </button>
+
       {/* Toggle edit / view */}
       <button
         onClick={() => setEditing(e => !e)}
@@ -591,6 +746,19 @@ export const NoteEditorModal = ({
                       <HeaderActions isExpanded={true} />
                     </div>
 
+                    {/* Find-in-note bar */}
+                    {searchOpen && !editing && (
+                      <SearchBar
+                        searchQuery={searchQuery}
+                        setSearchQuery={setSearchQuery}
+                        matchCount={matchCount}
+                        matchIdx={matchIdx}
+                        goNextMatch={goNextMatch}
+                        goPrevMatch={goPrevMatch}
+                        closeSearch={closeSearch}
+                      />
+                    )}
+
                     {/* Body */}
                     <div className="flex-1 flex flex-col p-6 gap-4 overflow-hidden min-h-0">
                       {editing ? (
@@ -608,7 +776,7 @@ export const NoteEditorModal = ({
                           </div>
                         </>
                       ) : (
-                        <div className="flex-1 overflow-y-auto">
+                        <div className="flex-1 overflow-y-auto" ref={previewContainerRef}>
                           {value ? (
                             <RichTextPreview html={value} className="text-base leading-relaxed" onNoteRef={handleNoteRef} />
                           ) : (
@@ -657,8 +825,21 @@ export const NoteEditorModal = ({
                     </div>
                   </div>
 
+                  {/* Find-in-note bar */}
+                  {searchOpen && !editing && (
+                    <SearchBar
+                      searchQuery={searchQuery}
+                      setSearchQuery={setSearchQuery}
+                      matchCount={matchCount}
+                      matchIdx={matchIdx}
+                      goNextMatch={goNextMatch}
+                      goPrevMatch={goPrevMatch}
+                      closeSearch={closeSearch}
+                    />
+                  )}
+
                   {/* Body — scrollable so header stays visible */}
-                  <div className="flex-1 min-h-0 overflow-y-auto p-6 pb-8 space-y-4">
+                  <div className="flex-1 min-h-0 overflow-y-auto p-6 pb-8 space-y-4" ref={editing ? undefined : previewContainerRef}>
                     {editing ? (
                       <>
                         <RichTextEditor

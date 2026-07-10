@@ -265,7 +265,7 @@ export const translations = {
     overallNotes: "Overall Notes",
     overallNotesDesc: "A note for this course. Synced across all devices.",
     overallNotePlaceholder: "Write a note for this course…",
-    editOverallNote: "Edit Overall Note",
+    editOverallNote: "Overall Note",
 
     // Global search
     searchPlaceholder: "Search subjects, chapters, notes…",
@@ -634,7 +634,7 @@ export const translations = {
     overallNotes: "সামগ্রিক নোট",
     overallNotesDesc: "এই কোর্সের একটি নোট। সব ডিভাইসে sync হবে।",
     overallNotePlaceholder: "এই কোর্স সম্পর্কে নোট লিখুন…",
-    editOverallNote: "সামগ্রিক নোট সম্পাদনা",
+    editOverallNote: "সামগ্রিক নোট",
 
     // Global search
     searchPlaceholder: "বিষয়, চ্যাপ্টার, নোটে খুঁজুন…",

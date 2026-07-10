@@ -547,23 +547,24 @@ export function Progress() {
         {/* Active Course Card */}
         <ScrollReveal className="mb-6">
         <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-3xl p-4 border border-primary/20 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
                 <BookMarked size={18} className="text-primary" />
               </div>
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-primary/70 uppercase tracking-wider">{t('currentCourse')}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9px] sm:text-[10px] font-semibold text-primary/70 uppercase tracking-normal whitespace-nowrap">{t('currentCourse')}</p>
                 <p className="font-bold text-foreground text-sm line-clamp-2 break-words">{activeCourse?.name ?? '—'}</p>
               </div>
             </div>
             <div className="flex flex-col gap-1.5 shrink-0 items-end">
               <button
                 onClick={() => { setNewCourseName(''); setNewCourseError(''); setModals({ ...modals, addCourse: true }); }}
-                className="flex items-center gap-1 text-xs font-semibold text-foreground bg-secondary hover:bg-secondary/70 transition-colors px-2.5 py-1.5 rounded-xl"
+                className="flex items-center gap-1 text-xs font-semibold text-foreground bg-secondary hover:bg-secondary/70 transition-colors px-2.5 py-1.5 rounded-xl shrink-0"
+                title={t('addCourse')}
               >
                 <Plus size={12} />
-                {t('addCourse')}
+                <span className="hidden sm:inline">{t('addCourse')}</span>
               </button>
               <div className="flex gap-1.5">
                 <button
@@ -577,10 +578,11 @@ export function Progress() {
                 {courses.length > 1 && (
                   <button
                     onClick={() => setModals({ ...modals, switchCourse: true })}
-                    className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-2.5 py-1.5 rounded-xl"
+                    className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-2.5 py-1.5 rounded-xl shrink-0"
+                    title={t('switchCourse')}
                   >
                     <ArrowLeftRight size={12} />
-                    {t('switchCourse')}
+                    <span className="hidden sm:inline">{t('switchCourse')}</span>
                   </button>
                 )}
               </div>
@@ -608,7 +610,7 @@ export function Progress() {
                 {completedSubjects}
               </motion.p>
             </div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('completed')} {t('subjects')}</p>
+            <p className="text-[9px] sm:text-[11px] font-semibold text-muted-foreground uppercase tracking-normal whitespace-nowrap">{t('completed')} {t('subjects')}</p>
           </ScrollReveal>
           <ScrollReveal className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
             <div className="flex items-center gap-2.5 mb-2">
@@ -617,7 +619,7 @@ export function Progress() {
               </div>
               <p className="text-3xl font-bold text-foreground">{subjects.length}</p>
             </div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('activeSubjects')}</p>
+            <p className="text-[9px] sm:text-[11px] font-semibold text-muted-foreground uppercase tracking-normal whitespace-nowrap">{t('activeSubjects')}</p>
           </ScrollReveal>
         </div>
 

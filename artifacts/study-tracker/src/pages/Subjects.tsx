@@ -1318,7 +1318,7 @@ export function Subjects() {
                                                                                   </DndContext>
                                                                                   <button
                                                                                     onClick={() => openAdd('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id })}
-                                                                                    className="w-full py-1 border border-dashed border-border/60 text-[9px] font-semibold text-muted-foreground hover:text-foreground rounded-md flex items-center justify-center gap-0.5"
+                                                                                    className="w-full py-1 border border-dashed text-[9px] font-semibold text-foreground/60 rounded-md flex items-center justify-center gap-0.5 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.35)", backgroundColor: "rgba(14,165,233,0.03)" }}
                                                                                   >
                                                                                     <Plus size={9} /> {t('addPoint')}
                                                                                   </button>
@@ -1335,7 +1335,7 @@ export function Subjects() {
                                                                     </DndContext>
                                                                     <button
                                                                       onClick={() => openAdd('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id })}
-                                                                      className="w-full py-1.5 border border-dashed border-border/60 text-[10px] font-semibold text-muted-foreground hover:text-foreground rounded-lg flex items-center justify-center gap-1"
+                                                                      className="w-full py-1.5 border border-dashed text-[10px] font-semibold text-foreground/60 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.4)", backgroundColor: "rgba(14,165,233,0.04)" }}
                                                                     >
                                                                       <Plus size={10} /> {t('addConcept')}
                                                                     </button>
@@ -1353,7 +1353,7 @@ export function Subjects() {
                                                       </DndContext>
                                                       <button
                                                         onClick={() => openAdd('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id })}
-                                                        className="w-full py-2 border border-dashed border-border/60 text-[10px] font-semibold text-muted-foreground hover:text-foreground rounded-lg flex items-center justify-center gap-1"
+                                                        className="w-full py-2 border border-dashed text-[10px] font-semibold text-foreground/65 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.45)", backgroundColor: "rgba(14,165,233,0.05)" }}
                                                       >
                                                         <Plus size={11} /> {t('addSubtopic')}
                                                       </button>
@@ -1371,7 +1371,7 @@ export function Subjects() {
                                         </DndContext>
                                         <button
                                           onClick={() => openAdd('topic', { subjId: subj.id, chapterId: chapter.id })}
-                                          className="w-full py-2 border border-dashed border-border/60 text-xs font-semibold text-muted-foreground hover:text-foreground rounded-lg flex items-center justify-center gap-1 hover:border-primary/40 hover:bg-primary/5 transition-all"
+                                          className="w-full py-2 border border-dashed text-xs font-semibold text-foreground/65 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(139,92,246,0.45)", backgroundColor: "rgba(139,92,246,0.05)" }}
                                         >
                                           <Plus size={12} /> {t('addTopic')}
                                         </button>
@@ -1390,7 +1390,7 @@ export function Subjects() {
 
                           <button
                             onClick={() => openAdd('chapter', { subjId: subj.id })}
-                            className="w-full py-3 border-2 border-dashed border-border/70 text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-primary/5 rounded-xl flex items-center justify-center gap-2 transition-all"
+                            className="w-full py-3 border-2 border-dashed text-sm font-semibold text-foreground/65 rounded-xl flex items-center justify-center gap-2 transition-colors hover:text-foreground" style={{ borderColor: "rgba(99,102,241,0.5)", backgroundColor: "rgba(99,102,241,0.05)" }}
                           >
                             <FolderPlus size={16} /> {t('addChapter')}
                           </button>

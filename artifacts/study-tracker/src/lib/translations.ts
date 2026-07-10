@@ -252,7 +252,7 @@ export const translations = {
 
     // Temp notes
     tempNotes: "Temp Notes",
-    tempNotesDesc: "Quick to-do reminders. Stored separately, never affect Today's plan.",
+    tempNotesDesc: "Quick to-do reminders",
     addTempNote: "Add note",
     tempNotePlaceholder: "Quick to-do… (e.g. revise chapter 3)",
     addSubItem: "Add sub-item",
@@ -621,7 +621,7 @@ export const translations = {
 
     // Temp notes
     tempNotes: "Temp Notes",
-    tempNotesDesc: "ছোট রিমাইন্ডার। আলাদা সংরক্ষিত, আজকের পরিকল্পনায় যোগ হবে না।",
+    tempNotesDesc: "ছোট রিমাইন্ডার",
     addTempNote: "নোট যোগ",
     tempNotePlaceholder: "ছোট কাজ… (যেমন: chapter ৩ revise করতে হবে)",
     addSubItem: "সাব-আইটেম",

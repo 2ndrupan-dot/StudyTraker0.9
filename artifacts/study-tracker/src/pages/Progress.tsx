@@ -595,25 +595,29 @@ export function Progress() {
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-4 mb-6">
           <ScrollReveal className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
-            <div className="text-primary bg-primary/10 w-9 h-9 rounded-full flex items-center justify-center mb-3">
-              <ShieldCheck size={18} />
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="text-primary bg-primary/10 w-9 h-9 rounded-full flex items-center justify-center shrink-0">
+                <ShieldCheck size={18} />
+              </div>
+              <motion.p
+                key={completedSubjects}
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="text-3xl font-bold text-foreground"
+              >
+                {completedSubjects}
+              </motion.p>
             </div>
-            <motion.p
-              key={completedSubjects}
-              initial={{ scale: 0.7, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="text-3xl font-bold text-foreground"
-            >
-              {completedSubjects}
-            </motion.p>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-1">{t('completed')} {t('subjects')}</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('completed')} {t('subjects')}</p>
           </ScrollReveal>
           <ScrollReveal className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
-            <div className="text-green-500 bg-green-500/10 w-9 h-9 rounded-full flex items-center justify-center mb-3">
-              <BookOpen size={18} />
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="text-green-500 bg-green-500/10 w-9 h-9 rounded-full flex items-center justify-center shrink-0">
+                <BookOpen size={18} />
+              </div>
+              <p className="text-3xl font-bold text-foreground">{subjects.length}</p>
             </div>
-            <p className="text-3xl font-bold text-foreground">{subjects.length}</p>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-1">{t('activeSubjects')}</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('activeSubjects')}</p>
           </ScrollReveal>
         </div>
 

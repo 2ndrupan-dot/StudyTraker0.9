@@ -930,9 +930,9 @@ export function Subjects() {
                             if (fIdx !== -1 && tIdx !== -1) reorderChapters(subj.id, fIdx, tIdx);
                           }}>
                           <SortableContext items={subj.chapters.filter(c => matchesStatus(chapterStatus(c), filter)).map(c => c.id)} strategy={verticalListSortingStrategy}>
-                          {subj.chapters
-                            .filter(c => matchesStatus(chapterStatus(c), filter))
+                          {(() => { const filteredChapters = subj.chapters.filter(c => matchesStatus(chapterStatus(c), filter)); return filteredChapters
                             .map((chapter, chIdx) => {
+                            const isLastChapter = chIdx === filteredChapters.length - 1;
                             // chIdx in filtered list is fine for unlock since filter is purely visual;
                             // use original index for unlock check
                             const origChIdx = subj.chapters.findIndex(c => c.id === chapter.id);
@@ -949,6 +949,7 @@ export function Subjects() {
                               {(chHandle) => (
                               <div className="relative">
                               <div className="absolute -left-[19px] top-1/2 -translate-y-full h-[24px] w-[19px] border-l-[3px] border-b-[2px] border-indigo-400/60 rounded-bl-[10px] pointer-events-none" />
+                              {isLastChapter && <div className="absolute -left-[19px] top-1/2 bottom-0 w-[3px] bg-indigo-500/[0.04] pointer-events-none" />}
                               <motion.div id={`study-item-${chapter.id}`} {...itemAnim} className={`relative bg-indigo-50/60 border-2 rounded-xl overflow-hidden shadow-sm ${chLocked ? 'opacity-70' : ''} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`} style={{ borderColor: chLocked ? "rgba(99,102,241,0.55)" : "rgba(99,102,241,0.65)" }}>
                                 <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-indigo-400/70 rounded-r-full z-10" />
                                 <div
@@ -1027,6 +1028,7 @@ export function Subjects() {
                                         }}>
                                         <SortableContext items={chapter.topics.map(t => t.id)} strategy={verticalListSortingStrategy}>
                                         {chapter.topics.map((topic, topIdx) => {
+                                          const isLastTopic = topIdx === chapter.topics.length - 1;
                                           const topLocked = chLocked || !isTopicUnlocked(chapter, topIdx);
                                           const tExpanded = expandedTopic === topic.id;
                                           const completedSubs = topic.subtopics.filter(s => isSubtopicContentDone(s)).length;
@@ -1039,6 +1041,7 @@ export function Subjects() {
                                             {(topHandle) => (
                                             <div className="relative">
                                             <div className="absolute -left-[35px] top-1/2 -translate-y-full h-[22px] w-[35px] border-l-[3px] border-b-[2px] border-violet-400/60 rounded-bl-[10px] pointer-events-none" />
+                                            {isLastTopic && <div className="absolute -left-[35px] top-1/2 bottom-0 w-[3px] bg-violet-500/[0.05] pointer-events-none" />}
                                             <motion.div id={`study-item-${topic.id}`} {...itemAnim} className={`relative bg-violet-50/60 border-2 rounded-lg overflow-hidden ${topLocked ? 'opacity-60' : ''} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`} style={{ borderColor: topLocked ? "rgba(139,92,246,0.55)" : "rgba(139,92,246,0.6)" }}>
                                               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-violet-400/70 rounded-r-full z-10" />
                                               <div
@@ -1117,6 +1120,7 @@ export function Subjects() {
                                                       }}>
                                                       <SortableContext items={topic.subtopics.map(s => s.id)} strategy={verticalListSortingStrategy}>
                                                       {topic.subtopics.map((sub, subIdx) => {
+                                                        const isLastSub = subIdx === topic.subtopics.length - 1;
                                                         const subLocked = topLocked || !isSubtopicUnlocked(topic, subIdx);
                                                         const subExpanded = expandedSubtopic === sub.id;
                                                         const completedConcepts = sub.concepts.filter(c => isConceptContentDone(c)).length;
@@ -1129,6 +1133,7 @@ export function Subjects() {
                                                           {(subHandle) => (
                                                           <div className="relative">
                                                           <div className="absolute -left-[43px] top-1/2 -translate-y-full h-[20px] w-[43px] border-l-[3px] border-b-[2px] border-sky-400/60 rounded-bl-[10px] pointer-events-none" />
+                                                          {isLastSub && <div className="absolute -left-[43px] top-1/2 bottom-0 w-[3px] bg-sky-500/[0.05] pointer-events-none" />}
                                                           <motion.div id={`study-item-${sub.id}`} {...itemAnim} className={`relative bg-sky-50/60 border-2 rounded-lg overflow-hidden ${subLocked ? 'opacity-55' : ''} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`} style={{ borderColor: subLocked ? "rgba(14,165,233,0.5)" : "rgba(14,165,233,0.6)" }}>
                                                             <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-sky-400/70 rounded-r-full z-10" />
                                                             <div
@@ -1388,7 +1393,7 @@ export function Subjects() {
                               )}
                               </SortableItemWrapper>
                             );
-                          })}
+                          }); })()}
                           </SortableContext>
                           </DndContext>
                           </div>

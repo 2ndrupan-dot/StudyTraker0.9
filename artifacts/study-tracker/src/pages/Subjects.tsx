@@ -1052,7 +1052,7 @@ export function Subjects() {
                                     {chLocked ? <Lock size={18} className="text-muted-foreground/50" /> : isChapterContentDone(chapter) ? <CheckCircle2 size={18} className="text-green-500" /> : <Circle size={18} />}
                                   </button>
                                   <div className="flex-1 min-w-0">
-                                    <p className={`font-semibold text-sm line-clamp-3 leading-snug ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                    <p className={`font-semibold text-sm w-full line-clamp-3 leading-snug ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                       {chapter.title}
                                     </p>
                                     <div className="flex items-center gap-1 flex-wrap mt-0.5">
@@ -1145,7 +1145,7 @@ export function Subjects() {
                                                   {topLocked ? <Lock size={15} className="text-muted-foreground/40" /> : isTopicContentDone(topic) ? <CheckCircle2 size={15} className="text-green-500" /> : <Circle size={15} className="text-muted-foreground" />}
                                                 </button>
                                                 <div className="flex-1 min-w-0">
-                                                  <p className={`text-xs font-semibold line-clamp-3 leading-snug ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                  <p className={`text-xs font-semibold w-full line-clamp-3 leading-snug ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                     {topic.title}
                                                   </p>
                                                   <div className="flex items-center gap-1 flex-wrap mt-0.5">
@@ -1233,7 +1233,7 @@ export function Subjects() {
                                                                 {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : isSubtopicContentDone(sub) ? <CheckCircle2 size={13} className="text-green-500" /> : <Circle size={13} className="text-muted-foreground" />}
                                                               </button>
                                                               <div className="flex-1 min-w-0">
-                                                                <p className={`text-[11px] font-medium line-clamp-3 leading-snug ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                <p className={`text-[11px] font-medium w-full line-clamp-3 leading-snug ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                                   {sub.title}
                                                                 </p>
                                                                 <div className="flex items-center gap-1 flex-wrap mt-0.5">
@@ -1306,7 +1306,7 @@ export function Subjects() {
                                                                               {conLocked ? <Lock size={11} className="text-muted-foreground/30" /> : isConceptContentDone(concept) ? <CheckCircle2 size={11} className="text-green-500" /> : <Circle size={11} className="text-muted-foreground" />}
                                                                             </button>
                                                                             <div className="flex-1 min-w-0">
-                                                                              <p className={`text-[10px] font-medium line-clamp-3 leading-snug ${isConceptContentDone(concept) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                              <p className={`text-[10px] font-medium w-full line-clamp-3 leading-snug ${isConceptContentDone(concept) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                                                 {concept.title}
                                                                               </p>
                                                                               <div className="flex items-center gap-1 flex-wrap mt-0.5">

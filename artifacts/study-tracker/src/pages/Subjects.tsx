@@ -806,14 +806,14 @@ export function Subjects() {
                 <motion.div
                   id={`study-item-${subj.id}`}
                   exit={{ opacity: 0, scale: 0.96 }}
-                  className="bg-card rounded-2xl shadow-sm border-2 overflow-hidden card-hover" style={{ borderColor: "rgba(148,163,184,0.55)" }}
+                  className="relative bg-card rounded-2xl shadow-sm border-2 overflow-hidden card-hover" style={{ borderColor: "rgba(148,163,184,0.55)" }}
                 >
+                  <div className="absolute left-0 top-0 bottom-0 w-1.5 z-10" style={{ backgroundColor: subj.color }} />
                   {/* Subject header */}
                   <div
                     className="p-3 relative flex items-center justify-between cursor-pointer active:bg-secondary/40 transition-colors group/row"
                     onClick={() => toggleSubj(subj.id)}
                   >
-                    <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: subj.color }} />
                     <div className="pl-3 flex-1 min-w-0">
                       {/* Title */}
                       <h3 className="font-bold text-foreground text-base leading-tight line-clamp-2 break-words mb-0.5">{subj.title}</h3>

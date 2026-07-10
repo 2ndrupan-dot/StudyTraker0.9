@@ -537,9 +537,11 @@ export function Subjects() {
       <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(192 85% 45%) 0%, hsl(210 80% 52%) 50%, hsl(243 88% 62%) 100%)' }}>
         <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl" />
         <div className="relative px-5 pt-5 pb-4 flex items-center justify-between">
-          <div>
-            <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-0.5">{t('subjects')}</p>
-            <h1 className="text-2xl font-bold text-white leading-tight drop-shadow">📚 Curriculum</h1>
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0">
+              <BookOpen size={22} className="text-white" strokeWidth={2.2} />
+            </div>
+            <h1 className="text-2xl font-bold text-white leading-tight" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('subjects')}</h1>
           </div>
           <div className="flex items-center gap-2">
             <motion.div whileTap={{ scale: 0.95 }}>

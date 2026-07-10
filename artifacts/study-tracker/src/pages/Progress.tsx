@@ -492,9 +492,11 @@ export function Progress() {
       <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(152 70% 42%) 0%, hsl(172 70% 38%) 50%, hsl(192 85% 45%) 100%)' }}>
         <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl" />
         <div className="relative px-5 pt-5 pb-4 flex items-center justify-between">
-          <div>
-            <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-0.5">{t('progress')}</p>
-            <h1 className="text-2xl font-bold text-white leading-tight drop-shadow">📊 Analytics</h1>
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0">
+              <Target size={22} className="text-white" strokeWidth={2.2} />
+            </div>
+            <h1 className="text-2xl font-bold text-white leading-tight" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('progress')}</h1>
           </div>
           <div className="flex gap-2">
             <motion.button

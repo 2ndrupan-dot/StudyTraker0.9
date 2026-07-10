@@ -8,7 +8,7 @@ import {
   Layers, Zap, Sun, ChevronRight, AlarmClock, Hash, Lightbulb, List,
   ChevronDown, AlertTriangle, X, RotateCcw, TrendingUp, PlayCircle,
   Lock, Flame, ThumbsUp, RefreshCw, Plus, StickyNote, Star, AlertOctagon,
-  Download, Share2, Check,
+  Download, Share2, Check, GraduationCap,
 } from 'lucide-react';
 import { usePWAInstall } from '@/context/PWAInstallContext';
 import { differenceInDays, parseISO } from 'date-fns';
@@ -1564,7 +1564,7 @@ export function Today() {
             {/* Title row */}
             <div className="flex items-center gap-3 mb-3">
               <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0">
-                <CheckCircle2 size={22} className="text-white" strokeWidth={2.2} />
+                <GraduationCap size={22} className="text-white" strokeWidth={2.2} />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-white/70 text-[11px] font-semibold tracking-widest leading-none mb-1">{formatTodayDisplayIST(settings.timezone)}</p>

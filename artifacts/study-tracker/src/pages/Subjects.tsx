@@ -921,7 +921,7 @@ export function Subjects() {
                   <AnimatePresence>
                     {isExpanded && (
                       <motion.div {...collapseAnim} className="overflow-hidden bg-indigo-500/[0.04] border-t border-indigo-300/25">
-                        <div className="pt-0 pb-3 px-3 pl-4 space-y-2 border-l-[3px] border-indigo-400/55 ml-2.5">
+                        <div className="pt-0 px-3 pl-4 space-y-2 border-l-[3px] border-indigo-400/55 ml-2.5">
                           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
                             const { active, over } = e;
                             if (!over || active.id === over.id) return;
@@ -1017,7 +1017,7 @@ export function Subjects() {
                                 <AnimatePresence>
                                   {chExpanded && (
                                     <motion.div {...collapseAnim} className="overflow-hidden border-t border-violet-300/25 bg-violet-500/[0.05]">
-                                      <div className="pt-0 pb-2 px-2 pl-8 space-y-1.5 border-l-[3px] border-violet-400/55 ml-2.5">
+                                      <div className="pt-0 px-2 pl-8 space-y-1.5 border-l-[3px] border-violet-400/55 ml-2.5">
                                         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
                                           const { active, over } = e;
                                           if (!over || active.id === over.id) return;
@@ -1107,7 +1107,7 @@ export function Subjects() {
                                               <AnimatePresence>
                                                 {tExpanded && (
                                                   <motion.div {...collapseAnim} className="overflow-hidden border-t border-sky-300/20 bg-sky-500/[0.05]">
-                                                    <div className="pt-0 pb-2 px-2 pl-10 space-y-1 border-l-[3px] border-sky-400/55 ml-2.5">
+                                                    <div className="pt-0 px-2 pl-10 space-y-1 border-l-[3px] border-sky-400/55 ml-2.5">
                                                       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
                                                         const { active, over } = e;
                                                         if (!over || active.id === over.id) return;
@@ -1351,13 +1351,15 @@ export function Subjects() {
                                                       })}
                                                       </SortableContext>
                                                       </DndContext>
+                                                      </div>
+                                                      <div className="px-2 pl-10 ml-2.5 pt-2 pb-2">
                                                       <button
                                                         onClick={() => openAdd('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id })}
                                                         className="w-full py-2 border border-dashed text-[10px] font-semibold text-foreground/65 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.45)", backgroundColor: "rgba(14,165,233,0.05)" }}
                                                       >
                                                         <Plus size={11} /> {t('addSubtopic')}
                                                       </button>
-                                                    </div>
+                                                      </div>
                                                   </motion.div>
                                                 )}
                                               </AnimatePresence>
@@ -1369,13 +1371,15 @@ export function Subjects() {
                                         })}
                                         </SortableContext>
                                         </DndContext>
+                                        </div>
+                                        <div className="px-2 pl-8 ml-2.5 pt-2 pb-2">
                                         <button
                                           onClick={() => openAdd('topic', { subjId: subj.id, chapterId: chapter.id })}
                                           className="w-full py-2 border border-dashed text-xs font-semibold text-foreground/65 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(139,92,246,0.45)", backgroundColor: "rgba(139,92,246,0.05)" }}
                                         >
                                           <Plus size={12} /> {t('addTopic')}
                                         </button>
-                                      </div>
+                                        </div>
                                     </motion.div>
                                   )}
                                 </AnimatePresence>
@@ -1387,14 +1391,15 @@ export function Subjects() {
                           })}
                           </SortableContext>
                           </DndContext>
-
+                          </div>
+                          <div className="px-3 pl-4 ml-2.5 pt-2 pb-3">
                           <button
                             onClick={() => openAdd('chapter', { subjId: subj.id })}
                             className="w-full py-3 border-2 border-dashed text-sm font-semibold text-foreground/65 rounded-xl flex items-center justify-center gap-2 transition-colors hover:text-foreground" style={{ borderColor: "rgba(99,102,241,0.5)", backgroundColor: "rgba(99,102,241,0.05)" }}
                           >
                             <FolderPlus size={16} /> {t('addChapter')}
                           </button>
-                        </div>
+                          </div>
                       </motion.div>
                     )}
                   </AnimatePresence>

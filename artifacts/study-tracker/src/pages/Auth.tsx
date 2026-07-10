@@ -105,8 +105,8 @@ export function Auth() {
         <div className="flex justify-center mb-5">
           <div className="relative">
             <div className="absolute inset-0 rounded-3xl bg-white/30 blur-xl scale-110" />
-            <div className="relative w-20 h-20 bg-white/20 backdrop-blur-sm shadow-2xl rounded-3xl flex items-center justify-center border border-white/40 rotate-3">
-              <BookOpen size={40} className="text-white -rotate-3 drop-shadow-lg" />
+            <div className="relative w-20 h-20 bg-white/20 backdrop-blur-sm shadow-2xl rounded-3xl flex items-center justify-center border border-white/40">
+              <BookOpen size={40} className="text-white drop-shadow-lg" />
             </div>
           </div>
         </div>

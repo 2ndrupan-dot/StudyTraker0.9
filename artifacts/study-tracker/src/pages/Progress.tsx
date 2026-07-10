@@ -680,7 +680,7 @@ export function Progress() {
                 {completedSubjects}
               </motion.p>
             </div>
-            <p className="text-[9px] sm:text-[11px] font-semibold text-muted-foreground tracking-normal whitespace-nowrap">{t('completed')} {t('subjects')}</p>
+            <p className="text-[11px] sm:text-xs font-semibold text-muted-foreground tracking-normal whitespace-nowrap">{t('completed')} {t('subjects')}</p>
           </ScrollReveal>
           <ScrollReveal className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
             <div className="flex items-center gap-2.5 mb-2">
@@ -689,7 +689,7 @@ export function Progress() {
               </div>
               <p className="text-3xl font-bold text-foreground">{subjects.length}</p>
             </div>
-            <p className="text-[9px] sm:text-[11px] font-semibold text-muted-foreground tracking-normal whitespace-nowrap">{t('activeSubjects')}</p>
+            <p className="text-[11px] sm:text-xs font-semibold text-muted-foreground tracking-normal whitespace-nowrap">{t('activeSubjects')}</p>
           </ScrollReveal>
         </div>
 

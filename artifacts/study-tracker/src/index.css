@@ -1,6 +1,17 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* Match the mobile splash gradient's starting color so the very first paint
+   (before React mounts) doesn't flash a plain white/gray page on top of it. */
+html, body {
+  background-color: #5149f3;
+}
+@media (min-width: 768px) {
+  html, body {
+    background-color: hsl(var(--background));
+  }
+}
+
 @theme inline {
   --font-sans: 'Inter', sans-serif;
 
@@ -86,12 +97,19 @@
   }
   body {
     @apply font-sans antialiased text-foreground overflow-x-hidden;
-    background: linear-gradient(160deg,
-      hsl(243 40% 96%) 0%,
-      hsl(263 35% 96%) 40%,
-      hsl(240 35% 97%) 100%);
     min-height: 100dvh;
     -webkit-tap-highlight-color: transparent;
+  }
+  /* The light app-background gradient only kicks in on desktop widths, where
+     there is no mobile splash to bridge into (see the mobile-only solid
+     purple rule near the top of this file). */
+  @media (min-width: 768px) {
+    body {
+      background: linear-gradient(160deg,
+        hsl(243 40% 96%) 0%,
+        hsl(263 35% 96%) 40%,
+        hsl(240 35% 97%) 100%);
+    }
   }
 }
 

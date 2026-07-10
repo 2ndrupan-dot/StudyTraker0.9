@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen } from 'lucide-react';
 
@@ -7,7 +7,7 @@ const SEEN_KEY = '@study_splash_seen_session';
 /**
  * Mobile-only animated launch splash screen.
  * Sequence: logo slides up from the bottom → "StudyTrack" title fades in below it
- * → tagline fades in below the title → a short chime plays → the app content reveals.
+ * → tagline fades in below the title → the app content reveals.
  * Shown once per browser session (so it doesn't replay on every in-app navigation/reload).
  */
 export function SplashScreen({ children }: { children: React.ReactNode }) {
@@ -18,7 +18,6 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
       return 'logo';
     }
   });
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (stage === 'done') return;
@@ -32,15 +31,6 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Play the launch chime as soon as the logo starts animating in.
-    let audio: HTMLAudioElement | null = null;
-    try {
-      audio = new Audio('/sounds/splash-chime.mp3');
-      audio.volume = 0.55;
-      audioRef.current = audio;
-      audio.play().catch(() => { /* autoplay may be blocked until user gesture; ignore */ });
-    } catch { /* ignore audio errors */ }
-
     const t1 = setTimeout(() => setStage('title'), 650);
     const t2 = setTimeout(() => setStage('tagline'), 1250);
     const t3 = setTimeout(() => {
@@ -50,12 +40,6 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
 
     return () => {
       clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
-      if (audio) {
-        audio.pause();
-        audio.currentTime = 0;
-        audio.src = '';
-      }
-      audioRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

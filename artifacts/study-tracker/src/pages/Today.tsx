@@ -8,7 +8,9 @@ import {
   Layers, Zap, Sun, ChevronRight, AlarmClock, Hash, Lightbulb, List,
   ChevronDown, AlertTriangle, X, RotateCcw, TrendingUp, PlayCircle,
   Lock, Flame, ThumbsUp, RefreshCw, Plus, StickyNote, Star, AlertOctagon,
+  Download, Share2, Check,
 } from 'lucide-react';
+import { usePWAInstall } from '@/context/PWAInstallContext';
 import { differenceInDays, parseISO } from 'date-fns';
 import { todayIST, nowIST, toDateStrIST, addDaysIST, formatTodayDisplayIST, msUntilISTMidnight } from '@/lib/istTime';
 import { Modal, Input, Button, NoteEditorModal } from '@/components/ui';
@@ -431,6 +433,28 @@ export function Today() {
   const isBn = lang === 'bn';
   const email = user?.email ?? 'guest';
   const { activeCourseId } = useCourse();
+
+  // PWA install — mobile browser only
+  const { canInstall, isInstalled, installApp } = usePWAInstall();
+  const [isMobileBrowser, setIsMobileBrowser] = useState(false);
+  const [showInstallMenu, setShowInstallMenu] = useState(false);
+  const [installCopied, setInstallCopied] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const update = () => setIsMobileBrowser(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  const handleInstallShare = async () => {
+    const url = window.location.origin;
+    try {
+      if (navigator.share) { await navigator.share({ title: 'StudyTrack', url }); setShowInstallMenu(false); return; }
+      await navigator.clipboard.writeText(url);
+      setInstallCopied(true);
+      setTimeout(() => { setInstallCopied(false); setShowInstallMenu(false); }, 2000);
+    } catch { /* ignore */ }
+  };
 
   const [isDaysModalOpen, setDaysModalOpen] = useState(false);
   const [isHoursModalOpen, setHoursModalOpen] = useState(false);
@@ -1546,6 +1570,49 @@ export function Today() {
                 <p className="text-white/70 text-[11px] font-semibold tracking-widest leading-none mb-1">{formatTodayDisplayIST(settings.timezone)}</p>
                 <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight break-words" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('todayPlan')}</h1>
               </div>
+              {/* Mobile browser only: install/share button */}
+              {isMobileBrowser && !isInstalled && (
+                <div className="relative shrink-0">
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setShowInstallMenu(v => !v)}
+                    className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg"
+                    aria-label={t('installApp')}
+                  >
+                    <Download size={18} className="text-white" />
+                  </motion.button>
+                  <AnimatePresence>
+                    {showInstallMenu && (
+                      <>
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.9, y: -8 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.9, y: -8 }}
+                          className="absolute top-12 right-0 z-50 bg-card border border-border/60 rounded-2xl shadow-xl p-2 min-w-[185px]"
+                        >
+                          {canInstall && (
+                            <button
+                              onClick={() => { installApp(); setShowInstallMenu(false); }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"
+                            >
+                              <Download size={15} />
+                              {t('installApp')}
+                            </button>
+                          )}
+                          <button
+                            onClick={handleInstallShare}
+                            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-foreground hover:bg-secondary transition-colors"
+                          >
+                            {installCopied ? <Check size={15} className="text-green-500" /> : <Share2 size={15} />}
+                            {installCopied ? t('linkCopied') : t('shareInstallLink')}
+                          </button>
+                        </motion.div>
+                        <div className="fixed inset-0 z-40" onClick={() => setShowInstallMenu(false)} />
+                      </>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
             </div>
             {/* Stat pills row */}
             <div className="flex items-center gap-2 flex-wrap">

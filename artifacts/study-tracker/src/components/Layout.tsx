@@ -394,12 +394,6 @@ function BottomNav() {
         </div>
       </div>
 
-      {/* Floating install/share button for mobile (hidden when already installed) */}
-      {!isInstalled && (
-        <AnimatePresence>
-          <MobileInstallButton key="mobile-install" />
-        </AnimatePresence>
-      )}
     </>
   );
 }

@@ -13,6 +13,7 @@ import { NoteEditor } from "./pages/NoteEditor";
 import { CreateCoursePage } from "./pages/CreateCoursePage";
 import { PWAUpdater } from "./components/PWAUpdater";
 import { PWAInstallProvider } from "./context/PWAInstallContext";
+import { SplashScreen } from "./components/SplashScreen";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -148,20 +149,22 @@ function Router() {
 
 function App() {
   return (
-    <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-      <LangProvider>
-        <AuthProvider>
-          <PWAInstallProvider>
-            <CourseProvider>
-              <StudyProvider>
-                <Router />
-                <PWAUpdater />
-              </StudyProvider>
-            </CourseProvider>
-          </PWAInstallProvider>
-        </AuthProvider>
-      </LangProvider>
-    </WouterRouter>
+    <SplashScreen>
+      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <LangProvider>
+          <AuthProvider>
+            <PWAInstallProvider>
+              <CourseProvider>
+                <StudyProvider>
+                  <Router />
+                  <PWAUpdater />
+                </StudyProvider>
+              </CourseProvider>
+            </PWAInstallProvider>
+          </AuthProvider>
+        </LangProvider>
+      </WouterRouter>
+    </SplashScreen>
   );
 }
 

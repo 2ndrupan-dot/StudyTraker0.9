@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "EAhGQ9zy36BmF65zBpE-g"
+uri = "file://artifacts/study-tracker/public/sounds/splash-chime.mp3"
+type = "audio"
+title = "studytrack_launch_chime"

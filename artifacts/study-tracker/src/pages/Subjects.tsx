@@ -802,7 +802,7 @@ export function Subjects() {
               return (
                 <SortableItemWrapper key={subj.id} id={subj.id} reorderMode={reorderMode}>
                 {(subjHandle) => (
-                <ScrollReveal>
+                <ScrollReveal direction="right" delay={idx * 0.08}>
                 <motion.div
                   id={`study-item-${subj.id}`}
                   exit={{ opacity: 0, scale: 0.96 }}

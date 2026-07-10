@@ -12,7 +12,7 @@ A full-stack study tracker app built as a pnpm monorepo.
 ## Monorepo Structure
 ```
 artifacts/
-  study-tracker/    ← Main React frontend (port 23521 in dev)
+  study-tracker/    ← Main React frontend (port 5000 in dev)
   api-server/       ← Node.js API server
   mockup-sandbox/   ← UI component playground
 lib/
@@ -34,7 +34,7 @@ pnpm --filter @workspace/study-tracker run dev
 The study-tracker workflow runs automatically via Replit.
 
 ## Firebase Config
-Firebase credentials are hardcoded in `artifacts/study-tracker/src/lib/firebase.ts` (project: `studytraker-ef123`). Firestore offline persistence is enabled with `persistentMultipleTabManager`.
+Firebase credentials are read from `VITE_FIREBASE_*` environment variables (see `.env.example`). Firestore offline persistence is enabled with `persistentMultipleTabManager`.
 
 ## User Preferences
 - Respond in Bengali when the user writes in Bengali

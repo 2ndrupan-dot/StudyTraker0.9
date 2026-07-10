@@ -1294,7 +1294,7 @@ export function Today() {
     return (
       <ScrollReveal
         key={task.key}
-        className={`bg-card rounded-2xl border relative overflow-hidden ${done ? 'opacity-55 border-border/30' : 'border-border/60 shadow-sm card-hover'}`}
+        className={`bg-card rounded-2xl border-2 relative overflow-hidden ${done ? 'opacity-55' : 'shadow-sm card-hover'}`} style={{ borderColor: done ? 'rgba(148,163,184,0.3)' : task.level === 'chapter' ? 'rgba(99,102,241,0.6)' : task.level === 'topic' ? 'rgba(139,92,246,0.6)' : task.level === 'subtopic' ? 'rgba(14,165,233,0.6)' : task.level === 'concept' ? 'rgba(20,184,166,0.55)' : 'rgba(34,197,94,0.5)' }}
       >
         <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full" style={{ backgroundColor: task.subjectColor }} />
         {done && <div className="absolute inset-0 bg-secondary/20 pointer-events-none" />}
@@ -1441,7 +1441,7 @@ export function Today() {
     return (
       <ScrollReveal
         key={group.subjectId}
-        className="rounded-2xl border border-border/60 overflow-hidden shadow-sm"
+        className="rounded-2xl border-2 overflow-hidden shadow-sm" style={{ borderColor: group.subjectColor + '99' }}
       >
         <button
           onClick={() => toggleSubjectAccordion(group.subjectId)}
@@ -1480,8 +1480,13 @@ export function Today() {
               transition={{ duration: 0.22, ease: 'easeInOut' }}
               className="overflow-hidden"
             >
-              <div className="px-3 pb-3 pt-1 space-y-2 bg-secondary/20">
-                {group.incompleteTasks.map(task => renderCard({ ...task, isCompleted: false }))}
+              <div className="pt-0 pb-3 pl-10 pr-3 space-y-2 border-l-[3px] ml-2.5" style={{ borderColor: group.subjectColor + '55' }}>
+                {group.incompleteTasks.map(task => (
+                  <div key={task.key} className="relative">
+                    <div className="absolute -left-[40px] top-0 h-[20px] w-[40px] border-l-[2px] border-b-[2px] rounded-bl-[10px] pointer-events-none" style={{ borderColor: task.level === 'chapter' ? 'rgba(99,102,241,0.6)' : task.level === 'topic' ? 'rgba(139,92,246,0.6)' : task.level === 'subtopic' ? 'rgba(14,165,233,0.6)' : task.level === 'concept' ? 'rgba(20,184,166,0.55)' : 'rgba(34,197,94,0.5)' }} />
+                    {renderCard({ ...task, isCompleted: false })}
+                  </div>
+                ))}
               </div>
             </motion.div>
           )}

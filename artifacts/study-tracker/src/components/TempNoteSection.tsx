@@ -302,18 +302,6 @@ function TempNoteRow({ item, depth, onToggle, onUpdate, onAddChild, onDelete, on
           )}
         </div>
 
-        {/* Note preview — click to open editor */}
-        {hasNote && !editing && (
-          <button
-            onClick={() => onEditNote(item)}
-            className="mt-0.5 ml-[26px] text-left w-full group/preview"
-            title="Click to view/edit note"
-          >
-            <p className="text-[10px] text-muted-foreground line-clamp-2 italic group-hover/preview:text-foreground transition-colors">
-              {notePreview}
-            </p>
-          </button>
-        )}
       </div>
 
       {showChildInput && (

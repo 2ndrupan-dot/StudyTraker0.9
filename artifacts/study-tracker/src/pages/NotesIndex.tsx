@@ -362,7 +362,7 @@ function NoteCard({
 
           {/* Action icons */}
           {!isEditing && (
-            <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <div className="flex items-center gap-0.5 shrink-0">
               <motion.button
                 whileHover={{ scale: 1.15 }}
                 whileTap={{ scale: 0.9 }}

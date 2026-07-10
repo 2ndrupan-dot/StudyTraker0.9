@@ -657,7 +657,10 @@ export function Progress() {
         </ScrollReveal>
 
         {/* Subject Breakdown */}
-        <h3 className="font-bold text-lg mb-4 text-foreground px-1">{t('subjects')}</h3>
+        <h3 className="font-bold text-lg mb-4 text-foreground px-1 flex items-center gap-2">
+          <BookOpen size={18} className="text-primary shrink-0" />
+          {t('subjects')}
+        </h3>
         <div className="space-y-3">
           {subjects.map((s, i) => {
             const chCount = s.chapters.length;

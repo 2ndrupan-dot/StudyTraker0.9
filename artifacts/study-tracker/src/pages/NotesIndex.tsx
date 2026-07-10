@@ -40,7 +40,7 @@ function SortableNoteCard({ id, reorderMode, children }: {
       className={`touch-none shrink-0 flex items-center px-2 transition-colors select-none ${
         reorderMode
           ? 'cursor-grab active:cursor-grabbing text-primary/70 hover:text-primary'
-          : 'cursor-default opacity-0 pointer-events-none'
+          : 'cursor-default text-border/60 pointer-events-none'
       }`}
     >
       <GripVertical size={15} />

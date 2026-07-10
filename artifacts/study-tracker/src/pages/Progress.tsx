@@ -308,13 +308,9 @@ function OverallNotesCard() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-indigo-600/80 uppercase tracking-wider mb-0.5">{t('overallNotes')}</p>
-            {hasNote ? (
-              <div className="text-sm text-foreground line-clamp-2 overflow-hidden">
-                <RichTextPreview html={overallNote} />
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground italic">{t('overallNotePlaceholder')}</p>
-            )}
+            <p className="text-sm text-muted-foreground italic">
+              {hasNote ? t('overallNotes') : t('overallNotePlaceholder')}
+            </p>
           </div>
           <div className="shrink-0 text-muted-foreground group-hover:text-indigo-500 transition-colors">
             <Pencil size={15} />

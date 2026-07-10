@@ -921,7 +921,7 @@ export function Subjects() {
                   <AnimatePresence>
                     {isExpanded && (
                       <motion.div {...collapseAnim} className="overflow-hidden bg-indigo-500/[0.04] border-t border-indigo-300/25">
-                        <div className="pt-0 px-3 pl-4 space-y-2 border-l-[3px] border-indigo-400/55 ml-2.5">
+                        <div className="pt-0 px-3 pl-4 ml-2.5">
                           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
                             const { active, over } = e;
                             if (!over || active.id === over.id) return;
@@ -947,13 +947,10 @@ export function Subjects() {
                             return (
                               <SortableItemWrapper key={chapter.id} id={chapter.id} reorderMode={reorderMode}>
                               {(chHandle) => (
-                              <div className="relative">
-                              <div className="absolute -left-[19px] top-1/2 -translate-y-full h-[24px] w-[19px] border-l-[3px] border-b-[2px] border-indigo-400/60 rounded-bl-[10px] pointer-events-none" />
-                              {isLastChapter && (
-                                <div className="absolute -left-[19px] top-1/2 bottom-0 w-[3px] pointer-events-none">
-                                  <div className="absolute inset-0 bg-card" />
-                                  <div className="absolute inset-0 bg-indigo-500/[0.04]" />
-                                </div>
+                              <div className={`relative ${isLastChapter ? '' : 'mb-2'}`}>
+                              <div className="absolute -left-[19px] top-0 bottom-1/2 w-[19px] border-l-[3px] border-b-[2px] border-indigo-400/65 rounded-bl-[10px] pointer-events-none" />
+                              {!isLastChapter && (
+                                <div className="absolute -left-[19px] top-1/2 -bottom-2 w-[3px] bg-indigo-400/65 pointer-events-none" />
                               )}
                               <motion.div id={`study-item-${chapter.id}`} {...itemAnim} className={`relative bg-indigo-50/60 border-2 rounded-xl overflow-hidden shadow-sm ${chLocked ? 'opacity-70' : ''} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`} style={{ borderColor: chLocked ? "rgba(99,102,241,0.55)" : "rgba(99,102,241,0.65)" }}>
                                 <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-indigo-400/70 rounded-r-full z-10" />
@@ -1023,7 +1020,7 @@ export function Subjects() {
                                 <AnimatePresence>
                                   {chExpanded && (
                                     <motion.div {...collapseAnim} className="overflow-hidden border-t border-violet-300/25 bg-violet-500/[0.05]">
-                                      <div className="pt-0 px-2 pl-8 space-y-1.5 border-l-[3px] border-violet-400/55 ml-2.5">
+                                      <div className="pt-0 px-2 pl-8 ml-2.5">
                                         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
                                           const { active, over } = e;
                                           if (!over || active.id === over.id) return;
@@ -1044,14 +1041,10 @@ export function Subjects() {
                                           return (
                                             <SortableItemWrapper key={topic.id} id={topic.id} reorderMode={reorderMode}>
                                             {(topHandle) => (
-                                            <div className="relative">
-                                            <div className="absolute -left-[35px] top-1/2 -translate-y-full h-[22px] w-[35px] border-l-[3px] border-b-[2px] border-violet-400/60 rounded-bl-[10px] pointer-events-none" />
-                                            {isLastTopic && (
-                                              <div className="absolute -left-[35px] top-1/2 bottom-0 w-[3px] pointer-events-none">
-                                                <div className="absolute inset-0 bg-card" />
-                                                <div className="absolute inset-0 bg-indigo-500/[0.04]" />
-                                                <div className="absolute inset-0 bg-violet-500/[0.05]" />
-                                              </div>
+                                            <div className={`relative ${isLastTopic ? '' : 'mb-1.5'}`}>
+                                            <div className="absolute -left-[35px] top-0 bottom-1/2 w-[35px] border-l-[3px] border-b-[2px] border-violet-400/65 rounded-bl-[10px] pointer-events-none" />
+                                            {!isLastTopic && (
+                                              <div className="absolute -left-[35px] top-1/2 -bottom-1.5 w-[3px] bg-violet-400/65 pointer-events-none" />
                                             )}
                                             <motion.div id={`study-item-${topic.id}`} {...itemAnim} className={`relative bg-violet-50/60 border-2 rounded-lg overflow-hidden ${topLocked ? 'opacity-60' : ''} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`} style={{ borderColor: topLocked ? "rgba(139,92,246,0.55)" : "rgba(139,92,246,0.6)" }}>
                                               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-violet-400/70 rounded-r-full z-10" />
@@ -1121,7 +1114,7 @@ export function Subjects() {
                                               <AnimatePresence>
                                                 {tExpanded && (
                                                   <motion.div {...collapseAnim} className="overflow-hidden border-t border-sky-300/20 bg-sky-500/[0.05]">
-                                                    <div className="pt-0 px-2 pl-10 space-y-1 border-l-[3px] border-sky-400/55 ml-2.5">
+                                                    <div className="pt-0 px-2 pl-10 ml-2.5">
                                                       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
                                                         const { active, over } = e;
                                                         if (!over || active.id === over.id) return;
@@ -1142,15 +1135,10 @@ export function Subjects() {
                                                         return (
                                                           <SortableItemWrapper key={sub.id} id={sub.id} reorderMode={reorderMode}>
                                                           {(subHandle) => (
-                                                          <div className="relative">
-                                                          <div className="absolute -left-[43px] top-1/2 -translate-y-full h-[20px] w-[43px] border-l-[3px] border-b-[2px] border-sky-400/60 rounded-bl-[10px] pointer-events-none" />
-                                                          {isLastSub && (
-                                                            <div className="absolute -left-[43px] top-1/2 bottom-0 w-[3px] pointer-events-none">
-                                                              <div className="absolute inset-0 bg-card" />
-                                                              <div className="absolute inset-0 bg-indigo-500/[0.04]" />
-                                                              <div className="absolute inset-0 bg-violet-500/[0.05]" />
-                                                              <div className="absolute inset-0 bg-sky-500/[0.05]" />
-                                                            </div>
+                                                          <div className={`relative ${isLastSub ? '' : 'mb-1'}`}>
+                                                          <div className="absolute -left-[43px] top-0 bottom-1/2 w-[43px] border-l-[3px] border-b-[2px] border-sky-400/65 rounded-bl-[10px] pointer-events-none" />
+                                                          {!isLastSub && (
+                                                            <div className="absolute -left-[43px] top-1/2 -bottom-1 w-[3px] bg-sky-400/65 pointer-events-none" />
                                                           )}
                                                           <motion.div id={`study-item-${sub.id}`} {...itemAnim} className={`relative bg-sky-50/60 border-2 rounded-lg overflow-hidden ${subLocked ? 'opacity-55' : ''} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`} style={{ borderColor: subLocked ? "rgba(14,165,233,0.5)" : "rgba(14,165,233,0.6)" }}>
                                                             <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-sky-400/70 rounded-r-full z-10" />

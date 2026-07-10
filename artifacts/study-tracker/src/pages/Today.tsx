@@ -1557,14 +1557,14 @@ export function Today() {
               transition={{ duration: 0.22, ease: 'easeInOut' }}
               className="overflow-hidden"
             >
-              <div className="pt-2 pb-3 pl-10 pr-3 relative ml-2.5" ref={registerTrunkRoot}>
-                <div data-trunk className="absolute left-0 top-0 w-[3px] pointer-events-none rounded-b-full" style={{ backgroundColor: group.subjectColor + '55', height: 0 }} />
+              <div className="relative pt-0 px-3 pl-4 ml-2.5 pb-2" ref={registerTrunkRoot}>
+                <div data-trunk className="absolute -left-[3px] top-0 w-[3px] pointer-events-none" style={{ backgroundColor: group.subjectColor + '55', height: 0 }} />
                 <div className="space-y-2">
                   {group.incompleteTasks.map((task, taskIdx) => {
                     const isLast = taskIdx === group.incompleteTasks.length - 1;
                     return (
                       <div key={task.key} className="relative" data-last-item={isLast ? 'true' : undefined}>
-                        <div className="absolute -left-[37px] top-1/2 -translate-y-full h-[24px] w-[37px] border-l-[3px] border-b-[2px] rounded-bl-[10px] pointer-events-none" style={{ borderColor: task.level === 'chapter' ? 'rgba(99,102,241,0.6)' : task.level === 'topic' ? 'rgba(139,92,246,0.6)' : task.level === 'subtopic' ? 'rgba(14,165,233,0.6)' : task.level === 'concept' ? 'rgba(20,184,166,0.55)' : 'rgba(34,197,94,0.5)' }} />
+                        <div className="absolute -left-[19px] top-1/2 -translate-y-full h-[24px] w-[19px] border-l-[3px] border-b-[2px] rounded-bl-[10px] pointer-events-none" style={{ borderColor: task.level === 'chapter' ? 'rgba(99,102,241,0.6)' : task.level === 'topic' ? 'rgba(139,92,246,0.6)' : task.level === 'subtopic' ? 'rgba(14,165,233,0.6)' : task.level === 'concept' ? 'rgba(20,184,166,0.55)' : 'rgba(34,197,94,0.5)' }} />
                         {renderCard({ ...task, isCompleted: false })}
                       </div>
                     );

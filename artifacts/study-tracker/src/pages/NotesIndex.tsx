@@ -31,21 +31,17 @@ function SortableNoteCard({ id, reorderMode, children }: {
     position: isDragging ? 'relative' : undefined,
     opacity: isDragging ? 0.55 : undefined,
   };
-  const handle = (
+  const handle = reorderMode ? (
     <button
       type="button"
       {...attributes}
-      {...(reorderMode ? listeners : {})}
+      {...listeners}
       onClick={e => e.stopPropagation()}
-      className={`touch-none shrink-0 flex items-center px-2 transition-colors select-none ${
-        reorderMode
-          ? 'cursor-grab active:cursor-grabbing text-primary/70 hover:text-primary'
-          : 'cursor-default text-border/60 pointer-events-none'
-      }`}
+      className="touch-none shrink-0 flex items-center px-2 cursor-grab active:cursor-grabbing text-primary/70 hover:text-primary transition-colors select-none"
     >
       <GripVertical size={15} />
     </button>
-  );
+  ) : null;
   return <div ref={setNodeRef} style={style}>{children(handle)}</div>;
 }
 

@@ -308,9 +308,9 @@ function OverallNotesCard() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-indigo-600/80 uppercase tracking-wider mb-0.5">{t('overallNotes')}</p>
-            <p className="text-sm text-muted-foreground italic">
-              {hasNote ? t('overallNotes') : t('overallNotePlaceholder')}
-            </p>
+            {!hasNote && (
+              <p className="text-sm text-muted-foreground italic">{t('overallNotePlaceholder')}</p>
+            )}
           </div>
           <div className="shrink-0 text-muted-foreground group-hover:text-indigo-500 transition-colors">
             <Pencil size={15} />

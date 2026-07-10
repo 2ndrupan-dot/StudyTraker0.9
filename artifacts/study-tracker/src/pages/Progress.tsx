@@ -552,7 +552,7 @@ export function Progress() {
             <p className="text-xs font-semibold text-primary/70 uppercase tracking-wider">{t('currentCourse')}</p>
             <button
               onClick={() => { setNewCourseName(''); setNewCourseError(''); setModals({ ...modals, addCourse: true }); }}
-              className="flex items-center gap-1.5 text-sm font-semibold text-foreground bg-secondary hover:bg-secondary/70 transition-colors px-3 py-1.5 rounded-xl whitespace-nowrap shrink-0"
+              className="flex items-center gap-1 text-xs font-semibold text-foreground bg-secondary hover:bg-secondary/70 transition-colors px-2.5 py-1.5 rounded-xl whitespace-nowrap shrink-0"
               title={t('addCourse')}
             >
               <Plus size={14} />

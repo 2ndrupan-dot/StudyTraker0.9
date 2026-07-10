@@ -211,13 +211,13 @@ export function NotesIndex() {
                 animate={{ opacity: 1, y: 0, height: 'auto' }}
                 exit={{ opacity: 0, y: -8, height: 0 }}
                 transition={{ duration: 0.2 }}
-                className="mb-4 overflow-hidden"
+                className="mb-4"
               >
                 <div className="bg-card border border-border/70 rounded-2xl p-4 shadow-sm">
                   <p className="text-[11px] font-medium text-muted-foreground mb-2">
                     {lang === 'bn' ? 'নতুন নোটের শিরোনাম' : 'New note title'}
                   </p>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <input
                       ref={newTitleRef}
                       type="text"
@@ -228,20 +228,20 @@ export function NotesIndex() {
                         if (e.key === 'Escape') { setIsCreating(false); setNewTitle(''); }
                       }}
                       placeholder={lang === 'bn' ? 'শিরোনাম লিখুন…' : 'Enter title…'}
-                      className="flex-1 px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                     />
                     <button
                       onClick={handleCreate}
                       disabled={!newTitle.trim()}
-                      className="px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40 hover:opacity-90 transition-opacity"
+                      className="shrink-0 p-2.5 rounded-xl bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
                     >
-                      <Check size={14} />
+                      <Check size={15} />
                     </button>
                     <button
                       onClick={() => { setIsCreating(false); setNewTitle(''); }}
-                      className="px-3 py-2 rounded-xl bg-secondary text-muted-foreground text-xs hover:bg-secondary/70 transition-colors"
+                      className="shrink-0 p-2.5 rounded-xl bg-secondary text-muted-foreground hover:bg-secondary/70 transition-colors"
                     >
-                      <X size={14} />
+                      <X size={15} />
                     </button>
                   </div>
                 </div>
@@ -406,7 +406,7 @@ function NoteCard({
 
           {/* Title / rename */}
           {isEditing ? (
-            <div className="flex-1 flex items-center gap-1.5">
+            <div className="flex-1 flex items-center gap-1.5 min-w-0">
               <input
                 autoFocus
                 value={editDraft}
@@ -415,13 +415,13 @@ function NoteCard({
                   if (e.key === 'Enter') onSaveRename();
                   if (e.key === 'Escape') onCancelRename();
                 }}
-                className="flex-1 px-2.5 py-1.5 rounded-xl border border-border bg-white dark:bg-background text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="flex-1 min-w-0 px-2.5 py-1.5 rounded-xl border border-border bg-white dark:bg-background text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/40"
               />
-              <button onClick={onSaveRename} className="text-primary p-1 rounded-lg hover:bg-white/50 transition-colors">
-                <Check size={14} />
+              <button onClick={onSaveRename} className="shrink-0 text-primary p-2 rounded-lg hover:bg-white/50 transition-colors">
+                <Check size={15} />
               </button>
-              <button onClick={onCancelRename} className="text-muted-foreground p-1 rounded-lg hover:bg-white/50 transition-colors">
-                <X size={14} />
+              <button onClick={onCancelRename} className="shrink-0 text-muted-foreground p-2 rounded-lg hover:bg-white/50 transition-colors">
+                <X size={15} />
               </button>
             </div>
           ) : (

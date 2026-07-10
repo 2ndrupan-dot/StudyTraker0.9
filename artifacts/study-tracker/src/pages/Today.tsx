@@ -1402,7 +1402,7 @@ export function Today() {
                 <Plus size={9} /> {t('loadedExtraBadge')}
               </span>
             )}
-            <h3 className={`font-bold text-sm leading-snug flex-1 ${done ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+            <h3 className={`font-bold text-sm leading-snug flex-1 min-w-0 line-clamp-3 ${done ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
               {task.mainTitle}
               <span className="ml-1.5 text-[70%] text-muted-foreground/55 font-medium not-italic align-baseline">({levelNum})</span>
             </h3>

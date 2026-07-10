@@ -902,7 +902,7 @@ export function Subjects() {
                   >
                     <div className="pl-3 flex-1 min-w-0">
                       {/* Title */}
-                      <h3 className="font-bold text-foreground text-base leading-tight line-clamp-2 break-words mb-0.5">{subj.title}</h3>
+                      <h3 className="font-bold text-foreground text-base leading-tight line-clamp-3 mb-0.5">{subj.title}</h3>
                       {/* Badges row — L1, days, status badges, marks */}
                       <div className="flex items-center gap-1 flex-wrap mb-1">
                         <span className="text-[9px] font-bold text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded border border-border/40">L1</span>
@@ -1054,7 +1054,7 @@ export function Subjects() {
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                       <BookOpen size={13} className="text-primary shrink-0" />
-                                      <span className={`font-semibold text-sm ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                      <span className={`font-semibold text-sm flex-1 min-w-0 line-clamp-3 ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                         {chapter.title}
                                       </span>
                                       <span className="text-[9px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L2</span>
@@ -1147,7 +1147,7 @@ export function Subjects() {
                                                 <div className="flex-1 min-w-0">
                                                   <div className="flex items-center gap-1.5 flex-wrap">
                                                     <Layers size={11} className="text-accent-foreground shrink-0" />
-                                                    <span className={`text-xs font-semibold ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                    <span className={`text-xs font-semibold flex-1 min-w-0 line-clamp-3 ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                       {topic.title}
                                                     </span>
                                                     <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L3</span>
@@ -1235,7 +1235,7 @@ export function Subjects() {
                                                               <div className="flex-1 min-w-0">
                                                                 <div className="flex items-center gap-1 flex-wrap">
                                                                   <List size={10} className="text-blue-400 shrink-0" />
-                                                                  <span className={`text-[11px] font-medium ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                  <span className={`text-[11px] font-medium flex-1 min-w-0 line-clamp-3 ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                                     {sub.title}
                                                                   </span>
                                                                   <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L4</span>
@@ -1308,7 +1308,7 @@ export function Subjects() {
                                                                             <div className="flex-1 min-w-0">
                                                                               <div className="flex items-center gap-1 flex-wrap">
                                                                                 <Lightbulb size={9} className="text-yellow-500 shrink-0" />
-                                                                                <span className={`text-[10px] font-medium ${isConceptContentDone(concept) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                                <span className={`text-[10px] font-medium flex-1 min-w-0 line-clamp-3 ${isConceptContentDone(concept) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                                                   {concept.title}
                                                                                 </span>
                                                                                 <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L5</span>
@@ -1376,7 +1376,7 @@ export function Subjects() {
                                                                                           {ptLocked ? <Lock size={10} className="text-muted-foreground/30" /> : point.completed ? <CheckCircle2 size={10} className="text-green-500" /> : <Circle size={10} className="text-muted-foreground" />}
                                                                                         </button>
                                                                                         <Dot size={10} className="text-muted-foreground shrink-0" />
-                                                                                        <span className={`text-[9px] font-medium flex-1 min-w-0 ${point.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                                        <span className={`text-[9px] font-medium flex-1 min-w-0 line-clamp-3 ${point.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                                                           {point.title}
                                                                                         </span>
                                                                                         <span className="text-[7px] font-bold text-muted-foreground/40 bg-secondary/60 px-1 py-0.5 rounded border border-border/20 shrink-0">L6</span>

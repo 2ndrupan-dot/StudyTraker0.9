@@ -1724,22 +1724,7 @@ export function Today() {
               </motion.div>
             )}
 
-            {/* ── Load More button (when plan has tasks) ── */}
-            {incompleteSubjectGroups.length > 0 && (
-              <div className="mb-4 flex flex-col items-center gap-1.5">
-                <button
-                  onClick={loadMore}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-dashed border-border/70 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-secondary/40 hover:border-primary/50 transition-all"
-                >
-                  <Plus size={12} /> {t('loadMore')}
-                </button>
-                {extraLoadedMins > 0 && (
-                  <span className="text-[10px] text-muted-foreground/70">
-                    {isBn ? `+${extraLoadedMins} মিনিট অতিরিক্ত` : `+${extraLoadedMins} min extra loaded`}
-                  </span>
-                )}
-              </div>
-            )}
+            {/* ── Action Row: View Details (left) + Load More (right) ── */}
 
             {/* ── Load More notice toast ── */}
             <AnimatePresence>
@@ -1786,18 +1771,44 @@ export function Today() {
               </div>
             )}
 
-            {/* ── View Details button ── */}
+            {/* ── View Details + Load More side by side ── */}
             <div className="mb-4">
-              <button
-                onClick={() => setShowDetails(prev => !prev)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border/50 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors"
-              >
-                <TrendingUp size={12} />
-                {showDetails
-                  ? (isBn ? 'বিস্তারিত লুকান' : 'Hide Details')
-                  : (isBn ? 'বিস্তারিত দেখুন' : 'View Details')}
-                <ChevronDown size={12} className={`transition-transform duration-200 ${showDetails ? 'rotate-180' : ''}`} />
-              </button>
+              <div className="flex gap-2 mb-1">
+                {/* View Details — left */}
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setShowDetails(prev => !prev)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-sm"
+                  style={{ background: showDetails
+                    ? 'linear-gradient(135deg, hsl(263 80% 52%) 0%, hsl(243 88% 58%) 100%)'
+                    : 'linear-gradient(135deg, hsl(243 88% 62%) 0%, hsl(263 80% 60%) 100%)' }}
+                >
+                  <TrendingUp size={13} />
+                  {showDetails
+                    ? (isBn ? 'লুকান' : 'Hide Details')
+                    : (isBn ? 'বিস্তারিত দেখুন' : 'View Details')}
+                  <ChevronDown size={12} className={`transition-transform duration-200 ${showDetails ? 'rotate-180' : ''}`} />
+                </motion.button>
+
+                {/* Load More — right */}
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={loadMore}
+                  disabled={incompleteSubjectGroups.length === 0}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm"
+                  style={incompleteSubjectGroups.length > 0
+                    ? { background: 'linear-gradient(135deg, hsl(172 70% 38%) 0%, hsl(192 85% 45%) 100%)', color: 'white' }
+                    : { background: 'hsl(var(--secondary))', color: 'hsl(var(--muted-foreground))', opacity: 0.6 }}
+                >
+                  <Plus size={13} />
+                  {isBn ? 'আরও লোড করুন' : 'Load More'}
+                </motion.button>
+              </div>
+              {extraLoadedMins > 0 && (
+                <p className="text-center text-[10px] text-muted-foreground/70">
+                  {isBn ? `+${extraLoadedMins} মিনিট অতিরিক্ত লোড হয়েছে` : `+${extraLoadedMins} min extra loaded`}
+                </p>
+              )}
 
               <AnimatePresence>
                 {showDetails && (

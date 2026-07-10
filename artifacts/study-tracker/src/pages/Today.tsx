@@ -215,7 +215,7 @@ function generateSmartPlan(
   }
 
   // Max subjects per session based on available time
-  const maxSubjects = dailyBudgetMinutes < 90 ? 1 : 3;
+  const maxSubjects = dailyBudgetMinutes < 90 ? 1 : 2;
   const n = subjCandidates.length;
 
   let selected: SubjectCandidate[];

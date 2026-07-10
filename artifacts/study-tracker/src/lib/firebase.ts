@@ -8,12 +8,12 @@ import {
 } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAZGUkLUQ61bEyIvnp-NEYSrNF8xzxYKzA",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "studytraker-ef123.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "studytraker-ef123",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "studytraker-ef123.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "19815454438",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:19815454438:web:0fa92d6250ed3df2ff0d27",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);

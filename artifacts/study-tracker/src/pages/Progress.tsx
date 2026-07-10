@@ -549,13 +549,13 @@ export function Progress() {
         <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-3xl p-4 border border-primary/20 shadow-sm">
           {/* Top row: label + add button — perfectly parallel */}
           <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-            <p className="text-[9px] sm:text-[10px] font-semibold text-primary/70 uppercase tracking-normal">{t('currentCourse')}</p>
+            <p className="text-xs font-semibold text-primary/70 uppercase tracking-wider">{t('currentCourse')}</p>
             <button
               onClick={() => { setNewCourseName(''); setNewCourseError(''); setModals({ ...modals, addCourse: true }); }}
-              className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-foreground bg-secondary hover:bg-secondary/70 transition-colors px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 text-sm font-semibold text-foreground bg-secondary hover:bg-secondary/70 transition-colors px-3 py-1.5 rounded-xl whitespace-nowrap shrink-0"
               title={t('addCourse')}
             >
-              <Plus size={11} />
+              <Plus size={14} />
               <span>{t('addCourse')}</span>
             </button>
           </div>

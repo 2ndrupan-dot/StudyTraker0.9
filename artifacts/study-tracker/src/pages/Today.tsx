@@ -1570,25 +1570,47 @@ export function Today() {
                 <p className="text-white/70 text-[11px] font-semibold tracking-widest leading-none mb-1">{formatTodayDisplayIST(settings.timezone)}</p>
                 <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight break-words" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('todayPlan')}</h1>
               </div>
-              {/* Mobile browser only: install/share button */}
+            </div>
+            {/* Stat pills row + install button */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={() => { setDaysInput(settings.courseTotalDays?.toString() || ''); setDaysModalOpen(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
+              >
+                <Target size={12} className="text-white/80 shrink-0" />
+                <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('courseCompletion')}:</span>
+                <span className="text-white text-[12px] font-bold">{settings.courseTotalDays ? `${settings.courseTotalDays} Days` : '—'}</span>
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={() => { setHoursInput(settings.dailyStudyHours?.toString() || '3'); setHoursModalOpen(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
+              >
+                <AlarmClock size={12} className="text-white/80 shrink-0" />
+                <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('dailyStudyHours')}:</span>
+                <span className="text-white text-[12px] font-bold">{settings.dailyStudyHours ?? 3} Hours</span>
+              </motion.button>
+
+              {/* Mobile browser only: install/share — aligned to the right */}
               {isMobileBrowser && !isInstalled && (
-                <div className="relative shrink-0">
+                <div className="relative ml-auto shrink-0">
                   <motion.button
                     whileTap={{ scale: 0.9 }}
                     onClick={() => setShowInstallMenu(v => !v)}
-                    className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg"
+                    className="w-9 h-9 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg"
                     aria-label={t('installApp')}
                   >
-                    <Download size={18} className="text-white" />
+                    <Download size={16} className="text-white" />
                   </motion.button>
                   <AnimatePresence>
                     {showInstallMenu && (
                       <>
                         <motion.div
-                          initial={{ opacity: 0, scale: 0.9, y: -8 }}
+                          initial={{ opacity: 0, scale: 0.9, y: 6 }}
                           animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.9, y: -8 }}
-                          className="absolute top-12 right-0 z-50 bg-card border border-border/60 rounded-2xl shadow-xl p-2 min-w-[185px]"
+                          exit={{ opacity: 0, scale: 0.9, y: 6 }}
+                          className="absolute bottom-11 right-0 z-50 bg-card border border-border/60 rounded-2xl shadow-xl p-2 min-w-[185px]"
                         >
                           {canInstall && (
                             <button
@@ -1613,27 +1635,6 @@ export function Today() {
                   </AnimatePresence>
                 </div>
               )}
-            </div>
-            {/* Stat pills row */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={() => { setDaysInput(settings.courseTotalDays?.toString() || ''); setDaysModalOpen(true); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
-              >
-                <Target size={12} className="text-white/80 shrink-0" />
-                <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('courseCompletion')}:</span>
-                <span className="text-white text-[12px] font-bold">{settings.courseTotalDays ? `${settings.courseTotalDays} Days` : '—'}</span>
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={() => { setHoursInput(settings.dailyStudyHours?.toString() || '3'); setHoursModalOpen(true); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
-              >
-                <AlarmClock size={12} className="text-white/80 shrink-0" />
-                <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('dailyStudyHours')}:</span>
-                <span className="text-white text-[12px] font-bold">{settings.dailyStudyHours ?? 3} Hours</span>
-              </motion.button>
             </div>
           </div>
         </div>

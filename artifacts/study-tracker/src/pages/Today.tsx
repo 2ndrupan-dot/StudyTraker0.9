@@ -1273,7 +1273,7 @@ export function Today() {
         key={task.key}
         initial={{ opacity: 0, y: 14 }}
         whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.05 }}
+        viewport={{ once: false, amount: 0.05 }}
         transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
         className={`bg-card rounded-2xl border relative overflow-hidden ${done ? 'opacity-55 border-border/30' : 'border-border/60 shadow-sm card-hover'}`}
       >
@@ -1424,7 +1424,7 @@ export function Today() {
         key={group.subjectId}
         initial={{ opacity: 0, y: 14 }}
         whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.05 }}
+        viewport={{ once: false, amount: 0.05 }}
         transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
         className="rounded-2xl border border-border/60 overflow-hidden shadow-sm"
       >

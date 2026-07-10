@@ -541,7 +541,7 @@ export function Subjects() {
             <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0">
               <BookOpen size={22} className="text-white" strokeWidth={2.2} />
             </div>
-            <h1 className="text-2xl font-bold text-white leading-tight truncate" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('subjects')}</h1>
+            <h1 className="font-bold text-white leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(1.05rem, 5.5vw, 1.5rem)', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('subjects')}</h1>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <motion.div whileTap={{ scale: 0.95 }}>

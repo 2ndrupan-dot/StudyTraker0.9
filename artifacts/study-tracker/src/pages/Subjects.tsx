@@ -803,10 +803,11 @@ export function Subjects() {
                 {(subjHandle) => (
                 <motion.div
                   id={`study-item-${subj.id}`}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0, y: 22 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, amount: 0.05 }}
                   exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ delay: idx * 0.05, type: 'spring', stiffness: 260, damping: 22 }}
+                  transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
                   className="bg-card rounded-2xl shadow-sm border border-border/60 overflow-hidden card-hover"
                 >
                   {/* Subject header */}

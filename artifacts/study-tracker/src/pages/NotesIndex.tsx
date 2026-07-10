@@ -389,10 +389,11 @@ function NoteCard({
   return (
     <motion.li
       layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, y: 14 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.05 }}
       exit={{ opacity: 0, scale: 0.96, y: -4 }}
-      transition={{ duration: 0.2, delay: 0.03 * Math.min(index, 6) }}
+      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
     >
       <div className={`group relative bg-gradient-to-r ${accent} border rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden`}>
         <div className="flex items-center gap-3 px-4 py-3.5">

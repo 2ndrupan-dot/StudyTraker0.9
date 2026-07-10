@@ -1269,8 +1269,12 @@ export function Today() {
     const done = task.isCompleted;
 
     return (
-      <div
+      <motion.div
         key={task.key}
+        initial={{ opacity: 0, y: 14 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.05 }}
+        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
         className={`bg-card rounded-2xl border relative overflow-hidden ${done ? 'opacity-55 border-border/30' : 'border-border/60 shadow-sm card-hover'}`}
       >
         <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full" style={{ backgroundColor: task.subjectColor }} />
@@ -1405,7 +1409,7 @@ export function Today() {
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
     );
   };
 
@@ -1418,8 +1422,10 @@ export function Today() {
     return (
       <motion.div
         key={group.subjectId}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0, y: 14 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.05 }}
+        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
         className="rounded-2xl border border-border/60 overflow-hidden shadow-sm"
       >
         <button

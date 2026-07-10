@@ -298,7 +298,8 @@ function OverallNotesCard() {
         custom={0.5}
         variants={cardVariants}
         initial="hidden"
-        animate="visible"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.05 }}
         onClick={openModal}
         className="bg-card border border-border/60 rounded-2xl p-4 mb-6 shadow-sm cursor-pointer hover:shadow-md hover:border-indigo-300/60 transition-all group"
       >
@@ -530,7 +531,8 @@ export function Progress() {
           custom={0}
           variants={cardVariants}
           initial="hidden"
-          animate="visible"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.05 }}
           onClick={openProfileModal}
           className="bg-card rounded-3xl p-5 shadow-lg shadow-black/5 border border-border/50 mb-5 flex items-center gap-4 cursor-pointer hover:shadow-xl transition-all group"
         >
@@ -562,7 +564,8 @@ export function Progress() {
           custom={-1}
           variants={cardVariants}
           initial="hidden"
-          animate="visible"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.05 }}
           className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-3xl p-4 border border-primary/20 mb-6 shadow-sm"
         >
           <div className="flex items-center justify-between gap-3">
@@ -611,7 +614,7 @@ export function Progress() {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-4 mb-6">
-          <motion.div custom={1} variants={cardVariants} initial="hidden" animate="visible" className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
+          <motion.div custom={1} variants={cardVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.05 }} className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
             <div className="text-primary bg-primary/10 w-9 h-9 rounded-full flex items-center justify-center mb-3">
               <ShieldCheck size={18} />
             </div>
@@ -625,7 +628,7 @@ export function Progress() {
             </motion.p>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-1">{t('completed')} {t('subjects')}</p>
           </motion.div>
-          <motion.div custom={2} variants={cardVariants} initial="hidden" animate="visible" className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
+          <motion.div custom={2} variants={cardVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.05 }} className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
             <div className="text-green-500 bg-green-500/10 w-9 h-9 rounded-full flex items-center justify-center mb-3">
               <BookOpen size={18} />
             </div>
@@ -639,7 +642,8 @@ export function Progress() {
           custom={3}
           variants={cardVariants}
           initial="hidden"
-          animate="visible"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.05 }}
           className="bg-card rounded-3xl p-6 shadow-md border border-border/50 mb-6 relative overflow-hidden"
         >
           <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
@@ -682,7 +686,8 @@ export function Progress() {
                 custom={i + 4}
                 variants={cardVariants}
                 initial="hidden"
-                animate="visible"
+                whileInView="visible"
+                viewport={{ once: true, amount: 0.05 }}
                 className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col gap-3"
               >
                 <div className="flex justify-between items-start">

@@ -993,14 +993,12 @@ export function Today() {
     if (dirty) { setLockedPlan(currentPlan); syncPlan(todayStr, currentPlan); }
   }, [subjects, planReady]); // eslint-disable-line
 
-  // ── Auto-scroll to first incomplete item ─────────────────────────────────
-  useEffect(() => {
-    if (!planReady) return;
-    const timer = setTimeout(() => {
-      firstIncompleteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [planReady]); // eslint-disable-line
+  // NOTE: there used to be an auto-scroll-to-first-incomplete-item effect here.
+  // It fired ~400ms after the plan loaded and silently scrolled the page down,
+  // which is what made the sticky header appear to "swallow" the pending/
+  // revision icons right after opening/refreshing the Today section — the
+  // page hadn't been scrolled by the user, it was scrolled by this effect.
+  // Removed so the page only scrolls when the user scrolls it themselves.
 
   // ── Regenerate when hours change ───────────────────────────────────────────
   useEffect(() => {

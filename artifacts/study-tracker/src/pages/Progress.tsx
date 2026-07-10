@@ -6,7 +6,7 @@ import type { MarkPath } from '@/lib/types';
 import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
-import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, FileText, ExternalLink, Globe } from 'lucide-react';
+import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, FileText, ExternalLink, Globe, RotateCcw, AlertTriangle, Clock } from 'lucide-react';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 import { getTimezoneEntry, getCurrentOffset, getFlagUrl } from '@/lib/timezones';
 import { Modal, ConfirmModal, Input, Button, NoteEditorModal, NotePagePreviewModal } from '@/components/ui';
@@ -327,7 +327,7 @@ function OverallNotesCard() {
 export function Progress() {
   const { user, logout, updateProfile, updateProfilePhoto } = useAuth();
   const { subjects, settings, setCourseStartDate, setTimezone } = useStudy();
-  const { courses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse } = useCourse();
+  const { courses, deletedCourses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse, restoreCourse, permanentlyDeleteCourse } = useCourse();
   const { t, lang, setLang } = useLang();
 
   const [modals, setModals] = useState({ profile: false, settings: false, logout: false, addCourse: false, switchCourse: false });
@@ -349,10 +349,17 @@ export function Progress() {
   const [renamingCourse, setRenamingCourse] = useState<{ id: string; name: string } | null>(null);
   const [renameLoading, setRenameLoading] = useState(false);
 
-  // Delete course
+  // Delete course (soft)
   const [deletingCourse, setDeletingCourse] = useState<{ id: string; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [cannotDeleteError, setCannotDeleteError] = useState(false);
+
+  // Trash / restore
+  const [trashModalOpen, setTrashModalOpen] = useState(false);
+  const [permDeleteTarget, setPermDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [permDeleteLoading, setPermDeleteLoading] = useState(false);
+  const [restoreLoadingId, setRestoreLoadingId] = useState<string | null>(null);
+  const [movedToTrashMsg, setMovedToTrashMsg] = useState('');
 
   // Course Start Date state
   const [pendingStartDate, setPendingStartDate] = useState('');
@@ -438,7 +445,7 @@ export function Progress() {
     }
   };
 
-  // Delete course handler
+  // Delete course handler (soft delete → trash)
   const handleDeleteCourse = async () => {
     if (!deletingCourse) return;
     if (courses.length <= 1) {
@@ -451,8 +458,35 @@ export function Progress() {
     try {
       await deleteCourse(deletingCourse.id);
       setDeletingCourse(null);
+      setModals(m => ({ ...m, switchCourse: false }));
+      setMovedToTrashMsg(lang === 'bn'
+        ? `"${deletingCourse.name}" ট্র্যাশে সরানো হয়েছে। ১ বছরের মধ্যে রিস্টোর করুন।`
+        : `"${deletingCourse.name}" moved to trash. You can restore it within 1 year.`);
+      setTimeout(() => setMovedToTrashMsg(''), 5000);
     } catch { /* ignore */ } finally {
       setDeleteLoading(false);
+    }
+  };
+
+  // Permanently delete a trashed course
+  const handlePermanentDelete = async () => {
+    if (!permDeleteTarget) return;
+    setPermDeleteLoading(true);
+    try {
+      await permanentlyDeleteCourse(permDeleteTarget.id);
+      setPermDeleteTarget(null);
+    } catch { /* ignore */ } finally {
+      setPermDeleteLoading(false);
+    }
+  };
+
+  // Restore a trashed course
+  const handleRestore = async (courseId: string) => {
+    setRestoreLoadingId(courseId);
+    try {
+      await restoreCourse(courseId);
+    } catch { /* ignore */ } finally {
+      setRestoreLoadingId(null);
     }
   };
 
@@ -514,6 +548,27 @@ export function Progress() {
         </div>
       </div>
       <div className="p-5">
+        {/* Moved to trash toast */}
+        <AnimatePresence>
+          {movedToTrashMsg && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="flex items-center gap-2.5 mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-2xl shadow-sm"
+            >
+              <Trash2 size={14} className="text-amber-500 shrink-0" />
+              <p className="text-xs text-amber-700 font-medium flex-1">{movedToTrashMsg}</p>
+              <button
+                onClick={() => { setMovedToTrashMsg(''); setTrashModalOpen(true); }}
+                className="text-xs text-amber-600 font-semibold underline underline-offset-2 shrink-0"
+              >
+                {lang === 'bn' ? 'ট্র্যাশ দেখুন' : 'View Trash'}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* User Card */}
         <ScrollReveal className="mb-5">
         <div
@@ -945,7 +1000,18 @@ export function Progress() {
         icon={BookOpenCheck}
       >
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground mb-3">{t('selectCourse')}</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-muted-foreground">{t('selectCourse')}</p>
+            {deletedCourses.length > 0 && (
+              <button
+                onClick={() => { setModals(m => ({ ...m, switchCourse: false })); setTrashModalOpen(true); }}
+                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors px-2.5 py-1.5 rounded-xl hover:bg-destructive/8 border border-border/50"
+              >
+                <Trash2 size={12} />
+                {lang === 'bn' ? 'ট্র্যাশ' : 'Trash'} ({deletedCourses.length})
+              </button>
+            )}
+          </div>
 
           {/* Cannot delete error */}
           <AnimatePresence>
@@ -1072,14 +1138,106 @@ export function Progress() {
         </div>
       </Modal>
 
-      {/* Delete Course Confirm */}
+      {/* Delete Course Confirm (soft delete → trash) */}
       <ConfirmModal
         isOpen={!!deletingCourse}
         onClose={() => setDeletingCourse(null)}
         onConfirm={handleDeleteCourse}
         title={`${t('deleteCourse')}: ${deletingCourse?.name ?? ''}`}
-        message={t('deleteCourseConfirm')}
-        confirmText={t('deleteCourse')}
+        message={lang === 'bn'
+          ? 'কোর্সটি ট্র্যাশে সরানো হবে। ১ বছরের মধ্যে রিস্টোর করতে পারবেন।'
+          : 'Course will be moved to trash. You can restore it within 1 year.'}
+        confirmText={lang === 'bn' ? 'ট্র্যাশে সরাও' : 'Move to Trash'}
+        cancelText={t('cancel')}
+        isDanger={true}
+      />
+
+      {/* Trash Modal */}
+      <Modal
+        isOpen={trashModalOpen}
+        onClose={() => setTrashModalOpen(false)}
+        title={lang === 'bn' ? 'ট্র্যাশ' : 'Trash'}
+        align="bottom"
+        icon={Trash2}
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground mb-3">
+            {lang === 'bn'
+              ? 'ডিলিট করা কোর্সগুলো ১ বছর পর্যন্ত এখানে থাকবে।'
+              : 'Deleted courses are kept here for up to 1 year.'}
+          </p>
+
+          {deletedCourses.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 gap-3 text-muted-foreground">
+              <Trash2 size={36} className="opacity-20" />
+              <p className="text-sm">{lang === 'bn' ? 'ট্র্যাশ খালি' : 'Trash is empty'}</p>
+            </div>
+          ) : (
+            <AnimatePresence>
+              {deletedCourses.map((course, i) => {
+                const daysLeft = Math.ceil((365 * 24 * 60 * 60 * 1000 - (Date.now() - course.deletedAt)) / (24 * 60 * 60 * 1000));
+                const isRestoring = restoreLoadingId === course.id;
+                return (
+                  <motion.div
+                    key={course.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="flex items-center gap-3 p-3 rounded-2xl border border-border/50 bg-secondary/50"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-background flex items-center justify-center shrink-0">
+                      <BookMarked size={15} className="text-muted-foreground/60" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-foreground truncate">{course.name}</p>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Clock size={10} className="text-amber-500 shrink-0" />
+                        <p className="text-[10px] text-amber-600 font-medium">
+                          {lang === 'bn' ? `${daysLeft} দিন বাকি` : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {/* Restore */}
+                      <button
+                        onClick={() => handleRestore(course.id)}
+                        disabled={!!isRestoring}
+                        className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-2.5 py-1.5 rounded-xl disabled:opacity-50"
+                        title={lang === 'bn' ? 'রিস্টোর করুন' : 'Restore'}
+                      >
+                        {isRestoring
+                          ? <span className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                          : <RotateCcw size={12} />}
+                        <span className="hidden sm:inline">{lang === 'bn' ? 'রিস্টোর' : 'Restore'}</span>
+                      </button>
+                      {/* Permanent delete */}
+                      <button
+                        onClick={() => setPermDeleteTarget({ id: course.id, name: course.name })}
+                        className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        title={lang === 'bn' ? 'চিরতরে মুছুন' : 'Delete permanently'}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          )}
+        </div>
+      </Modal>
+
+      {/* Permanent Delete Confirm */}
+      <ConfirmModal
+        isOpen={!!permDeleteTarget}
+        onClose={() => setPermDeleteTarget(null)}
+        onConfirm={handlePermanentDelete}
+        title={lang === 'bn' ? 'চিরতরে মুছে ফেলুন' : 'Delete Permanently'}
+        message={lang === 'bn'
+          ? `"${permDeleteTarget?.name ?? ''}" এবং সকল ডেটা চিরতরে মুছে যাবে। এটি পূর্বাবস্থায় ফেরানো যাবে না।`
+          : `"${permDeleteTarget?.name ?? ''}" and all its data will be permanently erased. This cannot be undone.`}
+        confirmText={lang === 'bn' ? 'চিরতরে মুছুন' : 'Delete Forever'}
         cancelText={t('cancel')}
         isDanger={true}
       />

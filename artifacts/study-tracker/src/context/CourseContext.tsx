@@ -16,8 +16,15 @@ export interface Course {
   createdAt: number;
 }
 
+export interface DeletedCourse extends Course {
+  deletedAt: number; // unix ms — expires after 1 year
+}
+
+const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+
 interface CourseContextType {
   courses: Course[];
+  deletedCourses: DeletedCourse[];
   activeCourseId: string | null;
   activeCourse: Course | null;
   coursesLoaded: boolean;
@@ -26,6 +33,8 @@ interface CourseContextType {
   switchCourse: (courseId: string) => void;
   renameCourse: (courseId: string, name: string) => Promise<void>;
   deleteCourse: (courseId: string) => Promise<void>;
+  restoreCourse: (courseId: string) => Promise<void>;
+  permanentlyDeleteCourse: (courseId: string) => Promise<void>;
 }
 
 const CourseContext = createContext<CourseContextType | undefined>(undefined);
@@ -58,12 +67,14 @@ function clearTodayPlanForUser(email: string, courseId: string) {
 export function CourseProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
+  const [deletedCourses, setDeletedCourses] = useState<DeletedCourse[]>([]);
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const [coursesLoaded, setCoursesLoaded] = useState(false);
 
   useEffect(() => {
     if (!user) {
       setCourses([]);
+      setDeletedCourses([]);
       setActiveCourseId(null);
       setCoursesLoaded(false);
       return;
@@ -73,11 +84,35 @@ export function CourseProvider({ children }: { children: ReactNode }) {
 
     const loadCourses = async () => {
       try {
+        // Load active courses
         const colRef = collection(db, 'users', user.id, 'courses');
         const snap = await getDocs(colRef);
         const loaded: Course[] = snap.docs.map(d => d.data() as Course);
         loaded.sort((a, b) => a.createdAt - b.createdAt);
         setCourses(loaded);
+
+        // Load deleted courses — filter out anything older than 1 year
+        const now = Date.now();
+        const delColRef = collection(db, 'users', user.id, 'deletedCourses');
+        const delSnap = await getDocs(delColRef);
+        const deletedLoaded: DeletedCourse[] = delSnap.docs
+          .map(d => d.data() as DeletedCourse)
+          .filter(c => now - c.deletedAt < ONE_YEAR_MS);
+
+        // Purge expired ones from Firestore
+        const expired = delSnap.docs.filter(d => {
+          const c = d.data() as DeletedCourse;
+          return now - c.deletedAt >= ONE_YEAR_MS;
+        });
+        for (const expDoc of expired) {
+          const c = expDoc.data() as DeletedCourse;
+          deleteDoc(doc(db, 'users', user.id, 'deletedCourses', c.id)).catch(() => {});
+          deleteDoc(doc(db, 'users', user.id, 'studyData', c.id)).catch(() => {});
+          deleteDoc(doc(db, 'users', user.id, 'todayData', c.id)).catch(() => {});
+        }
+
+        deletedLoaded.sort((a, b) => b.deletedAt - a.deletedAt);
+        setDeletedCourses(deletedLoaded);
 
         if (loaded.length > 0) {
           const storedId = getActiveCourseIdFromStorage(user.email);
@@ -119,21 +154,19 @@ export function CourseProvider({ children }: { children: ReactNode }) {
 
     try {
       await setDoc(doc(db, 'users', user.id, 'courses', id), course);
-      // Migrate existing data from legacy 'main' doc on first course creation
       if (courses.length === 0) {
         const legacyRef = doc(db, 'users', user.id, 'studyData', 'main');
         const legacySnap = await getDoc(legacyRef);
         if (legacySnap.exists()) {
           await setDoc(doc(db, 'users', user.id, 'studyData', id), legacySnap.data());
         }
-        // Also migrate localStorage
         const legacyLsKey = `@study_data_${user.email}`;
         const legacyLsData = localStorage.getItem(legacyLsKey);
         if (legacyLsData) {
           localStorage.setItem(`@study_data_${id}_${user.email}`, legacyLsData);
         }
       }
-    } catch { /* offline, save locally */ }
+    } catch { /* offline */ }
 
     const updated = [...courses, course];
     setCourses(updated);
@@ -162,29 +195,68 @@ export function CourseProvider({ children }: { children: ReactNode }) {
     } catch { /* offline */ }
   };
 
+  /** Soft-delete: move course to trash. Study data is preserved. */
   const deleteCourse = async (courseId: string) => {
     if (!user) return;
     if (courses.length <= 1) throw new Error('Cannot delete the only course');
 
+    const course = courses.find(c => c.id === courseId);
+    if (!course) return;
+
+    const deletedCourse: DeletedCourse = { ...course, deletedAt: Date.now() };
+
+    // Move to deleted list in state
     const updated = courses.filter(c => c.id !== courseId);
     setCourses(updated);
     saveCoursesList(updated, user.email);
+    setDeletedCourses(prev => [deletedCourse, ...prev]);
 
-    // If we deleted the active course, switch to the first remaining one
     if (activeCourseId === courseId) {
       const next = updated[0];
       setActiveCourseId(next.id);
       setActiveCourseIdInStorage(user.email, next.id);
     }
 
-    // Delete from Firestore
+    // Firestore: remove from courses, add to deletedCourses (studyData kept intact)
     try {
       await deleteDoc(doc(db, 'users', user.id, 'courses', courseId));
+      await setDoc(doc(db, 'users', user.id, 'deletedCourses', courseId), deletedCourse);
+    } catch { /* offline */ }
+  };
+
+  /** Restore a soft-deleted course back to active courses. */
+  const restoreCourse = async (courseId: string) => {
+    if (!user) return;
+    const deleted = deletedCourses.find(c => c.id === courseId);
+    if (!deleted) return;
+
+    const { deletedAt: _deletedAt, ...course } = deleted;
+    const restored: Course = course;
+
+    const updatedDeleted = deletedCourses.filter(c => c.id !== courseId);
+    setDeletedCourses(updatedDeleted);
+    const updatedCourses = [...courses, restored].sort((a, b) => a.createdAt - b.createdAt);
+    setCourses(updatedCourses);
+    saveCoursesList(updatedCourses, user.email);
+
+    try {
+      await setDoc(doc(db, 'users', user.id, 'courses', courseId), restored);
+      await deleteDoc(doc(db, 'users', user.id, 'deletedCourses', courseId));
+    } catch { /* offline */ }
+  };
+
+  /** Permanently delete a trashed course and all its data. */
+  const permanentlyDeleteCourse = async (courseId: string) => {
+    if (!user) return;
+
+    setDeletedCourses(prev => prev.filter(c => c.id !== courseId));
+
+    try {
+      await deleteDoc(doc(db, 'users', user.id, 'deletedCourses', courseId));
       await deleteDoc(doc(db, 'users', user.id, 'studyData', courseId));
       await deleteDoc(doc(db, 'users', user.id, 'todayData', courseId));
-    } catch { /* offline, cleaned up locally */ }
+    } catch { /* offline */ }
 
-    // Clean up localStorage
     try {
       localStorage.removeItem(`@study_data_${courseId}_${user.email}`);
       ['today_plan_v2', 'pending_v2', 'revisions_v1'].forEach(k => {
@@ -199,6 +271,7 @@ export function CourseProvider({ children }: { children: ReactNode }) {
   return (
     <CourseContext.Provider value={{
       courses,
+      deletedCourses,
       activeCourseId,
       activeCourse,
       coursesLoaded,
@@ -207,6 +280,8 @@ export function CourseProvider({ children }: { children: ReactNode }) {
       switchCourse,
       renameCourse,
       deleteCourse,
+      restoreCourse,
+      permanentlyDeleteCourse,
     }}>
       {children}
     </CourseContext.Provider>

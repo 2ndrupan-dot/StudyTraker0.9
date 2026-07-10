@@ -25,14 +25,6 @@ function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = 
   }
 }
 
-const cardVariants = {
-  hidden: { opacity: 0, x: 48 },
-  visible: (i: number) => ({
-    opacity: 1, x: 0,
-    transition: { delay: i * 0.07, duration: 0.45, ease: [0.22, 1, 0.36, 1] }
-  }),
-};
-
 // ─── Note Search Modal ───────────────────────────────────────────────────────
 function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { subjects, notePagesIndex, setNote } = useStudy();
@@ -295,12 +287,7 @@ function OverallNotesCard() {
 
   return (
     <>
-      <motion.div
-        custom={0.5}
-        variants={cardVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: false, amount: 0.05 }}
+      <ScrollReveal
         onClick={openModal}
         className="bg-card border border-border/60 rounded-2xl p-4 mb-6 shadow-sm cursor-pointer hover:shadow-md hover:border-indigo-300/60 transition-all group"
       >
@@ -318,7 +305,7 @@ function OverallNotesCard() {
             <Pencil size={15} />
           </div>
         </div>
-      </motion.div>
+      </ScrollReveal>
 
       <NoteEditorModal
         isOpen={modalOpen}

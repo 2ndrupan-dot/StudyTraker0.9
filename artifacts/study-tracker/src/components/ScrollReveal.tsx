@@ -5,6 +5,7 @@ interface ScrollRevealProps {
   className?: string;
   style?: React.CSSProperties;
   key?: React.Key;
+  onClick?: React.MouseEventHandler<HTMLDivElement>;
 }
 
 /** Walk up the DOM to find the nearest scrolling ancestor (overflow-y: auto/scroll). */
@@ -21,7 +22,7 @@ function getScrollParent(el: HTMLElement | null): HTMLElement | null {
  * - Stays visible when the element exits upward (already-seen content stays shown)
  * - Resets instantly (no animation) when below the viewport so the next scroll-down re-animates
  */
-export function ScrollReveal({ children, className, style }: ScrollRevealProps) {
+export function ScrollReveal({ children, className, style, onClick }: ScrollRevealProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
 
@@ -56,6 +57,7 @@ export function ScrollReveal({ children, className, style }: ScrollRevealProps) 
     <div
       ref={ref}
       className={className}
+      onClick={onClick}
       style={{
         ...style,
         opacity: visible ? 1 : 0,

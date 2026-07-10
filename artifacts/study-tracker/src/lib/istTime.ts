@@ -70,13 +70,14 @@ export function addDaysIST(base: Date, days: number): Date {
 }
 
 /**
- * Display string for today (e.g. "Wednesday, May 28") in `tz` (or device local).
+ * Display string for today (e.g. "Friday, 10 July 2026") in `tz` (or device local).
  */
 export function formatTodayDisplayIST(tz?: string): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat('en-GB', {
     weekday: 'long',
-    month: 'long',
     day: 'numeric',
+    month: 'long',
+    year: 'numeric',
     ...(tz ? { timeZone: tz } : {}),
   }).format(new Date());
 }

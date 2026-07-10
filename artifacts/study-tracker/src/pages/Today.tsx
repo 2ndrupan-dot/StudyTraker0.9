@@ -1535,7 +1535,7 @@ export function Today() {
               <CheckCircle2 size={22} className="text-white" strokeWidth={2.2} />
             </div>
             <div>
-              <p className="text-white/70 text-[11px] font-semibold uppercase tracking-widest leading-none mb-1">{formatTodayDisplayIST(settings.timezone)}</p>
+              <p className="text-white/70 text-[11px] font-semibold tracking-widest leading-none mb-1">{formatTodayDisplayIST(settings.timezone)}</p>
               <h1 className="text-2xl font-bold text-white leading-tight" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('todayPlan')}</h1>
             </div>
           </div>
@@ -1570,7 +1570,7 @@ export function Today() {
             <div />
 
             {/* Right side icons */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" style={{ transform: 'translateZ(0)', WebkitBackfaceVisibility: 'hidden' }}>
               {/* ── Pending notification icon (always visible when plan ready) ── */}
               {planReady && (
                 <motion.button
@@ -1578,8 +1578,8 @@ export function Today() {
                   onClick={() => setShowPendingPanel(true)}
                   className="relative w-8 h-8 rounded-xl flex items-center justify-center border transition-all"
                   style={pendingItems.length > 0
-                    ? { backgroundColor: 'rgb(249 115 22 / 0.1)', borderColor: 'rgb(249 115 22 / 0.35)' }
-                    : { backgroundColor: 'var(--secondary)', borderColor: 'var(--border)' }}
+                    ? { backgroundColor: 'rgb(249 115 22 / 0.1)', borderColor: 'rgb(249 115 22 / 0.35)', transform: 'translateZ(0)' }
+                    : { backgroundColor: 'var(--secondary)', borderColor: 'var(--border)', transform: 'translateZ(0)' }}
                 >
                   <AlertTriangle size={14} className={pendingItems.length > 0 ? 'text-orange-500' : 'text-muted-foreground'} />
                   {pendingItems.length > 0 && (
@@ -1602,8 +1602,8 @@ export function Today() {
                   onClick={() => setShowRevisionPanel(true)}
                   className="relative w-8 h-8 rounded-xl flex items-center justify-center border transition-all"
                   style={dueRevisions.length > 0
-                    ? { backgroundColor: 'rgb(147 51 234 / 0.1)', borderColor: 'rgb(147 51 234 / 0.3)' }
-                    : { backgroundColor: 'var(--secondary)', borderColor: 'var(--border)' }}
+                    ? { backgroundColor: 'rgb(147 51 234 / 0.1)', borderColor: 'rgb(147 51 234 / 0.3)', transform: 'translateZ(0)' }
+                    : { backgroundColor: 'var(--secondary)', borderColor: 'var(--border)', transform: 'translateZ(0)' }}
                 >
                   <RefreshCw size={14} className={dueRevisions.length > 0 ? 'text-purple-600' : 'text-muted-foreground'} />
                   {/* Red badge — only when due revisions exist today */}

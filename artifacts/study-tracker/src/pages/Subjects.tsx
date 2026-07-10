@@ -920,8 +920,8 @@ export function Subjects() {
                   {/* Chapters */}
                   <AnimatePresence>
                     {isExpanded && (
-                      <motion.div {...collapseAnim} className="overflow-hidden bg-secondary/10 border-t border-border/40">
-                        <div className="p-3 pl-4 space-y-2">
+                      <motion.div {...collapseAnim} className="overflow-hidden bg-indigo-500/[0.04] border-t border-indigo-300/25">
+                        <div className="p-3 pl-4 space-y-2 border-l-[3px] border-indigo-400/30 ml-2.5">
                           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
                             const { active, over } = e;
                             if (!over || active.id === over.id) return;
@@ -949,9 +949,10 @@ export function Subjects() {
                               {(chHandle) => (
                               <motion.div id={`study-item-${chapter.id}`} {...itemAnim} className={`bg-card border rounded-xl overflow-hidden shadow-sm ${chLocked ? 'border-border/30 opacity-70' : 'border-border/50'} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`}>
                                 <div
-                                  className="p-3 flex items-center gap-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row"
+                                  className="p-3 flex items-center gap-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row relative"
                                   onClick={() => toggleChapter(chapter.id)}
                                 >
+                                  <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-indigo-400/70 rounded-r-full" />
                                   <button
                                     onClick={e => { e.stopPropagation(); if (!chLocked) toggleChapterComplete(subj.id, chapter.id); }}
                                     className={`shrink-0 transition-colors ${chLocked ? 'cursor-not-allowed text-muted-foreground/50' : 'text-muted-foreground hover:text-primary'}`}
@@ -1013,8 +1014,8 @@ export function Subjects() {
                                 {/* Topics */}
                                 <AnimatePresence>
                                   {chExpanded && (
-                                    <motion.div {...collapseAnim} className="overflow-hidden border-t border-border/30 bg-secondary/10">
-                                      <div className="p-2 pl-8 space-y-1.5">
+                                    <motion.div {...collapseAnim} className="overflow-hidden border-t border-violet-300/25 bg-violet-500/[0.05]">
+                                      <div className="p-2 pl-8 space-y-1.5 border-l-[3px] border-violet-400/30 ml-2.5">
                                         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
                                           const { active, over } = e;
                                           if (!over || active.id === over.id) return;
@@ -1036,9 +1037,10 @@ export function Subjects() {
                                             {(topHandle) => (
                                             <motion.div id={`study-item-${topic.id}`} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${topLocked ? 'border-border/20 opacity-60' : 'border-border/40'} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`}>
                                               <div
-                                                className="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-secondary/20 group/row"
+                                                className="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-secondary/20 group/row relative"
                                                 onClick={() => toggleTopic(topic.id)}
                                               >
+                                                <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-violet-400/70 rounded-r-full" />
                                                 <button
                                                   onClick={e => { e.stopPropagation(); if (!topLocked) toggleTopicComplete(subj.id, chapter.id, topic.id); }}
                                                   className="shrink-0"
@@ -1100,8 +1102,8 @@ export function Subjects() {
                                               {/* Subtopics */}
                                               <AnimatePresence>
                                                 {tExpanded && (
-                                                  <motion.div {...collapseAnim} className="overflow-hidden border-t border-border/20 bg-secondary/10">
-                                                    <div className="p-2 pl-10 space-y-1">
+                                                  <motion.div {...collapseAnim} className="overflow-hidden border-t border-sky-300/20 bg-sky-500/[0.05]">
+                                                    <div className="p-2 pl-10 space-y-1 border-l-[3px] border-sky-400/25 ml-2.5">
                                                       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
                                                         const { active, over } = e;
                                                         if (!over || active.id === over.id) return;
@@ -1123,9 +1125,10 @@ export function Subjects() {
                                                           {(subHandle) => (
                                                           <motion.div id={`study-item-${sub.id}`} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${subLocked ? 'border-border/15 opacity-55' : 'border-border/30'} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
                                                             <div
-                                                              className="px-2.5 py-2 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20 group/row"
+                                                              className="px-2.5 py-2 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
                                                               onClick={() => toggleSubtopicExpand(sub.id)}
                                                             >
+                                                              <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-sky-400/70 rounded-r-full" />
                                                               <button onClick={e => { e.stopPropagation(); if (!subLocked) toggleSubtopicComplete(subj.id, chapter.id, topic.id, sub.id); }} disabled={subLocked} title={subLocked ? t('completePrevSubtopic') : undefined}>
                                                                 {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : isSubtopicContentDone(sub) ? <CheckCircle2 size={13} className="text-green-500" /> : <Circle size={13} className="text-muted-foreground" />}
                                                               </button>

@@ -113,23 +113,23 @@ export function Auth() {
 
         <div className="text-center mb-5">
           <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow">StudyTrack</h1>
-          <p className="text-white/70 mt-1.5 text-sm">Manage your study time.</p>
+          <p className="text-white/85 mt-1.5 text-sm font-medium">Manage your study</p>
         </div>
 
         {/* Language toggle */}
         <div className="flex justify-end mb-4">
           <button
             onClick={() => setLang(lang === 'en' ? 'bn' : 'en')}
-            className="flex items-center gap-1.5 bg-white/20 backdrop-blur-sm border border-white/30 rounded-full px-3 py-1.5 shadow-sm"
+            className="flex items-center gap-2 bg-white/25 backdrop-blur-md border border-white/50 rounded-full px-3.5 py-1.5 shadow-md hover:bg-white/35 transition-colors"
           >
-            <span className={`text-xs font-bold transition-colors ${lang === 'en' ? 'text-white' : 'text-white/50'}`}>ENG</span>
-            <div className="relative w-8 h-4 bg-white/20 rounded-full mx-0.5">
+            <span className={`text-xs font-extrabold tracking-wide transition-colors ${lang === 'en' ? 'text-white drop-shadow' : 'text-white/60'}`}>ENG</span>
+            <div className="relative w-9 h-5 bg-white/30 rounded-full mx-0.5 border border-white/40">
               <div
-                className="absolute top-0.5 w-3 h-3 bg-white rounded-full shadow-sm transition-all duration-200"
+                className="absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all duration-200"
                 style={{ left: lang === 'en' ? '2px' : '18px' }}
               />
             </div>
-            <span className={`text-xs font-bold transition-colors ${lang === 'bn' ? 'text-white' : 'text-white/50'}`}>বাংলা</span>
+            <span className={`text-xs font-extrabold tracking-wide transition-colors ${lang === 'bn' ? 'text-white drop-shadow' : 'text-white/60'}`}>বাংলা</span>
           </button>
         </div>
 

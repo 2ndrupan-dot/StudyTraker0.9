@@ -85,7 +85,12 @@
     @apply border-border;
   }
   body {
-    @apply font-sans antialiased bg-background text-foreground overflow-x-hidden;
+    @apply font-sans antialiased text-foreground overflow-x-hidden;
+    background: linear-gradient(160deg,
+      hsl(243 40% 96%) 0%,
+      hsl(263 35% 96%) 40%,
+      hsl(240 35% 97%) 100%);
+    min-height: 100dvh;
     -webkit-tap-highlight-color: transparent;
   }
 }

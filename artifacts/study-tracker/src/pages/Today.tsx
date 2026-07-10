@@ -1534,9 +1534,9 @@ export function Today() {
             <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0">
               <CheckCircle2 size={22} className="text-white" strokeWidth={2.2} />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-white/70 text-[11px] font-semibold tracking-widest leading-none mb-1">{formatTodayDisplayIST(settings.timezone)}</p>
-              <h1 className="text-2xl font-bold text-white leading-tight" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('todayPlan')}</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight break-words" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('todayPlan')}</h1>
             </div>
           </div>
           {/* Stat pills row */}

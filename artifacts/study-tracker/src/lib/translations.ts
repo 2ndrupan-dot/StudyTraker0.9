@@ -55,7 +55,7 @@ export const translations = {
     daysGoal: "Days Goal",
     dailyStudyHours: "Daily Study Hours",
     dailyStudyHoursDesc: "How many hours can you study per day? We'll create a balanced daily plan.",
-    todayPlan: "Today's Plan",
+    todayPlan: "Today Study Plan",
     totalTime: "Total time",
     urgentTag: "URGENT",
     chapterLabel: "Chapter",

@@ -1772,7 +1772,7 @@ export function Today() {
 
             {/* ── View Details + Load More side by side ── */}
             <div className="mb-4">
-              <div className="flex gap-2 mb-1">
+              <ScrollReveal direction="right" delay={incompleteSubjectGroups.length * 0.08} className="flex gap-2 mb-1">
                 {/* View Details — left */}
                 <motion.button
                   whileTap={{ scale: 0.97 }}
@@ -1802,7 +1802,7 @@ export function Today() {
                   <Plus size={13} />
                   {isBn ? 'আরও লোড করুন' : 'Load More'}
                 </motion.button>
-              </div>
+              </ScrollReveal>
               {extraLoadedMins > 0 && (
                 <p className="text-center text-[10px] text-muted-foreground/70">
                   {isBn ? `+${extraLoadedMins} মিনিট অতিরিক্ত লোড হয়েছে` : `+${extraLoadedMins} min extra loaded`}

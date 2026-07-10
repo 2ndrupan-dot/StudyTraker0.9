@@ -296,7 +296,7 @@ function OverallNotesCard() {
             <NotebookPen size={17} className="text-indigo-600" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-indigo-600/80 uppercase tracking-wider mb-0.5">{t('overallNotes')}</p>
+            <p className="text-xs font-semibold text-indigo-600/80 tracking-wide mb-0.5">{t('overallNotes')}</p>
             {!hasNote && (
               <p className="text-sm text-muted-foreground italic">{t('overallNotePlaceholder')}</p>
             )}
@@ -547,45 +547,47 @@ export function Progress() {
         {/* Active Course Card */}
         <ScrollReveal className="mb-6">
         <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-3xl p-4 border border-primary/20 shadow-sm">
+          {/* Top row: label + add button — perfectly parallel */}
+          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+            <p className="text-[9px] sm:text-[10px] font-semibold text-primary/70 uppercase tracking-normal">{t('currentCourse')}</p>
+            <button
+              onClick={() => { setNewCourseName(''); setNewCourseError(''); setModals({ ...modals, addCourse: true }); }}
+              className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-foreground bg-secondary hover:bg-secondary/70 transition-colors px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl whitespace-nowrap shrink-0"
+              title={t('addCourse')}
+            >
+              <Plus size={11} />
+              <span>{t('addCourse')}</span>
+            </button>
+          </div>
+          {/* Bottom row: icon + course name + rename/switch */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
                 <BookMarked size={18} className="text-primary" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[9px] sm:text-[10px] font-semibold text-primary/70 uppercase tracking-normal whitespace-nowrap">{t('currentCourse')}</p>
                 <p className="font-bold text-foreground text-sm line-clamp-2 break-words">{activeCourse?.name ?? '—'}</p>
               </div>
             </div>
-            <div className="flex flex-col gap-1.5 shrink-0 items-end">
+            <div className="flex gap-1.5 shrink-0">
               <button
-                onClick={() => { setNewCourseName(''); setNewCourseError(''); setModals({ ...modals, addCourse: true }); }}
-                className="flex items-center gap-1 text-xs font-semibold text-foreground bg-secondary hover:bg-secondary/70 transition-colors px-2.5 py-1.5 rounded-xl shrink-0"
-                title={t('addCourse')}
+                onClick={() => activeCourse && setRenamingCourse({ id: activeCourse.id, name: activeCourse.name })}
+                className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-muted-foreground bg-secondary hover:bg-secondary/70 transition-colors px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl whitespace-nowrap"
+                title={t('renameCourse')}
               >
-                <Plus size={12} />
-                <span className="hidden sm:inline">{t('addCourse')}</span>
+                <Pencil size={11} />
+                <span className="hidden sm:inline">{t('rename')}</span>
               </button>
-              <div className="flex gap-1.5">
+              {courses.length > 1 && (
                 <button
-                  onClick={() => activeCourse && setRenamingCourse({ id: activeCourse.id, name: activeCourse.name })}
-                  className="flex items-center gap-1 text-xs font-semibold text-muted-foreground bg-secondary hover:bg-secondary/70 transition-colors px-2.5 py-1.5 rounded-xl"
-                  title={t('renameCourse')}
+                  onClick={() => setModals({ ...modals, switchCourse: true })}
+                  className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl whitespace-nowrap"
+                  title={t('switchCourse')}
                 >
-                  <Pencil size={12} />
-                  <span className="hidden sm:inline">{t('rename')}</span>
+                  <ArrowLeftRight size={11} />
+                  <span className="hidden sm:inline">{t('switchCourse')}</span>
                 </button>
-                {courses.length > 1 && (
-                  <button
-                    onClick={() => setModals({ ...modals, switchCourse: true })}
-                    className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-2.5 py-1.5 rounded-xl shrink-0"
-                    title={t('switchCourse')}
-                  >
-                    <ArrowLeftRight size={12} />
-                    <span className="hidden sm:inline">{t('switchCourse')}</span>
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -610,7 +612,7 @@ export function Progress() {
                 {completedSubjects}
               </motion.p>
             </div>
-            <p className="text-[9px] sm:text-[11px] font-semibold text-muted-foreground uppercase tracking-normal whitespace-nowrap">{t('completed')} {t('subjects')}</p>
+            <p className="text-[9px] sm:text-[11px] font-semibold text-muted-foreground tracking-normal whitespace-nowrap">{t('completed')} {t('subjects')}</p>
           </ScrollReveal>
           <ScrollReveal className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
             <div className="flex items-center gap-2.5 mb-2">
@@ -619,7 +621,7 @@ export function Progress() {
               </div>
               <p className="text-3xl font-bold text-foreground">{subjects.length}</p>
             </div>
-            <p className="text-[9px] sm:text-[11px] font-semibold text-muted-foreground uppercase tracking-normal whitespace-nowrap">{t('activeSubjects')}</p>
+            <p className="text-[9px] sm:text-[11px] font-semibold text-muted-foreground tracking-normal whitespace-nowrap">{t('activeSubjects')}</p>
           </ScrollReveal>
         </div>
 

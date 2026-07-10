@@ -643,6 +643,19 @@ export function Progress() {
                   <span className="hidden sm:inline">{t('switchCourse')}</span>
                 </button>
               )}
+              {deletedCourses.length > 0 && (
+                <button
+                  onClick={() => setTrashModalOpen(true)}
+                  className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-amber-600 bg-amber-500/10 hover:bg-amber-500/20 transition-colors px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl whitespace-nowrap"
+                  title={lang === 'bn' ? 'ট্র্যাশ' : 'Trash'}
+                >
+                  <Trash2 size={11} />
+                  <span className="hidden sm:inline">{lang === 'bn' ? 'ট্র্যাশ' : 'Trash'}</span>
+                  <span className="bg-amber-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center shrink-0">
+                    {deletedCourses.length}
+                  </span>
+                </button>
+              )}
             </div>
           </div>
         </div>

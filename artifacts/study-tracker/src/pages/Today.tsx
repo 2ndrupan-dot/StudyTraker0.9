@@ -419,6 +419,82 @@ function saveDismissedRevisionIds(email: string, courseId: string, ids: string[]
   localStorage.setItem(dismissedRIdLS(email, courseId), JSON.stringify(ids));
 }
 
+// ─── useTreeTrunk: dynamic vertical trunk line (stops at midpoint of last item)
+function useTreeTrunk() {
+  const observerRef = React.useRef<ResizeObserver | null>(null);
+  const cleanupsRef = React.useRef<Map<HTMLElement, { mo: MutationObserver; lastObserved: HTMLElement | null }>>(new Map());
+
+  const findOwnLastItem = React.useCallback((root: HTMLElement): HTMLElement | null => {
+    const candidates = root.querySelectorAll('[data-last-item="true"]');
+    for (let i = 0; i < candidates.length; i++) {
+      const el = candidates[i] as HTMLElement;
+      const nearestRoot = el.parentElement?.closest('[data-trunk-root]');
+      if (nearestRoot === root) return el;
+    }
+    return null;
+  }, []);
+
+  const sync = React.useCallback((container: HTMLElement) => {
+    const trunk = container.querySelector('[data-trunk]') as HTMLElement | null;
+    if (!trunk) return;
+    const lastItem = findOwnLastItem(container);
+    if (!lastItem) { trunk.style.height = '0px'; return; }
+    const contTop = container.getBoundingClientRect().top;
+    const rect = lastItem.getBoundingClientRect();
+    trunk.style.height = `${Math.max(0, rect.top - contTop + rect.height / 2)}px`;
+  }, [findOwnLastItem]);
+
+  const registerRoot = React.useCallback((el: HTMLDivElement | null) => {
+    const existing = cleanupsRef.current;
+    if (!el) return;
+    if (!observerRef.current) {
+      observerRef.current = new ResizeObserver((entries) => {
+        entries.forEach((entry) => {
+          const root = (entry.target as HTMLElement).closest('[data-trunk-root]') as HTMLElement | null;
+          if (root) sync(root);
+        });
+      });
+    }
+    el.setAttribute('data-trunk-root', 'true');
+    const reobserve = () => {
+      sync(el);
+      observerRef.current!.observe(el);
+      const entry = existing.get(el);
+      const lastItem = findOwnLastItem(el);
+      if (entry?.lastObserved && entry.lastObserved !== lastItem) {
+        observerRef.current!.unobserve(entry.lastObserved);
+      }
+      if (lastItem) observerRef.current!.observe(lastItem);
+      existing.set(el, { mo: existing.get(el)?.mo ?? mo, lastObserved: lastItem });
+    };
+    const mo = new MutationObserver(() => reobserve());
+    mo.observe(el, { childList: true, subtree: true });
+    existing.set(el, { mo, lastObserved: null });
+    reobserve();
+
+    return () => {
+      const entry = existing.get(el);
+      if (entry) {
+        entry.mo.disconnect();
+        if (entry.lastObserved) observerRef.current?.unobserve(entry.lastObserved);
+      }
+      observerRef.current?.unobserve(el);
+      existing.delete(el);
+    };
+  }, [sync, findOwnLastItem]);
+
+  React.useEffect(() => {
+    return () => {
+      cleanupsRef.current.forEach(({ mo }) => mo.disconnect());
+      cleanupsRef.current.clear();
+      observerRef.current?.disconnect();
+      observerRef.current = null;
+    };
+  }, []);
+
+  return registerRoot;
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 export function Today() {
   const {
@@ -433,6 +509,7 @@ export function Today() {
   const isBn = lang === 'bn';
   const email = user?.email ?? 'guest';
   const { activeCourseId } = useCourse();
+  const registerTrunkRoot = useTreeTrunk();
 
   // PWA install — mobile browser only
   const { canInstall, isInstalled, installApp } = usePWAInstall();
@@ -1480,13 +1557,19 @@ export function Today() {
               transition={{ duration: 0.22, ease: 'easeInOut' }}
               className="overflow-hidden"
             >
-              <div className="pt-0 pb-3 pl-10 pr-3 space-y-2 border-l-[3px] ml-2.5" style={{ borderColor: group.subjectColor + '55' }}>
-                {group.incompleteTasks.map(task => (
-                  <div key={task.key} className="relative">
-                    <div className="absolute -left-[40px] top-0 h-[20px] w-[40px] border-l-[2px] border-b-[2px] rounded-bl-[10px] pointer-events-none" style={{ borderColor: task.level === 'chapter' ? 'rgba(99,102,241,0.6)' : task.level === 'topic' ? 'rgba(139,92,246,0.6)' : task.level === 'subtopic' ? 'rgba(14,165,233,0.6)' : task.level === 'concept' ? 'rgba(20,184,166,0.55)' : 'rgba(34,197,94,0.5)' }} />
-                    {renderCard({ ...task, isCompleted: false })}
-                  </div>
-                ))}
+              <div className="pt-2 pb-3 pl-10 pr-3 relative ml-2.5" ref={registerTrunkRoot}>
+                <div data-trunk className="absolute left-0 top-0 w-[3px] pointer-events-none rounded-b-full" style={{ backgroundColor: group.subjectColor + '55', height: 0 }} />
+                <div className="space-y-2">
+                  {group.incompleteTasks.map((task, taskIdx) => {
+                    const isLast = taskIdx === group.incompleteTasks.length - 1;
+                    return (
+                      <div key={task.key} className="relative" data-last-item={isLast ? 'true' : undefined}>
+                        <div className="absolute -left-[37px] top-1/2 -translate-y-full h-[24px] w-[37px] border-l-[3px] border-b-[2px] rounded-bl-[10px] pointer-events-none" style={{ borderColor: task.level === 'chapter' ? 'rgba(99,102,241,0.6)' : task.level === 'topic' ? 'rgba(139,92,246,0.6)' : task.level === 'subtopic' ? 'rgba(14,165,233,0.6)' : task.level === 'concept' ? 'rgba(20,184,166,0.55)' : 'rgba(34,197,94,0.5)' }} />
+                        {renderCard({ ...task, isCompleted: false })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </motion.div>
           )}

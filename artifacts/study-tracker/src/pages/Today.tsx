@@ -1525,42 +1525,43 @@ export function Today() {
 
   return (
     <Layout>
-      {/* ── Clean top settings bar ── */}
-      <div className="flex items-center gap-0 bg-card border-b border-border/60">
-        <motion.button whileTap={{ scale: 0.97 }}
-          onClick={() => { setDaysInput(settings.courseTotalDays?.toString() || ''); setDaysModalOpen(true); }}
-          className="flex-1 flex items-center gap-2 px-4 py-3 text-left hover:bg-secondary/50 transition-colors border-r border-border/40"
-        >
-          <Target size={15} className="text-primary shrink-0" />
-          <div className="min-w-0">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t('courseCompletion')}</p>
-            <p className="font-bold text-xs truncate text-foreground">
-              {settings.courseTotalDays ? `${settings.courseTotalDays} ${t('daysGoal')}` : t('setDays')}
-            </p>
+      {/* ── Colorful gradient header banner ── */}
+      <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(243 88% 62%) 0%, hsl(263 80% 58%) 50%, hsl(300 70% 58%) 100%)' }}>
+        <div className="absolute top-[-30px] right-[-30px] w-40 h-40 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute bottom-[-20px] left-[20%] w-32 h-32 rounded-full bg-black/10 blur-2xl" />
+        <div className="relative px-4 pt-5 pb-4 flex items-start justify-between">
+          <div>
+            <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mb-1">{formatTodayDisplayIST(settings.timezone)}</p>
+            <h1 className="text-2xl font-bold text-white leading-tight drop-shadow">{t('todayPlan')}</h1>
           </div>
-          <Edit3 size={11} className="text-muted-foreground/40 ml-auto shrink-0" />
-        </motion.button>
-        <motion.button whileTap={{ scale: 0.97 }}
-          onClick={() => { setHoursInput(settings.dailyStudyHours?.toString() || '3'); setHoursModalOpen(true); }}
-          className="flex-1 flex items-center gap-2 px-4 py-3 text-left hover:bg-secondary/50 transition-colors"
-        >
-          <AlarmClock size={15} className="text-primary shrink-0" />
-          <div className="min-w-0">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t('dailyStudyHours')}</p>
-            <p className="font-bold text-xs text-foreground">{settings.dailyStudyHours ?? 3} {t('hours')}</p>
+          <div className="flex items-center gap-2 mt-1">
+            <motion.button whileTap={{ scale: 0.97 }}
+              onClick={() => { setDaysInput(settings.courseTotalDays?.toString() || ''); setDaysModalOpen(true); }}
+              className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl bg-white/15 border border-white/20 hover:bg-white/25 transition-colors"
+            >
+              <Target size={13} className="text-white/80" />
+              <p className="text-[9px] text-white/70 font-bold uppercase tracking-wide">{t('courseCompletion')}</p>
+              <p className="font-bold text-[11px] text-white">
+                {settings.courseTotalDays ? `${settings.courseTotalDays}d` : '—'}
+              </p>
+            </motion.button>
+            <motion.button whileTap={{ scale: 0.97 }}
+              onClick={() => { setHoursInput(settings.dailyStudyHours?.toString() || '3'); setHoursModalOpen(true); }}
+              className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl bg-white/15 border border-white/20 hover:bg-white/25 transition-colors"
+            >
+              <AlarmClock size={13} className="text-white/80" />
+              <p className="text-[9px] text-white/70 font-bold uppercase tracking-wide">{t('dailyStudyHours')}</p>
+              <p className="font-bold text-[11px] text-white">{settings.dailyStudyHours ?? 3}h</p>
+            </motion.button>
           </div>
-          <Edit3 size={11} className="text-muted-foreground/40 ml-auto shrink-0" />
-        </motion.button>
+        </div>
       </div>
 
       <div className="p-4">
-        {/* ── Clean header ── */}
+        {/* ── Header action row ── */}
         <header className="mb-5">
           <div className="flex items-start justify-between mb-3">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground leading-tight">{t('todayPlan')}</h1>
-              <p className="text-muted-foreground text-sm font-medium mt-0.5">{formatTodayDisplayIST(settings.timezone)}</p>
-            </div>
+            <div />
 
             {/* Right side icons */}
             <div className="flex items-center gap-2">

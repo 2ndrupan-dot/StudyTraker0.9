@@ -152,42 +152,27 @@ export function NotesIndex() {
   return (
     <>
       <Layout>
-        <div className="p-5 max-w-2xl mx-auto">
-
-          {/* ── Header ── */}
-          <motion.div
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="mb-6 flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center shrink-0 shadow-sm">
-                <StickyNote size={20} className="text-primary" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-foreground leading-tight">{t('notesTab')}</h1>
-                {noteCount > 0 && (
-                  <p className="text-[11px] text-muted-foreground">
-                    {lang === 'bn' ? `${noteCount}টি নোট` : `${noteCount} note${noteCount !== 1 ? 's' : ''}`}
-                  </p>
-                )}
-              </div>
+        {/* ── Gradient header banner ── */}
+        <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(38 95% 55%) 0%, hsl(349 89% 60%) 50%, hsl(263 80% 58%) 100%)' }}>
+          <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl" />
+          <div className="relative px-5 pt-5 pb-4 flex items-center justify-between">
+            <div>
+              <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-0.5">
+                {noteCount > 0 ? (lang === 'bn' ? `${noteCount}টি নোট` : `${noteCount} note${noteCount !== 1 ? 's' : ''}`) : t('notesTab')}
+              </p>
+              <h1 className="text-2xl font-bold text-white leading-tight drop-shadow">📝 {t('notesTab')}</h1>
             </div>
-
-            {/* Header action buttons */}
             {!isCreating && (
               <div className="flex items-center gap-2">
                 {noteCount > 1 && (
                   <motion.button
-                    whileHover={{ scale: 1.04 }}
                     whileTap={{ scale: 0.97 }}
                     type="button"
                     onClick={() => setReorderMode(v => !v)}
-                    className={`p-2 rounded-xl border transition-colors shadow-sm ${
+                    className={`p-2 rounded-xl border transition-colors ${
                       reorderMode
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-card text-muted-foreground border-border hover:text-primary'
+                        ? 'bg-white text-purple-600 border-white shadow-md'
+                        : 'bg-white/15 text-white border-white/25 hover:bg-white/25'
                     }`}
                     title={reorderMode ? 'Reorder বন্ধ করুন' : 'Reorder করুন'}
                   >
@@ -195,18 +180,20 @@ export function NotesIndex() {
                   </motion.button>
                 )}
                 <motion.button
-                  whileHover={{ scale: 1.04 }}
                   whileTap={{ scale: 0.97 }}
                   type="button"
                   onClick={() => setIsCreating(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold shadow-sm hover:opacity-90 transition-opacity"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/20 border border-white/30 text-white text-xs font-bold hover:bg-white/30 transition-colors"
                 >
                   <Plus size={14} />
                   {t('addNote')}
                 </motion.button>
               </div>
             )}
-          </motion.div>
+          </div>
+        </div>
+
+        <div className="p-5 max-w-2xl mx-auto">
 
           {/* ── Create input ── */}
           <AnimatePresence>

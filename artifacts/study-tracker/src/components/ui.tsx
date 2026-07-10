@@ -7,17 +7,21 @@ import { useStudy } from '@/context/StudyContext';
 import { useLocation } from 'wouter';
 
 export const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' }>(
-  ({ className, variant = 'primary', ...props }, ref) => {
+  ({ className, variant = 'primary', style, ...props }, ref) => {
     const variants = {
-      primary: 'bg-primary text-primary-foreground shadow-md hover:bg-primary/90 hover:shadow-lg',
+      primary: 'text-white shadow-lg hover:opacity-90 hover:shadow-xl',
       secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
       outline: 'border-2 border-border bg-transparent hover:bg-secondary/50',
       ghost: 'bg-transparent hover:bg-secondary/50 text-muted-foreground hover:text-foreground',
       danger: 'bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground',
     };
+    const gradientStyle = variant === 'primary'
+      ? { background: 'linear-gradient(135deg, hsl(243 88% 62%) 0%, hsl(263 80% 58%) 100%)', ...style }
+      : style;
     return (
       <button
         ref={ref}
+        style={gradientStyle}
         className={cn(
           "inline-flex items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none",
           variants[variant],

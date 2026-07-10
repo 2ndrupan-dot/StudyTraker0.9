@@ -168,7 +168,7 @@ function InstallSection() {
       {canInstall && (
         <button
           onClick={installApp}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white/15 text-white hover:bg-white/25 transition-colors border border-white/15"
         >
           <Download size={14} />
           <span>{t('installApp')}</span>
@@ -176,9 +176,9 @@ function InstallSection() {
       )}
       <button
         onClick={handleShare}
-        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors"
       >
-        {copied ? <Check size={14} className="text-green-500" /> : <Share2 size={14} />}
+        {copied ? <Check size={14} className="text-emerald-400" /> : <Share2 size={14} />}
         <span>{copied ? t('linkCopied') : t('shareInstallLink')}</span>
       </button>
     </div>
@@ -195,8 +195,8 @@ function NavItem({ path, icon: Icon, label }: { path: string; icon: any; label: 
       className={cn(
         "w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200",
         isActive
-          ? "bg-primary/10 text-primary"
-          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+          ? "bg-white/15 text-white shadow-sm border border-white/20"
+          : "text-white/55 hover:bg-white/10 hover:text-white/85"
       )}
     >
       <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
@@ -204,7 +204,7 @@ function NavItem({ path, icon: Icon, label }: { path: string; icon: any; label: 
       {isActive && (
         <motion.div
           layoutId="sidebar-indicator"
-          className="ml-auto w-1.5 h-1.5 rounded-full bg-primary"
+          className="ml-auto w-1.5 h-1.5 rounded-full bg-white"
         />
       )}
     </button>
@@ -222,16 +222,16 @@ function SideNav({ onSearch }: { onSearch: () => void }) {
   ];
 
   return (
-    <div className="fixed left-0 top-0 bottom-0 w-64 bg-card border-r border-border/60 flex flex-col z-30 shadow-sm">
+    <div className="fixed left-0 top-0 bottom-0 w-64 gradient-sidebar flex flex-col z-30 shadow-xl">
       {/* Logo */}
-      <div className="p-6 border-b border-border/40">
+      <div className="p-6 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-md">
-            <GraduationCap size={20} className="text-primary-foreground" />
+          <div className="w-10 h-10 rounded-2xl glass-dark flex items-center justify-center glow-sm border border-white/20">
+            <GraduationCap size={22} className="text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-foreground text-base leading-tight">StudyTrack</h1>
-            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Study Planner</p>
+            <h1 className="font-bold text-white text-base leading-tight tracking-tight">StudyTrack</h1>
+            <p className="text-[10px] text-white/50 font-medium uppercase tracking-widest">Study Planner</p>
           </div>
         </div>
       </div>
@@ -241,11 +241,11 @@ function SideNav({ onSearch }: { onSearch: () => void }) {
         <button
           type="button"
           onClick={onSearch}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/60 hover:bg-secondary text-muted-foreground text-xs font-medium border border-border/60 transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl glass-dark border border-white/15 text-white/60 hover:text-white/90 hover:border-white/25 text-xs font-medium transition-all"
         >
           <Search size={14} />
           <span className="flex-1 text-left">{t('searchPlaceholder')}</span>
-          <kbd className="hidden lg:inline px-1.5 py-0.5 rounded bg-card border border-border/60 text-[9px] font-bold">⌘K</kbd>
+          <kbd className="hidden lg:inline px-1.5 py-0.5 rounded bg-white/10 border border-white/15 text-[9px] font-bold text-white/50">⌘K</kbd>
         </button>
       </div>
 
@@ -257,9 +257,9 @@ function SideNav({ onSearch }: { onSearch: () => void }) {
       </nav>
 
       {/* Footer: install + share */}
-      <div className="p-3 border-t border-border/40 space-y-2">
+      <div className="p-3 border-t border-white/10 space-y-2">
         <InstallSection />
-        <p className="text-[10px] text-muted-foreground text-center pt-1">StudyTrack v2.0</p>
+        <p className="text-[10px] text-white/30 text-center pt-1">StudyTrack v2.0</p>
       </div>
     </div>
   );
@@ -357,7 +357,7 @@ function BottomNav() {
 
   return (
     <>
-      <div className="fixed bottom-0 left-0 right-0 bg-card/90 backdrop-blur-xl border-t border-border pb-safe z-40">
+      <div className="fixed bottom-0 left-0 right-0 glass border-t border-white/40 pb-safe z-40 shadow-[0_-4px_24px_rgba(99,102,241,0.10)]">
         <div className="flex items-center justify-around h-[68px] px-2 max-w-md mx-auto">
           {tabs.map(tab => {
             const isActive =
@@ -374,15 +374,18 @@ function BottomNav() {
                 {isActive && (
                   <motion.div
                     layoutId="tab-indicator"
-                    className="absolute top-0 w-8 h-1 bg-primary rounded-b-full shadow-[0_0_8px_var(--color-primary)]"
+                    className="absolute top-0 w-10 h-1 rounded-b-full"
+                    style={{ background: 'linear-gradient(90deg, hsl(243 88% 62%), hsl(263 80% 60%))' }}
                   />
                 )}
-                <Icon
-                  size={22}
-                  className={cn("transition-all duration-300", isActive ? "text-primary scale-110" : "text-muted-foreground")}
-                  strokeWidth={isActive ? 2.5 : 2}
-                />
-                <span className={cn("text-[10px] font-medium transition-colors", isActive ? "text-primary" : "text-muted-foreground")}>
+                {isActive ? (
+                  <div className="w-9 h-9 rounded-2xl gradient-primary flex items-center justify-center shadow-md glow-sm">
+                    <Icon size={18} className="text-white" strokeWidth={2.5} />
+                  </div>
+                ) : (
+                  <Icon size={22} className="text-muted-foreground transition-all duration-300" strokeWidth={2} />
+                )}
+                <span className={cn("text-[10px] font-semibold transition-colors", isActive ? "text-gradient" : "text-muted-foreground")}>
                   {tab.label}
                 </span>
               </button>

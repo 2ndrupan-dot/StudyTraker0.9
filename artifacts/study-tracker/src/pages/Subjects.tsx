@@ -533,13 +533,14 @@ export function Subjects() {
 
   return (
     <Layout>
-      <div className="p-5">
-        <motion.header
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6 flex items-center justify-between"
-        >
-          <h1 className="text-2xl font-bold text-foreground">{t('subjects')}</h1>
+      {/* ── Gradient header banner ── */}
+      <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(192 85% 45%) 0%, hsl(210 80% 52%) 50%, hsl(243 88% 62%) 100%)' }}>
+        <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl" />
+        <div className="relative px-5 pt-5 pb-4 flex items-center justify-between">
+          <div>
+            <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-0.5">{t('subjects')}</p>
+            <h1 className="text-2xl font-bold text-white leading-tight drop-shadow">📚 Curriculum</h1>
+          </div>
           <div className="flex items-center gap-2">
             <motion.div whileTap={{ scale: 0.95 }}>
               <button
@@ -547,8 +548,8 @@ export function Subjects() {
                 onClick={() => setReorderMode(v => !v)}
                 className={`p-2 rounded-xl border transition-all ${
                   reorderMode
-                    ? 'bg-primary text-primary-foreground border-primary shadow-md'
-                    : 'bg-card text-muted-foreground border-border/60 hover:bg-secondary'
+                    ? 'bg-white text-indigo-600 border-white shadow-md'
+                    : 'bg-white/15 text-white border-white/25 hover:bg-white/25'
                 }`}
                 title={reorderMode ? 'Reorder Mode বন্ধ করুন' : 'Reorder Mode চালু করুন'}
               >
@@ -556,17 +557,17 @@ export function Subjects() {
               </button>
             </motion.div>
             <motion.div whileTap={{ scale: 0.95 }}>
-              <Button
-                variant="primary"
-                className="py-2 px-3 h-auto rounded-xl text-xs gap-1.5 shadow-md"
+              <button
+                className="flex items-center gap-1.5 py-2 px-3 rounded-xl bg-white/20 border border-white/30 text-white text-xs font-bold hover:bg-white/30 transition-colors"
                 onClick={() => openAdd('subject', {})}
               >
-                <Plus size={16} /> {t('addSubject')}
-              </Button>
+                <Plus size={15} /> {t('addSubject')}
+              </button>
             </motion.div>
           </div>
-        </motion.header>
-
+        </div>
+      </div>
+      <div className="p-5">
         {/* ─── Quick to-do notes (Temp Notes) ──────────────────────── */}
         <TempNoteSection />
 

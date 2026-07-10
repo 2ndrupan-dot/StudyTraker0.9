@@ -488,41 +488,41 @@ export function Progress() {
 
   return (
     <Layout>
-      <div className="p-5">
-        <header className="flex items-center justify-between mb-8">
-          <motion.h1
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="text-2xl font-bold text-foreground"
-          >
-            {t('progress')}
-          </motion.h1>
+      {/* ── Gradient header banner ── */}
+      <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(152 70% 42%) 0%, hsl(172 70% 38%) 50%, hsl(192 85% 45%) 100%)' }}>
+        <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl" />
+        <div className="relative px-5 pt-5 pb-4 flex items-center justify-between">
+          <div>
+            <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-0.5">{t('progress')}</p>
+            <h1 className="text-2xl font-bold text-white leading-tight drop-shadow">📊 Analytics</h1>
+          </div>
           <div className="flex gap-2">
             <motion.button
               whileTap={{ scale: 0.93 }}
               onClick={() => setNoteSearchOpen(true)}
               title={t('noteSearch')}
-              className="p-2.5 bg-secondary text-foreground rounded-full hover:bg-secondary/80 transition-colors shadow-sm"
+              className="p-2.5 bg-white/15 text-white rounded-full hover:bg-white/25 transition-colors border border-white/20"
             >
-              <Search size={20} />
+              <Search size={18} />
             </motion.button>
             <motion.button
               whileTap={{ scale: 0.93 }}
               onClick={() => setModals({ ...modals, settings: true })}
-              className="p-2.5 bg-secondary text-foreground rounded-full hover:bg-secondary/80 transition-colors shadow-sm"
+              className="p-2.5 bg-white/15 text-white rounded-full hover:bg-white/25 transition-colors border border-white/20"
             >
-              <Settings size={20} />
+              <Settings size={18} />
             </motion.button>
             <motion.button
               whileTap={{ scale: 0.93 }}
               onClick={() => setModals({ ...modals, logout: true })}
-              className="p-2.5 bg-destructive/10 text-destructive rounded-full hover:bg-destructive hover:text-white transition-colors shadow-sm"
+              className="p-2.5 bg-white/15 text-white rounded-full hover:bg-white/25 transition-colors border border-white/20"
             >
-              <LogOut size={20} />
+              <LogOut size={18} />
             </motion.button>
           </div>
-        </header>
-
+        </div>
+      </div>
+      <div className="p-5">
         {/* User Card */}
         <motion.div
           custom={0}

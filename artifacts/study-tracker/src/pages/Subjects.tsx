@@ -806,7 +806,7 @@ export function Subjects() {
                 <motion.div
                   id={`study-item-${subj.id}`}
                   exit={{ opacity: 0, scale: 0.96 }}
-                  className="bg-card rounded-2xl shadow-sm border-2 border-border/50 overflow-hidden card-hover"
+                  className="bg-card rounded-2xl shadow-sm border-2 overflow-hidden card-hover" style={{ borderColor: "rgba(148,163,184,0.55)" }}
                 >
                   {/* Subject header */}
                   <div
@@ -949,7 +949,7 @@ export function Subjects() {
                               {(chHandle) => (
                               <div className="relative">
                               <div className="absolute -left-[14px] top-0 h-[18px] w-[14px] border-l-[2px] border-b-[2px] border-indigo-400/55 rounded-bl-[8px] pointer-events-none" />
-                              <motion.div id={`study-item-${chapter.id}`} {...itemAnim} className={`bg-indigo-50/60 border-2 rounded-xl overflow-hidden shadow-sm ${chLocked ? 'border-indigo-300/40 opacity-70' : 'border-indigo-400/60'} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`}>
+                              <motion.div id={`study-item-${chapter.id}`} {...itemAnim} className={`bg-indigo-50/60 border-2 rounded-xl overflow-hidden shadow-sm ${chLocked ? 'opacity-70' : ''} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`} style={{ borderColor: chLocked ? "rgba(165,180,252,0.35)" : "rgba(99,102,241,0.65)" }}>
                                 <div
                                   className="p-3 flex items-center gap-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row relative"
                                   onClick={() => toggleChapter(chapter.id)}
@@ -1039,7 +1039,7 @@ export function Subjects() {
                                             {(topHandle) => (
                                             <div className="relative">
                                             <div className="absolute -left-[14px] top-0 h-[16px] w-[14px] border-l-[2px] border-b-[2px] border-violet-400/55 rounded-bl-[8px] pointer-events-none" />
-                                            <motion.div id={`study-item-${topic.id}`} {...itemAnim} className={`bg-violet-50/60 border-2 rounded-lg overflow-hidden ${topLocked ? 'border-violet-300/30 opacity-60' : 'border-violet-400/55'} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`}>
+                                            <motion.div id={`study-item-${topic.id}`} {...itemAnim} className={`bg-violet-50/60 border-2 rounded-lg overflow-hidden ${topLocked ? 'opacity-60' : ''} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`} style={{ borderColor: topLocked ? "rgba(196,181,253,0.35)" : "rgba(139,92,246,0.6)" }}>
                                               <div
                                                 className="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-secondary/20 group/row relative"
                                                 onClick={() => toggleTopic(topic.id)}
@@ -1129,7 +1129,7 @@ export function Subjects() {
                                                           {(subHandle) => (
                                                           <div className="relative">
                                                           <div className="absolute -left-[14px] top-0 h-[14px] w-[14px] border-l-[2px] border-b-[2px] border-sky-400/55 rounded-bl-[8px] pointer-events-none" />
-                                                          <motion.div id={`study-item-${sub.id}`} {...itemAnim} className={`bg-sky-50/60 border-2 rounded-lg overflow-hidden ${subLocked ? 'border-sky-300/25 opacity-55' : 'border-sky-400/50'} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
+                                                          <motion.div id={`study-item-${sub.id}`} {...itemAnim} className={`bg-sky-50/60 border-2 rounded-lg overflow-hidden ${subLocked ? 'opacity-55' : ''} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`} style={{ borderColor: subLocked ? "rgba(125,211,252,0.3)" : "rgba(14,165,233,0.6)" }}>
                                                             <div
                                                               className="px-2.5 py-2 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
                                                               onClick={() => toggleSubtopicExpand(sub.id)}

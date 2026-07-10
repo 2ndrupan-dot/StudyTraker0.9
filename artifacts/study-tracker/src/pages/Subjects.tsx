@@ -1008,7 +1008,7 @@ export function Subjects() {
                     {isExpanded && (
                       <motion.div {...collapseAnim} className="overflow-hidden bg-indigo-500/[0.04] border-t border-indigo-300/25">
                         <div className="relative pt-0 px-3 pl-4 ml-2.5" ref={registerTrunkRoot}>
-                          <div data-trunk className="absolute -left-[19px] top-0 w-[3px] bg-indigo-400/65 pointer-events-none" style={{ height: 0 }} />
+                          <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-indigo-400/65 pointer-events-none" style={{ height: 0 }} />
                           <div className="space-y-2">
                           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
                             const { active, over } = e;
@@ -1106,7 +1106,7 @@ export function Subjects() {
                                   {chExpanded && (
                                     <motion.div {...collapseAnim} className="overflow-hidden border-t border-violet-300/25 bg-violet-500/[0.05]">
                                       <div className="relative pt-0 px-2 pl-8 ml-2.5" ref={registerTrunkRoot}>
-                                        <div data-trunk className="absolute -left-[35px] top-0 w-[3px] bg-violet-400/65 pointer-events-none" style={{ height: 0 }} />
+                                        <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-violet-400/65 pointer-events-none" style={{ height: 0 }} />
                                         <div className="space-y-1.5">
                                         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
                                           const { active, over } = e;
@@ -1199,7 +1199,7 @@ export function Subjects() {
                                                 {tExpanded && (
                                                   <motion.div {...collapseAnim} className="overflow-hidden border-t border-sky-300/20 bg-sky-500/[0.05]">
                                                     <div className="relative pt-0 px-2 pl-10 ml-2.5" ref={registerTrunkRoot}>
-                                                      <div data-trunk className="absolute -left-[43px] top-0 w-[3px] bg-sky-400/65 pointer-events-none" style={{ height: 0 }} />
+                                                      <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-sky-400/65 pointer-events-none" style={{ height: 0 }} />
                                                       <div className="space-y-1">
                                                       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
                                                         const { active, over } = e;

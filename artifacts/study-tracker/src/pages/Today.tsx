@@ -1469,15 +1469,15 @@ export function Today() {
             );
           })()}
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <div className="flex items-center gap-1 text-muted-foreground text-[11px] font-semibold bg-secondary/70 px-2 py-1 rounded-lg">
-                <Clock size={10} /> ~{formatMins(task.estimatedMins, t('hour'), t('mins'))}
+          <div className="flex items-center justify-between gap-1.5 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-1 text-muted-foreground text-[10px] sm:text-[11px] font-semibold bg-secondary/70 px-1.5 sm:px-2 py-1 rounded-lg whitespace-nowrap shrink-0">
+                <Clock size={10} className="shrink-0" /> ~{formatMins(task.estimatedMins, t('hour'), t('mins'))}
               </div>
               {!opts?.isRevision && (
-                <div className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border ${URGENCY_COLORS[task.urgency]}`}>
-                  {task.urgency === 'high' && <Zap size={8} />}
-                  <CalendarDays size={8} /> {task.daysLeft}d
+                <div className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border whitespace-nowrap shrink-0 ${URGENCY_COLORS[task.urgency]}`}>
+                  {task.urgency === 'high' && <Zap size={8} className="shrink-0" />}
+                  <CalendarDays size={8} className="shrink-0" /> {task.daysLeft}d
                 </div>
               )}
             </div>

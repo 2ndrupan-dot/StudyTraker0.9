@@ -1369,7 +1369,11 @@ export function Today() {
     const done = task.isCompleted;
 
     return (
-      <ScrollReveal
+      // Plain div (not ScrollReveal) — these cards render inside accordions that
+      // already animate height/opacity on open. Stacking ScrollReveal's own
+      // fade/slide-in on top of that caused a visible double-animation stutter,
+      // especially on mobile, when expanding a subject group.
+      <div
         key={task.key}
         className={`bg-card rounded-2xl border-2 relative overflow-hidden ${done ? 'opacity-55' : 'shadow-sm card-hover'}`} style={{ borderColor: done ? 'rgba(148,163,184,0.3)' : task.subjectColor + '99' }}
       >
@@ -1511,7 +1515,7 @@ export function Today() {
             </div>
           </div>
         </div>
-      </ScrollReveal>
+      </div>
     );
   };
 
@@ -1560,7 +1564,8 @@ export function Today() {
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.22, ease: 'easeInOut' }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              style={{ willChange: 'height' }}
               className="overflow-hidden"
             >
               <div className="relative pt-0 px-3 pl-4 ml-2.5 pb-2" ref={registerTrunkRoot}>
@@ -1621,7 +1626,8 @@ export function Today() {
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
+                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      style={{ willChange: 'height' }}
                       className="overflow-hidden"
                     >
                       <div className="px-2 pb-2 pt-1 space-y-1.5 bg-secondary/10">
@@ -1929,7 +1935,8 @@ export function Today() {
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.25, ease: 'easeInOut' }}
+                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      style={{ willChange: 'height' }}
                       className="overflow-hidden"
                     >
                       <div className="pt-2 space-y-2">
@@ -1986,7 +1993,8 @@ export function Today() {
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                    style={{ willChange: 'height' }}
                     className="overflow-hidden"
                   >
                     <div className="pt-4 space-y-4">
@@ -2069,7 +2077,8 @@ export function Today() {
                               initial={{ height: 0, opacity: 0 }}
                               animate={{ height: 'auto', opacity: 1 }}
                               exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.2 }}
+                              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                              style={{ willChange: 'height' }}
                               className="overflow-hidden"
                             >
                               {dueRevisions.length > 0 ? (
@@ -2150,7 +2159,8 @@ export function Today() {
                               initial={{ height: 0, opacity: 0 }}
                               animate={{ height: 'auto', opacity: 1 }}
                               exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.2 }}
+                              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                              style={{ willChange: 'height' }}
                               className="overflow-hidden"
                             >
                               {pendingItems.length > 0 ? (

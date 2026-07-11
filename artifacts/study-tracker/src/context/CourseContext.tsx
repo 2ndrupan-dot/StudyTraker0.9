@@ -82,11 +82,46 @@ export function CourseProvider({ children }: { children: ReactNode }) {
 
     setCoursesLoaded(false);
 
+    // Lifecycle guard: once this effect cleans up (user change/unmount), any
+    // in-flight async work resolving later must not apply state.
+    let active = true;
+    let resolved = false;
+
+    // ── Cold-start safety net ────────────────────────────────────────────────
+    // On a freshly opened app (especially mobile, right after the device's
+    // network/radio reconnects), Firestore's getDocs() can hang for a long
+    // time before resolving or rejecting — there is no built-in timeout.
+    // Without a fallback, coursesLoaded (and therefore activeCourseId) would
+    // never be set, leaving the Today page stuck on its loading skeleton
+    // forever, until the user manually reloads. If the real fetch hasn't
+    // resolved within a short window, fall back to whatever we already have
+    // cached in localStorage so the app always becomes usable; the real
+    // fetch keeps running in the background and will silently reconcile
+    // (via the `active`/`resolved` guards below) the moment it does resolve.
+    const staleLoadTimer = setTimeout(() => {
+      if (!active || resolved) return;
+      resolved = true;
+      const storedId = getActiveCourseIdFromStorage(user.email);
+      const storedCoursesRaw = localStorage.getItem(`@study_coursesList_${user.email}`);
+      let cachedCourses: Course[] = [];
+      if (storedCoursesRaw) {
+        try { cachedCourses = JSON.parse(storedCoursesRaw); } catch { /* ignore */ }
+      }
+      setCourses(cachedCourses);
+      if (storedId && cachedCourses.find(c => c.id === storedId)) {
+        setActiveCourseId(storedId);
+      } else if (cachedCourses.length > 0) {
+        setActiveCourseId(cachedCourses[0].id);
+      }
+      setCoursesLoaded(true);
+    }, 6000);
+
     const loadCourses = async () => {
       try {
         // Load active courses
         const colRef = collection(db, 'users', user.id, 'courses');
         const snap = await getDocs(colRef);
+        if (!active) return; // unmounted/user changed — discard
         const loaded: Course[] = snap.docs.map(d => d.data() as Course);
         loaded.sort((a, b) => a.createdAt - b.createdAt);
         setCourses(loaded);
@@ -112,7 +147,9 @@ export function CourseProvider({ children }: { children: ReactNode }) {
         }
 
         deletedLoaded.sort((a, b) => b.deletedAt - a.deletedAt);
+        if (!active) return; // unmounted/user changed — discard
         setDeletedCourses(deletedLoaded);
+        saveCoursesList(loaded, user.email);
 
         if (loaded.length > 0) {
           const storedId = getActiveCourseIdFromStorage(user.email);
@@ -123,6 +160,7 @@ export function CourseProvider({ children }: { children: ReactNode }) {
           setActiveCourseId(null);
         }
       } catch {
+        if (!active) return; // unmounted/user changed — discard
         const storedId = getActiveCourseIdFromStorage(user.email);
         if (storedId) {
           setActiveCourseId(storedId);
@@ -134,11 +172,20 @@ export function CourseProvider({ children }: { children: ReactNode }) {
           }
         }
       } finally {
-        setCoursesLoaded(true);
+        if (active) {
+          resolved = true;
+          clearTimeout(staleLoadTimer);
+          setCoursesLoaded(true);
+        }
       }
     };
 
     loadCourses();
+
+    return () => {
+      active = false; // prevent any in-flight async work from applying state
+      clearTimeout(staleLoadTimer);
+    };
   }, [user]);
 
   const saveCoursesList = (list: Course[], email: string) => {

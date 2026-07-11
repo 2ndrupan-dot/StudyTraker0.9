@@ -379,13 +379,13 @@ function SearchPullTab({ onClick }: { onClick: () => void }) {
     <motion.button
       className="md:hidden fixed z-50 flex items-center justify-center"
       style={{
-        right: -2,
+        right: -14,
         bottom: 110,
-        width: 26,
-        height: 46,
-        borderRadius: '10px 0 0 10px',
+        width: 34,
+        height: 34,
+        borderRadius: '50%',
         background: 'linear-gradient(135deg, hsl(243 88% 62%), hsl(263 80% 60%))',
-        boxShadow: '-2px 0 10px rgba(99,102,241,0.35)',
+        boxShadow: '-2px 0 10px rgba(99,102,241,0.40)',
       }}
       onClick={onClick}
       drag="x"

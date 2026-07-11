@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Maximize2, Minimize2, Pencil, Eye, FileText, ExternalLink, StickyNote, ChevronRight, FileDown, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { RichTextEditor, RichTextPreview } from '@/components/RichTextEditor';
 import { useStudy } from '@/context/StudyContext';
+import { useLang } from '@/context/LangContext';
 import { useLocation } from 'wouter';
 
 export const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' }>(
@@ -296,6 +297,7 @@ function SearchBar({
   goPrevMatch: () => void;
   closeSearch: () => void;
 }) {
+  const { t } = useLang();
   return (
     <div className="bg-card/95 backdrop-blur border-b border-border/50 px-4 py-2 flex items-center gap-2 shrink-0">
       <Search size={14} className="text-muted-foreground shrink-0" />
@@ -308,14 +310,14 @@ function SearchBar({
           if (e.key === 'Escape') closeSearch();
           if (e.key === 'Enter') { e.shiftKey ? goPrevMatch() : goNextMatch(); }
         }}
-        placeholder="নোটে খুঁজুন…"
+        placeholder={t('findInNote')}
         className="flex-1 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground min-w-0"
       />
       {matchCount > 0 && (
         <span className="text-xs text-muted-foreground whitespace-nowrap">{matchIdx + 1} / {matchCount}</span>
       )}
       {searchQuery.trim() && matchCount === 0 && (
-        <span className="text-xs text-rose-500 whitespace-nowrap">No results</span>
+        <span className="text-xs text-rose-500 whitespace-nowrap">{t('noSearchResults')}</span>
       )}
       <button onClick={goPrevMatch} disabled={matchCount === 0} className="p-1 rounded hover:bg-secondary text-muted-foreground disabled:opacity-40" title="Previous (Shift+Enter)">
         <ChevronUp size={14} />

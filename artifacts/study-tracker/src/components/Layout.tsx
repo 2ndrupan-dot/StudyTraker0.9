@@ -186,14 +186,10 @@ function InstallSection() {
 
 function NavItem({ path, icon: Icon, label }: { path: string; icon: any; label: string }) {
   const [location, setLocation] = useLocation();
-  const [spinning, setSpinning] = useState(false);
   const isActive = location === path || (location === '/tabs' && path === '/today') || (path !== '/today' && location.startsWith(path + '/'));
 
   const handleClick = () => {
-    if (isActive) {
-      setSpinning(true);
-      setTimeout(() => window.location.reload(), 500);
-    } else {
+    if (!isActive) {
       setLocation(path);
     }
   };
@@ -208,12 +204,9 @@ function NavItem({ path, icon: Icon, label }: { path: string; icon: any; label: 
           : "text-white/55 hover:bg-white/10 hover:text-white/85"
       )}
     >
-      <motion.div
-        animate={spinning ? { rotate: 360 } : { rotate: 0 }}
-        transition={spinning ? { duration: 0.5, ease: 'easeInOut' } : { duration: 0 }}
-      >
+      <div>
         <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-      </motion.div>
+      </div>
       <span>{label}</span>
       {isActive && (
         <motion.div
@@ -361,8 +354,6 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
   const [location, setLocation] = useLocation();
   const { t } = useLang();
   const { isInstalled } = usePWAInstall();
-  const [spinningPath, setSpinningPath] = useState<string | null>(null);
-
   const tabs = [
     { path: '/today',    icon: CheckCircle2, label: t('today') },
     { path: '/subjects', icon: BookOpen,     label: t('subjects') },
@@ -371,10 +362,7 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
   ];
 
   const handleTabClick = (path: string, isActive: boolean) => {
-    if (isActive) {
-      setSpinningPath(path);
-      setTimeout(() => window.location.reload(), 500);
-    } else {
+    if (!isActive) {
       setLocation(path);
     }
   };
@@ -389,7 +377,6 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
               (location === '/tabs' && tab.path === '/today') ||
               (tab.path !== '/today' && location.startsWith(tab.path + '/'));
             const Icon = tab.icon;
-            const isSpinning = spinningPath === tab.path;
 
             return (
               <button
@@ -405,13 +392,9 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
                   />
                 )}
                 {isActive ? (
-                  <motion.div
-                    className="w-9 h-9 rounded-2xl gradient-primary flex items-center justify-center shadow-md glow-sm"
-                    animate={isSpinning ? { rotate: 360 } : { rotate: 0 }}
-                    transition={isSpinning ? { duration: 0.5, ease: 'easeInOut' } : { duration: 0 }}
-                  >
+                  <div className="w-9 h-9 rounded-2xl gradient-primary flex items-center justify-center shadow-md glow-sm">
                     <Icon size={18} className="text-white" strokeWidth={2.5} />
-                  </motion.div>
+                  </div>
                 ) : (
                   <Icon size={22} className="text-muted-foreground transition-all duration-300" strokeWidth={2} />
                 )}

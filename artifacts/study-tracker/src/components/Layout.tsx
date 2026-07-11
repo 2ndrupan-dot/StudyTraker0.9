@@ -61,9 +61,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <BottomNav onSearchClick={() => setSearchOpen(true)} />
       </div>
 
-      {/* Search pull-tab — mobile only */}
-      <SearchPullTab onClick={() => setSearchOpen(true)} />
-
       {/* Online / Sync status */}
       <ConnectionStatus />
 
@@ -374,41 +371,6 @@ function MobileInstallButton() {
   );
 }
 
-function SearchPullTab({ onClick }: { onClick: () => void }) {
-  return (
-    <motion.button
-      className="md:hidden fixed z-50 flex items-center justify-center"
-      style={{
-        right: -8,
-        bottom: 110,
-        width: 32,
-        height: 32,
-        borderRadius: '50%',
-        background: 'linear-gradient(135deg, hsl(243 88% 62%), hsl(263 80% 60%))',
-        boxShadow: '-2px 0 10px rgba(99,102,241,0.40)',
-      }}
-      onClick={onClick}
-      drag="x"
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.2}
-      onDragEnd={(_e, info) => {
-        if (info.offset.x < -25) onClick();
-      }}
-      whileTap={{ scale: 0.92 }}
-      initial={{ x: 10 }}
-      animate={{ x: 10 }}
-      whileHover={{ x: 0 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-      aria-label="Search"
-    >
-      {/* Magnifying glass — lens faces left (outward), handle goes right into edge */}
-      <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-        <circle cx="8" cy="8" r="6" stroke="white" strokeWidth="2.2"/>
-        <line x1="13" y1="13" x2="19" y2="19" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
-      </svg>
-    </motion.button>
-  );
-}
 
 function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
   const [location, setLocation] = useLocation();
@@ -465,6 +427,15 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
             );
           })}
 
+
+          {/* Search */}
+          <button
+            onClick={onSearchClick}
+            className="flex-1 flex flex-col items-center justify-center gap-1 h-full relative"
+          >
+            <Search size={22} className="text-muted-foreground transition-all duration-300" strokeWidth={2} />
+            <span className="text-[10px] font-semibold text-muted-foreground">{t('searchTitle')}</span>
+          </button>
         </div>
       </div>
     </>

@@ -173,7 +173,7 @@ export function NotesIndex() {
             {!isCreating && (
               <div className="flex items-center gap-2">
                 {noteCount > 1 && (
-                  <span className="spin-border-wrap spin-border-round">
+                  <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(326 80% 58%)' } as React.CSSProperties}>
                     <motion.button
                       whileTap={{ scale: 0.97 }}
                       type="button"
@@ -189,7 +189,7 @@ export function NotesIndex() {
                     </motion.button>
                   </span>
                 )}
-                <span className="spin-border-wrap">
+                <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(326 80% 58%)' } as React.CSSProperties}>
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     type="button"

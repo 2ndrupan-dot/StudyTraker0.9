@@ -632,7 +632,7 @@ export function Subjects() {
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <motion.div whileTap={{ scale: 0.95 }}>
-              <span className="spin-border-wrap spin-border-round">
+              <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
                 <button
                   type="button"
                   onClick={() => setReorderMode(v => !v)}
@@ -648,7 +648,7 @@ export function Subjects() {
               </span>
             </motion.div>
             <motion.div whileTap={{ scale: 0.95 }}>
-              <span className="spin-border-wrap">
+              <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
                 <button
                   className="spin-border-inner flex items-center gap-1.5 py-2 px-3 bg-white/20 text-white text-xs font-bold hover:bg-white/30 transition-colors"
                   onClick={() => openAdd('subject', {})}

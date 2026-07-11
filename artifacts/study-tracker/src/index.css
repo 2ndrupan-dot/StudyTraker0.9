@@ -352,7 +352,7 @@ mark.search-hl.search-hl-active { background-color: #f97316; color: #fff; }
   border-radius: 12px;
   border: 2.5px solid transparent;
   background:
-    linear-gradient(transparent, transparent) padding-box,
+    linear-gradient(var(--spin-mask, transparent), var(--spin-mask, transparent)) padding-box,
     conic-gradient(
       from var(--border-angle),
       #818cf8,

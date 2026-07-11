@@ -636,24 +636,24 @@ export function Subjects() {
                 <button
                   type="button"
                   onClick={() => setReorderMode(v => !v)}
-                  className={`spin-border-inner h-9 w-9 flex items-center justify-center transition-all ${
+                  className={`spin-border-inner h-7 w-7 flex items-center justify-center transition-all ${
                     reorderMode
                       ? 'bg-white text-indigo-600 shadow-md'
                       : 'bg-white/15 text-white hover:bg-white/25'
                   }`}
                   title={reorderMode ? 'Reorder Mode বন্ধ করুন' : 'Reorder Mode চালু করুন'}
                 >
-                  <ArrowUpDown size={16} />
+                  <ArrowUpDown size={13} />
                 </button>
               </span>
             </motion.div>
             <motion.div whileTap={{ scale: 0.95 }}>
               <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
                 <button
-                  className="spin-border-inner flex items-center h-9 gap-1.5 px-3 bg-white/20 text-white text-xs font-bold hover:bg-white/30 transition-colors"
+                  className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
                   onClick={() => openAdd('subject', {})}
                 >
-                  <Plus size={15} /> {t('addSubject')}
+                  <Plus size={12} /> {t('addSubject')}
                 </button>
               </span>
             </motion.div>

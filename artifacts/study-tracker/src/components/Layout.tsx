@@ -401,14 +401,11 @@ function SearchPullTab({ onClick }: { onClick: () => void }) {
       transition={{ type: 'spring', stiffness: 300, damping: 28 }}
       aria-label="Search"
     >
-      <motion.div
-        animate={{ x: [0, -3, 0] }}
-        transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut', repeatDelay: 2 }}
-      >
-        <svg width="12" height="16" viewBox="0 0 10 16" fill="none">
-          <path d="M8 1L2 8L8 15" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </motion.div>
+      {/* Magnifying glass — lens faces left (outward), handle goes right into edge */}
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+        <circle cx="8" cy="8" r="6" stroke="white" strokeWidth="2.2"/>
+        <line x1="13" y1="13" x2="19" y2="19" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
+      </svg>
     </motion.button>
   );
 }

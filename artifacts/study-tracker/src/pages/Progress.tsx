@@ -585,14 +585,14 @@ export function Progress() {
         <ScrollReveal className="mb-6">
         <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-3xl p-4 border border-primary/20 shadow-sm">
           {/* Top row: label + add button — perfectly parallel */}
-          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-            <p className="text-xs font-semibold text-primary/70 uppercase tracking-wider">{t('currentCourse')}</p>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <p className="text-[10px] sm:text-xs font-semibold text-primary/70 uppercase tracking-wider whitespace-nowrap shrink-0">{t('currentCourse')}</p>
             <button
               onClick={() => { setNewCourseName(''); setNewCourseError(''); setModals({ ...modals, addCourse: true }); }}
-              className="flex items-center gap-1 text-xs font-semibold text-primary border border-primary/60 bg-transparent hover:bg-primary/8 transition-colors px-3 py-1.5 rounded-full whitespace-nowrap shrink-0"
+              className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-primary border border-primary/60 bg-transparent hover:bg-primary/8 transition-colors px-2 sm:px-3 py-1 sm:py-1.5 rounded-full whitespace-nowrap shrink-0"
               title={t('addCourse')}
             >
-              <Plus size={14} />
+              <Plus size={14} className="shrink-0" />
               <span>{t('addCourse')}</span>
             </button>
           </div>

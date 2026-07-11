@@ -1044,8 +1044,8 @@ export function Subjects() {
                                   onClick={() => toggleChapter(chapter.id)}
                                 >
                                   <p className={`font-semibold text-sm w-full line-clamp-3 leading-snug ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                    <BookOpen size={11} className="text-primary shrink-0 inline-block mr-1.5 -translate-y-0.5" />
                                     {chapter.title}
-                                    <BookOpen size={11} className="text-primary shrink-0 inline-block ml-1.5 -translate-y-0.5" />
                                   </p>
                                   <div className="flex items-center gap-1.5 mt-1.5">
                                     <button
@@ -1137,8 +1137,8 @@ export function Subjects() {
                                                 onClick={() => toggleTopic(topic.id)}
                                               >
                                                 <p className={`text-xs font-semibold w-full line-clamp-3 leading-snug ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                  <Layers size={10} className="text-accent-foreground shrink-0 inline-block mr-1.5 -translate-y-0.5" />
                                                   {topic.title}
-                                                  <Layers size={10} className="text-accent-foreground shrink-0 inline-block ml-1.5 -translate-y-0.5" />
                                                 </p>
                                                 <div className="flex items-center gap-1.5 mt-1">
                                                   <button
@@ -1230,8 +1230,8 @@ export function Subjects() {
                                                               onClick={() => toggleSubtopicExpand(sub.id)}
                                                             >
                                                               <p className={`text-[11px] font-medium w-full line-clamp-3 leading-snug ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                <List size={9} className="text-blue-400 shrink-0 inline-block mr-1.5 -translate-y-0.5" />
                                                                 {sub.title}
-                                                                <List size={9} className="text-blue-400 shrink-0 inline-block ml-1.5 -translate-y-0.5" />
                                                               </p>
                                                               <div className="flex items-center gap-1 mt-1 flex-wrap">
                                                                 <button onClick={e => { e.stopPropagation(); if (!subLocked) toggleSubtopicComplete(subj.id, chapter.id, topic.id, sub.id); }} disabled={subLocked} title={subLocked ? t('completePrevSubtopic') : undefined} className="shrink-0">

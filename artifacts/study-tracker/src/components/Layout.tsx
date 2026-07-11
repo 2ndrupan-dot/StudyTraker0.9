@@ -379,10 +379,10 @@ function SearchPullTab({ onClick }: { onClick: () => void }) {
     <motion.button
       className="md:hidden fixed z-50 flex items-center justify-center"
       style={{
-        right: -14,
+        right: -8,
         bottom: 110,
-        width: 34,
-        height: 34,
+        width: 32,
+        height: 32,
         borderRadius: '50%',
         background: 'linear-gradient(135deg, hsl(243 88% 62%), hsl(263 80% 60%))',
         boxShadow: '-2px 0 10px rgba(99,102,241,0.40)',
@@ -395,9 +395,9 @@ function SearchPullTab({ onClick }: { onClick: () => void }) {
         if (info.offset.x < -25) onClick();
       }}
       whileTap={{ scale: 0.92 }}
-      initial={{ x: 22 }}
-      animate={{ x: 22 }}
-      whileHover={{ x: 8 }}
+      initial={{ x: 10 }}
+      animate={{ x: 10 }}
+      whileHover={{ x: 0 }}
       transition={{ type: 'spring', stiffness: 300, damping: 28 }}
       aria-label="Search"
     >

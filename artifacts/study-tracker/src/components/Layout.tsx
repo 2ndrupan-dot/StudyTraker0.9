@@ -61,6 +61,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <BottomNav onSearchClick={() => setSearchOpen(true)} />
       </div>
 
+      {/* Search pull-tab — mobile only */}
+      <SearchPullTab onClick={() => setSearchOpen(true)} />
+
       {/* Online / Sync status */}
       <ConnectionStatus />
 
@@ -371,6 +374,48 @@ function MobileInstallButton() {
   );
 }
 
+function SearchPullTab({ onClick }: { onClick: () => void }) {
+  return (
+    <motion.button
+      className="md:hidden fixed z-50 flex items-center justify-center"
+      style={{
+        right: -2,
+        top: '42%',
+        width: 36,
+        height: 64,
+        borderRadius: '16px 0 0 16px',
+        background: 'linear-gradient(135deg, hsl(243 88% 62%), hsl(263 80% 60%))',
+        boxShadow: '-3px 0 16px rgba(99,102,241,0.35)',
+      }}
+      onClick={onClick}
+      drag="x"
+      dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={0.2}
+      onDragEnd={(_e, info) => {
+        if (info.offset.x < -30) onClick();
+      }}
+      whileTap={{ scale: 0.93 }}
+      initial={{ x: 18 }}
+      animate={{ x: 18 }}
+      whileHover={{ x: 6 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+      aria-label="Search"
+    >
+      <div className="flex flex-col items-center gap-0.5">
+        <Search size={14} className="text-white" strokeWidth={2.5} />
+        <motion.div
+          animate={{ x: [0, -3, 0] }}
+          transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut', repeatDelay: 1 }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M7 2L3 5L7 8" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </motion.div>
+      </div>
+    </motion.button>
+  );
+}
+
 function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
   const [location, setLocation] = useLocation();
   const { t } = useLang();
@@ -426,14 +471,6 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
             );
           })}
 
-          {/* Search — mobile only, opens modal instead of navigating */}
-          <button
-            onClick={onSearchClick}
-            className="flex-1 flex flex-col items-center justify-center gap-1 h-full relative"
-          >
-            <Search size={22} className="text-muted-foreground transition-all duration-300" strokeWidth={2} />
-            <span className="text-[10px] font-semibold text-muted-foreground">{t('searchTitle')}</span>
-          </button>
         </div>
       </div>
     </>

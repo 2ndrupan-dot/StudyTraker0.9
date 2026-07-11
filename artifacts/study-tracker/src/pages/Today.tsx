@@ -1495,7 +1495,7 @@ export function Today() {
                 <span className="spin-border-wrap">
                   <button
                     onClick={() => markComplete(task)}
-                    className="spin-border-inner flex items-center gap-1 sm:gap-1.5 h-7 sm:h-8 px-2 sm:px-3.5 bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-500 hover:to-green-600 text-white text-[11px] sm:text-xs font-bold transition-all whitespace-nowrap"
+                    className="spin-border-inner flex items-center gap-1 sm:gap-1.5 h-7 sm:h-8 px-2 sm:px-3.5 bg-gray-950 hover:bg-gray-900 text-white text-[11px] sm:text-xs font-bold transition-all whitespace-nowrap"
                   >
                     <CheckCircle2 size={12} className="shrink-0" /> {t('markComplete')}
                   </button>

@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText, User as UserIcon } from 'lucide-react';
+import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText, User as UserIcon, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
 import { usePWAInstall } from '@/context/PWAInstallContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GlobalSearch } from './GlobalSearch';
+import { useNavRefresh } from '@/context/NavRefreshContext';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -186,11 +187,21 @@ function InstallSection() {
 
 function NavItem({ path, icon: Icon, label }: { path: string; icon: any; label: string }) {
   const [location, setLocation] = useLocation();
+  const { triggerRefresh, refreshingPath } = useNavRefresh();
   const isActive = location === path || (location === '/tabs' && path === '/today') || (path !== '/today' && location.startsWith(path + '/'));
+  const isRefreshing = refreshingPath === path;
+
+  const handleClick = () => {
+    if (isActive) {
+      triggerRefresh(path);
+    } else {
+      setLocation(path);
+    }
+  };
 
   return (
     <button
-      onClick={() => setLocation(path)}
+      onClick={handleClick}
       className={cn(
         "w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200",
         isActive
@@ -198,7 +209,12 @@ function NavItem({ path, icon: Icon, label }: { path: string; icon: any; label: 
           : "text-white/55 hover:bg-white/10 hover:text-white/85"
       )}
     >
-      <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+      <motion.div
+        animate={isRefreshing ? { rotate: 360 } : { rotate: 0 }}
+        transition={isRefreshing ? { duration: 0.6, ease: 'easeInOut' } : { duration: 0 }}
+      >
+        <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+      </motion.div>
       <span>{label}</span>
       {isActive && (
         <motion.div
@@ -346,6 +362,7 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
   const [location, setLocation] = useLocation();
   const { t } = useLang();
   const { isInstalled } = usePWAInstall();
+  const { triggerRefresh, refreshingPath } = useNavRefresh();
 
   const tabs = [
     { path: '/today',    icon: CheckCircle2, label: t('today') },
@@ -364,10 +381,20 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
               (location === '/tabs' && tab.path === '/today') ||
               (tab.path !== '/today' && location.startsWith(tab.path + '/'));
             const Icon = tab.icon;
+            const isRefreshing = refreshingPath === tab.path;
+
+            const handleClick = () => {
+              if (isActive) {
+                triggerRefresh(tab.path);
+              } else {
+                setLocation(tab.path);
+              }
+            };
+
             return (
               <button
                 key={tab.path}
-                onClick={() => setLocation(tab.path)}
+                onClick={handleClick}
                 className="flex-1 flex flex-col items-center justify-center gap-1 h-full relative"
               >
                 {isActive && (
@@ -378,9 +405,13 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
                   />
                 )}
                 {isActive ? (
-                  <div className="w-9 h-9 rounded-2xl gradient-primary flex items-center justify-center shadow-md glow-sm">
+                  <motion.div
+                    className="w-9 h-9 rounded-2xl gradient-primary flex items-center justify-center shadow-md glow-sm"
+                    animate={isRefreshing ? { rotate: 360 } : { rotate: 0 }}
+                    transition={isRefreshing ? { duration: 0.6, ease: 'easeInOut' } : { duration: 0 }}
+                  >
                     <Icon size={18} className="text-white" strokeWidth={2.5} />
-                  </div>
+                  </motion.div>
                 ) : (
                   <Icon size={22} className="text-muted-foreground transition-all duration-300" strokeWidth={2} />
                 )}

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStudy } from '@/context/StudyContext';
+import { useRegisterRefresh } from '@/context/NavRefreshContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
 import { Plus, FileText, Trash2, Pencil, Check, X, StickyNote, Loader2, ArrowUpDown, GripVertical } from 'lucide-react';
@@ -50,6 +51,9 @@ function SortableNoteCard({ id, reorderMode, children }: {
 export function NotesIndex() {
   const { notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage, reorderNotePages } = useStudy();
   const { t, lang } = useLang();
+
+  const [refreshKey, setRefreshKey] = useState(0);
+  useRegisterRefresh('/notes', () => setRefreshKey(k => k + 1));
 
   // Create state
   const [isCreating, setIsCreating] = useState(false);

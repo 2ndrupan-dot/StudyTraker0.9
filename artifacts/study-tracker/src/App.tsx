@@ -14,6 +14,7 @@ import { CreateCoursePage } from "./pages/CreateCoursePage";
 import { PWAUpdater } from "./components/PWAUpdater";
 import { PWAInstallProvider } from "./context/PWAInstallContext";
 import { SplashScreen } from "./components/SplashScreen";
+import { NavRefreshProvider } from "./context/NavRefreshContext";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -163,8 +164,10 @@ function App() {
             <PWAInstallProvider>
               <CourseProvider>
                 <StudyProvider>
-                  <Router />
-                  <PWAUpdater />
+                  <NavRefreshProvider>
+                    <Router />
+                    <PWAUpdater />
+                  </NavRefreshProvider>
                 </StudyProvider>
               </CourseProvider>
             </PWAInstallProvider>

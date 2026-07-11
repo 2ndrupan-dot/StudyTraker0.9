@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useRegisterRefresh } from '@/context/NavRefreshContext';
 import { RichTextPreview } from '@/components/RichTextEditor';
 import { useAuth } from '@/context/AuthContext';
 import { useStudy } from '@/context/StudyContext';
@@ -311,6 +312,9 @@ export function Progress() {
   const { subjects, settings, setCourseStartDate, setTimezone } = useStudy();
   const { courses, deletedCourses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse, restoreCourse, permanentlyDeleteCourse } = useCourse();
   const { t, lang, setLang } = useLang();
+
+  const [refreshKey, setRefreshKey] = useState(0);
+  useRegisterRefresh('/progress', () => setRefreshKey(k => k + 1));
 
   const [modals, setModals] = useState({ profile: false, settings: false, logout: false, addCourse: false, switchCourse: false });
   const [tzSelectorOpen, setTzSelectorOpen] = useState(false);

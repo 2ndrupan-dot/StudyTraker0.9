@@ -337,3 +337,39 @@ mark.search-hl.search-hl-active { background-color: #f97316; color: #fff; }
 .rich-editor-content .column-resize-handle:hover,
 .rich-editor-content .resize-cursor .column-resize-handle { opacity: 1; }
 .ProseMirror { outline: none; }
+
+@keyframes spin-border {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spin-border-wrap {
+  position: relative;
+  display: inline-flex;
+  border-radius: 12px;
+  padding: 1.5px;
+  isolation: isolate;
+}
+.spin-border-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: conic-gradient(
+    from 0deg,
+    #a855f7 0deg,
+    #f0abfc 30deg,
+    transparent 70deg,
+    transparent 180deg,
+    #ec4899 180deg,
+    #fda4af 210deg,
+    transparent 250deg,
+    transparent 360deg
+  );
+  animation: spin-border 1.6s linear infinite;
+  z-index: 0;
+}
+.spin-border-inner {
+  position: relative;
+  z-index: 1;
+  border-radius: 10px;
+}

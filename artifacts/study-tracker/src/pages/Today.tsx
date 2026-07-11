@@ -1492,12 +1492,14 @@ export function Today() {
                 </button>
               )}
               {!done ? (
-                <button
-                  onClick={() => markComplete(task)}
-                  className="flex items-center gap-1 sm:gap-1.5 h-7 sm:h-8 px-2 sm:px-3.5 rounded-xl bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600 text-white text-[11px] sm:text-xs font-bold transition-all whitespace-nowrap shadow-sm"
-                >
-                  <CheckCircle2 size={12} className="shrink-0" /> {t('markComplete')}
-                </button>
+                <span className="spin-border-wrap">
+                  <button
+                    onClick={() => markComplete(task)}
+                    className="spin-border-inner flex items-center gap-1 sm:gap-1.5 h-7 sm:h-8 px-2 sm:px-3.5 bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600 text-white text-[11px] sm:text-xs font-bold transition-all whitespace-nowrap"
+                  >
+                    <CheckCircle2 size={12} className="shrink-0" /> {t('markComplete')}
+                  </button>
+                </span>
               ) : (
                 <button
                   onClick={() => markComplete(task)}

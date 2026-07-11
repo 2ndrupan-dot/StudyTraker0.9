@@ -380,35 +380,35 @@ function SearchPullTab({ onClick }: { onClick: () => void }) {
       className="md:hidden fixed z-50 flex items-center justify-center"
       style={{
         right: -2,
-        top: '42%',
-        width: 36,
-        height: 64,
-        borderRadius: '16px 0 0 16px',
+        bottom: 110,
+        width: 26,
+        height: 46,
+        borderRadius: '10px 0 0 10px',
         background: 'linear-gradient(135deg, hsl(243 88% 62%), hsl(263 80% 60%))',
-        boxShadow: '-3px 0 16px rgba(99,102,241,0.35)',
+        boxShadow: '-2px 0 10px rgba(99,102,241,0.35)',
       }}
       onClick={onClick}
       drag="x"
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.2}
       onDragEnd={(_e, info) => {
-        if (info.offset.x < -30) onClick();
+        if (info.offset.x < -25) onClick();
       }}
-      whileTap={{ scale: 0.93 }}
-      initial={{ x: 18 }}
-      animate={{ x: 18 }}
-      whileHover={{ x: 6 }}
+      whileTap={{ scale: 0.92 }}
+      initial={{ x: 22 }}
+      animate={{ x: 22 }}
+      whileHover={{ x: 8 }}
       transition={{ type: 'spring', stiffness: 300, damping: 28 }}
       aria-label="Search"
     >
       <div className="flex flex-col items-center gap-0.5">
-        <Search size={14} className="text-white" strokeWidth={2.5} />
+        <Search size={11} className="text-white" strokeWidth={2.5} />
         <motion.div
-          animate={{ x: [0, -3, 0] }}
-          transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut', repeatDelay: 1 }}
+          animate={{ x: [0, -2, 0] }}
+          transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut', repeatDelay: 1.5 }}
         >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M7 2L3 5L7 8" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+            <path d="M7 2L3 5L7 8" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </motion.div>
       </div>

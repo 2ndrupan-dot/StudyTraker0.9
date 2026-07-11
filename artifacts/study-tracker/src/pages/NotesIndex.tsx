@@ -173,29 +173,33 @@ export function NotesIndex() {
             {!isCreating && (
               <div className="flex items-center gap-2">
                 {noteCount > 1 && (
+                  <span className="spin-border-wrap spin-border-round">
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      type="button"
+                      onClick={() => setReorderMode(v => !v)}
+                      className={`spin-border-inner p-2 transition-colors ${
+                        reorderMode
+                          ? 'bg-white text-purple-600 shadow-md'
+                          : 'bg-white/15 text-white hover:bg-white/25'
+                      }`}
+                      title={reorderMode ? 'Reorder বন্ধ করুন' : 'Reorder করুন'}
+                    >
+                      <ArrowUpDown size={15} />
+                    </motion.button>
+                  </span>
+                )}
+                <span className="spin-border-wrap">
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     type="button"
-                    onClick={() => setReorderMode(v => !v)}
-                    className={`p-2 rounded-xl border transition-colors ${
-                      reorderMode
-                        ? 'bg-white text-purple-600 border-white shadow-md'
-                        : 'bg-white/15 text-white border-white/25 hover:bg-white/25'
-                    }`}
-                    title={reorderMode ? 'Reorder বন্ধ করুন' : 'Reorder করুন'}
+                    onClick={() => setIsCreating(true)}
+                    className="spin-border-inner flex items-center gap-1.5 px-3 py-2 bg-white/20 text-white text-xs font-bold hover:bg-white/30 transition-colors"
                   >
-                    <ArrowUpDown size={15} />
+                    <Plus size={14} />
+                    {t('addNote')}
                   </motion.button>
-                )}
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  type="button"
-                  onClick={() => setIsCreating(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/20 border border-white/30 text-white text-xs font-bold hover:bg-white/30 transition-colors"
-                >
-                  <Plus size={14} />
-                  {t('addNote')}
-                </motion.button>
+                </span>
               </div>
             )}
           </div>

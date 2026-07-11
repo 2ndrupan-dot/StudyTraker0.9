@@ -632,26 +632,30 @@ export function Subjects() {
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <motion.div whileTap={{ scale: 0.95 }}>
-              <button
-                type="button"
-                onClick={() => setReorderMode(v => !v)}
-                className={`p-2 rounded-xl border transition-all ${
-                  reorderMode
-                    ? 'bg-white text-indigo-600 border-white shadow-md'
-                    : 'bg-white/15 text-white border-white/25 hover:bg-white/25'
-                }`}
-                title={reorderMode ? 'Reorder Mode বন্ধ করুন' : 'Reorder Mode চালু করুন'}
-              >
-                <ArrowUpDown size={16} />
-              </button>
+              <span className="spin-border-wrap spin-border-round">
+                <button
+                  type="button"
+                  onClick={() => setReorderMode(v => !v)}
+                  className={`spin-border-inner p-2 transition-all ${
+                    reorderMode
+                      ? 'bg-white text-indigo-600 shadow-md'
+                      : 'bg-white/15 text-white hover:bg-white/25'
+                  }`}
+                  title={reorderMode ? 'Reorder Mode বন্ধ করুন' : 'Reorder Mode চালু করুন'}
+                >
+                  <ArrowUpDown size={16} />
+                </button>
+              </span>
             </motion.div>
             <motion.div whileTap={{ scale: 0.95 }}>
-              <button
-                className="flex items-center gap-1.5 py-2 px-3 rounded-xl bg-white/20 border border-white/30 text-white text-xs font-bold hover:bg-white/30 transition-colors"
-                onClick={() => openAdd('subject', {})}
-              >
-                <Plus size={15} /> {t('addSubject')}
-              </button>
+              <span className="spin-border-wrap">
+                <button
+                  className="spin-border-inner flex items-center gap-1.5 py-2 px-3 bg-white/20 text-white text-xs font-bold hover:bg-white/30 transition-colors"
+                  onClick={() => openAdd('subject', {})}
+                >
+                  <Plus size={15} /> {t('addSubject')}
+                </button>
+              </span>
             </motion.div>
           </div>
         </div>

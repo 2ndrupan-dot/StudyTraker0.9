@@ -370,3 +370,9 @@ mark.search-hl.search-hl-active { background-color: #f97316; color: #fff; }
 .spin-border-inner {
   border-radius: 10px;
 }
+.spin-border-round {
+  border-radius: 50% !important;
+}
+.spin-border-round .spin-border-inner {
+  border-radius: 50% !important;
+}

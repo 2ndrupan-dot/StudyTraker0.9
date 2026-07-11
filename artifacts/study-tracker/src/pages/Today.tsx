@@ -1494,7 +1494,7 @@ export function Today() {
               {!done ? (
                 <button
                   onClick={() => markComplete(task)}
-                  className="flex items-center gap-1 sm:gap-1.5 h-7 sm:h-8 px-2 sm:px-3.5 rounded-xl border border-indigo-400 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:border-indigo-400/60 dark:text-indigo-300 text-[11px] sm:text-xs font-bold hover:bg-indigo-100 dark:hover:bg-indigo-500/25 hover:border-indigo-500 transition-all whitespace-nowrap shadow-sm"
+                  className="flex items-center gap-1 sm:gap-1.5 h-7 sm:h-8 px-2 sm:px-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white text-[11px] sm:text-xs font-bold transition-all whitespace-nowrap shadow-sm"
                 >
                   <CheckCircle2 size={12} className="shrink-0" /> {t('markComplete')}
                 </button>

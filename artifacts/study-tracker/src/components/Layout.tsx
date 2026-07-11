@@ -401,17 +401,14 @@ function SearchPullTab({ onClick }: { onClick: () => void }) {
       transition={{ type: 'spring', stiffness: 300, damping: 28 }}
       aria-label="Search"
     >
-      <div className="flex flex-col items-center gap-0.5">
-        <Search size={11} className="text-white" strokeWidth={2.5} />
-        <motion.div
-          animate={{ x: [0, -2, 0] }}
-          transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut', repeatDelay: 1.5 }}
-        >
-          <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
-            <path d="M7 2L3 5L7 8" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </motion.div>
-      </div>
+      <motion.div
+        animate={{ x: [0, -3, 0] }}
+        transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut', repeatDelay: 2 }}
+      >
+        <svg width="12" height="16" viewBox="0 0 10 16" fill="none">
+          <path d="M8 1L2 8L8 15" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </motion.div>
     </motion.button>
   );
 }

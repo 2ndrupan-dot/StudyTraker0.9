@@ -1562,13 +1562,13 @@ export function Today() {
               className="overflow-hidden"
             >
               <div className="relative pt-0 px-3 pl-4 ml-2.5 pb-2" ref={registerTrunkRoot}>
-                <div data-trunk className="absolute -left-[3px] top-0 w-[3px] pointer-events-none" style={{ backgroundColor: group.subjectColor + '55', height: 0 }} />
+                <div data-trunk className="absolute -left-[3px] top-0 w-[3px] pointer-events-none" style={{ backgroundColor: group.subjectColor + 'A6', height: 0 }} />
                 <div className="space-y-2">
                   {group.incompleteTasks.map((task, taskIdx) => {
                     const isLast = taskIdx === group.incompleteTasks.length - 1;
                     return (
                       <div key={task.key} className="relative" data-last-item={isLast ? 'true' : undefined}>
-                        <div className="absolute -left-[19px] top-1/2 -translate-y-full h-[24px] w-[19px] border-l-[3px] border-b-[2px] rounded-bl-[10px] pointer-events-none" style={{ borderColor: task.subjectColor + '99' }} />
+                        <div className="absolute -left-[19px] top-1/2 -translate-y-full h-[24px] w-[19px] border-l-[3px] border-b-[2px] rounded-bl-[10px] pointer-events-none" style={{ borderColor: task.subjectColor + 'A6' }} />
                         {renderCard({ ...task, isCompleted: false })}
                       </div>
                     );

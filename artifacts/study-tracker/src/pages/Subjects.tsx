@@ -1045,6 +1045,7 @@ export function Subjects() {
                                 >
                                   <p className={`font-semibold text-sm w-full line-clamp-3 leading-snug ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                     {chapter.title}
+                                    <BookOpen size={11} className="text-primary shrink-0 inline-block ml-1.5 -translate-y-0.5" />
                                   </p>
                                   <div className="flex items-center gap-1.5 mt-1.5">
                                     <button
@@ -1056,7 +1057,6 @@ export function Subjects() {
                                       {chLocked ? <Lock size={18} className="text-muted-foreground/50" /> : isChapterContentDone(chapter) ? <CheckCircle2 size={18} className="text-green-500" /> : <Circle size={18} />}
                                     </button>
                                     <div className="flex items-center gap-1 flex-wrap">
-                                      <BookOpen size={11} className="text-primary shrink-0" />
                                       <span className="text-[9px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L2</span>
                                       {chapter.completed && !isChapterContentDone(chapter) && (
                                         <span className="flex items-center gap-0.5 text-[9px] font-bold text-indigo-700 bg-indigo-500/15 px-1.5 py-0.5 rounded-full border border-indigo-400/60 shrink-0">
@@ -1138,6 +1138,7 @@ export function Subjects() {
                                               >
                                                 <p className={`text-xs font-semibold w-full line-clamp-3 leading-snug ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                   {topic.title}
+                                                  <Layers size={10} className="text-accent-foreground shrink-0 inline-block ml-1.5 -translate-y-0.5" />
                                                 </p>
                                                 <div className="flex items-center gap-1.5 mt-1">
                                                   <button
@@ -1149,7 +1150,6 @@ export function Subjects() {
                                                     {topLocked ? <Lock size={15} className="text-muted-foreground/40" /> : isTopicContentDone(topic) ? <CheckCircle2 size={15} className="text-green-500" /> : <Circle size={15} className="text-muted-foreground" />}
                                                   </button>
                                                   <div className="flex items-center gap-1 flex-wrap">
-                                                    <Layers size={10} className="text-accent-foreground shrink-0" />
                                                     <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L3</span>
                                                     {topic.completed && !isTopicContentDone(topic) && (
                                                       <span className="flex items-center gap-0.5 text-[8px] font-bold text-indigo-700 bg-indigo-500/15 px-1.5 py-0.5 rounded-full border border-indigo-400/60 shrink-0">
@@ -1231,13 +1231,13 @@ export function Subjects() {
                                                             >
                                                               <p className={`text-[11px] font-medium w-full line-clamp-3 leading-snug ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                                 {sub.title}
+                                                                <List size={9} className="text-blue-400 shrink-0 inline-block ml-1.5 -translate-y-0.5" />
                                                               </p>
-                                                              <div className="flex items-center gap-1 mt-1">
+                                                              <div className="flex items-center gap-1 mt-1 flex-wrap">
                                                                 <button onClick={e => { e.stopPropagation(); if (!subLocked) toggleSubtopicComplete(subj.id, chapter.id, topic.id, sub.id); }} disabled={subLocked} title={subLocked ? t('completePrevSubtopic') : undefined} className="shrink-0">
                                                                   {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : isSubtopicContentDone(sub) ? <CheckCircle2 size={13} className="text-green-500" /> : <Circle size={13} className="text-muted-foreground" />}
                                                                 </button>
                                                                 <div className="flex items-center gap-1 flex-wrap">
-                                                                  <List size={9} className="text-blue-400 shrink-0" />
                                                                   <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L4</span>
                                                                   {sub.completed && !isSubtopicContentDone(sub) && (
                                                                     <span className="flex items-center gap-0.5 text-[8px] font-bold text-indigo-700 bg-indigo-500/15 px-1.5 py-0.5 rounded-full border border-indigo-400/60 shrink-0">

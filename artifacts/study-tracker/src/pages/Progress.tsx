@@ -6,10 +6,10 @@ import type { MarkPath } from '@/lib/types';
 import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
-import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, FileText, ExternalLink, Globe, RotateCcw, AlertTriangle, Clock } from 'lucide-react';
+import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock } from 'lucide-react';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 import { getTimezoneEntry, getCurrentOffset, getFlagUrl } from '@/lib/timezones';
-import { Modal, ConfirmModal, Input, Button, NoteEditorModal, NotePagePreviewModal } from '@/components/ui';
+import { Modal, ConfirmModal, Input, Button, NoteEditorModal } from '@/components/ui';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollReveal } from '@/components/ScrollReveal';
@@ -27,7 +27,7 @@ function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = 
 
 // ─── Note Search Modal ───────────────────────────────────────────────────────
 function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { subjects, notePagesIndex, setNote } = useStudy();
+  const { subjects, setNote } = useStudy();
   const { t } = useLang();
   const [, setLocation] = useLocation();
 
@@ -39,11 +39,11 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
   const [selTopic, setSelTopic] = React.useState<any>(null);
   const [selSubtopic, setSelSubtopic] = React.useState<any>(null);
   const [selConcept, setSelConcept] = React.useState<any>(null);
+  // Direction of the last level change, used to pick the drill-in/back slide animation.
+  const [direction, setDirection] = React.useState<1 | -1>(1);
 
   // Edit note state (includes path for saving)
   const [viewNote, setViewNote] = React.useState<{ title: string; draft: string; path: MarkPath } | null>(null);
-  // View A4 note page
-  const [viewNotePageId, setViewNotePageId] = React.useState<{ id: string; title: string } | null>(null);
 
   const buildPath = (item: any): MarkPath => {
     if (level === 'subjects')  return { subjectId: item.id, level: 'subject' };
@@ -62,6 +62,7 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
   }, [isOpen]);
 
   const goBack = () => {
+    setDirection(-1);
     if (level === 'points')    { setSelConcept(null);  setLevel('concepts'); }
     else if (level === 'concepts')  { setSelSubtopic(null); setLevel('subtopics'); }
     else if (level === 'subtopics') { setSelTopic(null);    setLevel('topics'); }
@@ -94,6 +95,7 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
   };
 
   const drillInto = (item: any) => {
+    setDirection(1);
     if (level === 'subjects')   { setSelSubject(item);  setLevel('chapters'); }
     else if (level === 'chapters')  { setSelChapter(item);  setLevel('topics'); }
     else if (level === 'topics')    { setSelTopic(item);    setLevel('subtopics'); }
@@ -145,75 +147,64 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
           </button>
         )}
 
-        {/* A4 Note Pages (only at root level) */}
-        {level === 'subjects' && notePagesIndex.length > 0 && (
-          <div className="mb-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2 px-1">
-              {t('a4NotePages')}
-            </p>
-            <div className="space-y-1">
-              {notePagesIndex.map(np => (
-                <button
-                  key={np.id}
-                  onClick={() => setViewNotePageId({ id: np.id, title: np.title || 'Untitled' })}
-                  className="w-full flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-secondary transition-colors text-left"
-                >
-                  <FileText size={14} className="text-primary shrink-0" />
-                  <span className="text-sm font-medium flex-1 truncate">{np.title || 'Untitled'}</span>
-                  <ExternalLink size={11} className="text-muted-foreground shrink-0" />
-                </button>
-              ))}
-            </div>
-            <div className="border-t border-border/40 mt-3 mb-4" />
-          </div>
-        )}
-
         {/* Level label */}
         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2 px-1">
           {levelLabel[level]}
         </p>
 
         {/* Items list */}
-        <div className="space-y-1 max-h-72 overflow-y-auto">
-          {currentItems.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-6">No items here.</p>
-          ) : (
-            currentItems.map(item => (
-              <div
-                key={item.id}
-                className="flex items-center gap-2 rounded-xl hover:bg-secondary/50 transition-colors group"
-              >
-                {/* Drill-in button */}
-                <button
-                  onClick={() => hasChildren(item) ? drillInto(item) : undefined}
-                  className="flex-1 flex items-center gap-2.5 p-2.5 text-left min-w-0"
-                  disabled={!hasChildren(item)}
-                >
-                  {selSubject?.color && (
-                    <span
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{ backgroundColor: level === 'subjects' ? item.color : accentColor }}
-                    />
-                  )}
-                  <span className="text-sm font-medium truncate flex-1">{item.title}</span>
-                  {hasChildren(item) && (
-                    <ChevronRight size={14} className="text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  )}
-                </button>
-
-                {/* Note badge */}
-                {item.note?.trim() && (
-                  <button
-                    onClick={() => setViewNote({ title: item.title, draft: item.note, path: buildPath(item) })}
-                    className="p-2 mr-1 rounded-lg hover:bg-amber-500/10 text-amber-500 shrink-0 transition-colors"
-                    title={t('viewNote')}
+        <div className="relative max-h-72 overflow-hidden">
+          <AnimatePresence mode="wait" custom={direction} initial={false}>
+            <motion.div
+              key={level}
+              custom={direction}
+              initial={{ x: direction === 1 ? 24 : -24, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: direction === 1 ? -24 : 24, opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+              className="space-y-1 max-h-72 overflow-y-auto"
+            >
+              {currentItems.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-6">No items here.</p>
+              ) : (
+                currentItems.map(item => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2 rounded-xl hover:bg-secondary/50 transition-colors group"
                   >
-                    <StickyNote size={14} />
-                  </button>
-                )}
-              </div>
-            ))
-          )}
+                    {/* Drill-in button */}
+                    <button
+                      onClick={() => hasChildren(item) ? drillInto(item) : undefined}
+                      className="flex-1 flex items-center gap-2.5 p-2.5 text-left min-w-0"
+                      disabled={!hasChildren(item)}
+                    >
+                      {selSubject?.color && (
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: level === 'subjects' ? item.color : accentColor }}
+                        />
+                      )}
+                      <span className="text-sm font-medium truncate flex-1">{item.title}</span>
+                      {hasChildren(item) && (
+                        <ChevronRight size={14} className="text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+
+                    {/* Note badge */}
+                    {item.note?.trim() && (
+                      <button
+                        onClick={() => setViewNote({ title: item.title, draft: item.note, path: buildPath(item) })}
+                        className="p-2 mr-1 rounded-lg hover:bg-amber-500/10 text-amber-500 shrink-0 transition-colors"
+                        title={t('viewNote')}
+                      >
+                        <StickyNote size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </Modal>
 
@@ -240,15 +231,6 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
         />
       )}
 
-      {/* A4 note page preview */}
-      {viewNotePageId && (
-        <NotePagePreviewModal
-          isOpen={!!viewNotePageId}
-          onClose={() => setViewNotePageId(null)}
-          noteId={viewNotePageId.id}
-          noteTitle={viewNotePageId.title}
-        />
-      )}
     </>
   );
 }

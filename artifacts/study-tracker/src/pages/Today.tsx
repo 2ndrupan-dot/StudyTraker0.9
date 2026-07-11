@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useStudy } from '@/context/StudyContext';
-import { useRegisterRefresh } from '@/context/NavRefreshContext';
 import { useAuth } from '@/context/AuthContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
@@ -570,8 +569,6 @@ export function Today() {
   const [extraLoadedMins, setExtraLoadedMins] = useState(0);
   const [loadMoreNotice, setLoadMoreNotice] = useState<string | null>(null);
   const [reloadDay, setReloadDay] = useState(0);
-
-  useRegisterRefresh('/today', () => setReloadDay(d => d + 1));
 
   // Ref to suppress onSnapshot echoes right after a local write
   const lastWriteRef = useRef<number>(0);

@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useStudy } from '@/context/StudyContext';
-import { useRegisterRefresh } from '@/context/NavRefreshContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
 import {
@@ -399,10 +398,7 @@ export function Subjects() {
   const { t } = useLang();
 
   const [reorderMode, setReorderMode] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const registerTrunkRoot = useTreeTrunk();
-
-  useRegisterRefresh('/subjects', () => setRefreshKey(k => k + 1));
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),

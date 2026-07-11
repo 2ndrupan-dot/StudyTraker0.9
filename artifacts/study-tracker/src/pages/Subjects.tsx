@@ -284,10 +284,10 @@ function SortableItemWrapper({ id, reorderMode, children }: { id: string; reorde
       {...attributes}
       {...(reorderMode ? listeners : {})}
       onClick={e => e.stopPropagation()}
-      className={`touch-none shrink-0 self-stretch flex items-center px-1.5 transition-colors select-none border-l border-border/30 ml-1 ${
+      className={`shrink-0 self-stretch flex items-center px-1.5 transition-colors select-none border-l border-border/30 ml-1 ${
         reorderMode
-          ? 'cursor-grab active:cursor-grabbing text-primary/70 hover:text-primary hover:bg-primary/10'
-          : 'cursor-default text-muted-foreground/20'
+          ? 'touch-none cursor-grab active:cursor-grabbing text-primary/70 hover:text-primary hover:bg-primary/10'
+          : 'touch-auto cursor-default text-muted-foreground/20 pointer-events-none'
       }`}
       title={reorderMode ? 'ড্র্যাগ করে সরান' : 'Reorder Mode চালু করুন'}
     >

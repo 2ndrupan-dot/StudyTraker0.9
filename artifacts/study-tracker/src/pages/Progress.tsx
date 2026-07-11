@@ -499,9 +499,9 @@ export function Progress() {
         <div className="relative px-5 pt-5 pb-4 flex items-center justify-between">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0">
-              <Target size={22} className="text-white" strokeWidth={2.2} />
+              <UserIcon size={22} className="text-white" strokeWidth={2.2} />
             </div>
-            <h1 className="font-bold text-white leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(1.05rem, 5.5vw, 1.5rem)', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('progress')}</h1>
+            <h1 className="font-bold text-white leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(1.05rem, 5.5vw, 1.5rem)', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('profileTab')}</h1>
           </div>
           <div className="flex gap-2">
             <motion.button

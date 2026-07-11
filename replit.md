@@ -26,12 +26,14 @@ lib/
 ```bash
 # Install dependencies (use --registry flag to bypass package firewall)
 pnpm install --registry https://registry.npmjs.org
-
-# Run study-tracker frontend
-pnpm --filter @workspace/study-tracker run dev
 ```
 
-The study-tracker workflow runs automatically via Replit.
+This project runs as three separate Replit artifacts, each with its own managed workflow (no manual workflow setup needed — restart via the artifact's own workflow if it stalls):
+- **StudyTrack** (`artifacts/study-tracker`) — web frontend, preview path `/`
+- **API Server** (`artifacts/api-server`) — preview path `/api`
+- **Component Preview Server** (`artifacts/mockup-sandbox`) — preview path `/__mockup`
+
+If the preview shows "artifact crashed" with `vite: not found` or similar, dependencies just need installing (`pnpm install --registry https://registry.npmjs.org` from the repo root), then restart the `artifacts/study-tracker: web` workflow.
 
 ## Firebase Config
 Firebase credentials are read from `VITE_FIREBASE_*` environment variables (see `.env.example`). Firestore offline persistence is enabled with `persistentMultipleTabManager`.

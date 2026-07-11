@@ -1388,41 +1388,43 @@ export function Today() {
             </div>
           )}
 
-          <div className="flex items-start gap-2 mb-2">
-            <span className={`shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${LEVEL_META[task.level].color}`}>
-              <Icon size={9} /> {levelLabel}
-            </span>
-            {opts?.isRevision && (
-              <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border text-purple-600 bg-purple-500/10 border-purple-200">
-                <RefreshCw size={9} /> {isBn ? 'রিভিশন' : 'Revision'}
+          <div className="mb-2">
+            <h3 className={`font-bold text-sm leading-snug w-full line-clamp-3 ${done ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+              {task.mainTitle}
+              <span className="ml-1.5 text-[70%] text-muted-foreground/55 font-medium not-italic align-baseline">({levelNum})</span>
+            </h3>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className={`shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${LEVEL_META[task.level].color}`}>
+                <Icon size={9} /> {levelLabel}
               </span>
-            )}
-            {task.loadedFrom && (
-              <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border text-indigo-600 bg-indigo-500/10 border-indigo-200">
-                <Plus size={9} /> {t('loadedExtraBadge')}
-              </span>
-            )}
-            <div className="flex-1 min-w-0">
-              <h3 className={`font-bold text-sm leading-snug w-full line-clamp-3 ${done ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                {task.mainTitle}
-                <span className="ml-1.5 text-[70%] text-muted-foreground/55 font-medium not-italic align-baseline">({levelNum})</span>
-              </h3>
+              {opts?.isRevision && (
+                <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border text-purple-600 bg-purple-500/10 border-purple-200">
+                  <RefreshCw size={9} /> {isBn ? 'রিভিশন' : 'Revision'}
+                </span>
+              )}
+              {task.loadedFrom && (
+                <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border text-indigo-600 bg-indigo-500/10 border-indigo-200">
+                  <Plus size={9} /> {t('loadedExtraBadge')}
+                </span>
+              )}
+              {!opts?.isRevision && (() => {
+                const marks = getTaskMarks(task);
+                return (
+                  <div className="ml-auto shrink-0">
+                    <ItemActions
+                      path={taskToMarkPath(task)}
+                      important={marks.important}
+                      weak={marks.weak}
+                      hasNote={!!marks.note}
+                      currentNote={marks.note}
+                      onOpenNote={openNoteModal}
+                      size="sm"
+                      alwaysVisible
+                    />
+                  </div>
+                );
+              })()}
             </div>
-            {!opts?.isRevision && (() => {
-              const marks = getTaskMarks(task);
-              return (
-                <ItemActions
-                  path={taskToMarkPath(task)}
-                  important={marks.important}
-                  weak={marks.weak}
-                  hasNote={!!marks.note}
-                  currentNote={marks.note}
-                  onOpenNote={openNoteModal}
-                  size="sm"
-                  alwaysVisible
-                />
-              );
-            })()}
           </div>
 
           {(() => {

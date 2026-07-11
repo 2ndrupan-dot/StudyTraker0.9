@@ -1040,22 +1040,22 @@ export function Subjects() {
                               <motion.div id={`study-item-${chapter.id}`} {...itemAnim} className={`relative bg-indigo-50/60 border-2 rounded-xl overflow-hidden shadow-sm ${chLocked ? 'opacity-70' : ''} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`} style={{ borderColor: chLocked ? "rgba(99,102,241,0.55)" : "rgba(99,102,241,0.65)" }}>
                                 <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-indigo-400/70 rounded-r-full z-10" />
                                 <div
-                                  className="p-3 flex items-center gap-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row relative"
+                                  className="px-3 pt-3 pb-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row relative"
                                   onClick={() => toggleChapter(chapter.id)}
                                 >
-                                  <button
-                                    onClick={e => { e.stopPropagation(); if (!chLocked) toggleChapterComplete(subj.id, chapter.id); }}
-                                    className={`shrink-0 transition-colors ${chLocked ? 'cursor-not-allowed text-muted-foreground/50' : 'text-muted-foreground hover:text-primary'}`}
-                                    disabled={chLocked}
-                                    title={chLocked ? t('completePrevChapter') : undefined}
-                                  >
-                                    {chLocked ? <Lock size={18} className="text-muted-foreground/50" /> : isChapterContentDone(chapter) ? <CheckCircle2 size={18} className="text-green-500" /> : <Circle size={18} />}
-                                  </button>
-                                  <div className="flex-1 min-w-0">
-                                    <p className={`font-semibold text-sm w-full line-clamp-3 leading-snug ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                                      {chapter.title}
-                                    </p>
-                                    <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                  <p className={`font-semibold text-sm w-full line-clamp-3 leading-snug ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                    {chapter.title}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 mt-1.5">
+                                    <button
+                                      onClick={e => { e.stopPropagation(); if (!chLocked) toggleChapterComplete(subj.id, chapter.id); }}
+                                      className={`shrink-0 transition-colors ${chLocked ? 'cursor-not-allowed text-muted-foreground/50' : 'text-muted-foreground hover:text-primary'}`}
+                                      disabled={chLocked}
+                                      title={chLocked ? t('completePrevChapter') : undefined}
+                                    >
+                                      {chLocked ? <Lock size={18} className="text-muted-foreground/50" /> : isChapterContentDone(chapter) ? <CheckCircle2 size={18} className="text-green-500" /> : <Circle size={18} />}
+                                    </button>
+                                    <div className="flex items-center gap-1 flex-wrap">
                                       <BookOpen size={11} className="text-primary shrink-0" />
                                       <span className="text-[9px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L2</span>
                                       {chapter.completed && !isChapterContentDone(chapter) && (
@@ -1064,41 +1064,41 @@ export function Subjects() {
                                         </span>
                                       )}
                                     </div>
-                                    <MarksBadgeRow important={chapter.important} weak={chapter.weak} note={chapter.note} onClickNote={() => openNote(chPath, chapter.note ?? '')} />
-                                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                                      {t('topics')}: {completedTopics}/{topicCount}
-                                      {overviewTopics > 0 ? ` • ${overviewTopics} ${t('overviewBadge')}` : ''}
-                                      {chSubtopics > 0 ? ` • Subtopics: ${chCompletedSubs}/${chSubtopics}` : ''}
-                                      {chapter.estimatedMinutes ? ` • ${formatTotalTime(chapter.estimatedMinutes, t)}` : ''}
-                                    </p>
+                                    <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                                      <ItemActions
+                                        path={chPath}
+                                        important={chapter.important}
+                                        weak={chapter.weak}
+                                        hasNote={!!chapter.note}
+                                        currentNote={chapter.note}
+                                        onOpenNote={openNote}
+                                        size="sm"
+                                      />
+                                      <button
+                                        onClick={e => { e.stopPropagation(); openEdit('chapter', { subjId: subj.id, chapterId: chapter.id }, chapter.title, chapter.estimatedMinutes, undefined, chapter.difficulty); }}
+                                        className="p-1.5 text-muted-foreground hover:text-primary rounded-lg transition-colors"
+                                      >
+                                        <Pencil size={12} />
+                                      </button>
+                                      <button
+                                        onClick={e => { e.stopPropagation(); openDelete('chapter', { subjId: subj.id, chapterId: chapter.id }); }}
+                                        className="p-1.5 text-muted-foreground hover:text-destructive transition-colors rounded-lg"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                      <motion.div animate={{ rotate: chExpanded ? 90 : 0 }} transition={{ duration: 0.18 }}>
+                                        <ChevronRight size={15} className="text-muted-foreground" />
+                                      </motion.div>
+                                      {chHandle}
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-0.5 shrink-0">
-                                    <ItemActions
-                                      path={chPath}
-                                      important={chapter.important}
-                                      weak={chapter.weak}
-                                      hasNote={!!chapter.note}
-                                      currentNote={chapter.note}
-                                      onOpenNote={openNote}
-                                      size="sm"
-                                    />
-                                    <button
-                                      onClick={e => { e.stopPropagation(); openEdit('chapter', { subjId: subj.id, chapterId: chapter.id }, chapter.title, chapter.estimatedMinutes, undefined, chapter.difficulty); }}
-                                      className="p-1.5 text-muted-foreground hover:text-primary rounded-lg transition-colors"
-                                    >
-                                      <Pencil size={12} />
-                                    </button>
-                                    <button
-                                      onClick={e => { e.stopPropagation(); openDelete('chapter', { subjId: subj.id, chapterId: chapter.id }); }}
-                                      className="p-1.5 text-muted-foreground hover:text-destructive transition-colors rounded-lg"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-                                    <motion.div animate={{ rotate: chExpanded ? 90 : 0 }} transition={{ duration: 0.18 }}>
-                                      <ChevronRight size={15} className="text-muted-foreground" />
-                                    </motion.div>
-                                    {chHandle}
-                                  </div>
+                                  <MarksBadgeRow important={chapter.important} weak={chapter.weak} note={chapter.note} onClickNote={() => openNote(chPath, chapter.note ?? '')} />
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                                    {t('topics')}: {completedTopics}/{topicCount}
+                                    {overviewTopics > 0 ? ` • ${overviewTopics} ${t('overviewBadge')}` : ''}
+                                    {chSubtopics > 0 ? ` • Subtopics: ${chCompletedSubs}/${chSubtopics}` : ''}
+                                    {chapter.estimatedMinutes ? ` • ${formatTotalTime(chapter.estimatedMinutes, t)}` : ''}
+                                  </p>
                                 </div>
 
                                 {/* Topics */}
@@ -1133,22 +1133,22 @@ export function Subjects() {
                                             <motion.div id={`study-item-${topic.id}`} {...itemAnim} className={`relative bg-violet-50/60 border-2 rounded-lg overflow-hidden ${topLocked ? 'opacity-60' : ''} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`} style={{ borderColor: topLocked ? "rgba(139,92,246,0.55)" : "rgba(139,92,246,0.6)" }}>
                                               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-violet-400/70 rounded-r-full z-10" />
                                               <div
-                                                className="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-secondary/20 group/row relative"
+                                                className="px-3 pt-2.5 pb-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
                                                 onClick={() => toggleTopic(topic.id)}
                                               >
-                                                <button
-                                                  onClick={e => { e.stopPropagation(); if (!topLocked) toggleTopicComplete(subj.id, chapter.id, topic.id); }}
-                                                  className="shrink-0"
-                                                  disabled={topLocked}
-                                                  title={topLocked ? t('completePrevTopic') : undefined}
-                                                >
-                                                  {topLocked ? <Lock size={15} className="text-muted-foreground/40" /> : isTopicContentDone(topic) ? <CheckCircle2 size={15} className="text-green-500" /> : <Circle size={15} className="text-muted-foreground" />}
-                                                </button>
-                                                <div className="flex-1 min-w-0">
-                                                  <p className={`text-xs font-semibold w-full line-clamp-3 leading-snug ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                                                    {topic.title}
-                                                  </p>
-                                                  <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                                <p className={`text-xs font-semibold w-full line-clamp-3 leading-snug ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                  {topic.title}
+                                                </p>
+                                                <div className="flex items-center gap-1.5 mt-1">
+                                                  <button
+                                                    onClick={e => { e.stopPropagation(); if (!topLocked) toggleTopicComplete(subj.id, chapter.id, topic.id); }}
+                                                    className="shrink-0"
+                                                    disabled={topLocked}
+                                                    title={topLocked ? t('completePrevTopic') : undefined}
+                                                  >
+                                                    {topLocked ? <Lock size={15} className="text-muted-foreground/40" /> : isTopicContentDone(topic) ? <CheckCircle2 size={15} className="text-green-500" /> : <Circle size={15} className="text-muted-foreground" />}
+                                                  </button>
+                                                  <div className="flex items-center gap-1 flex-wrap">
                                                     <Layers size={10} className="text-accent-foreground shrink-0" />
                                                     <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L3</span>
                                                     {topic.completed && !isTopicContentDone(topic) && (
@@ -1157,41 +1157,41 @@ export function Subjects() {
                                                       </span>
                                                     )}
                                                   </div>
-                                                  <MarksBadgeRow size="xs" important={topic.important} weak={topic.weak} note={topic.note} onClickNote={() => openNote(topPath, topic.note ?? '')} />
-                                                  <p className="text-[9px] text-muted-foreground mt-0.5">
-                                                    Subtopics: {completedSubs}/{topic.subtopics.length}
-                                                    {overviewSubs > 0 ? ` • ${overviewSubs} ${t('overviewBadge')}` : ''}
-                                                    {topConcepts > 0 ? ` • Concepts: ${topCompletedConcepts}/${topConcepts}` : ''}
-                                                    {topic.estimatedMinutes ? ` • ${formatTotalTime(topic.estimatedMinutes, t)}` : ''}
-                                                  </p>
+                                                  <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                                                    <ItemActions
+                                                      path={topPath}
+                                                      important={topic.important}
+                                                      weak={topic.weak}
+                                                      hasNote={!!topic.note}
+                                                      currentNote={topic.note}
+                                                      onOpenNote={openNote}
+                                                      size="sm"
+                                                    />
+                                                    <button
+                                                      onClick={e => { e.stopPropagation(); openEdit('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }, topic.title, topic.estimatedMinutes, undefined, topic.difficulty); }}
+                                                      className="p-1 text-muted-foreground hover:text-primary"
+                                                    >
+                                                      <Pencil size={10} />
+                                                    </button>
+                                                    <button
+                                                      onClick={e => { e.stopPropagation(); openDelete('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }); }}
+                                                      className="p-1 text-muted-foreground hover:text-destructive"
+                                                    >
+                                                      <Trash2 size={11} />
+                                                    </button>
+                                                    <motion.div animate={{ rotate: tExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
+                                                      <ChevronRight size={13} className="text-muted-foreground" />
+                                                    </motion.div>
+                                                    {topHandle}
+                                                  </div>
                                                 </div>
-                                                <div className="flex items-center gap-0.5 shrink-0">
-                                                  <ItemActions
-                                                    path={topPath}
-                                                    important={topic.important}
-                                                    weak={topic.weak}
-                                                    hasNote={!!topic.note}
-                                                    currentNote={topic.note}
-                                                    onOpenNote={openNote}
-                                                    size="sm"
-                                                  />
-                                                  <button
-                                                    onClick={e => { e.stopPropagation(); openEdit('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }, topic.title, topic.estimatedMinutes, undefined, topic.difficulty); }}
-                                                    className="p-1 text-muted-foreground hover:text-primary"
-                                                  >
-                                                    <Pencil size={10} />
-                                                  </button>
-                                                  <button
-                                                    onClick={e => { e.stopPropagation(); openDelete('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }); }}
-                                                    className="p-1 text-muted-foreground hover:text-destructive"
-                                                  >
-                                                    <Trash2 size={11} />
-                                                  </button>
-                                                  <motion.div animate={{ rotate: tExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
-                                                    <ChevronRight size={13} className="text-muted-foreground" />
-                                                  </motion.div>
-                                                  {topHandle}
-                                                </div>
+                                                <MarksBadgeRow size="xs" important={topic.important} weak={topic.weak} note={topic.note} onClickNote={() => openNote(topPath, topic.note ?? '')} />
+                                                <p className="text-[9px] text-muted-foreground mt-0.5">
+                                                  Subtopics: {completedSubs}/{topic.subtopics.length}
+                                                  {overviewSubs > 0 ? ` • ${overviewSubs} ${t('overviewBadge')}` : ''}
+                                                  {topConcepts > 0 ? ` • Concepts: ${topCompletedConcepts}/${topConcepts}` : ''}
+                                                  {topic.estimatedMinutes ? ` • ${formatTotalTime(topic.estimatedMinutes, t)}` : ''}
+                                                </p>
                                               </div>
 
                                               {/* Subtopics */}
@@ -1226,17 +1226,17 @@ export function Subjects() {
                                                           <motion.div id={`study-item-${sub.id}`} {...itemAnim} className={`relative bg-sky-50/60 border-2 rounded-lg overflow-hidden ${subLocked ? 'opacity-55' : ''} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`} style={{ borderColor: subLocked ? "rgba(14,165,233,0.5)" : "rgba(14,165,233,0.6)" }}>
                                                             <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-sky-400/70 rounded-r-full z-10" />
                                                             <div
-                                                              className="px-2.5 py-2 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
+                                                              className="px-2.5 pt-2 pb-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
                                                               onClick={() => toggleSubtopicExpand(sub.id)}
                                                             >
-                                                              <button onClick={e => { e.stopPropagation(); if (!subLocked) toggleSubtopicComplete(subj.id, chapter.id, topic.id, sub.id); }} disabled={subLocked} title={subLocked ? t('completePrevSubtopic') : undefined}>
-                                                                {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : isSubtopicContentDone(sub) ? <CheckCircle2 size={13} className="text-green-500" /> : <Circle size={13} className="text-muted-foreground" />}
-                                                              </button>
-                                                              <div className="flex-1 min-w-0">
-                                                                <p className={`text-[11px] font-medium w-full line-clamp-3 leading-snug ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                                                                  {sub.title}
-                                                                </p>
-                                                                <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                                              <p className={`text-[11px] font-medium w-full line-clamp-3 leading-snug ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                {sub.title}
+                                                              </p>
+                                                              <div className="flex items-center gap-1 mt-1">
+                                                                <button onClick={e => { e.stopPropagation(); if (!subLocked) toggleSubtopicComplete(subj.id, chapter.id, topic.id, sub.id); }} disabled={subLocked} title={subLocked ? t('completePrevSubtopic') : undefined} className="shrink-0">
+                                                                  {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : isSubtopicContentDone(sub) ? <CheckCircle2 size={13} className="text-green-500" /> : <Circle size={13} className="text-muted-foreground" />}
+                                                                </button>
+                                                                <div className="flex items-center gap-1 flex-wrap">
                                                                   <List size={9} className="text-blue-400 shrink-0" />
                                                                   <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L4</span>
                                                                   {sub.completed && !isSubtopicContentDone(sub) && (
@@ -1245,35 +1245,35 @@ export function Subjects() {
                                                                     </span>
                                                                   )}
                                                                 </div>
-                                                                <MarksBadgeRow size="xs" important={sub.important} weak={sub.weak} note={sub.note} onClickNote={() => openNote(subPath, sub.note ?? '')} />
-                                                                <p className="text-[8px] text-muted-foreground">
-                                                                  Concepts: {completedConcepts}/{sub.concepts.length}
-                                                                  {overviewConcepts > 0 ? ` • ${overviewConcepts} ${t('overviewBadge')}` : ''}
-                                                                  {subPoints > 0 ? ` • Points: ${subCompletedPoints}/${subPoints}` : ''}
-                                                                  {sub.estimatedMinutes ? ` • ${formatTotalTime(sub.estimatedMinutes, t)}` : ''}
-                                                                </p>
+                                                                <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                                                                  <ItemActions
+                                                                    path={subPath}
+                                                                    important={sub.important}
+                                                                    weak={sub.weak}
+                                                                    hasNote={!!sub.note}
+                                                                    currentNote={sub.note}
+                                                                    onOpenNote={openNote}
+                                                                    size="sm"
+                                                                  />
+                                                                  <button onClick={e => { e.stopPropagation(); openEdit('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title, sub.estimatedMinutes, undefined, sub.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
+                                                                    <Pencil size={9} />
+                                                                  </button>
+                                                                  <button onClick={e => { e.stopPropagation(); openDelete('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
+                                                                    <Trash2 size={10} />
+                                                                  </button>
+                                                                  <motion.div animate={{ rotate: subExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
+                                                                    <ChevronRight size={11} className="text-muted-foreground" />
+                                                                  </motion.div>
+                                                                  {subHandle}
+                                                                </div>
                                                               </div>
-                                                              <div className="flex items-center gap-0.5 shrink-0">
-                                                                <ItemActions
-                                                                  path={subPath}
-                                                                  important={sub.important}
-                                                                  weak={sub.weak}
-                                                                  hasNote={!!sub.note}
-                                                                  currentNote={sub.note}
-                                                                  onOpenNote={openNote}
-                                                                  size="sm"
-                                                                />
-                                                                <button onClick={e => { e.stopPropagation(); openEdit('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title, sub.estimatedMinutes, undefined, sub.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
-                                                                  <Pencil size={9} />
-                                                                </button>
-                                                                <button onClick={e => { e.stopPropagation(); openDelete('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
-                                                                  <Trash2 size={10} />
-                                                                </button>
-                                                                <motion.div animate={{ rotate: subExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
-                                                                  <ChevronRight size={11} className="text-muted-foreground" />
-                                                                </motion.div>
-                                                                {subHandle}
-                                                              </div>
+                                                              <MarksBadgeRow size="xs" important={sub.important} weak={sub.weak} note={sub.note} onClickNote={() => openNote(subPath, sub.note ?? '')} />
+                                                              <p className="text-[8px] text-muted-foreground">
+                                                                Concepts: {completedConcepts}/{sub.concepts.length}
+                                                                {overviewConcepts > 0 ? ` • ${overviewConcepts} ${t('overviewBadge')}` : ''}
+                                                                {subPoints > 0 ? ` • Points: ${subCompletedPoints}/${subPoints}` : ''}
+                                                                {sub.estimatedMinutes ? ` • ${formatTotalTime(sub.estimatedMinutes, t)}` : ''}
+                                                              </p>
                                                             </div>
 
                                                             {/* Concepts */}
@@ -1299,17 +1299,17 @@ export function Subjects() {
                                                                         {(conHandle) => (
                                                                         <motion.div id={`study-item-${concept.id}`} {...itemAnim} className={`bg-card border rounded-lg overflow-hidden ${conLocked ? 'border-border/10 opacity-50' : 'border-border/20'} ${concept.important ? 'ring-1 ring-yellow-300/40' : ''} ${concept.weak ? 'ring-1 ring-rose-300/40' : ''}`}>
                                                                           <div
-                                                                            className="px-2 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-secondary/20 group/row"
+                                                                            className="px-2 pt-1.5 pb-1 cursor-pointer hover:bg-secondary/20 group/row"
                                                                             onClick={() => toggleConceptExpand(concept.id)}
                                                                           >
-                                                                            <button onClick={e => { e.stopPropagation(); if (!conLocked) toggleConceptComplete(subj.id, chapter.id, topic.id, sub.id, concept.id); }} disabled={conLocked} title={conLocked ? t('completePrevConcept') : undefined}>
-                                                                              {conLocked ? <Lock size={11} className="text-muted-foreground/30" /> : isConceptContentDone(concept) ? <CheckCircle2 size={11} className="text-green-500" /> : <Circle size={11} className="text-muted-foreground" />}
-                                                                            </button>
-                                                                            <div className="flex-1 min-w-0">
-                                                                              <p className={`text-[10px] font-medium w-full line-clamp-3 leading-snug ${isConceptContentDone(concept) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                                                                                {concept.title}
-                                                                              </p>
-                                                                              <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                                                            <p className={`text-[10px] font-medium w-full line-clamp-3 leading-snug ${isConceptContentDone(concept) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                              {concept.title}
+                                                                            </p>
+                                                                            <div className="flex items-center gap-1 mt-0.5">
+                                                                              <button onClick={e => { e.stopPropagation(); if (!conLocked) toggleConceptComplete(subj.id, chapter.id, topic.id, sub.id, concept.id); }} disabled={conLocked} title={conLocked ? t('completePrevConcept') : undefined} className="shrink-0">
+                                                                                {conLocked ? <Lock size={11} className="text-muted-foreground/30" /> : isConceptContentDone(concept) ? <CheckCircle2 size={11} className="text-green-500" /> : <Circle size={11} className="text-muted-foreground" />}
+                                                                              </button>
+                                                                              <div className="flex items-center gap-1 flex-wrap">
                                                                                 <Lightbulb size={8} className="text-yellow-500 shrink-0" />
                                                                                 <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L5</span>
                                                                                 {concept.completed && !isConceptContentDone(concept) && (
@@ -1318,33 +1318,33 @@ export function Subjects() {
                                                                                   </span>
                                                                                 )}
                                                                               </div>
-                                                                              <MarksBadgeRow size="xs" important={concept.important} weak={concept.weak} note={concept.note} onClickNote={() => openNote(conPath, concept.note ?? '')} />
-                                                                              <p className="text-[8px] text-muted-foreground">
-                                                                                {concept.points.length > 0 ? `Points: ${completedPoints}/${concept.points.length}` : ''}
-                                                                                {concept.estimatedMinutes ? ` • ${formatTotalTime(concept.estimatedMinutes, t)}` : ''}
-                                                                              </p>
+                                                                              <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                                                                                <ItemActions
+                                                                                  path={conPath}
+                                                                                  important={concept.important}
+                                                                                  weak={concept.weak}
+                                                                                  hasNote={!!concept.note}
+                                                                                  currentNote={concept.note}
+                                                                                  onOpenNote={openNote}
+                                                                                  size="sm"
+                                                                                />
+                                                                                <button onClick={e => { e.stopPropagation(); openEdit('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title, concept.estimatedMinutes, undefined, concept.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
+                                                                                  <Pencil size={8} />
+                                                                                </button>
+                                                                                <button onClick={e => { e.stopPropagation(); openDelete('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
+                                                                                  <Trash2 size={9} />
+                                                                                </button>
+                                                                                <motion.div animate={{ rotate: cExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
+                                                                                  <ChevronRight size={10} className="text-muted-foreground" />
+                                                                                </motion.div>
+                                                                                {conHandle}
+                                                                              </div>
                                                                             </div>
-                                                                            <div className="flex items-center gap-0.5 shrink-0">
-                                                                              <ItemActions
-                                                                                path={conPath}
-                                                                                important={concept.important}
-                                                                                weak={concept.weak}
-                                                                                hasNote={!!concept.note}
-                                                                                currentNote={concept.note}
-                                                                                onOpenNote={openNote}
-                                                                                size="sm"
-                                                                              />
-                                                                              <button onClick={e => { e.stopPropagation(); openEdit('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title, concept.estimatedMinutes, undefined, concept.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
-                                                                                <Pencil size={8} />
-                                                                              </button>
-                                                                              <button onClick={e => { e.stopPropagation(); openDelete('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
-                                                                                <Trash2 size={9} />
-                                                                              </button>
-                                                                              <motion.div animate={{ rotate: cExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
-                                                                                <ChevronRight size={10} className="text-muted-foreground" />
-                                                                              </motion.div>
-                                                                              {conHandle}
-                                                                            </div>
+                                                                            <MarksBadgeRow size="xs" important={concept.important} weak={concept.weak} note={concept.note} onClickNote={() => openNote(conPath, concept.note ?? '')} />
+                                                                            <p className="text-[8px] text-muted-foreground">
+                                                                              {concept.points.length > 0 ? `Points: ${completedPoints}/${concept.points.length}` : ''}
+                                                                              {concept.estimatedMinutes ? ` • ${formatTotalTime(concept.estimatedMinutes, t)}` : ''}
+                                                                            </p>
                                                                           </div>
 
                                                                           {/* Points */}
@@ -1371,33 +1371,35 @@ export function Subjects() {
                                                                                       {...itemAnim}
                                                                                       className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-lg hover:bg-card group/row ${ptLocked ? 'opacity-45' : ''} ${point.important ? 'ring-1 ring-yellow-300/40' : ''} ${point.weak ? 'ring-1 ring-rose-300/40' : ''}`}
                                                                                     >
+                                                                                      <p className={`text-[9px] font-medium w-full line-clamp-3 ${point.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                                        {point.title}
+                                                                                      </p>
                                                                                       <div className="flex items-center gap-1.5">
-                                                                                        <button onClick={() => { if (!ptLocked) togglePointComplete(subj.id, chapter.id, topic.id, sub.id, concept.id, point.id); }} disabled={ptLocked} title={ptLocked ? t('completePrevPoint') : undefined}>
+                                                                                        <button onClick={() => { if (!ptLocked) togglePointComplete(subj.id, chapter.id, topic.id, sub.id, concept.id, point.id); }} disabled={ptLocked} title={ptLocked ? t('completePrevPoint') : undefined} className="shrink-0">
                                                                                           {ptLocked ? <Lock size={10} className="text-muted-foreground/30" /> : point.completed ? <CheckCircle2 size={10} className="text-green-500" /> : <Circle size={10} className="text-muted-foreground" />}
                                                                                         </button>
                                                                                         <Dot size={10} className="text-muted-foreground shrink-0" />
-                                                                                        <span className={`text-[9px] font-medium flex-1 min-w-0 line-clamp-3 ${point.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                                                                                          {point.title}
-                                                                                        </span>
                                                                                         <span className="text-[7px] font-bold text-muted-foreground/40 bg-secondary/60 px-1 py-0.5 rounded border border-border/20 shrink-0">L6</span>
-                                                                                        <ItemActions
-                                                                                          path={ptPath}
-                                                                                          important={point.important}
-                                                                                          weak={point.weak}
-                                                                                          hasNote={!!point.note}
-                                                                                          currentNote={point.note}
-                                                                                          onOpenNote={openNote}
-                                                                                          size="sm"
-                                                                                        />
-                                                                                        <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-all shrink-0">
-                                                                                          <button onClick={() => openEdit('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title, undefined, undefined, point.difficulty)} className="p-0.5 text-muted-foreground hover:text-primary">
-                                                                                            <Pencil size={8} />
-                                                                                          </button>
-                                                                                          <button onClick={() => openDelete('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id })} className="p-0.5 text-muted-foreground hover:text-destructive">
-                                                                                            <Trash2 size={9} />
-                                                                                          </button>
+                                                                                        <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                                                                                          <ItemActions
+                                                                                            path={ptPath}
+                                                                                            important={point.important}
+                                                                                            weak={point.weak}
+                                                                                            hasNote={!!point.note}
+                                                                                            currentNote={point.note}
+                                                                                            onOpenNote={openNote}
+                                                                                            size="sm"
+                                                                                          />
+                                                                                          <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-all shrink-0">
+                                                                                            <button onClick={() => openEdit('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title, undefined, undefined, point.difficulty)} className="p-0.5 text-muted-foreground hover:text-primary">
+                                                                                              <Pencil size={8} />
+                                                                                            </button>
+                                                                                            <button onClick={() => openDelete('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id })} className="p-0.5 text-muted-foreground hover:text-destructive">
+                                                                                              <Trash2 size={9} />
+                                                                                            </button>
+                                                                                          </div>
+                                                                                          {ptHandle}
                                                                                         </div>
-                                                                                        {ptHandle}
                                                                                       </div>
                                                                                       {(point.important || point.weak || point.note) && (
                                                                                         <div className="ml-6">

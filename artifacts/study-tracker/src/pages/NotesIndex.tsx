@@ -178,7 +178,7 @@ export function NotesIndex() {
                       whileTap={{ scale: 0.97 }}
                       type="button"
                       onClick={() => setReorderMode(v => !v)}
-                      className={`spin-border-inner p-2 transition-colors ${
+                      className={`spin-border-inner h-9 w-9 flex items-center justify-center transition-colors ${
                         reorderMode
                           ? 'bg-white text-purple-600 shadow-md'
                           : 'bg-white/15 text-white hover:bg-white/25'
@@ -194,7 +194,7 @@ export function NotesIndex() {
                     whileTap={{ scale: 0.97 }}
                     type="button"
                     onClick={() => setIsCreating(true)}
-                    className="spin-border-inner flex items-center gap-1.5 px-3 py-2 bg-white/20 text-white text-xs font-bold hover:bg-white/30 transition-colors"
+                    className="spin-border-inner flex items-center h-9 gap-1.5 px-3 bg-white/20 text-white text-xs font-bold hover:bg-white/30 transition-colors"
                   >
                     <Plus size={14} />
                     {t('addNote')}

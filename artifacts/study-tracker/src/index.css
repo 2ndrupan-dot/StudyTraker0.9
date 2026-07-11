@@ -339,33 +339,38 @@ mark.search-hl.search-hl-active { background-color: #f97316; color: #fff; }
 .ProseMirror { outline: none; }
 
 @keyframes spin-border {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(360deg); }
 }
 .spin-border-wrap {
   position: relative;
   display: inline-flex;
   border-radius: 12px;
   padding: 1.5px;
-  isolation: isolate;
+  overflow: hidden;
 }
 .spin-border-wrap::before {
   content: '';
   position: absolute;
-  inset: 0;
-  border-radius: 12px;
+  top: 50%;
+  left: 50%;
+  width: 300%;
+  aspect-ratio: 1;
   background: conic-gradient(
     from 0deg,
-    #a855f7 0deg,
-    #f0abfc 30deg,
-    transparent 70deg,
+    transparent 0deg,
+    #a855f7 15deg,
+    #ec4899 30deg,
+    #f9a8d4 45deg,
+    transparent 75deg,
     transparent 180deg,
-    #ec4899 180deg,
-    #fda4af 210deg,
-    transparent 250deg,
+    #06b6d4 195deg,
+    #818cf8 210deg,
+    #c4b5fd 225deg,
+    transparent 255deg,
     transparent 360deg
   );
-  animation: spin-border 1.6s linear infinite;
+  animation: spin-border 2s linear infinite;
   z-index: 0;
 }
 .spin-border-inner {

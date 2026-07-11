@@ -346,7 +346,7 @@ mark.search-hl.search-hl-active { background-color: #f97316; color: #fff; }
   position: relative;
   display: inline-flex;
   border-radius: 12px;
-  padding: 1.5px;
+  padding: 1px;
   overflow: hidden;
 }
 .spin-border-wrap::before {
@@ -359,15 +359,13 @@ mark.search-hl.search-hl-active { background-color: #f97316; color: #fff; }
   background: conic-gradient(
     from 0deg,
     transparent 0deg,
-    #a855f7 15deg,
-    #ec4899 30deg,
-    #f9a8d4 45deg,
-    transparent 75deg,
+    #a855f7 8deg,
+    #ec4899 16deg,
+    transparent 30deg,
     transparent 180deg,
-    #06b6d4 195deg,
-    #818cf8 210deg,
-    #c4b5fd 225deg,
-    transparent 255deg,
+    #06b6d4 188deg,
+    #818cf8 196deg,
+    transparent 210deg,
     transparent 360deg
   );
   animation: spin-border 2s linear infinite;

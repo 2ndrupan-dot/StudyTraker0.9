@@ -10,6 +10,7 @@ import { GlobalSearch } from './GlobalSearch';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
+  const [location] = useLocation();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -29,14 +30,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <SideNav onSearch={() => setSearchOpen(true)} />
         <main className="flex-1 ml-64 min-h-[100dvh]">
           <div className="max-w-4xl mx-auto">
-            {children}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={location}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
           </div>
         </main>
       </div>
 
       {/* Mobile: full-screen with bottom nav */}
       <div className="md:hidden w-full min-h-[100dvh] bg-background relative overflow-x-clip pb-[80px]">
-        {children}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={location}
+            initial={{ opacity: 0, y: 12, scale: 0.99 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.99 }}
+            transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
+          >
+            {children}
+          </motion.div>
+        </AnimatePresence>
         <BottomNav onSearchClick={() => setSearchOpen(true)} />
       </div>
 

@@ -39,6 +39,7 @@ export const translations = {
     today: "Today",
     subjects: "Subjects",
     progress: "Progress",
+    profileTab: "Profile",
 
     // Today
     courseCompletion: "Course Completion Target",
@@ -408,6 +409,7 @@ export const translations = {
     today: "আজ",
     subjects: "বিষয়",
     progress: "অগ্রগতি",
+    profileTab: "প্রোফাইল",
 
     // Today
     courseCompletion: "কোর্স সমাপ্তির লক্ষ্য",

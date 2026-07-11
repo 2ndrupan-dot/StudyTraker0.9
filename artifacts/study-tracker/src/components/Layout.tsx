@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText } from 'lucide-react';
+import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText, User as UserIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
@@ -216,8 +216,8 @@ function SideNav({ onSearch }: { onSearch: () => void }) {
   const tabs = [
     { path: '/today', icon: CheckCircle2, label: t('today') },
     { path: '/subjects', icon: BookOpen, label: t('subjects') },
-    { path: '/progress', icon: Target, label: t('progress') },
     { path: '/notes', icon: FileText, label: t('notesTab') },
+    { path: '/progress', icon: UserIcon, label: t('profileTab') },
   ];
 
   return (
@@ -351,7 +351,7 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
     { path: '/today',    icon: CheckCircle2, label: t('today') },
     { path: '/subjects', icon: BookOpen,     label: t('subjects') },
     { path: '/notes',    icon: FileText,     label: t('notesTab') },
-    { path: '/progress', icon: Target,       label: t('progress') },
+    { path: '/progress', icon: UserIcon,     label: t('profileTab') },
   ];
 
   return (

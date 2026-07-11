@@ -40,10 +40,10 @@ onlyBuiltDependencies:
   - '@firebase/util'
   - esbuild
   - msw
-  - protobufjs
   - unrs-resolver
 
 overrides:
+  protobufjs: 7.5.9
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64': '-'

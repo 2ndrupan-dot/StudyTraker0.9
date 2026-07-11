@@ -286,6 +286,33 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     // resolutions from slow Firestore reads are discarded automatically.
     let seq = 0;
 
+    // ── Cold-start safety net ────────────────────────────────────────────────
+    // On a freshly opened app (especially mobile, right after the device's
+    // network/radio reconnects), Firestore's realtime channel can take a long
+    // time to establish before it fires either the success or the error
+    // callback below — the UI would otherwise show the loading skeleton
+    // indefinitely until the user manually refreshes. If neither callback has
+    // resolved the first load within a short window, fall back to whatever we
+    // already have in localStorage so the app always becomes usable; the
+    // onSnapshot listener keeps running in the background and will silently
+    // reconcile with Firestore the moment it does connect.
+    const staleLoadTimer = setTimeout(() => {
+      if (!active || !isFirstSnapshot) return;
+      isFirstSnapshot = false;
+      const lsRaw = localKey('data');
+      const localData = lsRaw ? getLocalData(lsRaw) : null;
+      if (localData) {
+        setSubjects(localData.subjects || []);
+        setSettings(prev => ({ ...prev, ...localData.settings }));
+        setTempNotes(localData.tempNotes || []);
+        setOverallNoteState(localData.overallNote || '');
+        setNotePagesIndex(localData.notePagesIndex || []);
+        lastSavedAt.current = localData.savedAt ?? 0;
+      }
+      setDataLoaded(true);
+      setTimeout(() => { isInitialLoad.current = false; }, 200);
+    }, 6000);
+
     /** Fetch the companion "courseNotes" document and merge its note content
      *  back into the given StudyData.  If the doc doesn't exist (old-format data
      *  that was saved before the note-separation change), the subjects already
@@ -335,6 +362,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         if (isFirstSnapshot) {
           // ── Initial load: pick the freshest between Firestore and localStorage ──
           isFirstSnapshot = false;
+          clearTimeout(staleLoadTimer);
 
           if (!fsDataRaw) {
             if (active) {
@@ -445,6 +473,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         // Firestore error (offline / permission denied) — fall back to localStorage
         if (!isFirstSnapshot) return;
         isFirstSnapshot = false;
+        clearTimeout(staleLoadTimer);
         if (!active) return;
         const lsRaw = localKey('data');
         const localData = lsRaw ? getLocalData(lsRaw) : null;
@@ -462,6 +491,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
     return () => {
       active = false; // prevent any in-flight async work from applying state
+      clearTimeout(staleLoadTimer);
       unsubscribe();
     };
   }, [user, activeCourseId]);

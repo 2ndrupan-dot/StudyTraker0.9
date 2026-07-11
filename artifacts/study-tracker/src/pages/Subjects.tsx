@@ -902,7 +902,7 @@ export function Subjects() {
                   >
                     <div className="pl-3 flex-1 min-w-0">
                       {/* Title */}
-                      <h3 className="font-bold text-foreground text-base leading-tight line-clamp-3 mb-0.5">{subj.title}</h3>
+                      <h3 className="font-bold text-foreground text-base leading-tight mb-0.5 break-words">{subj.title}</h3>
                       {/* Badges row — L1, days, status badges, marks */}
                       <div className="flex items-center gap-1 flex-wrap mb-1">
                         <span className="text-[9px] font-bold text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded border border-border/40">L1</span>
@@ -1043,7 +1043,7 @@ export function Subjects() {
                                   className="px-3 pt-3 pb-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row relative"
                                   onClick={() => toggleChapter(chapter.id)}
                                 >
-                                  <p className={`font-semibold text-sm w-full line-clamp-3 leading-snug ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                  <p className={`font-semibold text-sm w-full leading-snug break-words ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                     <BookOpen size={11} className="text-primary shrink-0 inline-block mr-1.5 -translate-y-0.5" />
                                     {chapter.title}
                                   </p>
@@ -1136,7 +1136,7 @@ export function Subjects() {
                                                 className="px-3 pt-2.5 pb-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
                                                 onClick={() => toggleTopic(topic.id)}
                                               >
-                                                <p className={`text-xs font-semibold w-full line-clamp-3 leading-snug ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                <p className={`text-xs font-semibold w-full leading-snug ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                   <Layers size={10} className="text-accent-foreground shrink-0 inline-block mr-1.5 -translate-y-0.5" />
                                                   {topic.title}
                                                 </p>
@@ -1229,7 +1229,7 @@ export function Subjects() {
                                                               className="px-2.5 pt-2 pb-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
                                                               onClick={() => toggleSubtopicExpand(sub.id)}
                                                             >
-                                                              <p className={`text-[11px] font-medium w-full line-clamp-3 leading-snug ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                              <p className={`text-[11px] font-medium w-full leading-snug ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                                 <List size={9} className="text-blue-400 shrink-0 inline-block mr-1.5 -translate-y-0.5" />
                                                                 {sub.title}
                                                               </p>
@@ -1302,7 +1302,7 @@ export function Subjects() {
                                                                             className="px-2 pt-1.5 pb-1 cursor-pointer hover:bg-secondary/20 group/row"
                                                                             onClick={() => toggleConceptExpand(concept.id)}
                                                                           >
-                                                                            <p className={`text-[10px] font-medium w-full line-clamp-3 leading-snug ${isConceptContentDone(concept) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                            <p className={`text-[10px] font-medium w-full leading-snug ${isConceptContentDone(concept) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                                               {concept.title}
                                                                             </p>
                                                                             <div className="flex items-center gap-1 mt-0.5">
@@ -1371,7 +1371,7 @@ export function Subjects() {
                                                                                       {...itemAnim}
                                                                                       className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-lg hover:bg-card group/row ${ptLocked ? 'opacity-45' : ''} ${point.important ? 'ring-1 ring-yellow-300/40' : ''} ${point.weak ? 'ring-1 ring-rose-300/40' : ''}`}
                                                                                     >
-                                                                                      <p className={`text-[9px] font-medium w-full line-clamp-3 ${point.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                                      <p className={`text-[9px] font-medium w-full ${point.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                                                                                         {point.title}
                                                                                       </p>
                                                                                       <div className="flex items-center gap-1.5">

@@ -350,7 +350,7 @@ mark.search-hl.search-hl-active { background-color: #f97316; color: #fff; }
 .spin-border-wrap {
   display: inline-flex;
   border-radius: 12px;
-  border: 1.5px solid transparent;
+  border: 2.5px solid transparent;
   background:
     linear-gradient(transparent, transparent) padding-box,
     conic-gradient(

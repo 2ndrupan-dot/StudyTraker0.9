@@ -88,7 +88,7 @@ interface StudyContextType {
   subjects: Subject[];
   settings: CourseSettings;
   dataLoaded: boolean;
-  syncing: boolean;
+  syncStatus: 'idle' | 'syncing' | 'success' | 'failed';
   online: boolean;
   setNote: (path: MarkPath, note: string) => void;
   toggleImportant: (path: MarkPath) => void;
@@ -223,7 +223,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const [overallNote, setOverallNoteState] = useState<string>('');
   const [notePagesIndex, setNotePagesIndex] = useState<NotePageMeta[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'failed'>('idle');
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
   // Track online / offline transitions
@@ -557,10 +557,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       // before courseNotes was committed and load stale (empty) notes.
       await setDoc(notesDocRef, notesPayload, { merge: false });
       await setDoc(docRef, mainPayload, { merge: false });
+      setSyncStatus('success');
+      setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
     } catch (err) {
       console.error('[StudyContext] Firestore save failed:', err);
+      setSyncStatus('failed');
+      setTimeout(() => setSyncStatus(s => s === 'failed' ? 'idle' : s), 4000);
     }
-    setSyncing(false);
   };
 
   useEffect(() => {
@@ -596,7 +599,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     lastSavedAt.current = payload.savedAt!;
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    setSyncing(true);
+    setSyncStatus('syncing');
     pendingSaveRef.current = { subjects, settings, tempNotes, overallNote, notePagesIndex };
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
@@ -1592,15 +1595,20 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         if (!latestData) return;
         if (deletedNotePageIds.current.has(pageId)) return;
 
+        setSyncStatus('syncing');
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
             await setDoc(ref, latestData);
+            setSyncStatus('success');
+            setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
             return; // success
           } catch (err) {
             if (attempt < 3) {
               // Exponential backoff: 800 ms → 1 600 ms
               await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt - 1)));
             } else {
+              setSyncStatus('failed');
+              setTimeout(() => setSyncStatus(s => s === 'failed' ? 'idle' : s), 4000);
               console.error('[saveNotePage] Firestore write failed after 3 attempts', { pageId, err });
             }
           }
@@ -1611,7 +1619,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   return (
     <StudyContext.Provider value={{
-      subjects, settings, dataLoaded, syncing, online,
+      subjects, settings, dataLoaded, syncStatus, online,
       setNote, toggleImportant, toggleWeak,
       setCourseTotalDays, setDailyStudyHours, setCourseStartDate, setTimezone,
       addSubject, updateSubjectDays, deleteSubject, updateSubjectMeta, resetSubjectProgress,

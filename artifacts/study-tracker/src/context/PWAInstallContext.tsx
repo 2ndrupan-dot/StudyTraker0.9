@@ -26,6 +26,13 @@ export function PWAInstallProvider({ children }: { children: ReactNode }) {
       setIsInstalled(true);
     }
 
+    // Pick up the event captured early in index.html (before React mounted)
+    const earlyEvent = (window as any).__pwaInstallEvent as BeforeInstallPromptEvent | undefined;
+    if (earlyEvent) {
+      setInstallEvent(earlyEvent);
+      delete (window as any).__pwaInstallEvent;
+    }
+
     const promptHandler = (e: Event) => {
       e.preventDefault();
       setInstallEvent(e as BeforeInstallPromptEvent);

@@ -18,6 +18,14 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Capture the PWA install prompt before React mounts so the browser's
+         native mini-infobar never appears on any page (including login). -->
+    <script>
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.__pwaInstallEvent = e;
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

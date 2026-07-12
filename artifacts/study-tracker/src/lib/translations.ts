@@ -129,6 +129,8 @@ export const translations = {
     photoUpdated: "Profile photo updated!",
     photoUpdateFailed: "Failed to update photo. Please try again.",
     syncing: "Syncing...",
+    syncSaved: "Saved",
+    syncFailed: "Failed",
     syncError: "Sync error, saved locally",
 
     // Today - new keys
@@ -501,6 +503,8 @@ export const translations = {
     photoUpdated: "প্রোফাইল ছবি আপডেট হয়েছে!",
     photoUpdateFailed: "ছবি আপডেট ব্যর্থ হয়েছে। আবার চেষ্টা করুন।",
     syncing: "সিঙ্ক হচ্ছে...",
+    syncSaved: "সেভ হয়েছে",
+    syncFailed: "ব্যর্থ",
     syncError: "সিঙ্ক ত্রুটি, স্থানীয়ভাবে সংরক্ষিত",
 
     // Today - new keys

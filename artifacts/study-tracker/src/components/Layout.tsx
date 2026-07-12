@@ -87,7 +87,7 @@ function FloatingSearchButton({ onClick }: { onClick: () => void }) {
 }
 
 function ConnectionStatus() {
-  const { syncing, online } = useStudy();
+  const { syncStatus, online } = useStudy();
   const { t } = useLang();
   const [showBackOnline, setShowBackOnline] = useState(false);
   const wasOfflineRef = React.useRef(false);
@@ -108,7 +108,7 @@ function ConnectionStatus() {
     return;
   }, [online]);
 
-  const visible = !online || showBackOnline || syncing;
+  const visible = !online || showBackOnline || syncStatus !== 'idle';
   if (!visible) return null;
 
   let label = '';
@@ -124,10 +124,18 @@ function ConnectionStatus() {
     label = t('online');
     Icon = Cloud;
     cls = 'bg-green-500/10 text-green-700 border-green-300';
-  } else {
+  } else if (syncStatus === 'syncing') {
     label = t('syncing');
     cls = 'bg-card text-muted-foreground border-border';
     spinning = true;
+  } else if (syncStatus === 'success') {
+    label = t('syncSaved');
+    Icon = Check;
+    cls = 'bg-green-500/10 text-green-700 border-green-300';
+  } else if (syncStatus === 'failed') {
+    label = t('syncFailed');
+    Icon = CloudOff;
+    cls = 'bg-red-500/10 text-red-700 border-red-300';
   }
 
   return (

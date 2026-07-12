@@ -1,6 +1,6 @@
 ---
 name: Firestore 1MB note separation
-description: Rich-text note content is saved to a separate courseNotes/{courseId} document to prevent the main studyData document from exceeding Firestore's 1MB limit.
+description: Rich-text note content is saved to a separate courseNotes/{courseId} document to prevent the main studyData document from exceeding Firestore's 1MB limit. Large note pages (>800KB) are offloaded to Firebase Storage.
 ---
 
 ## Rule
@@ -15,3 +15,12 @@ The main Firestore document `users/{uid}/studyData/{courseId}` must NOT contain 
 - `onSnapshot` callback: calls `withNotesDoc(fsData)` after getting main doc snapshot
 - localStorage still stores the FULL payload including notes (no size limit)
 - Backward compat: old documents without `hasNotesDoc` flag are used as-is (notes already embedded)
+
+## Large NotePage routing (notePages collection)
+Individual note pages (`users/{uid}/notePages/{pageId}`) also have the 1MB limit. Fix: in `saveNotePage`, before writing to Firestore, `JSON.stringify(data).length` is checked against `FIRESTORE_NOTE_LIMIT = 800_000`. If over limit:
+- Elements array is uploaded to Firebase Storage as `users/{uid}/notePages/{pageId}.json`
+- Firestore doc stores `elementsUrl` (the Storage download URL) and `elements: []`
+- `loadNotePage` checks for `elementsUrl` and fetches from Storage if present
+- `NotePage` type has `elementsUrl?: string` field to support this
+
+**Why:** Bengali text + canvas element metadata can exceed 800KB, especially when images are stored as Base64 data URLs. With `memoryLocalCache` (no IndexedDB), failures are now visible as "Failed" status — the Storage offload prevents the error.

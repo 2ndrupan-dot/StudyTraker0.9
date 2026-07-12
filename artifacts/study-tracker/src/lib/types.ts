@@ -144,6 +144,7 @@ export interface NotePage {
   elements: NoteElement[];
   pageCount: number;     // number of A4 pages stacked
   html?: string;         // Tiptap rich-text HTML content
+  elementsUrl?: string;  // Firebase Storage URL when elements JSON > 800 KB
   createdAt: number;
   updatedAt: number;
 }

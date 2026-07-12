@@ -4,7 +4,31 @@ import { useAuth } from './AuthContext';
 import { useCourse } from './CourseContext';
 import { addDays, formatISO } from 'date-fns';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '@/lib/firebase';
+
+// Firestore document size limit — we route note pages above this to Firebase Storage
+// to avoid "invalid-argument" / "document-too-large" errors.
+const FIRESTORE_NOTE_LIMIT = 800_000; // 800 KB (Firestore hard limit is 1 MB)
+
+/** Upload the full NotePage JSON to Firebase Storage and return the download URL. */
+async function uploadNotePageToStorage(userId: string, pageId: string, data: object): Promise<string> {
+  const path = `users/${userId}/notePages/${pageId}.json`;
+  const r = storageRef(storage, path);
+  await uploadString(r, JSON.stringify(data), 'raw', { contentType: 'application/json' });
+  return getDownloadURL(r);
+}
+
+/** Fetch and parse note elements from a Storage URL. */
+async function fetchNotePageFromStorage(url: string): Promise<object | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
 import { applyTimeAdjustment, isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone } from '@/lib/timeEngine';
 import type { DifficultyLevel } from '@/lib/types';
 
@@ -1540,12 +1564,19 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const d = snap.data() as NotePage;
+        let elements = d.elements || [];
+        // If elements were offloaded to Firebase Storage, fetch them.
+        if (d.elementsUrl) {
+          const fetched = await fetchNotePageFromStorage(d.elementsUrl) as { elements?: NoteElement[] } | null;
+          if (fetched?.elements) elements = fetched.elements;
+        }
         const remote: NotePage = {
           id: d.id ?? id,
           title: d.title ?? 'Untitled page',
-          elements: d.elements || [],
+          elements,
           pageCount: d.pageCount ?? 1,
           html: d.html,
+          elementsUrl: d.elementsUrl,
           createdAt: d.createdAt ?? Date.now(),
           updatedAt: d.updatedAt ?? Date.now(),
         };
@@ -1598,18 +1629,40 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         setSyncStatus('syncing');
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
-            await setDoc(ref, latestData);
+            // Check serialised size before writing to Firestore.
+            // If the document would exceed ~800 KB, offload the elements array
+            // to Firebase Storage and store only the download URL in Firestore.
+            const serialised = JSON.stringify(latestData);
+            let firestorePayload: NotePage;
+            if (serialised.length > FIRESTORE_NOTE_LIMIT && user) {
+              console.info('[saveNotePage] Note too large for Firestore (%d KB), uploading to Storage', Math.round(serialised.length / 1024));
+              const url = await uploadNotePageToStorage(user.id, pageId, { elements: latestData.elements });
+              firestorePayload = {
+                id: latestData.id,
+                title: latestData.title,
+                pageCount: latestData.pageCount,
+                html: latestData.html,
+                elementsUrl: url,
+                elements: [],   // cleared from Firestore doc — stored in Storage
+                createdAt: latestData.createdAt,
+                updatedAt: latestData.updatedAt,
+              };
+            } else {
+              firestorePayload = latestData;
+            }
+            await setDoc(ref, firestorePayload);
             setSyncStatus('success');
             setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
             return; // success
-          } catch (err) {
+          } catch (err: unknown) {
+            const code = (err as { code?: string })?.code ?? 'unknown';
             if (attempt < 3) {
               // Exponential backoff: 800 ms → 1 600 ms
               await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt - 1)));
             } else {
               setSyncStatus('failed');
               setTimeout(() => setSyncStatus(s => s === 'failed' ? 'idle' : s), 4000);
-              console.error('[saveNotePage] Firestore write failed after 3 attempts', { pageId, err });
+              console.error('[saveNotePage] Firestore write failed after 3 attempts', { pageId, code, err });
             }
           }
         }

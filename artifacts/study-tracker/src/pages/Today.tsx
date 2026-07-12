@@ -955,7 +955,21 @@ export function Today() {
     }
 
     if (stored && stored.date === todayStr) {
-      setLockedPlan(stored.tasks);
+      // One-time repair: plans locked before the one-item-per-subject fix may
+      // still hold several regular (non-Load-More) tasks for the same
+      // subject. Trim each subject down to its first regular task so today's
+      // list matches the current rule immediately, instead of waiting for
+      // the next day's regeneration. Tasks added via "Load More"
+      // (`loadedFrom`) are untouched — they were legitimately unlocked.
+      const seenSubjects = new Set<string>();
+      const repaired = stored.tasks.filter(t => {
+        if (t.loadedFrom) return true;
+        if (seenSubjects.has(t.subjectId)) return false;
+        seenSubjects.add(t.subjectId);
+        return true;
+      });
+      setLockedPlan(repaired);
+      if (repaired.length !== stored.tasks.length) syncPlan(todayStr, repaired);
     } else {
       if (stored && stored.date !== todayStr) {
         const stillIncomplete = stored.tasks.filter(t => !isTaskCompleted(subjects, t));

@@ -170,8 +170,7 @@ function generateSmartPlan(
   subjects: Subject[],
   dailyBudgetMinutes: number,
   pendingItems: PendingItem[],
-  todayStr: string,
-  itemsPerSubject: number = 1
+  todayStr: string
 ): PlanTask[] {
   interface SubjectCandidate {
     subj: Subject;
@@ -277,20 +276,24 @@ function generateSmartPlan(
 
     const chBase = { ...base, chapterId: firstCh.id };
 
-    // How many sequential items (chapter/topic/subtopic/etc, in order) this
-    // subject may contribute. Default is 1 — mirrors the Subjects page,
-    // where the next item unlocks one at a time. "Load More" raises
-    // `itemsPerSubject` so the *same* subjects can reveal their next item,
-    // instead of pulling in unrelated new tasks.
-    let pushedForSubject = 0;
+    // Only one task item is shown per subject per day — mirrors the
+    // Subjects page, where the next chapter/topic/etc. unlocks one at a
+    // time. Forcing `remaining` to 0 after any push makes every existing
+    // `remaining <= 0` guard below (continue/break outer) stop the loop
+    // from adding a second item for this subject.
+    //
+    // "Load More" doesn't add extra depth here — it just re-runs this same
+    // generator. Since `firstCh`/`t`/etc. are derived from real completion
+    // state (`isChapterContentDone`, `.completed`), the "next item" for a
+    // subject only changes once its current item is actually marked done.
+    // So re-running naturally reveals a subject's next item only when it's
+    // ready, and leaves subjects with an unfinished item unchanged.
     const pushTask = (key: string, extra: Partial<PlanTask>, mins: number) => {
       if (pendingKeys.has(key)) return;
       const clampedMins = Math.min(mins, remaining);
       if (clampedMins <= 0) return;
       result.push({ ...chBase, ...extra, key, estimatedMins: clampedMins } as PlanTask);
-      remaining -= clampedMins;
-      pushedForSubject++;
-      if (pushedForSubject >= itemsPerSubject) remaining = 0;
+      remaining = 0;
     };
 
     if (firstCh.topics.length === 0) {
@@ -576,10 +579,6 @@ export function Today() {
   const [revisions, setRevisions]       = useState<RevisionEntry[]>([]);
   const [planReady, setPlanReady]       = useState(false);
   const [extraLoadedMins, setExtraLoadedMins] = useState(0);
-  // Number of "Load More" clicks so far — each click lets the already-shown
-  // subjects reveal one more sequential item (their next chapter/topic/etc.)
-  // instead of pulling in unrelated tasks.
-  const [extraDepth, setExtraDepth] = useState(0);
   const [loadMoreNotice, setLoadMoreNotice] = useState<string | null>(null);
   const [reloadDay, setReloadDay] = useState(0);
 
@@ -758,11 +757,12 @@ export function Today() {
   const loadMore = () => {
     const extraStep = 30;
     const newBudget = dailyBudgetMins + extraLoadedMins + extraStep;
-    const newDepth = extraDepth + 1;
-    // itemsPerSubject = 1 (default view) + newDepth reveals the *next*
-    // sequential item for the same subjects already shown today, rather than
-    // pulling in a different subject.
-    const candidate = generateSmartPlan(subjects, newBudget, pendingItems, todayStr, 1 + newDepth);
+    // Re-run the same generator (still one item per subject). Because each
+    // subject's "current item" is derived from real completion state, this
+    // only surfaces a *new* item for a subject once its currently-shown item
+    // has actually been marked complete — subjects still in progress produce
+    // the same item they already have, which gets filtered out below.
+    const candidate = generateSmartPlan(subjects, newBudget, pendingItems, todayStr);
     const existingKeys = new Set(lockedPlan.map(p => p.key));
     const additions = candidate
       .filter(p => !existingKeys.has(p.key))
@@ -776,7 +776,6 @@ export function Today() {
     setLockedPlan(merged);
     syncPlan(todayStr, merged);
     setExtraLoadedMins(prev => prev + extraStep);
-    setExtraDepth(newDepth);
     setLoadMoreNotice(`${t('loadMoreAdded')} +${additions.length}`);
     setTimeout(() => setLoadMoreNotice(null), 2500);
   };
@@ -855,7 +854,6 @@ export function Today() {
       setPendingItems([]);
       setRevisions([]);
       setExtraLoadedMins(0);
-      setExtraDepth(0);
       setExpandedSubjectId(null);
       itemIdsRef.current = null;
       prevHoursRef.current = null;
@@ -1070,9 +1068,8 @@ export function Today() {
       const fresh = generateSmartPlan(subjects, dailyBudgetMins, currentPending, todayStr);
       setLockedPlan(fresh);
       syncPlan(todayStr, fresh);
-      // New day → any "Load More" depth from a previous day no longer applies.
+      // New day → any "Load More" extra minutes from a previous day no longer apply.
       setExtraLoadedMins(0);
-      setExtraDepth(0);
     }
 
     itemIdsRef.current = getAllItemIds(subjects);

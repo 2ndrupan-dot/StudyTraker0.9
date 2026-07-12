@@ -530,6 +530,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
      *  back into the given StudyData.  If the doc doesn't exist (old-format data
      *  that was saved before the note-separation change), the subjects already
      *  carry embedded notes and are returned unchanged. */
+    // Notes recovered from the companion doc (and/or the legacy "main" self-heal
+    // fallback) for the CURRENT snapshot. Populated by withNotesDoc and re-applied
+    // after picking the freshest data source (see below) so a stale localStorage
+    // cache — saved back when this course's notes were still missing — can never
+    // silently discard notes that were just recovered from Firestore.
+    let recoveredNotesMap: Record<string, string> | null = null;
+    let recoveredOverallNote: string | null = null;
+
     const withNotesDoc = async (data: StudyData): Promise<StudyData> => {
       if (!(data as any).hasNotesDoc) return data; // old format — notes already embedded
       try {
@@ -586,6 +594,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             })();
           }
         }
+
+        recoveredNotesMap = notesMap;
+        recoveredOverallNote = overallNoteVal;
 
         const { subjects, tempNotes } = mergeNotes(
           data.subjects,
@@ -655,7 +666,30 @@ export function StudyProvider({ children }: { children: ReactNode }) {
               } catch { /* ignore */ }
             }
 
-            const best = pickNewerData(fsData, localData);
+            let best = pickNewerData(fsData, localData);
+
+            // If a companion-doc / legacy-main self-heal recovered notes above,
+            // re-apply them onto whichever source won the freshness comparison.
+            // This matters because a stale localStorage cache — saved back when
+            // this course's notes doc was still missing — carries a `savedAt`
+            // that can be newer than (or equal to) Firestore's, so it can win
+            // `pickNewerData` and would otherwise silently discard notes that
+            // were just recovered from the legacy "courseNotes/main" doc.
+            // mergeNotes only fills in blanks (falls back to the existing note
+            // when a key is absent), so this never clobbers newer local edits.
+            if (best && recoveredNotesMap) {
+              const { subjects, tempNotes } = mergeNotes(
+                best.subjects || [],
+                best.tempNotes || [],
+                recoveredNotesMap,
+              );
+              best = {
+                ...best,
+                subjects,
+                tempNotes,
+                overallNote: best.overallNote || recoveredOverallNote || '',
+              };
+            }
 
             // Anchor lastSavedAt to the freshest timestamp we know about.
             // The save-useEffect will push this forward immediately whenever

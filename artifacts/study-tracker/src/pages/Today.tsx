@@ -2287,10 +2287,11 @@ export function Today() {
               onClick={() => setShowPendingPanel(false)}
               className="fixed inset-0 md:left-64 bg-black/40 z-40 backdrop-blur-[2px]"
             />
+            <div className="fixed bottom-0 left-0 md:left-64 right-0 z-50 flex justify-center pointer-events-none">
             <motion.div
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
               transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-              className="fixed bottom-0 left-0 md:left-64 right-0 z-50 bg-card rounded-t-3xl border border-border/60 shadow-2xl max-h-[85vh] flex flex-col"
+              className="w-full max-w-4xl pointer-events-auto bg-card rounded-t-3xl border border-border/60 shadow-2xl max-h-[85vh] flex flex-col"
             >
               <div className="flex justify-center pt-3 pb-1">
                 <div className="w-10 h-1 rounded-full bg-border" />
@@ -2396,6 +2397,7 @@ export function Today() {
                 <div className="h-6" />
               </div>
             </motion.div>
+            </div>
           </>
         )}
       </AnimatePresence>
@@ -2451,12 +2453,13 @@ export function Today() {
               className="fixed inset-0 md:left-64 bg-black/40 z-40 backdrop-blur-[2px]"
             />
             {/* Panel */}
+            <div className="fixed bottom-0 left-0 md:left-64 right-0 z-50 flex justify-center pointer-events-none">
             <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-              className="fixed bottom-0 left-0 md:left-64 right-0 z-50 bg-card rounded-t-3xl border border-border/60 shadow-2xl max-h-[85vh] flex flex-col"
+              className="w-full max-w-4xl pointer-events-auto bg-card rounded-t-3xl border border-border/60 shadow-2xl max-h-[85vh] flex flex-col"
             >
               {/* Handle bar */}
               <div className="flex justify-center pt-3 pb-1">
@@ -2563,6 +2566,7 @@ export function Today() {
                 <div className="h-6" />
               </div>
             </motion.div>
+            </div>
           </>
         )}
       </AnimatePresence>

@@ -727,19 +727,19 @@ export function Subjects() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center py-20 text-center px-6"
+            className="flex flex-col items-center justify-center py-12 text-center px-6"
           >
             <motion.div
               animate={{ y: [0, -10, 0] }}
               transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-              className="mb-6 w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center"
+              className="mb-4 w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center"
             >
-              <BookOpen size={36} className="text-primary" />
+              <BookOpen size={28} className="text-primary" />
             </motion.div>
-            <h3 className="text-xl font-bold text-foreground mb-2">
+            <h3 className="text-lg font-bold text-foreground mb-1.5">
               {t('noSubjectsYet')}
             </h3>
-            <p className="text-muted-foreground text-sm mb-8 leading-relaxed">
+            <p className="text-muted-foreground text-sm mb-6 leading-relaxed">
               {t('addFirstSubject')}
             </p>
             <motion.div whileTap={{ scale: 0.95 }}>

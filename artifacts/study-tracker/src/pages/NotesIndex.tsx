@@ -256,22 +256,31 @@ export function NotesIndex() {
           {/* ── Empty state ── */}
           {noteCount === 0 && !isCreating && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 }}
-              className="flex flex-col items-center justify-center py-20 gap-4"
+              className="flex flex-col items-center justify-center py-12 text-center px-6"
             >
-              <div className="w-16 h-16 rounded-3xl bg-primary/8 flex items-center justify-center">
-                <StickyNote size={32} className="text-primary/40" />
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-semibold text-foreground/60">
-                  {lang === 'bn' ? 'এখনও কোনো নোট নেই' : 'No notes yet'}
-                </p>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  {lang === 'bn' ? 'উপরের বাটনে ক্লিক করে নোট তৈরি করুন' : 'Click the button above to create a note'}
-                </p>
-              </div>
+              <motion.div
+                animate={{ y: [0, -10, 0] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                className="mb-4 w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center"
+              >
+                <StickyNote size={28} className="text-primary" />
+              </motion.div>
+              <h3 className="text-lg font-bold text-foreground mb-1.5">
+                {lang === 'bn' ? 'এখনও কোনো নোট নেই' : 'No notes yet'}
+              </h3>
+              <p className="text-muted-foreground text-sm mb-6 leading-relaxed">
+                {lang === 'bn' ? 'নতুন নোট তৈরি করতে শুরু করুন!' : 'Create your first note to get started!'}
+              </p>
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => { setIsCreating(true); setTimeout(() => newTitleRef.current?.focus(), 50); }}
+                className="flex items-center gap-2 py-3 px-6 rounded-2xl bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/25 hover:bg-primary/90 transition-colors"
+              >
+                <Plus size={18} /> {lang === 'bn' ? 'নোট যোগ করুন' : 'Add Note'}
+              </motion.button>
             </motion.div>
           )}
 

@@ -1507,8 +1507,9 @@ export function Today() {
               ) : (
                 <button
                   onClick={() => markComplete(task)}
-                  className="text-[10px] sm:text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors whitespace-nowrap"
+                  className="flex items-center gap-1 h-6 px-2 rounded-full bg-amber-400/15 border border-amber-400/40 text-amber-600 dark:text-amber-400 text-[10px] sm:text-[11px] font-semibold hover:bg-amber-400/25 transition-all whitespace-nowrap"
                 >
+                  <RotateCcw size={10} className="shrink-0" />
                   {isBn ? 'পূর্বাবস্থায় ফেরান' : 'Undo'}
                 </button>
               )}
@@ -1695,14 +1696,16 @@ export function Today() {
               {/* Mobile browser only: install/share — aligned to the right */}
               {isMobileBrowser && !isInstalled && (
                 <div className="relative ml-auto shrink-0">
-                  <motion.button
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => setShowInstallMenu(v => !v)}
-                    className="w-9 h-9 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg"
-                    aria-label={t('installApp')}
-                  >
-                    <Download size={16} className="text-white" />
-                  </motion.button>
+                  <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(263 80% 58%)' } as React.CSSProperties}>
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => setShowInstallMenu(v => !v)}
+                      className="spin-border-inner w-9 h-9 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
+                      aria-label={t('installApp')}
+                    >
+                      <Download size={16} className="text-white" />
+                    </motion.button>
+                  </span>
                   <AnimatePresence>
                     {showInstallMenu && (
                       <>

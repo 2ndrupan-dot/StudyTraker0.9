@@ -24,3 +24,10 @@ Individual note pages (`users/{uid}/notePages/{pageId}`) also have the 1MB limit
 - `NotePage` type has `elementsUrl?: string` field to support this
 
 **Why:** Bengali text + canvas element metadata can exceed 800KB, especially when images are stored as Base64 data URLs. With `memoryLocalCache` (no IndexedDB), failures are now visible as "Failed" status — the Storage offload prevents the error.
+
+## The courseNotes companion doc itself can also outgrow 1MB
+The flat map described above (all subject/chapter/topic/etc. notes for one course, combined into one `courseNotes/{courseId}` doc) is itself unbounded — as a user accumulates notes over months it can exceed Firestore's 1MB limit too, causing the exact same silent-looking "notes don't save" symptom (console shows `Firestore save failed... exceeds the maximum allowed size of 1,048,576 bytes` referencing the `courseNotes` doc).
+
+**Why:** The original note-separation fix solved the *main* doc's size problem but didn't anticipate the companion doc growing unbounded on its own.
+
+**How to apply:** Same Storage-offload pattern as notePages, applied one level up: before writing `courseNotes`, check `JSON.stringify({overallNote, notes}).length` against `FIRESTORE_NOTE_LIMIT`; if over, upload the whole `{overallNote, notes}` object to Storage at `users/{uid}/courseNotes/{courseId}.json` and write only `{savedAt, notesUrl}` (notes/overallNote left empty) to Firestore. Loader checks for `notesUrl` and fetches from Storage when present. If this problem resurfaces, check whether Storage upload itself is now failing (e.g. Storage security rules) rather than assuming the Firestore side is broken again.

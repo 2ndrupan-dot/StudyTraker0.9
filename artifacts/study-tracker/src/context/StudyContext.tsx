@@ -30,6 +30,27 @@ async function fetchNotePageFromStorage(url: string): Promise<object | null> {
   }
 }
 
+/** Upload the full courseNotes payload (overallNote + flat notes map) to Firebase
+ *  Storage and return the download URL. Used when the flat map itself grows past
+ *  the Firestore document limit — Storage has no such size ceiling. */
+async function uploadCourseNotesToStorage(userId: string, courseId: string, data: object): Promise<string> {
+  const path = `users/${userId}/courseNotes/${courseId}.json`;
+  const r = storageRef(storage, path);
+  await uploadString(r, JSON.stringify(data), 'raw', { contentType: 'application/json' });
+  return getDownloadURL(r);
+}
+
+/** Fetch and parse the courseNotes payload from a Storage URL. */
+async function fetchCourseNotesFromStorage(url: string): Promise<{ overallNote?: string; notes?: Record<string, string> } | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Firestore rejects documents that contain `undefined` values or `NaN` numbers.
  * This helper deep-cleans a NotePage so it's always safe to write.
@@ -390,13 +411,24 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       try {
         const notesSnap = await getDoc(notesDocRef);
         if (!notesSnap.exists()) return data;
-        const nd = notesSnap.data() as { overallNote?: string; notes?: Record<string, string> };
+        const nd = notesSnap.data() as { overallNote?: string; notes?: Record<string, string>; notesUrl?: string };
+        let notesMap = nd.notes || {};
+        let overallNoteVal = nd.overallNote || '';
+        // Once the flat notes map itself outgrows the Firestore document limit,
+        // it's offloaded to Storage and only a URL is kept in the doc — fetch it.
+        if (nd.notesUrl) {
+          const fetched = await fetchCourseNotesFromStorage(nd.notesUrl);
+          if (fetched) {
+            notesMap = fetched.notes || {};
+            overallNoteVal = fetched.overallNote || '';
+          }
+        }
         const { subjects, tempNotes } = mergeNotes(
           data.subjects,
           data.tempNotes || [],
-          nd.notes || {},
+          notesMap,
         );
-        return { ...data, subjects, tempNotes, overallNote: nd.overallNote || '' };
+        return { ...data, subjects, tempNotes, overallNote: overallNoteVal };
       } catch {
         return data; // offline — return what we have; notes will load from localStorage
       }
@@ -612,11 +644,22 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         savedAt,
         hasNotesDoc: true,        // tells the loader to fetch the companion doc
       }));
-      const notesPayload = JSON.parse(JSON.stringify({
-        savedAt,
-        overallNote: overallNoteToSave,
-        notes,                    // flat map: itemId-key → HTML string
-      }));
+
+      // The flat notes map (all subject/chapter/topic/... notes for this course
+      // combined) can itself grow past Firestore's 1 MB document limit as the
+      // user accumulates notes over time. Once it does, offload the whole map to
+      // Firebase Storage (no size ceiling there) and keep only a URL reference in
+      // the courseNotes document — mirrors how oversized individual note pages
+      // are already routed to Storage.
+      const notesData = { overallNote: overallNoteToSave, notes };
+      const notesDataSize = JSON.stringify(notesData).length;
+      let notesPayload: Record<string, unknown>;
+      if (notesDataSize > FIRESTORE_NOTE_LIMIT) {
+        const notesUrl = await uploadCourseNotesToStorage(currentUser.id, currentCourseId, notesData);
+        notesPayload = { savedAt, overallNote: '', notes: {}, notesUrl };
+      } else {
+        notesPayload = JSON.parse(JSON.stringify({ savedAt, ...notesData }));
+      }
 
       // Write courseNotes FIRST, then studyData.  Sequential (not concurrent) so
       // another device that receives the studyData snapshot can always getDoc the

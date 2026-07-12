@@ -2285,12 +2285,12 @@ export function Today() {
             <motion.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setShowPendingPanel(false)}
-              className="fixed inset-0 bg-black/40 z-40 backdrop-blur-[2px]"
+              className="fixed inset-0 md:left-64 bg-black/40 z-40 backdrop-blur-[2px]"
             />
             <motion.div
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
               transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-              className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl border border-border/60 shadow-2xl max-h-[85vh] flex flex-col"
+              className="fixed bottom-0 left-0 md:left-64 right-0 z-50 bg-card rounded-t-3xl border border-border/60 shadow-2xl max-h-[85vh] flex flex-col"
             >
               <div className="flex justify-center pt-3 pb-1">
                 <div className="w-10 h-1 rounded-full bg-border" />
@@ -2448,7 +2448,7 @@ export function Today() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowRevisionPanel(false)}
-              className="fixed inset-0 bg-black/40 z-40 backdrop-blur-[2px]"
+              className="fixed inset-0 md:left-64 bg-black/40 z-40 backdrop-blur-[2px]"
             />
             {/* Panel */}
             <motion.div
@@ -2456,7 +2456,7 @@ export function Today() {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-              className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl border border-border/60 shadow-2xl max-h-[85vh] flex flex-col"
+              className="fixed bottom-0 left-0 md:left-64 right-0 z-50 bg-card rounded-t-3xl border border-border/60 shadow-2xl max-h-[85vh] flex flex-col"
             >
               {/* Handle bar */}
               <div className="flex justify-center pt-3 pb-1">

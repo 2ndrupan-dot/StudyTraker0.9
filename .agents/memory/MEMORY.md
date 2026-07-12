@@ -2,3 +2,4 @@
 - [pnpm install workaround](pnpm-install.md) — protobufjs blocked by package firewall; use --registry https://registry.npmjs.org to install.
 - [Firestore 1MB note separation](firestore-note-separation.md) — subject/tempNote rich-text content moved to separate courseNotes doc to stay under 1MB limit.
 - [StudyTrack artifact conversion](studytrack-artifact-conversion.md) — runs as 3 separate artifact workflows now, not one "Start application" workflow.
+- [Firestore cache switch to memory](firestore-memory-cache.md) — switched from persistentLocalCache to memoryLocalCache to fix accumulated-cache silent write failures.

@@ -956,20 +956,26 @@ export function Today() {
 
     if (stored && stored.date === todayStr) {
       // One-time repair: plans locked before the one-item-per-subject fix may
-      // still hold several regular (non-Load-More) tasks for the same
-      // subject. Trim each subject down to its first regular task so today's
-      // list matches the current rule immediately, instead of waiting for
-      // the next day's regeneration. Tasks added via "Load More"
-      // (`loadedFrom`) are untouched — they were legitimately unlocked.
-      const seenSubjects = new Set<string>();
-      const repaired = stored.tasks.filter(t => {
-        if (t.loadedFrom) return true;
-        if (seenSubjects.has(t.subjectId)) return false;
-        seenSubjects.add(t.subjectId);
-        return true;
-      });
+      // still hold several regular (non-Load-More) tasks per subject, and —
+      // worse — the *order* they were stored in doesn't necessarily match
+      // what the current rules (chapter overview → topic overview → ...)
+      // would pick as "the" item for that subject. Simply keeping "whichever
+      // one came first in the old array" can keep the WRONG item (e.g. a
+      // topic when the chapter overview is actually still incomplete),
+      // which then makes Load More add the real next item as a bogus
+      // "extra" even though nothing was completed.
+      //
+      // Fix: recompute the canonical single-item-per-subject base plan fresh
+      // from current completion state, and keep only genuine Load-More
+      // extras (tasks not already covered by that canonical base) on top.
+      const canonicalBase = generateSmartPlan(subjects, dailyBudgetMins, pendingItems, todayStr);
+      const canonicalKeys = new Set(canonicalBase.map(t => t.key));
+      const loadMoreExtras = stored.tasks.filter(t => t.loadedFrom && !canonicalKeys.has(t.key));
+      const repaired = [...canonicalBase, ...loadMoreExtras];
       setLockedPlan(repaired);
-      if (repaired.length !== stored.tasks.length) syncPlan(todayStr, repaired);
+      const sameLength = repaired.length === stored.tasks.length;
+      const sameKeys = sameLength && repaired.every(t => stored.tasks.some(st => st.key === t.key));
+      if (!sameKeys) syncPlan(todayStr, repaired);
     } else {
       if (stored && stored.date !== todayStr) {
         const stillIncomplete = stored.tasks.filter(t => !isTaskCompleted(subjects, t));

@@ -964,8 +964,8 @@ export function Subjects() {
                       </div>
                     </div>
                     {/* Action buttons — compact two-row layout */}
-                    <div className="flex flex-col items-end gap-0.5 pl-2 shrink-0">
-                      <div className="flex items-center gap-0.5">
+                    <div className="flex flex-col items-end gap-0.5 pl-1 shrink-0">
+                      <div className="flex items-center gap-0">
                         <ItemActions
                           path={subjPath}
                           important={subj.important}
@@ -973,34 +973,35 @@ export function Subjects() {
                           hasNote={!!subj.note}
                           currentNote={subj.note}
                           onOpenNote={openNote}
+                          size="sm"
                         />
                       </div>
-                      <div className="flex items-center gap-0.5">
+                      <div className="flex items-center gap-0">
                         <button
                           onClick={e => { e.stopPropagation(); setResetConfirmSubjId(subj.id); }}
-                          className="p-1.5 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 rounded-full transition-colors"
+                          className="p-1 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 rounded-full transition-colors"
                           title={t('resetSubject')}
                         >
-                          <RotateCcw size={13} />
+                          <RotateCcw size={11} />
                         </button>
                         <button
                           onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
-                          className="p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors"
+                          className="p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors"
                         >
-                          <Pencil size={13} />
+                          <Pencil size={11} />
                         </button>
                         <button
                           onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }); }}
-                          className="p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-full transition-colors"
+                          className="p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-full transition-colors"
                         >
-                          <Trash2 size={13} />
+                          <Trash2 size={11} />
                         </button>
                         <motion.div
                           animate={{ rotate: isExpanded ? 90 : 0 }}
                           transition={{ duration: 0.2 }}
-                          className="text-muted-foreground bg-secondary p-1.5 rounded-full"
+                          className="text-muted-foreground bg-secondary p-1 rounded-full"
                         >
-                          <ChevronRight size={14} />
+                          <ChevronRight size={12} />
                         </motion.div>
                       </div>
                     </div>

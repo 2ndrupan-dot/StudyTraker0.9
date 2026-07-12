@@ -850,28 +850,72 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       // the courseNotes document — mirrors how oversized individual note pages
       // are already routed to Storage.
       const notesData = { overallNote: overallNoteToSave, notes };
-      const notesDataSize = byteSize(JSON.stringify(notesData));
-      const notesChunksRef = collection(notesDocRef, 'chunks');
-      let notesPayload: Record<string, unknown>;
-      if (notesDataSize > FIRESTORE_NOTE_LIMIT) {
-        const rawEntries: Array<[string, string]> = [];
-        if (notesData.overallNote) rawEntries.push(['__overall__', notesData.overallNote]);
-        for (const [k, v] of Object.entries(notesData.notes)) if (v) rawEntries.push([k, v]);
-        const splitEntries = rawEntries.flatMap(([k, v]) => splitLargeValue(k, v, FIRESTORE_NOTE_LIMIT));
-        const chunks = packEntries(splitEntries, FIRESTORE_NOTE_LIMIT);
-        await writeChunks(notesChunksRef, chunks);
-        notesPayload = { savedAt, overallNote: '', notes: {}, chunked: true, chunkCount: chunks.length };
-      } else {
-        await clearChunks(notesChunksRef);
-        notesPayload = JSON.parse(JSON.stringify({ savedAt, ...notesData, chunked: false }));
+
+      // Safety guard: never let an in-memory state that is *missing* notes
+      // (empty overallNote + empty notes map) silently overwrite note content
+      // that already exists in Firestore. This is the underlying condition
+      // that let earlier bugs (a flawed course migration, then a stale local
+      // cache winning a freshness comparison) permanently destroy notes even
+      // though the in-memory "empty" state was itself just a symptom of
+      // something else going wrong upstream. Closing it here means that
+      // *class* of bug — not just the specific ones already fixed — can no
+      // longer cause permanent data loss: worst case, a save is skipped once
+      // and retried on the next edit, instead of real notes being wiped out.
+      const incomingHasNotes =
+        !!notesData.overallNote || Object.values(notesData.notes).some((v) => !!v);
+      let skipNotesWrite = false;
+      if (!incomingHasNotes) {
+        try {
+          const existingNotesSnap = await getDoc(notesDocRef);
+          if (existingNotesSnap.exists()) {
+            const existing = existingNotesSnap.data() as {
+              overallNote?: string;
+              notes?: Record<string, string>;
+              chunked?: boolean;
+              chunkCount?: number;
+            };
+            const existingHasNotes =
+              !!existing.overallNote ||
+              (existing.notes && Object.values(existing.notes).some((v) => !!v)) ||
+              (!!existing.chunked && (existing.chunkCount || 0) > 0);
+            if (existingHasNotes) {
+              skipNotesWrite = true;
+              console.warn(
+                '[StudyContext] Skipped saving an empty notes payload over existing non-empty notes — ' +
+                'this looks like a transient in-memory state, not an intentional clear.',
+              );
+            }
+          }
+        } catch {
+          // If we can't check, fall through to the normal write below rather
+          // than blocking the save entirely.
+        }
       }
 
-      // Write courseNotes FIRST, then studyData.  Sequential (not concurrent) so
-      // another device that receives the studyData snapshot can always getDoc the
-      // companion notes doc and find it already committed.  If we wrote both with
-      // Promise.all, a listener on another device could receive the main snapshot
-      // before courseNotes was committed and load stale (empty) notes.
-      await setDoc(notesDocRef, notesPayload, { merge: false });
+      if (!skipNotesWrite) {
+        const notesDataSize = byteSize(JSON.stringify(notesData));
+        const notesChunksRef = collection(notesDocRef, 'chunks');
+        let notesPayload: Record<string, unknown>;
+        if (notesDataSize > FIRESTORE_NOTE_LIMIT) {
+          const rawEntries: Array<[string, string]> = [];
+          if (notesData.overallNote) rawEntries.push(['__overall__', notesData.overallNote]);
+          for (const [k, v] of Object.entries(notesData.notes)) if (v) rawEntries.push([k, v]);
+          const splitEntries = rawEntries.flatMap(([k, v]) => splitLargeValue(k, v, FIRESTORE_NOTE_LIMIT));
+          const chunks = packEntries(splitEntries, FIRESTORE_NOTE_LIMIT);
+          await writeChunks(notesChunksRef, chunks);
+          notesPayload = { savedAt, overallNote: '', notes: {}, chunked: true, chunkCount: chunks.length };
+        } else {
+          await clearChunks(notesChunksRef);
+          notesPayload = JSON.parse(JSON.stringify({ savedAt, ...notesData, chunked: false }));
+        }
+
+        // Write courseNotes FIRST, then studyData.  Sequential (not concurrent) so
+        // another device that receives the studyData snapshot can always getDoc the
+        // companion notes doc and find it already committed.  If we wrote both with
+        // Promise.all, a listener on another device could receive the main snapshot
+        // before courseNotes was committed and load stale (empty) notes.
+        await setDoc(notesDocRef, notesPayload, { merge: false });
+      }
       await setDoc(docRef, mainPayload, { merge: false });
       setSyncStatus('success');
       setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);

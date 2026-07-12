@@ -206,6 +206,36 @@ export function CourseProvider({ children }: { children: ReactNode }) {
         const legacySnap = await getDoc(legacyRef);
         if (legacySnap.exists()) {
           await setDoc(doc(db, 'users', user.id, 'studyData', id), legacySnap.data());
+
+          // The old single-course document may reference a companion
+          // "courseNotes/main" document (hasNotesDoc: true) holding all rich
+          // text notes. That companion doc is keyed by course id, so it must
+          // be migrated to "courseNotes/{id}" too — otherwise the notes
+          // silently vanish: studyData copies over fine (structure/settings),
+          // but the loader looks for courseNotes/{id}, finds nothing, and the
+          // subjects show up with empty notes even though the real note
+          // content still exists untouched under courseNotes/main.
+          const legacyNotesRef = doc(db, 'users', user.id, 'courseNotes', 'main');
+          const legacyNotesSnap = await getDoc(legacyNotesRef);
+          if (legacyNotesSnap.exists()) {
+            const notesData = legacyNotesSnap.data();
+            await setDoc(doc(db, 'users', user.id, 'courseNotes', id), notesData);
+
+            // If the notes map itself was too large for one document, its
+            // content lives in a "chunks" subcollection under the notes doc —
+            // copy those chunk documents over as well.
+            if (notesData?.chunked) {
+              const legacyChunksSnap = await getDocs(
+                collection(db, 'users', user.id, 'courseNotes', 'main', 'chunks')
+              );
+              for (const chunkDoc of legacyChunksSnap.docs) {
+                await setDoc(
+                  doc(db, 'users', user.id, 'courseNotes', id, 'chunks', chunkDoc.id),
+                  chunkDoc.data()
+                );
+              }
+            }
+          }
         }
         const legacyLsKey = `@study_data_${user.email}`;
         const legacyLsData = localStorage.getItem(legacyLsKey);

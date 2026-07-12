@@ -533,20 +533,60 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     const withNotesDoc = async (data: StudyData): Promise<StudyData> => {
       if (!(data as any).hasNotesDoc) return data; // old format — notes already embedded
       try {
-        const notesSnap = await getDoc(notesDocRef);
+        let notesSnap = await getDoc(notesDocRef);
+        let sourceIsLegacyMain = false;
+
+        // Self-heal path: courses created via the old single-course → multi-course
+        // migration copied "studyData/main" to "studyData/{newCourseId}" (with
+        // hasNotesDoc: true carried over) but historically did NOT copy the
+        // companion "courseNotes/main" document to "courseNotes/{newCourseId}".
+        // If that happened, the notes doc for THIS course id is missing even
+        // though the real note content still exists, untouched, under the old
+        // "main" id. Fall back to it, and copy it forward so this only needs
+        // to self-heal once per course.
+        if (!notesSnap.exists() && activeCourseId !== 'main') {
+          const legacyNotesRef = doc(db, 'users', user.id, 'courseNotes', 'main');
+          const legacySnap = await getDoc(legacyNotesRef);
+          if (legacySnap.exists()) {
+            notesSnap = legacySnap;
+            sourceIsLegacyMain = true;
+          }
+        }
+
         if (!notesSnap.exists()) return data;
         const nd = notesSnap.data() as { overallNote?: string; notes?: Record<string, string>; chunked?: boolean };
         let notesMap = nd.notes || {};
         let overallNoteVal = nd.overallNote || '';
+        const sourceChunksColRef = sourceIsLegacyMain
+          ? collection(doc(db, 'users', user.id, 'courseNotes', 'main'), 'chunks')
+          : collection(notesDocRef, 'chunks');
         // Once the flat notes map itself outgrows the Firestore document limit,
         // it's split across a "chunks" subcollection — read and reassemble it.
         if (nd.chunked) {
-          const entries = await readChunkEntries(collection(notesDocRef, 'chunks'));
+          const entries = await readChunkEntries(sourceChunksColRef);
           const merged = reassembleEntries(entries);
           overallNoteVal = merged['__overall__'] || '';
           delete merged['__overall__'];
           notesMap = merged;
         }
+
+        // Copy the recovered legacy doc (and its chunks, if any) forward onto
+        // this course's own notesDocRef so the fallback above is only needed
+        // once — subsequent loads read it directly, no legacy lookup required.
+        if (sourceIsLegacyMain) {
+          setDoc(notesDocRef, nd).catch(() => {});
+          if (nd.chunked) {
+            (async () => {
+              try {
+                const entries = await getDocs(sourceChunksColRef);
+                for (const chunkDoc of entries.docs) {
+                  await setDoc(doc(collection(notesDocRef, 'chunks'), chunkDoc.id), chunkDoc.data());
+                }
+              } catch { /* best-effort self-heal; fallback path still works next time */ }
+            })();
+          }
+        }
+
         const { subjects, tempNotes } = mergeNotes(
           data.subjects,
           data.tempNotes || [],

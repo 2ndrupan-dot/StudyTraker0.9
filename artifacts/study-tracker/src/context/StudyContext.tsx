@@ -3,6 +3,7 @@ import { Subject, Chapter, Topic, Subtopic, Concept, Point, CourseSettings, Mark
 import { useAuth } from './AuthContext';
 import { useCourse } from './CourseContext';
 import { addDays, formatISO } from 'date-fns';
+import { nowIST, addDaysIST, toDateStrIST } from '@/lib/istTime';
 import { doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, collection, writeBatch, type CollectionReference, type DocumentReference } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -1022,6 +1023,72 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // ─── Revision scheduling from Subject section ──────────────────────────
+  // Called when a completion checkbox is toggled in the Subject tree.
+  // Mirrors the same localStorage + Firestore dual-write pattern used by
+  // purgeRevisions / patchRevisions above, so Today.tsx picks up the change
+  // immediately via its onSnapshot listener.
+  const SUBJECT_REVISION_DAYS = 5; // days until first revision after completing
+  const SUBJECT_MIN_MINS = 3;       // minimum revisionMins
+
+  const addRevisionFromSubject = (
+    taskKey: string,
+    mainTitle: string,
+    subjectTitle: string,
+    subjectColor: string,
+    breadcrumb: string[],
+    level: string,
+    estimatedMins: number,
+  ) => {
+    if (!user?.email || !activeCourseId) return;
+    const email = user.email;
+    const courseId = activeCourseId;
+    const revK = `@study_revisions_v2_${email}_${courseId}`;
+    const scheduledDate = toDateStrIST(addDaysIST(nowIST(settings.timezone), SUBJECT_REVISION_DAYS));
+    const id = `${taskKey}_rev_s0_${scheduledDate}`;
+    let entries: any[] = [];
+    try {
+      const raw = localStorage.getItem(revK);
+      entries = raw ? JSON.parse(raw) : [];
+    } catch { return; }
+    // Don't duplicate an existing active revision for this key
+    if (entries.some((r: any) => r.taskKey === taskKey && !r.done)) return;
+    if (entries.some((r: any) => r.id === id)) return;
+    const entry = {
+      id, taskKey, mainTitle, subjectTitle, subjectColor, breadcrumb, level,
+      scheduledDate,
+      revisionMins: Math.max(Math.round(estimatedMins * 0.5), SUBJECT_MIN_MINS),
+      stage: 0,
+      done: false,
+    };
+    const merged = [...entries, entry];
+    try { localStorage.setItem(revK, JSON.stringify(merged)); } catch { return; }
+    if (user?.id) {
+      setDoc(doc(db, 'users', user.id, 'todayData', courseId), { revisions: merged }, { merge: true })
+        .catch(e => console.warn('[addRevisionFromSubject] Firestore sync failed:', e));
+    }
+  };
+
+  const removeRevisionFromSubject = (taskKey: string) => {
+    if (!user?.email || !activeCourseId) return;
+    const email = user.email;
+    const courseId = activeCourseId;
+    const revK = `@study_revisions_v2_${email}_${courseId}`;
+    let entries: any[] = [];
+    try {
+      const raw = localStorage.getItem(revK);
+      entries = raw ? JSON.parse(raw) : [];
+    } catch { return; }
+    // Remove only non-done revisions for this exact taskKey
+    const filtered = entries.filter((r: any) => !(r.taskKey === taskKey && !r.done));
+    if (filtered.length === entries.length) return; // nothing changed
+    try { localStorage.setItem(revK, JSON.stringify(filtered)); } catch { return; }
+    if (user?.id) {
+      setDoc(doc(db, 'users', user.id, 'todayData', courseId), { revisions: filtered }, { merge: true })
+        .catch(e => console.warn('[removeRevisionFromSubject] Firestore sync failed:', e));
+    }
+  };
+
   const deleteSubject = (subjId: string) => {
     setSubjects(prev => redistributeDays(prev.filter(s => s.id !== subjId), settings.courseTotalDays));
     purgeRevisions(subjId);
@@ -1244,6 +1311,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   };
 
   const toggleChapterComplete = (subjId: string, chId: string) => {
+    const subj = subjects.find(s => s.id === subjId);
+    const ch = subj?.chapters.find(c => c.id === chId);
+    const wasComplete = ch?.completed ?? false;
     setSubjects(prev => prev.map(s => {
       if (s.id !== subjId) return s;
       const updatedChapters = s.chapters.map(ch => {
@@ -1253,6 +1323,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       });
       return checkSubjectCompletion({ ...s, chapters: updatedChapters });
     }));
+    if (subj && ch) {
+      const taskKey = `${subjId}|${chId}`;
+      if (!wasComplete) {
+        addRevisionFromSubject(taskKey, ch.title, subj.title, subj.color, [], 'chapter',
+          ch.adjustedMinutes ?? ch.estimatedMinutes ?? ch.totalMinutes ?? 0);
+      } else {
+        removeRevisionFromSubject(taskKey);
+      }
+    }
   };
 
   const updateChapterMeta = (subjId: string, chId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => {
@@ -1307,6 +1386,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   };
 
   const toggleTopicComplete = (subjId: string, chId: string, tId: string) => {
+    const subj = subjects.find(s => s.id === subjId);
+    const ch = subj?.chapters.find(c => c.id === chId);
+    const topic = ch?.topics.find(t => t.id === tId);
+    const wasComplete = topic?.completed ?? false;
     setSubjects(prev => prev.map(s => {
       if (s.id !== subjId) return s;
       const newChapters = s.chapters.map(ch => {
@@ -1321,6 +1404,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       });
       return checkSubjectCompletion({ ...s, chapters: newChapters });
     }));
+    if (subj && ch && topic) {
+      const taskKey = `${subjId}|${chId}|${tId}`;
+      if (!wasComplete) {
+        addRevisionFromSubject(taskKey, topic.title, subj.title, subj.color, [ch.title], 'topic',
+          topic.adjustedMinutes ?? topic.estimatedMinutes ?? topic.totalMinutes ?? 0);
+      } else {
+        removeRevisionFromSubject(taskKey);
+      }
+    }
   };
 
   const updateTopicMeta = (subjId: string, chId: string, tId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => {
@@ -1377,6 +1469,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   };
 
   const toggleSubtopicComplete = (subjId: string, chId: string, tId: string, subId: string) => {
+    const subj = subjects.find(s => s.id === subjId);
+    const ch = subj?.chapters.find(c => c.id === chId);
+    const topic = ch?.topics.find(t => t.id === tId);
+    const sub = topic?.subtopics.find(s => s.id === subId);
+    const wasComplete = sub?.completed ?? false;
     setSubjects(prev => prev.map(s => {
       if (s.id !== subjId) return s;
       const newChapters = s.chapters.map(ch => {
@@ -1397,6 +1494,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       });
       return checkSubjectCompletion({ ...s, chapters: newChapters });
     }));
+    if (subj && ch && topic && sub) {
+      const taskKey = `${subjId}|${chId}|${tId}|${subId}`;
+      if (!wasComplete) {
+        addRevisionFromSubject(taskKey, sub.title, subj.title, subj.color, [ch.title, topic.title], 'subtopic',
+          sub.adjustedMinutes ?? sub.estimatedMinutes ?? 0);
+      } else {
+        removeRevisionFromSubject(taskKey);
+      }
+    }
   };
 
   const updateSubtopicMeta = (subjId: string, chId: string, tId: string, subId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => {
@@ -1454,6 +1560,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   };
 
   const toggleConceptComplete = (subjId: string, chId: string, tId: string, subId: string, cId: string) => {
+    const subj = subjects.find(s => s.id === subjId);
+    const ch = subj?.chapters.find(c => c.id === chId);
+    const topic = ch?.topics.find(t => t.id === tId);
+    const sub = topic?.subtopics.find(s => s.id === subId);
+    const concept = sub?.concepts.find(c => c.id === cId);
+    const wasComplete = concept?.completed ?? false;
     setSubjects(updateSubtopicFn(subjId, chId, tId, subId, sub => {
       const newConcepts = sub.concepts.map(c => {
         if (c.id !== cId) return c;
@@ -1464,6 +1576,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       const subDone = sub.completed && newConcepts.length > 0 && newConcepts.every(c => isConceptContentDone(c));
       return { ...sub, concepts: newConcepts, completed: subDone };
     }));
+    if (subj && ch && topic && sub && concept) {
+      const taskKey = `${subjId}|${chId}|${tId}|${subId}|${cId}`;
+      if (!wasComplete) {
+        addRevisionFromSubject(taskKey, concept.title, subj.title, subj.color, [ch.title, topic.title, sub.title], 'concept',
+          concept.adjustedMinutes ?? concept.estimatedMinutes ?? 0);
+      } else {
+        removeRevisionFromSubject(taskKey);
+      }
+    }
   };
 
   const updateConceptMeta = (subjId: string, chId: string, tId: string, subId: string, cId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => {
@@ -1527,12 +1648,29 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   };
 
   const togglePointComplete = (subjId: string, chId: string, tId: string, subId: string, cId: string, pId: string) => {
+    const subj = subjects.find(s => s.id === subjId);
+    const ch = subj?.chapters.find(c => c.id === chId);
+    const topic = ch?.topics.find(t => t.id === tId);
+    const sub = topic?.subtopics.find(s => s.id === subId);
+    const concept = sub?.concepts.find(c => c.id === cId);
+    const point = concept?.points.find(p => p.id === pId);
+    const wasComplete = point?.completed ?? false;
     setSubjects(updateConceptFn(subjId, chId, tId, subId, cId, c => {
       const newPoints = c.points.map(p => p.id === pId ? { ...p, completed: !p.completed } : p);
       // Auto-complete concept only when overview done AND all points done
       const conceptDone = c.completed && newPoints.length > 0 && newPoints.every(p => p.completed);
       return { ...c, points: newPoints, completed: conceptDone };
     }));
+    if (subj && ch && topic && sub && concept && point) {
+      const taskKey = `${subjId}|${chId}|${tId}|${subId}|${cId}|${pId}`;
+      if (!wasComplete) {
+        addRevisionFromSubject(taskKey, point.title, subj.title, subj.color,
+          [ch.title, topic.title, sub.title, concept.title], 'point',
+          point.adjustedMinutes ?? point.estimatedMinutes ?? 0);
+      } else {
+        removeRevisionFromSubject(taskKey);
+      }
+    }
   };
 
   const updatePointMeta = (subjId: string, chId: string, tId: string, subId: string, cId: string, pId: string, title: string, difficulty?: DifficultyLevel) => {

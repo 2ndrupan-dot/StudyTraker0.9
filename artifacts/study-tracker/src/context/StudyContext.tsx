@@ -1,54 +1,149 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Subject, Chapter, Topic, Subtopic, Concept, Point, CourseSettings, MarkLevel, MarkPath, TempNoteItem, NotePage } from '@/lib/types';
+import { Subject, Chapter, Topic, Subtopic, Concept, Point, CourseSettings, MarkLevel, MarkPath, TempNoteItem, NotePage, NoteElement } from '@/lib/types';
 import { useAuth } from './AuthContext';
 import { useCourse } from './CourseContext';
 import { addDays, formatISO } from 'date-fns';
-import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '@/lib/firebase';
+import { doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, collection, writeBatch, type CollectionReference, type DocumentReference } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
-// Firestore document size limit — we route note pages above this to Firebase Storage
-// to avoid "invalid-argument" / "document-too-large" errors.
+// Firestore document size limit — documents above this are split across a
+// "chunks" subcollection instead of relying on Firebase Storage (which
+// requires the paid Blaze plan; this app targets the free Spark plan).
 const FIRESTORE_NOTE_LIMIT = 800_000; // 800 KB (Firestore hard limit is 1 MB)
 
-/** Upload the full NotePage JSON to Firebase Storage and return the download URL. */
-async function uploadNotePageToStorage(userId: string, pageId: string, data: object): Promise<string> {
-  const path = `users/${userId}/notePages/${pageId}.json`;
-  const r = storageRef(storage, path);
-  await uploadString(r, JSON.stringify(data), 'raw', { contentType: 'application/json' });
-  return getDownloadURL(r);
+/** Real UTF-8 byte length, reused below for bin-packing chunk sizes. */
+// (byteSize is defined further below; declared here only in comments to avoid
+// forward-reference confusion — see the real definition near the other helpers.)
+
+/** Delete every document in a "chunks" subcollection. Used both to clean up
+ *  stale chunks when data shrinks back under the size limit, and as the first
+ *  step before writing a fresh set of chunks (indices may not line up 1:1
+ *  between saves as content grows/shrinks). */
+async function clearChunks(colRef: CollectionReference): Promise<void> {
+  const snap = await getDocs(colRef);
+  if (snap.empty) return;
+  const batch = writeBatch(db);
+  snap.forEach(d => batch.delete(d.ref));
+  await batch.commit();
 }
 
-/** Fetch and parse note elements from a Storage URL. */
-async function fetchNotePageFromStorage(url: string): Promise<object | null> {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
+/** Split a string value that alone exceeds `limit` bytes into ordered parts.
+ *  Encodes each part's key as `${key}\u0001${index}\u0001${total}` so the
+ *  reader can group and reassemble them in order. Values under the limit are
+ *  returned as a single untouched [key, value] pair. */
+function splitLargeValue(key: string, value: string, limit: number): Array<[string, string]> {
+  if (byteSize(value) <= limit) return [[key, value]];
+  const parts: string[] = [];
+  let start = 0;
+  while (start < value.length) {
+    let end = Math.min(value.length, start + limit);
+    while (end > start && byteSize(value.slice(start, end)) > limit) {
+      end = start + Math.max(1, Math.floor((end - start) / 2));
+    }
+    parts.push(value.slice(start, end));
+    start = end;
   }
+  return parts.map((p, i) => [`${key}\u0001${i}\u0001${parts.length}`, p]);
 }
 
-/** Upload the full courseNotes payload (overallNote + flat notes map) to Firebase
- *  Storage and return the download URL. Used when the flat map itself grows past
- *  the Firestore document limit — Storage has no such size ceiling. */
-async function uploadCourseNotesToStorage(userId: string, courseId: string, data: object): Promise<string> {
-  const path = `users/${userId}/courseNotes/${courseId}.json`;
-  const r = storageRef(storage, path);
-  await uploadString(r, JSON.stringify(data), 'raw', { contentType: 'application/json' });
-  return getDownloadURL(r);
-}
-
-/** Fetch and parse the courseNotes payload from a Storage URL. */
-async function fetchCourseNotesFromStorage(url: string): Promise<{ overallNote?: string; notes?: Record<string, string> } | null> {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
+/** Greedily bin-pack [key, value] string entries into chunk objects that each
+ *  stay under `limit` bytes when JSON-serialised. */
+function packEntries(entries: Array<[string, string]>, limit: number): Array<Record<string, string>> {
+  const chunks: Array<Record<string, string>> = [];
+  let current: Record<string, string> = {};
+  let currentSize = 2; // "{}"
+  for (const [k, v] of entries) {
+    const entrySize = byteSize(JSON.stringify(k)) + byteSize(JSON.stringify(v)) + 1;
+    if (Object.keys(current).length > 0 && currentSize + entrySize > limit) {
+      chunks.push(current);
+      current = {};
+      currentSize = 2;
+    }
+    current[k] = v;
+    currentSize += entrySize;
   }
+  if (Object.keys(current).length > 0) chunks.push(current);
+  return chunks;
+}
+
+/** Reverse of splitLargeValue + packEntries: merges all chunk entries back
+ *  into a single flat map, rejoining any split values in order. */
+function reassembleEntries(entries: Array<[string, string]>): Record<string, string> {
+  const groups = new Map<string, Array<{ index: number; value: string }>>();
+  const direct: Record<string, string> = {};
+  for (const [k, v] of entries) {
+    const parts = k.split('\u0001');
+    if (parts.length === 3) {
+      const base = parts[0];
+      if (!groups.has(base)) groups.set(base, []);
+      groups.get(base)!.push({ index: Number(parts[1]), value: v });
+    } else {
+      direct[k] = v;
+    }
+  }
+  groups.forEach((parts, base) => {
+    parts.sort((a, b) => a.index - b.index);
+    direct[base] = parts.map(p => p.value).join('');
+  });
+  return direct;
+}
+
+/** Write a set of pre-packed chunk objects to `colRef`, replacing whatever was
+ *  there before (so a shrinking chunk count never leaves stale trailing docs). */
+async function writeChunks(colRef: CollectionReference, chunks: Array<Record<string, string>>): Promise<void> {
+  await clearChunks(colRef);
+  const batch = writeBatch(db);
+  chunks.forEach((data, i) => batch.set(doc(colRef, String(i)), { data }));
+  await batch.commit();
+}
+
+/** Read all chunk docs (ordered by numeric index) and flatten into entries. */
+async function readChunkEntries(colRef: CollectionReference): Promise<Array<[string, string]>> {
+  const snap = await getDocs(colRef);
+  const sorted = snap.docs.slice().sort((a, b) => Number(a.id) - Number(b.id));
+  const entries: Array<[string, string]> = [];
+  for (const d of sorted) {
+    const data = (d.data().data || {}) as Record<string, string>;
+    entries.push(...Object.entries(data));
+  }
+  return entries;
+}
+
+/** Bin-pack a NoteElement array into chunk arrays that each stay under `limit`
+ *  bytes when JSON-serialised (elements themselves are not split further). */
+function packElements(elements: NoteElement[], limit: number): NoteElement[][] {
+  const chunks: NoteElement[][] = [];
+  let current: NoteElement[] = [];
+  let currentSize = 2;
+  for (const el of elements) {
+    const elSize = byteSize(JSON.stringify(el)) + 1;
+    if (current.length > 0 && currentSize + elSize > limit) {
+      chunks.push(current);
+      current = [];
+      currentSize = 2;
+    }
+    current.push(el);
+    currentSize += elSize;
+  }
+  if (current.length > 0 || chunks.length === 0) chunks.push(current);
+  return chunks;
+}
+
+/** Write element chunks to `colRef`, replacing any previous chunk docs. */
+async function writeElementChunks(colRef: CollectionReference, chunks: NoteElement[][]): Promise<void> {
+  await clearChunks(colRef);
+  const batch = writeBatch(db);
+  chunks.forEach((elements, i) => batch.set(doc(colRef, String(i)), { elements }));
+  await batch.commit();
+}
+
+/** Read all element chunk docs (ordered by numeric index) and flatten. */
+async function readElementChunks(colRef: CollectionReference): Promise<NoteElement[]> {
+  const snap = await getDocs(colRef);
+  const sorted = snap.docs.slice().sort((a, b) => Number(a.id) - Number(b.id));
+  const elements: NoteElement[] = [];
+  for (const d of sorted) elements.push(...((d.data().elements || []) as NoteElement[]));
+  return elements;
 }
 
 /**
@@ -88,8 +183,11 @@ function sanitizeForFirestore(page: NotePage): NotePage {
     createdAt: cleanNum(page.createdAt, Date.now()),
     updatedAt: cleanNum(page.updatedAt, Date.now()),
   };
-  if (page.html !== undefined)        clean.html        = page.html;
-  if (page.elementsUrl !== undefined) clean.elementsUrl = page.elementsUrl;
+  if (page.html !== undefined)   clean.html   = page.html;
+  if (page.chunked !== undefined) {
+    clean.chunked = page.chunked;
+    clean.chunkCount = page.chunkCount ?? 0;
+  }
   return clean as unknown as NotePage;
 }
 import { applyTimeAdjustment, isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone } from '@/lib/timeEngine';
@@ -418,17 +516,17 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       try {
         const notesSnap = await getDoc(notesDocRef);
         if (!notesSnap.exists()) return data;
-        const nd = notesSnap.data() as { overallNote?: string; notes?: Record<string, string>; notesUrl?: string };
+        const nd = notesSnap.data() as { overallNote?: string; notes?: Record<string, string>; chunked?: boolean };
         let notesMap = nd.notes || {};
         let overallNoteVal = nd.overallNote || '';
         // Once the flat notes map itself outgrows the Firestore document limit,
-        // it's offloaded to Storage and only a URL is kept in the doc — fetch it.
-        if (nd.notesUrl) {
-          const fetched = await fetchCourseNotesFromStorage(nd.notesUrl);
-          if (fetched) {
-            notesMap = fetched.notes || {};
-            overallNoteVal = fetched.overallNote || '';
-          }
+        // it's split across a "chunks" subcollection — read and reassemble it.
+        if (nd.chunked) {
+          const entries = await readChunkEntries(collection(notesDocRef, 'chunks'));
+          const merged = reassembleEntries(entries);
+          overallNoteVal = merged['__overall__'] || '';
+          delete merged['__overall__'];
+          notesMap = merged;
         }
         const { subjects, tempNotes } = mergeNotes(
           data.subjects,
@@ -660,12 +758,19 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       // are already routed to Storage.
       const notesData = { overallNote: overallNoteToSave, notes };
       const notesDataSize = byteSize(JSON.stringify(notesData));
+      const notesChunksRef = collection(notesDocRef, 'chunks');
       let notesPayload: Record<string, unknown>;
       if (notesDataSize > FIRESTORE_NOTE_LIMIT) {
-        const notesUrl = await uploadCourseNotesToStorage(currentUser.id, currentCourseId, notesData);
-        notesPayload = { savedAt, overallNote: '', notes: {}, notesUrl };
+        const rawEntries: Array<[string, string]> = [];
+        if (notesData.overallNote) rawEntries.push(['__overall__', notesData.overallNote]);
+        for (const [k, v] of Object.entries(notesData.notes)) if (v) rawEntries.push([k, v]);
+        const splitEntries = rawEntries.flatMap(([k, v]) => splitLargeValue(k, v, FIRESTORE_NOTE_LIMIT));
+        const chunks = packEntries(splitEntries, FIRESTORE_NOTE_LIMIT);
+        await writeChunks(notesChunksRef, chunks);
+        notesPayload = { savedAt, overallNote: '', notes: {}, chunked: true, chunkCount: chunks.length };
       } else {
-        notesPayload = JSON.parse(JSON.stringify({ savedAt, ...notesData }));
+        await clearChunks(notesChunksRef);
+        notesPayload = JSON.parse(JSON.stringify({ savedAt, ...notesData, chunked: false }));
       }
 
       // Write courseNotes FIRST, then studyData.  Sequential (not concurrent) so
@@ -1659,10 +1764,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       if (snap.exists()) {
         const d = snap.data() as NotePage;
         let elements = d.elements || [];
-        // If elements were offloaded to Firebase Storage, fetch them.
-        if (d.elementsUrl) {
-          const fetched = await fetchNotePageFromStorage(d.elementsUrl) as { elements?: NoteElement[] } | null;
-          if (fetched?.elements) elements = fetched.elements;
+        // If elements were split across a "chunks" subcollection, reassemble them.
+        if (d.chunked) {
+          elements = await readElementChunks(collection(ref, 'chunks'));
         }
         const remote: NotePage = {
           id: d.id ?? id,
@@ -1670,7 +1774,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           elements,
           pageCount: d.pageCount ?? 1,
           html: d.html,
-          elementsUrl: d.elementsUrl,
+          chunked: d.chunked,
+          chunkCount: d.chunkCount,
           createdAt: d.createdAt ?? Date.now(),
           updatedAt: d.updatedAt ?? Date.now(),
         };
@@ -1728,21 +1833,25 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             const cleaned = sanitizeForFirestore(latestData);
 
             // Check serialised size before writing to Firestore.
-            // If the document would exceed ~800 KB, offload the elements array
-            // to Firebase Storage and store only the download URL in Firestore.
+            // If the document would exceed ~800 KB, split the elements array
+            // across a "chunks" subcollection instead (no Storage dependency).
             const serialised = JSON.stringify(cleaned);
             const serialisedSize = byteSize(serialised);
+            const pageChunksRef = collection(ref, 'chunks');
             let firestorePayload: NotePage;
             if (serialisedSize > FIRESTORE_NOTE_LIMIT && user) {
-              console.info('[saveNotePage] Note too large for Firestore (%d KB), uploading to Storage', Math.round(serialisedSize / 1024));
-              const url = await uploadNotePageToStorage(user.id, pageId, { elements: cleaned.elements });
+              console.info('[saveNotePage] Note too large for Firestore (%d KB), splitting into chunks', Math.round(serialisedSize / 1024));
+              const chunks = packElements(cleaned.elements || [], FIRESTORE_NOTE_LIMIT);
+              await writeElementChunks(pageChunksRef, chunks);
               firestorePayload = sanitizeForFirestore({
                 ...cleaned,
-                elementsUrl: url,
-                elements: [],   // cleared from Firestore doc — stored in Storage
+                chunked: true,
+                chunkCount: chunks.length,
+                elements: [],   // cleared from Firestore doc — stored in chunks subcollection
               });
             } else {
-              firestorePayload = cleaned;
+              await clearChunks(pageChunksRef);
+              firestorePayload = { ...cleaned, chunked: false };
             }
             await setDoc(ref, firestorePayload);
             setSyncStatus('success');

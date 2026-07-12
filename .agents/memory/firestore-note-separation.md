@@ -32,6 +32,13 @@ The flat map described above (all subject/chapter/topic/etc. notes for one cours
 
 **How to apply:** Same Storage-offload pattern as notePages, applied one level up: before writing `courseNotes`, check the real byte size of `{overallNote, notes}` against `FIRESTORE_NOTE_LIMIT`; if over, upload the whole object to Storage at `users/{uid}/courseNotes/{courseId}.json` and write only `{savedAt, notesUrl}` (notes/overallNote left empty) to Firestore. Loader checks for `notesUrl` and fetches from Storage when present. If this problem resurfaces, check whether Storage upload itself is now failing (e.g. Storage security rules) rather than assuming the Firestore side is broken again.
 
+## No Firebase Storage — this project stays on the free Spark plan
+Oversized courseNotes/notePages content is NOT offloaded to Firebase Storage. Enabling Storage now requires upgrading to the paid Blaze plan (confirmed via a live `curl` to the storage REST endpoint returning 404 "Not Found" — the bucket doesn't exist on Spark), and the user explicitly declined to upgrade.
+
+**Why:** Storage-based offload (uploadBytes/uploadString to `firebasestorage.googleapis.com`) silently fails end-to-end with what looks like a CORS error in the browser console, but the real cause is the bucket not existing on the free plan.
+
+**How to apply:** Oversized `courseNotes` and `notePages` documents are instead split across a Firestore **"chunks" subcollection** (`courseNotes/{courseId}/chunks/{i}`, `notePages/{pageId}/chunks/{i}`), each chunk kept under `FIRESTORE_NOTE_LIMIT` bytes via greedy bin-packing (`packEntries`/`packElements` in StudyContext.tsx); a single oversized string value is itself split via `splitLargeValue`. The parent doc gets `{chunked: true, chunkCount}` instead of a Storage URL. If any future feature needs real file storage (e.g. image uploads in NoteEditor.tsx, which still use `firebase/storage` and are NOT yet fixed), it will hit this same Blaze-plan wall — surface that to the user before assuming Storage works.
+
 ## Critical: size checks MUST use real UTF-8 byte length, not JS string `.length`
 Both this courseNotes check and the notePages check originally compared `JSON.stringify(data).length` (UTF-16 code units) against the byte-based `FIRESTORE_NOTE_LIMIT`. For Bengali (and other non-Latin scripts), each character is ~3 bytes in UTF-8 but only 1 UTF-16 code unit — so `.length` undercounts actual byte size by up to 3x. This let genuinely oversized documents slip past the "should we offload to Storage?" check, causing the exact `exceeds the maximum allowed size of 1,048,576 bytes` Firestore error the offload was supposed to prevent.
 

@@ -29,6 +29,48 @@ async function fetchNotePageFromStorage(url: string): Promise<object | null> {
     return null;
   }
 }
+
+/**
+ * Firestore rejects documents that contain `undefined` values or `NaN` numbers.
+ * This helper deep-cleans a NotePage so it's always safe to write.
+ */
+function sanitizeForFirestore(page: NotePage): NotePage {
+  const cleanNum = (v: number | undefined, fallback = 0): number =>
+    typeof v === 'number' && isFinite(v) ? v : fallback;
+
+  const cleanElements = (page.elements ?? []).map(el => {
+    const out: Record<string, unknown> = {
+      id: el.id,
+      type: el.type,
+      x: cleanNum(el.x),
+      y: cleanNum(el.y),
+      width: cleanNum(el.width, 100),
+      height: cleanNum(el.height, 40),
+    };
+    if (el.text !== undefined)       out.text       = el.text;
+    if (el.href !== undefined)       out.href       = el.href;
+    if (el.src !== undefined)        out.src        = el.src;
+    if (el.fontSize !== undefined)   out.fontSize   = cleanNum(el.fontSize, 14);
+    if (el.fontWeight !== undefined) out.fontWeight = el.fontWeight;
+    if (el.fontStyle !== undefined)  out.fontStyle  = el.fontStyle;
+    if (el.color !== undefined)      out.color      = el.color;
+    if (el.align !== undefined)      out.align      = el.align;
+    if (el.rotation !== undefined)   out.rotation   = cleanNum(el.rotation, 0);
+    return out;
+  });
+
+  const clean: Record<string, unknown> = {
+    id: page.id,
+    title: page.title ?? 'Untitled',
+    elements: cleanElements,
+    pageCount: cleanNum(page.pageCount, 1),
+    createdAt: cleanNum(page.createdAt, Date.now()),
+    updatedAt: cleanNum(page.updatedAt, Date.now()),
+  };
+  if (page.html !== undefined)        clean.html        = page.html;
+  if (page.elementsUrl !== undefined) clean.elementsUrl = page.elementsUrl;
+  return clean as unknown as NotePage;
+}
 import { applyTimeAdjustment, isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone } from '@/lib/timeEngine';
 import type { DifficultyLevel } from '@/lib/types';
 
@@ -113,6 +155,7 @@ interface StudyContextType {
   settings: CourseSettings;
   dataLoaded: boolean;
   syncStatus: 'idle' | 'syncing' | 'success' | 'failed';
+  syncError: string | null;
   online: boolean;
   setNote: (path: MarkPath, note: string) => void;
   toggleImportant: (path: MarkPath) => void;
@@ -248,6 +291,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const [notePagesIndex, setNotePagesIndex] = useState<NotePageMeta[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'failed'>('idle');
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
   // Track online / offline transitions
@@ -1627,42 +1671,44 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         if (deletedNotePageIds.current.has(pageId)) return;
 
         setSyncStatus('syncing');
+        setSyncError(null);
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
+            // Sanitize before any size check — removes NaN/undefined that Firestore rejects.
+            const cleaned = sanitizeForFirestore(latestData);
+
             // Check serialised size before writing to Firestore.
             // If the document would exceed ~800 KB, offload the elements array
             // to Firebase Storage and store only the download URL in Firestore.
-            const serialised = JSON.stringify(latestData);
+            const serialised = JSON.stringify(cleaned);
             let firestorePayload: NotePage;
             if (serialised.length > FIRESTORE_NOTE_LIMIT && user) {
               console.info('[saveNotePage] Note too large for Firestore (%d KB), uploading to Storage', Math.round(serialised.length / 1024));
-              const url = await uploadNotePageToStorage(user.id, pageId, { elements: latestData.elements });
-              firestorePayload = {
-                id: latestData.id,
-                title: latestData.title,
-                pageCount: latestData.pageCount,
-                html: latestData.html,
+              const url = await uploadNotePageToStorage(user.id, pageId, { elements: cleaned.elements });
+              firestorePayload = sanitizeForFirestore({
+                ...cleaned,
                 elementsUrl: url,
                 elements: [],   // cleared from Firestore doc — stored in Storage
-                createdAt: latestData.createdAt,
-                updatedAt: latestData.updatedAt,
-              };
+              });
             } else {
-              firestorePayload = latestData;
+              firestorePayload = cleaned;
             }
             await setDoc(ref, firestorePayload);
             setSyncStatus('success');
+            setSyncError(null);
             setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
             return; // success
           } catch (err: unknown) {
             const code = (err as { code?: string })?.code ?? 'unknown';
+            const msg = (err as { message?: string })?.message ?? '';
             if (attempt < 3) {
               // Exponential backoff: 800 ms → 1 600 ms
               await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt - 1)));
             } else {
               setSyncStatus('failed');
-              setTimeout(() => setSyncStatus(s => s === 'failed' ? 'idle' : s), 4000);
-              console.error('[saveNotePage] Firestore write failed after 3 attempts', { pageId, code, err });
+              setSyncError(code !== 'unknown' ? code : (msg.slice(0, 60) || null));
+              setTimeout(() => setSyncStatus(s => s === 'failed' ? 'idle' : s), 6000);
+              console.error('[saveNotePage] Firestore write failed after 3 attempts', { pageId, code, msg, err });
             }
           }
         }
@@ -1672,7 +1718,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   return (
     <StudyContext.Provider value={{
-      subjects, settings, dataLoaded, syncStatus, online,
+      subjects, settings, dataLoaded, syncStatus, syncError, online,
       setNote, toggleImportant, toggleWeak,
       setCourseTotalDays, setDailyStudyHours, setCourseStartDate, setTimezone,
       addSubject, updateSubjectDays, deleteSubject, updateSubjectMeta, resetSubjectProgress,

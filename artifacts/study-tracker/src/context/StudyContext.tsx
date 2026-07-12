@@ -89,11 +89,22 @@ function reassembleEntries(entries: Array<[string, string]>): Record<string, str
 }
 
 /** Write a set of pre-packed chunk objects to `colRef`, replacing whatever was
- *  there before (so a shrinking chunk count never leaves stale trailing docs). */
+ *  there before (so a shrinking chunk count never leaves stale trailing docs).
+ *
+ *  Entries are stored as an ARRAY of {k, v} pairs rather than a map keyed by
+ *  the raw entry key. Firestore rejects any field name (at any nesting level,
+ *  including map keys) matching `__.*__` as reserved — and some note keys
+ *  (e.g. an "overall notes" entry keyed literally "__overall__") collide with
+ *  that pattern. Arrays have no such restriction since entries aren't field
+ *  names, so this sidesteps the problem entirely regardless of what the key
+ *  looks like. */
 async function writeChunks(colRef: CollectionReference, chunks: Array<Record<string, string>>): Promise<void> {
   await clearChunks(colRef);
   const batch = writeBatch(db);
-  chunks.forEach((data, i) => batch.set(doc(colRef, String(i)), { data }));
+  chunks.forEach((data, i) => {
+    const pairs = Object.entries(data).map(([k, v]) => ({ k, v }));
+    batch.set(doc(colRef, String(i)), { data: pairs });
+  });
   await batch.commit();
 }
 
@@ -103,8 +114,15 @@ async function readChunkEntries(colRef: CollectionReference): Promise<Array<[str
   const sorted = snap.docs.slice().sort((a, b) => Number(a.id) - Number(b.id));
   const entries: Array<[string, string]> = [];
   for (const d of sorted) {
-    const data = (d.data().data || {}) as Record<string, string>;
-    entries.push(...Object.entries(data));
+    const raw = d.data().data;
+    if (Array.isArray(raw)) {
+      // New array-based format: [{k, v}, ...].
+      for (const pair of raw as Array<{ k: string; v: string }>) entries.push([pair.k, pair.v]);
+    } else if (raw && typeof raw === 'object') {
+      // Legacy map-based format from before this fix — still readable so
+      // previously saved chunks don't break.
+      entries.push(...Object.entries(raw as Record<string, string>));
+    }
   }
   return entries;
 }

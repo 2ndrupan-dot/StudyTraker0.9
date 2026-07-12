@@ -37,6 +37,8 @@ Oversized courseNotes/notePages content is NOT offloaded to Firebase Storage. En
 
 **Why:** Storage-based offload (uploadBytes/uploadString to `firebasestorage.googleapis.com`) silently fails end-to-end with what looks like a CORS error in the browser console, but the real cause is the bucket not existing on the free plan.
 
+**Reserved-field-name pitfall:** don't store arbitrary user-provided keys (e.g. `__overall__`) as Firestore field/map-key names — Firestore rejects any field name at any nesting level matching `__.*__`. Store such keyed data as an **array of `{k, v}` pairs** instead of an object/map, since array entries aren't field names and have no naming restriction.
+
 **How to apply:** Oversized `courseNotes` and `notePages` documents are instead split across a Firestore **"chunks" subcollection** (`courseNotes/{courseId}/chunks/{i}`, `notePages/{pageId}/chunks/{i}`), each chunk kept under `FIRESTORE_NOTE_LIMIT` bytes via greedy bin-packing (`packEntries`/`packElements` in StudyContext.tsx); a single oversized string value is itself split via `splitLargeValue`. The parent doc gets `{chunked: true, chunkCount}` instead of a Storage URL. If any future feature needs real file storage (e.g. image uploads in NoteEditor.tsx, which still use `firebase/storage` and are NOT yet fixed), it will hit this same Blaze-plan wall — surface that to the user before assuming Storage works.
 
 ## Critical: size checks MUST use real UTF-8 byte length, not JS string `.length`

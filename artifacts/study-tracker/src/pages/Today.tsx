@@ -1293,6 +1293,22 @@ export function Today() {
     daysLeft: number; urgency: 'high' | 'medium' | 'low';
     incompleteTasks: typeof tasksWithStatus;
   }
+  // Subject display order must stay stable through the day: a subject keeps
+  // the slot it first appeared in even after its shown task is completed and
+  // Load More reveals its next item (which gets appended at the end of
+  // `lockedPlan`). So the order is derived from EVERY task in today's plan
+  // (completed ones included) — a subject's now-completed task still marks
+  // its original slot — rather than from `incompleteTasks` alone, which
+  // would otherwise re-rank a subject to the bottom the moment Load More
+  // gives it a new task.
+  const subjectOrder: string[] = [];
+  const seenSubjectIds = new Set<string>();
+  for (const task of tasksWithStatus) {
+    if (!seenSubjectIds.has(task.subjectId)) {
+      seenSubjectIds.add(task.subjectId);
+      subjectOrder.push(task.subjectId);
+    }
+  }
   const incompleteGroupsMap = new Map<string, SubjectGroup>();
   for (const task of incompleteTasks) {
     if (!incompleteGroupsMap.has(task.subjectId)) {
@@ -1304,7 +1320,9 @@ export function Today() {
     }
     incompleteGroupsMap.get(task.subjectId)!.incompleteTasks.push(task);
   }
-  const incompleteSubjectGroups = Array.from(incompleteGroupsMap.values());
+  const incompleteSubjectGroups = subjectOrder
+    .filter(sid => incompleteGroupsMap.has(sid))
+    .map(sid => incompleteGroupsMap.get(sid)!);
 
   // ── Completed subject groups (for modal) ──────────────────────────────────
   interface CompletedGroup {

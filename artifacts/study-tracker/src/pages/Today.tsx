@@ -938,19 +938,13 @@ export function Today() {
       syncRevisions(currentRevisions);
     }
 
-    // ── New-day: auto-dismiss all remaining pending items at midnight ─────────
-    // Any pending item not acted on (completed or dismissed) by midnight is
-    // permanently dismissed — same as if the user had clicked Dismiss themselves.
+    // ── New-day: clear stale pending items at midnight ────────────────────────
+    // Any pending item not acted on by midnight is cleared so it can be
+    // re-evaluated by the carry-over logic below.  We deliberately do NOT write
+    // these keys to dismissedPendingKeys — that would permanently block the
+    // carry-over from re-adding the same task as pending on the new day
+    // (because the carry-over checks dismissed keys when building the new list).
     if (stored && stored.date !== todayStr && currentPending.length > 0) {
-      const keysToAutoDismiss = currentPending.map(p => p.task.key);
-      const localDPKeys = loadDismissedPendingKeys(email, activeCourseId);
-      const mergedDPKeys = [...new Set([...localDPKeys, ...keysToAutoDismiss])];
-      saveDismissedPendingKeys(email, activeCourseId, mergedDPKeys);
-      if (user?.id && activeCourseId) {
-        setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId),
-          { dismissedPendingKeys: arrayUnion(...keysToAutoDismiss) },
-          { merge: true }).catch(e => console.warn('[autoDismiss pending]', e));
-      }
       currentPending = [];
     }
 
@@ -989,12 +983,15 @@ export function Today() {
           const capturedCourseId2 = activeCourseId;
           const capturedEmail2 = email;
 
-          // Optimistic local update using whatever dismissed keys are in localStorage now.
-          // This is used for the immediate UI and offline fallback.
+          // Optimistic local update — add all incomplete plan tasks that are not
+          // already in the pending list.  We intentionally skip the dismissed-keys
+          // filter here: dismissed-key filtering is for existing pending items
+          // (applied above at line ~882), not for newly carried-over plan tasks.
+          // Filtering carry-over tasks against dismissed keys was the root cause
+          // of incomplete tasks not showing up in pending the next day.
           const existingKeys = new Set(currentPending.map(p => p.task.key));
-          const localDPKeys = new Set(loadDismissedPendingKeys(email, activeCourseId));
           const newPendingOptimistic: PendingItem[] = regularIncomplete
-            .filter(t => !existingKeys.has(t.key) && !localDPKeys.has(t.key))
+            .filter(t => !existingKeys.has(t.key))
             .map(task => ({ task, plannedDate: stored.date, addedDate: todayStr }));
           currentPending = [...currentPending, ...newPendingOptimistic];
           // Write to localStorage immediately (works offline, gives instant UI)
@@ -1012,14 +1009,13 @@ export function Today() {
               const snap = await getDoc(doc(db, 'users', capturedUserId2, 'todayData', capturedCourseId2));
               const data = snap.exists() ? snap.data() : null;
               const firestorePending: PendingItem[] = Array.isArray(data?.pending) ? data!.pending : [];
-              const firestoreDP = new Set<string>(
-                Array.isArray(data?.dismissedPendingKeys) ? data!.dismissedPendingKeys : []
-              );
               // Use Firestore pending as authoritative base and add only items that
-              // are genuinely new (not yet in Firestore and not dismissed anywhere).
+              // are genuinely new (not yet in Firestore).  We do not filter against
+              // firestoreDP here — that was blocking legitimate carry-over of
+              // incomplete plan tasks whose keys happened to be in dismissedPendingKeys.
               const firestoreKeys = new Set(firestorePending.map(p => p.task.key));
               const toAdd = capturedRegularIncomplete
-                .filter(t => !firestoreKeys.has(t.key) && !firestoreDP.has(t.key))
+                .filter(t => !firestoreKeys.has(t.key))
                 .map(task => ({ task, plannedDate: capturedPlannedDate2, addedDate: capturedTodayStr2 }));
               const merged = [...firestorePending, ...toAdd];
               setPendingItems(merged);

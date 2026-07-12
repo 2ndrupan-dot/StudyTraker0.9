@@ -1507,7 +1507,7 @@ export function Today() {
               ) : (
                 <button
                   onClick={() => markComplete(task)}
-                  className="flex items-center gap-1 h-6 px-2 rounded-full bg-amber-400/15 border border-amber-400/40 text-amber-600 dark:text-amber-400 text-[10px] sm:text-[11px] font-semibold hover:bg-amber-400/25 transition-all whitespace-nowrap"
+                  className="flex items-center gap-1 h-6 px-2 rounded-full bg-indigo-500/10 border border-indigo-400/40 text-indigo-600 dark:text-indigo-400 text-[10px] sm:text-[11px] font-semibold hover:bg-indigo-500/20 transition-all whitespace-nowrap"
                 >
                   <RotateCcw size={10} className="shrink-0" />
                   {isBn ? 'পূর্বাবস্থায় ফেরান' : 'Undo'}

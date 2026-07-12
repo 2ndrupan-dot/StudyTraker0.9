@@ -1965,7 +1965,7 @@ export function Today() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 20 }}
-                  className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-foreground text-background text-xs font-bold shadow-lg pointer-events-none"
+                  className="fixed bottom-24 left-1/2 md:left-[calc(50%+8rem)] -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-foreground text-background text-xs font-bold shadow-lg pointer-events-none whitespace-nowrap"
                 >
                   {loadMoreNotice}
                 </motion.div>

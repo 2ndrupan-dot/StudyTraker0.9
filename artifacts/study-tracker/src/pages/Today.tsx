@@ -281,7 +281,12 @@ function generateSmartPlan(
       const clampedMins = Math.min(mins, remaining);
       if (clampedMins <= 0) return;
       result.push({ ...chBase, ...extra, key, estimatedMins: clampedMins } as PlanTask);
-      remaining -= clampedMins;
+      // Only one task item is shown per subject per day — mirrors the
+      // Subjects page, where the next chapter/topic/etc. unlocks one at a
+      // time. Forcing `remaining` to 0 here makes every existing
+      // `remaining <= 0` guard below (continue/break outer) stop the loop
+      // from adding a second item for this subject.
+      remaining = 0;
     };
 
     if (firstCh.topics.length === 0) {

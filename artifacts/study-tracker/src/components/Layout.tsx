@@ -147,7 +147,7 @@ function ConnectionStatus() {
         exit={{ opacity: 0, y: -8, scale: 0.9 }}
         transition={{ duration: 0.18, ease: 'easeOut' }}
         className={cn(
-          'fixed top-3 right-3 z-50 flex items-center gap-1.5 shadow-lg rounded-full px-3 py-1.5 text-xs font-semibold border',
+          'fixed top-2 right-2 z-50 flex items-center gap-1 shadow-md rounded-full px-2 py-1 text-[11px] font-semibold border',
           cls
         )}
       >
@@ -155,10 +155,10 @@ function ConnectionStatus() {
           <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-            className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full"
+            className="w-2.5 h-2.5 border-[1.5px] border-slate-400 border-t-transparent rounded-full"
           />
         ) : (
-          <Icon size={13} strokeWidth={2.5} />
+          <Icon size={11} strokeWidth={2.5} />
         )}
         <span>{label}</span>
       </motion.div>

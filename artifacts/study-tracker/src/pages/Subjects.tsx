@@ -908,7 +908,7 @@ export function Subjects() {
                       {/* Title */}
                       <h3 className="font-bold text-foreground text-base leading-tight mb-0.5 break-words">{subj.title}</h3>
                       {/* Badges row — L1, days, status badges, marks */}
-                      <div className="flex items-center gap-1 flex-wrap mb-1">
+                      <div className="flex items-center gap-1 flex-nowrap overflow-hidden mb-1">
                         <span className="text-[9px] font-bold text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded border border-border/40">L1</span>
                         <button
                           onClick={e => {
@@ -932,16 +932,16 @@ export function Subjects() {
                         <MarksBadgeRow important={subj.important} weak={subj.weak} note={subj.note} onClickNote={() => openNote(subjPath, subj.note ?? '')} size="xs" />
                       </div>
                       {/* Meta row — chapters count + date */}
-                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium">
-                        <span>{t('chapters')}: {completedChapters}/{chapterCount}</span>
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium overflow-hidden">
+                        <span className="whitespace-nowrap">{t('chapters')}: {completedChapters}/{chapterCount}</span>
                         {counts.overviewOnly > 0 && (
                           <>
-                            <span>•</span>
-                            <span className="text-indigo-600 font-bold">{counts.overviewOnly} {t('overviewDone')}</span>
+                            <span className="shrink-0">•</span>
+                            <span className="text-indigo-600 font-bold whitespace-nowrap shrink-0">{counts.overviewOnly} {t('overviewDone')}</span>
                           </>
                         )}
-                        <span>•</span>
-                        <span>{format(parseISO(subj.deadline), 'MMM d, yy')}</span>
+                        <span className="shrink-0">•</span>
+                        <span className="whitespace-nowrap shrink-0">{format(parseISO(subj.deadline), 'MMM d, yy')}</span>
                       </div>
                       {/* Layered progress bar */}
                       <div className="mt-2 h-1 w-full bg-secondary rounded-full overflow-hidden relative">

@@ -1515,11 +1515,8 @@ export function Today() {
                   </span>
                 )}
                 {marks.note && (
-                  <span
-                    className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-500/15 border border-amber-300 px-1.5 py-0.5 rounded max-w-[160px] truncate"
-                    title={marks.note}
-                  >
-                    <StickyNote size={8} /> {marks.note.split('\n')[0].slice(0, 24)}
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-500/15 border border-amber-300 px-1.5 py-0.5 rounded">
+                    <StickyNote size={8} /> {t('note')}
                   </span>
                 )}
               </div>

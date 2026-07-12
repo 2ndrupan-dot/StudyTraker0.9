@@ -119,34 +119,35 @@ function ConnectionStatus() {
   if (!online) {
     label = t('offline');
     Icon = CloudOff;
-    cls = 'bg-red-500/10 text-red-700 border-red-300';
+    cls = 'bg-red-600 text-white border-red-700 shadow-red-500/30';
   } else if (showBackOnline) {
     label = t('online');
     Icon = Cloud;
-    cls = 'bg-green-500/10 text-green-700 border-green-300';
+    cls = 'bg-emerald-500 text-white border-emerald-600 shadow-emerald-400/30';
   } else if (syncStatus === 'syncing') {
     label = t('syncing');
-    cls = 'bg-card text-muted-foreground border-border';
+    cls = 'bg-white/90 text-slate-600 border-slate-200 shadow-slate-300/40 backdrop-blur-sm';
     spinning = true;
   } else if (syncStatus === 'success') {
     label = t('syncSaved');
     Icon = Check;
-    cls = 'bg-green-500/10 text-green-700 border-green-300';
+    cls = 'bg-emerald-500 text-white border-emerald-600 shadow-emerald-400/30';
   } else if (syncStatus === 'failed') {
     label = t('syncFailed');
     Icon = CloudOff;
-    cls = 'bg-red-500/10 text-red-700 border-red-300';
+    cls = 'bg-red-600 text-white border-red-700 shadow-red-500/30';
   }
 
   return (
     <AnimatePresence>
       <motion.div
         key={label}
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -10 }}
+        initial={{ opacity: 0, y: -12, scale: 0.9 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -8, scale: 0.9 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
         className={cn(
-          'fixed top-3 right-3 z-50 flex items-center gap-2 shadow-lg rounded-full px-3 py-1.5 text-xs font-bold border',
+          'fixed top-3 right-3 z-50 flex items-center gap-1.5 shadow-lg rounded-full px-3 py-1.5 text-xs font-semibold border',
           cls
         )}
       >
@@ -154,12 +155,12 @@ function ConnectionStatus() {
           <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-            className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full"
+            className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full"
           />
         ) : (
-          <Icon size={12} />
+          <Icon size={13} strokeWidth={2.5} />
         )}
-        <span className="hidden sm:inline">{label}</span>
+        <span>{label}</span>
       </motion.div>
     </AnimatePresence>
   );

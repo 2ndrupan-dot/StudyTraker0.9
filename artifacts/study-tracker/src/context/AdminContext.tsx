@@ -17,6 +17,9 @@ export interface SharePermissions {
   deleteNotes: boolean;
   downloadNotes: boolean;
   copyNotes: boolean;
+  // Structural permissions (course-level)
+  renameCourse: boolean;  // can the user rename this shared course?
+  addItems: boolean;      // can the user add subjects/chapters/topics/etc.?
 }
 
 // Snapshot of a course's data embedded in the shareRequest at send-time so the
@@ -299,9 +302,11 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         const courseName = share.courseName || 'Shared Course';
 
         // 1. Write the course entry (appears in course switcher)
+        //    Append "(Shared)" so it's visually distinct if a same-named course exists.
+        const displayName = courseName.endsWith(' (Shared)') ? courseName : `${courseName} (Shared)`;
         await setDoc(doc(db, 'users', user.id, 'courses', newCourseId), {
           id: newCourseId,
-          name: courseName,
+          name: displayName,
           createdAt: ts,
         });
 

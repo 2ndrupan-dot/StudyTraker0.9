@@ -53,6 +53,8 @@ const DEFAULT_PERMISSIONS: SharePermissions = {
   deleteNotes: false,
   downloadNotes: true,
   copyNotes: true,
+  renameCourse: true,
+  addItems: false,
 };
 
 // ─── Note Picker (drill-down through subjects hierarchy) ──────────────────────
@@ -222,29 +224,33 @@ function NotePicker({
 function PermissionsEditor({
   permissions, onChange, lang,
 }: { permissions: SharePermissions; onChange: (p: SharePermissions) => void; lang: string }) {
-  const items = [
-    { key: 'editNotes', label: lang === 'bn' ? 'নোট সম্পাদনা করতে পারবে' : 'Can edit notes', color: 'text-blue-600' },
-    { key: 'deleteNotes', label: lang === 'bn' ? 'নোট ডিলিট করতে পারবে' : 'Can delete notes', color: 'text-red-600' },
-    { key: 'downloadNotes', label: lang === 'bn' ? 'নোট ডাউনলোড করতে পারবে' : 'Can download notes', color: 'text-green-600' },
-    { key: 'copyNotes', label: lang === 'bn' ? 'নোট কপি করতে পারবে' : 'Can copy notes', color: 'text-purple-600' },
-  ] as const;
+  const items: { key: keyof SharePermissions; label: string; color: string; divider?: boolean }[] = [
+    { key: 'editNotes',     label: lang === 'bn' ? 'নোট সম্পাদনা করতে পারবে'  : 'Can edit notes',           color: 'text-blue-600' },
+    { key: 'deleteNotes',   label: lang === 'bn' ? 'নোট ডিলিট করতে পারবে'    : 'Can delete notes',         color: 'text-red-600' },
+    { key: 'downloadNotes', label: lang === 'bn' ? 'নোট ডাউনলোড করতে পারবে'  : 'Can download notes',       color: 'text-green-600' },
+    { key: 'copyNotes',     label: lang === 'bn' ? 'নোট কপি করতে পারবে'       : 'Can copy notes',           color: 'text-purple-600', divider: true },
+    { key: 'renameCourse',  label: lang === 'bn' ? 'কোর্সের নাম পরিবর্তন করতে পারবে' : 'Can rename course', color: 'text-orange-600' },
+    { key: 'addItems',      label: lang === 'bn' ? 'সাবজেক্ট / আইটেম যোগ করতে পারবে' : 'Can add subjects & items', color: 'text-teal-600' },
+  ];
 
   return (
     <div className="space-y-2">
-      {items.map(({ key, label, color }) => (
-        <button
-          key={key}
-          onClick={() => onChange({ ...permissions, [key]: !permissions[key] })}
-          className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-secondary/60 transition-colors text-left"
-        >
-          <div className={cn(
-            "w-5 h-5 rounded flex items-center justify-center border-2 shrink-0 transition-all",
-            permissions[key] ? "bg-primary border-primary" : "border-border bg-transparent"
-          )}>
-            {permissions[key] && <Check size={11} className="text-white" />}
-          </div>
-          <span className={cn("text-sm font-medium", color)}>{label}</span>
-        </button>
+      {items.map(({ key, label, color, divider }) => (
+        <React.Fragment key={key}>
+          {divider && <div className="border-t border-border/50 my-1" />}
+          <button
+            onClick={() => onChange({ ...permissions, [key]: !permissions[key] })}
+            className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-secondary/60 transition-colors text-left"
+          >
+            <div className={cn(
+              "w-5 h-5 rounded flex items-center justify-center border-2 shrink-0 transition-all",
+              permissions[key] ? "bg-primary border-primary" : "border-border bg-transparent"
+            )}>
+              {permissions[key] && <Check size={11} className="text-white" />}
+            </div>
+            <span className={cn("text-sm font-medium", color)}>{label}</span>
+          </button>
+        </React.Fragment>
       ))}
     </div>
   );
@@ -437,7 +443,7 @@ export function AdminPanel() {
         noteHtml: shareForm.type === 'note' ? (notePicked?.html || shareForm.noteHtml) : undefined,
         noteBreadcrumb: shareForm.type === 'note' ? (notePicked?.breadcrumb || []) : undefined,
         messageText: shareForm.type === 'message' ? shareForm.messageText.trim() : undefined,
-        permissions: shareForm.type === 'message' ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false } : shareForm.permissions,
+        permissions: shareForm.type === 'message' ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false, renameCourse: false, addItems: false } : shareForm.permissions,
         durationValue: shareForm.durationValue,
         durationUnit: shareForm.durationUnit,
       });

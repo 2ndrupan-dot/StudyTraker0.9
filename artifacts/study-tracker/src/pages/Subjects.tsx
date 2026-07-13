@@ -402,6 +402,8 @@ export function Subjects() {
   // If the active course was received via admin share, look up its permissions.
   // undefined means the course is owned by the user — no restrictions.
   const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
+  // Can the user add subjects/chapters/topics/subtopics/concepts/points?
+  const canAddItems = !activeSharedMeta || activeSharedMeta.permissions.addItems !== false;
 
   const [reorderMode, setReorderMode] = useState(false);
   const registerTrunkRoot = useTreeTrunk();
@@ -662,16 +664,18 @@ export function Subjects() {
                 </button>
               </span>
             </motion.div>
-            <motion.div whileTap={{ scale: 0.95 }}>
-              <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
-                <button
-                  className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
-                  onClick={() => openAdd('subject', {})}
-                >
-                  <Plus size={12} /> {t('addSubject')}
-                </button>
-              </span>
-            </motion.div>
+            {canAddItems && (
+              <motion.div whileTap={{ scale: 0.95 }}>
+                <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
+                  <button
+                    className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
+                    onClick={() => openAdd('subject', {})}
+                  >
+                    <Plus size={12} /> {t('addSubject')}
+                  </button>
+                </span>
+              </motion.div>
+            )}
           </div>
         </div>
       </div>
@@ -757,15 +761,17 @@ export function Subjects() {
             <p className="text-muted-foreground text-sm mb-6 leading-relaxed">
               {t('addFirstSubject')}
             </p>
-            <motion.div whileTap={{ scale: 0.95 }}>
-              <Button
-                variant="primary"
-                className="py-3 px-6 rounded-2xl text-sm gap-2 shadow-lg shadow-primary/25"
-                onClick={() => openAdd('subject', {})}
-              >
-                <Plus size={18} /> {t('addSubject')}
-              </Button>
-            </motion.div>
+            {canAddItems && (
+              <motion.div whileTap={{ scale: 0.95 }}>
+                <Button
+                  variant="primary"
+                  className="py-3 px-6 rounded-2xl text-sm gap-2 shadow-lg shadow-primary/25"
+                  onClick={() => openAdd('subject', {})}
+                >
+                  <Plus size={18} /> {t('addSubject')}
+                </Button>
+              </motion.div>
+            )}
           </motion.div>
         )}
 
@@ -1395,12 +1401,12 @@ export function Subjects() {
                                                                                   ); })}
                                                                                   </SortableContext>
                                                                                   </DndContext>
-                                                                                  <button
+                                                                                  {canAddItems && <button
                                                                                     onClick={() => openAdd('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id })}
                                                                                     className="w-full py-1 border border-dashed text-[9px] font-semibold text-foreground/60 rounded-md flex items-center justify-center gap-0.5 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.35)", backgroundColor: "rgba(14,165,233,0.03)" }}
                                                                                   >
                                                                                     <Plus size={9} /> {t('addPoint')}
-                                                                                  </button>
+                                                                                  </button>}
                                                                                 </div>
                                                                               </motion.div>
                                                                             )}
@@ -1412,12 +1418,12 @@ export function Subjects() {
                                                                     })}
                                                                     </SortableContext>
                                                                     </DndContext>
-                                                                    <button
+                                                                    {canAddItems && <button
                                                                       onClick={() => openAdd('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id })}
                                                                       className="w-full py-1.5 border border-dashed text-[10px] font-semibold text-foreground/60 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.4)", backgroundColor: "rgba(14,165,233,0.04)" }}
                                                                     >
                                                                       <Plus size={10} /> {t('addConcept')}
-                                                                    </button>
+                                                                    </button>}
                                                                   </div>
                                                                 </motion.div>
                                                               )}
@@ -1433,12 +1439,12 @@ export function Subjects() {
                                                       </div>
                                                       </div>
                                                       <div className="px-2 pl-10 ml-2.5 pt-2 pb-2">
-                                                      <button
+                                                      {canAddItems && <button
                                                         onClick={() => openAdd('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id })}
                                                         className="w-full py-2 border border-dashed text-[10px] font-semibold text-foreground/65 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.45)", backgroundColor: "rgba(14,165,233,0.05)" }}
                                                       >
                                                         <Plus size={11} /> {t('addSubtopic')}
-                                                      </button>
+                                                      </button>}
                                                       </div>
                                                   </motion.div>
                                                 )}
@@ -1454,12 +1460,12 @@ export function Subjects() {
                                         </div>
                                         </div>
                                         <div className="px-2 pl-8 ml-2.5 pt-2 pb-2">
-                                        <button
+                                        {canAddItems && <button
                                           onClick={() => openAdd('topic', { subjId: subj.id, chapterId: chapter.id })}
                                           className="w-full py-2 border border-dashed text-xs font-semibold text-foreground/65 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(139,92,246,0.45)", backgroundColor: "rgba(139,92,246,0.05)" }}
                                         >
                                           <Plus size={12} /> {t('addTopic')}
-                                        </button>
+                                        </button>}
                                         </div>
                                     </motion.div>
                                   )}
@@ -1475,12 +1481,12 @@ export function Subjects() {
                           </div>
                           </div>
                           <div className="px-3 pl-4 ml-2.5 pt-2 pb-3">
-                          <button
+                          {canAddItems && <button
                             onClick={() => openAdd('chapter', { subjId: subj.id })}
                             className="w-full py-3 border-2 border-dashed text-sm font-semibold text-foreground/65 rounded-xl flex items-center justify-center gap-2 transition-colors hover:text-foreground" style={{ borderColor: "rgba(99,102,241,0.5)", backgroundColor: "rgba(99,102,241,0.05)" }}
                           >
                             <FolderPlus size={16} /> {t('addChapter')}
-                          </button>
+                          </button>}
                           </div>
                       </motion.div>
                     )}

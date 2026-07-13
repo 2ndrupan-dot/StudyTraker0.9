@@ -276,6 +276,9 @@ export function CourseProvider({ children }: { children: ReactNode }) {
 
   const renameCourse = async (courseId: string, name: string) => {
     if (!user) return;
+    // Block rename if the admin who shared this course has disabled it
+    const sharedMeta = sharedCoursesMeta[courseId];
+    if (sharedMeta && sharedMeta.permissions.renameCourse === false) return;
     const updated = courses.map(c => c.id === courseId ? { ...c, name: name.trim() } : c);
     setCourses(updated);
     saveCoursesList(updated, user.email);

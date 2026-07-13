@@ -312,7 +312,7 @@ function OverallNotesCard() {
 export function Progress() {
   const { user, logout, updateProfile, updateProfilePhoto } = useAuth();
   const { subjects, settings, setCourseStartDate, setTimezone } = useStudy();
-  const { courses, deletedCourses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse, restoreCourse, permanentlyDeleteCourse } = useCourse();
+  const { courses, deletedCourses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse, restoreCourse, permanentlyDeleteCourse, sharedCoursesMeta } = useCourse();
   const { t, lang, setLang } = useLang();
   const [, setLocation] = useLocation();
   const { isAdmin } = useAdmin();
@@ -614,6 +614,8 @@ export function Progress() {
               </div>
             </div>
             <div className="flex gap-1.5 shrink-0">
+              {/* Hide rename if this is a shared course where admin has disabled renaming */}
+              {(!activeCourseId || !sharedCoursesMeta[activeCourseId] || sharedCoursesMeta[activeCourseId].permissions.renameCourse !== false) && (
               <button
                 onClick={() => activeCourse && setRenamingCourse({ id: activeCourse.id, name: activeCourse.name })}
                 className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-muted-foreground bg-secondary hover:bg-secondary/70 transition-colors px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl whitespace-nowrap"
@@ -622,6 +624,7 @@ export function Progress() {
                 <Pencil size={11} />
                 <span className="hidden sm:inline">{t('rename')}</span>
               </button>
+              )}
               {courses.length > 1 && (
                 <button
                   onClick={() => setModals({ ...modals, switchCourse: true })}

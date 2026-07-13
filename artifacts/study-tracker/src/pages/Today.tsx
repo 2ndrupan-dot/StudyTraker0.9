@@ -1577,9 +1577,13 @@ export function Today() {
                   </span>
                 )}
                 {marks.note && (
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-500/15 border border-amber-300 px-1.5 py-0.5 rounded">
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); openNoteModal(taskToMarkPath(task), marks.note ?? ''); }}
+                    className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-500/15 border border-amber-300 px-1.5 py-0.5 rounded hover:bg-amber-500/25 active:scale-95 transition-all"
+                  >
                     <StickyNote size={8} /> {t('note')}
-                  </span>
+                  </button>
                 )}
               </div>
             );

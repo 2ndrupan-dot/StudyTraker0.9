@@ -983,16 +983,24 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       // the updated subject structure (without notes) to every user who has
       // already accepted that share.  This runs best-effort so a Firestore
       // error here never blocks the primary save.
+      //
+      // NOTE: We intentionally query only by `fromAdminUid` (a single equality
+      // filter) and then filter `courseId` + `status` in JavaScript.  A
+      // multi-field composite query would require a Firestore composite index
+      // created in the Firebase Console; without it the query throws and the
+      // catch block swallows the error, silently preventing any sync.
       try {
         const sharesQ = query(
           collection(db, 'shareRequests'),
           where('fromAdminUid', '==', currentUser.id),
-          where('courseId', '==', currentCourseId),
-          where('status', '==', 'accepted'),
         );
         const sharesSnap = await getDocs(sharesQ);
         for (const shareDoc of sharesSnap.docs) {
-          const acceptedByUid = shareDoc.data().acceptedByUid as string | undefined;
+          const shareData = shareDoc.data();
+          // JS-side filters (avoids needing a Firestore composite index)
+          if (shareData.courseId !== currentCourseId) continue;
+          if (shareData.status !== 'accepted') continue;
+          const acceptedByUid = shareData.acceptedByUid as string | undefined;
           if (!acceptedByUid) continue;
 
           // Fetch the user's current studyData so we can preserve their progress.

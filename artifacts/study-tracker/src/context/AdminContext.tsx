@@ -569,13 +569,16 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     await updateDoc(doc(db, 'shareRequests', shareId), { status: 'declined' });
   };
 
-  // ── Extend duration (admin only, before expiry) ───────────────────────────
-  const extendShare = async (shareId: string, addValue: number, addUnit: 'hours' | 'days' | 'months') => {
+  // ── Extend or reduce duration (admin only, before expiry) ─────────────────
+  // `deltaValue` may be negative to reduce the remaining time instead of
+  // extending it. The result is clamped so it never drops below "now" —
+  // reducing far enough simply expires the share immediately.
+  const extendShare = async (shareId: string, deltaValue: number, deltaUnit: 'hours' | 'days' | 'months') => {
     const share = allSentShares.find(s => s.id === shareId);
     if (!share) return;
-    const addMs = durationToMs(addValue, addUnit);
+    const deltaMs = durationToMs(Math.abs(deltaValue), deltaUnit) * (deltaValue < 0 ? -1 : 1);
     if (share.status === 'accepted' && share.actualExpiresAt) {
-      const newExpiry = share.actualExpiresAt + addMs;
+      const newExpiry = Math.max(Date.now(), share.actualExpiresAt + deltaMs);
       await updateDoc(doc(db, 'shareRequests', shareId), { actualExpiresAt: newExpiry });
       if (share.acceptedByUid) {
         await setDoc(
@@ -585,7 +588,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         ).catch(() => {});
       }
     } else if (share.status === 'pending') {
-      const newExpiry = share.pendingExpiresAt + addMs;
+      const newExpiry = Math.max(Date.now(), share.pendingExpiresAt + deltaMs);
       await updateDoc(doc(db, 'shareRequests', shareId), { pendingExpiresAt: newExpiry });
     }
   };

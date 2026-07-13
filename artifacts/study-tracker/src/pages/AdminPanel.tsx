@@ -227,12 +227,9 @@ function PermissionsEditor({
   permissions, onChange, lang,
 }: { permissions: SharePermissions; onChange: (p: SharePermissions) => void; lang: string }) {
   const items: { key: keyof SharePermissions; label: string; color: string; divider?: boolean }[] = [
-    { key: 'editNotes',     label: lang === 'bn' ? 'নোট সম্পাদনা করতে পারবে'  : 'Can edit notes',           color: 'text-blue-600' },
-    { key: 'deleteNotes',   label: lang === 'bn' ? 'নোট ডিলিট করতে পারবে'    : 'Can delete notes',         color: 'text-red-600' },
     { key: 'downloadNotes', label: lang === 'bn' ? 'নোট ডাউনলোড করতে পারবে'  : 'Can download notes',       color: 'text-green-600' },
     { key: 'copyNotes',     label: lang === 'bn' ? 'নোট কপি করতে পারবে'       : 'Can copy notes',           color: 'text-purple-600', divider: true },
     { key: 'renameCourse',  label: lang === 'bn' ? 'কোর্সের নাম পরিবর্তন করতে পারবে' : 'Can rename course', color: 'text-orange-600' },
-    { key: 'addItems',      label: lang === 'bn' ? 'সাবজেক্ট / আইটেম যোগ করতে পারবে' : 'Can add subjects & items', color: 'text-teal-600' },
   ];
 
   return (
@@ -506,6 +503,7 @@ export function AdminPanel() {
   const [extendModal, setExtendModal] = useState<ShareRequest | null>(null);
   const [extendValue, setExtendValue] = useState(1);
   const [extendUnit, setExtendUnit] = useState<'hours' | 'days' | 'months'>('days');
+  const [extendDirection, setExtendDirection] = useState<'add' | 'subtract'>('add');
   const [extending, setExtending] = useState(false);
   const [addSubjectsModal, setAddSubjectsModal] = useState<ShareRequest | null>(null);
   const [addSubjectsAvailable, setAddSubjectsAvailable] = useState<{ id: string; title: string }[]>([]);
@@ -627,13 +625,15 @@ export function AdminPanel() {
     setExtendModal(share);
     setExtendValue(1);
     setExtendUnit('days');
+    setExtendDirection('add');
   };
 
   const handleConfirmExtend = async () => {
     if (!extendModal) return;
     setExtending(true);
     try {
-      await extendShare(extendModal.id, extendValue, extendUnit);
+      const signedValue = extendDirection === 'subtract' ? -extendValue : extendValue;
+      await extendShare(extendModal.id, signedValue, extendUnit);
       setExtendModal(null);
     } finally {
       setExtending(false);
@@ -1210,6 +1210,26 @@ export function AdminPanel() {
       >
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">→ {extendModal?.toEmail}</p>
+          <div className="flex rounded-xl bg-secondary p-1 gap-1">
+            <button
+              onClick={() => setExtendDirection('add')}
+              className={cn(
+                "flex-1 py-2 rounded-lg text-sm font-semibold transition-colors",
+                extendDirection === 'add' ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              )}
+            >
+              {lang === 'bn' ? 'সময় বাড়ান' : 'Extend'}
+            </button>
+            <button
+              onClick={() => setExtendDirection('subtract')}
+              className={cn(
+                "flex-1 py-2 rounded-lg text-sm font-semibold transition-colors",
+                extendDirection === 'subtract' ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              )}
+            >
+              {lang === 'bn' ? 'সময় কমান' : 'Reduce'}
+            </button>
+          </div>
           <div className="flex gap-2">
             <Input
               type="number"
@@ -1229,12 +1249,18 @@ export function AdminPanel() {
             </select>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            {lang === 'bn'
-              ? 'বর্তমান মেয়াদ শেষ হওয়ার সময়ের সাথে এই সময় যোগ হবে।'
-              : 'This time will be added on top of the current expiry.'}
+            {extendDirection === 'add'
+              ? (lang === 'bn'
+                ? 'বর্তমান মেয়াদ শেষ হওয়ার সময়ের সাথে এই সময় যোগ হবে।'
+                : 'This time will be added on top of the current expiry.')
+              : (lang === 'bn'
+                ? 'বর্তমান মেয়াদ শেষ হওয়ার সময় থেকে এই সময় কমে যাবে।'
+                : 'This time will be subtracted from the current expiry.')}
           </p>
           <Button className="w-full" onClick={handleConfirmExtend} disabled={extending}>
-            {extending ? '...' : (lang === 'bn' ? 'সময় বাড়ান' : 'Extend')}
+            {extending ? '...' : (extendDirection === 'add'
+              ? (lang === 'bn' ? 'সময় বাড়ান' : 'Extend')
+              : (lang === 'bn' ? 'সময় কমান' : 'Reduce'))}
           </Button>
         </div>
       </Modal>

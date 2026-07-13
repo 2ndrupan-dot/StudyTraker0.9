@@ -263,9 +263,9 @@ export function isChapterUnlocked(subj: Subject, chapterIndex: number): boolean 
   return true;
 }
 
+// Parent-first: topics unlock only after the parent chapter's own overview is complete
 export function isTopicUnlocked(chapter: Chapter, topicIndex: number): boolean {
-  // First topic is always accessible within the chapter
-  if (topicIndex === 0) return true;
+  if (!chapter.completed) return false; // Chapter must be completed first (Parent-First rule)
   for (let i = 0; i < topicIndex; i++) {
     if (!isTopicContentDone(chapter.topics[i])) return false;
   }

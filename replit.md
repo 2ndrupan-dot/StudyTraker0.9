@@ -1,51 +1,44 @@
 # StudyTrack
 
-A full-stack study tracker app built as a pnpm monorepo.
+An AI-powered study tracker app built with React + Vite and Firebase (Firestore + Auth).
 
 ## Stack
-- **Frontend:** React 19, Vite 7, Tailwind CSS 4, Framer Motion, Tiptap (rich text editor), Radix UI
-- **Backend/API:** Node.js with tsx
-- **Database:** Firestore (Firebase) with Drizzle ORM for schema
-- **Auth:** Firebase Auth (Google + email/password)
-- **Data Fetching:** TanStack Query, Zod, Orval (OpenAPI client generation)
+- **Frontend**: React 19, Vite 7, Tailwind CSS v4, TipTap rich-text editor, Framer Motion
+- **Backend/DB**: Firebase Firestore (NoSQL), Firebase Authentication
+- **Monorepo**: pnpm workspaces — artifacts live under `artifacts/`
 
-## Monorepo Structure
+## Project structure
 ```
 artifacts/
-  study-tracker/    ← Main React frontend (port 5000 in dev)
-  api-server/       ← Node.js API server
-  mockup-sandbox/   ← UI component playground
-lib/
-  db/               ← Drizzle ORM schemas
-  api-spec/         ← OpenAPI specs
-  api-client-react/ ← Generated API client
-  api-zod/          ← Generated Zod schemas
+  study-tracker/   ← main React/Vite frontend
+  api-server/      ← Express API server (optional backend)
+  mockup-sandbox/  ← Vite sandbox for UI mockups
+lib/               ← shared libraries (api-zod, db, etc.)
 ```
 
-## Running the App
-```bash
-# Install dependencies (use --registry flag to bypass package firewall)
-pnpm install --registry https://registry.npmjs.org
+## Running on Replit
+The study-tracker runs via the `artifacts/study-tracker: web` workflow:
+```
+cd artifacts/study-tracker && PORT=5000 pnpm dev
 ```
 
-This project runs as three separate Replit artifacts, each with its own managed workflow (no manual workflow setup needed — restart via the artifact's own workflow if it stalls):
-- **StudyTrack** (`artifacts/study-tracker`) — web frontend, preview path `/`
-- **API Server** (`artifacts/api-server`) — preview path `/api`
-- **Component Preview Server** (`artifacts/mockup-sandbox`) — preview path `/__mockup`
+## Environment variables
+Firebase credentials are configured in `.replit` under `[userenv.shared]`:
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- `VITE_FIREBASE_APP_ID`
 
-If the preview shows "artifact crashed" with `vite: not found` or similar, dependencies just need installing (`pnpm install --registry https://registry.npmjs.org` from the repo root), then restart the `artifacts/study-tracker: web` workflow. On a fresh import a leftover generic "Start application" workflow may also appear alongside the artifact workflows — remove it, since it conflicts with the artifact-managed ones and isn't needed.
+For Render deployment, set these same variables as environment variables in the Render dashboard.
 
-## Note-saving architecture (why notes don't get lost)
-Firestore documents have a 1 MB limit. Rich-text notes (Tiptap HTML) are stored outside the main `studyData` document to avoid hitting it:
-- Per-item notes (subject/chapter/topic/.../tempNote) live in a companion `users/{uid}/courseNotes/{courseId}` document as a flat map.
-- If that flat map itself grows past ~800 KB (many/large notes accumulated over time), it's automatically offloaded to Firebase Storage (`users/{uid}/courseNotes/{courseId}.json`) and the Firestore doc keeps only a `notesUrl` reference — this has no practical size ceiling.
-- Full-page notes (`notePages`) follow the same Storage-offload pattern individually per page.
-If a user reports "notes don't save" with a browser console error mentioning `courseNotes` document size exceeding Firestore's limit, this offload path handles it going forward — but it only "self-heals" once they perform a new save. Try dismissed changes on the affected course by reopening the note editor and saving once.
+## Deploying to Render
+1. Push this repo to GitHub.
+2. Create a new **Static Site** on Render pointing to the repo.
+3. **Build command**: `npm install -g pnpm && pnpm install && cd artifacts/study-tracker && pnpm build`
+4. **Publish directory**: `artifacts/study-tracker/dist/public`
+5. Add all `VITE_FIREBASE_*` env vars in the Render dashboard (values from `.replit` `[userenv.shared]`).
 
-## Firebase Config
-Firebase credentials are read from `VITE_FIREBASE_*` environment variables (see `.env.example`). Firestore offline persistence is enabled with `persistentMultipleTabManager`.
-
-## User Preferences
-- Respond in Bengali when the user writes in Bengali
-- Always explain what was changed at the end of each task
-- Do not make code changes without permission (analysis-only mode when asked)
+## User preferences
+- User plans to deploy via Render (GitHub → Render static site).

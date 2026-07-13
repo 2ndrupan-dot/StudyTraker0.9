@@ -68,7 +68,7 @@ export interface ShareRequest {
   // deletes a card — never set by automatic expiry, which just removes the
   // document outright.
   trashedAt?: number;
-  trashedFromStatus?: 'pending' | 'accepted';
+  trashedFromStatus?: 'pending' | 'accepted' | 'declined';
 }
 
 interface AdminContextType {
@@ -660,7 +660,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     await updateDoc(doc(db, 'shareRequests', shareId), {
       status: 'trashed',
       trashedAt: Date.now(),
-      trashedFromStatus: share.status === 'accepted' ? 'accepted' : 'pending',
+      trashedFromStatus: share.status === 'accepted' ? 'accepted'
+        : share.status === 'declined' ? 'declined'
+        : 'pending',
     });
   };
 
@@ -668,7 +670,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const share = allSentShares.find(s => s.id === shareId);
     if (!share || share.status !== 'trashed') return;
     await updateDoc(doc(db, 'shareRequests', shareId), {
-      status: share.trashedFromStatus || 'pending',
+      status: share.trashedFromStatus || 'declined',
       trashedAt: null,
       trashedFromStatus: null,
     });

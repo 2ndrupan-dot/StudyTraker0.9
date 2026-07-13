@@ -332,17 +332,17 @@ function SentShareRow({
         </div>
       </div>
 
-      {(share.status === 'pending' || share.status === 'accepted') && (
-        <div className="flex flex-wrap gap-2">
-          {share.type !== 'message' && (
-            <button
-              onClick={() => onEditPermissions(share)}
-              className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-secondary text-foreground hover:bg-secondary/70 transition-colors text-xs font-semibold"
-            >
-              <Edit3 size={12} />
-              {lang === 'bn' ? 'অনুমতি' : 'Permissions'}
-            </button>
-          )}
+      <div className="flex flex-wrap gap-2">
+        {(share.status === 'pending' || share.status === 'accepted') && share.type !== 'message' && (
+          <button
+            onClick={() => onEditPermissions(share)}
+            className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-secondary text-foreground hover:bg-secondary/70 transition-colors text-xs font-semibold"
+          >
+            <Edit3 size={12} />
+            {lang === 'bn' ? 'অনুমতি' : 'Permissions'}
+          </button>
+        )}
+        {(share.status === 'pending' || share.status === 'accepted') && (
           <button
             onClick={() => onExtend(share)}
             className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 transition-colors text-xs font-semibold"
@@ -350,24 +350,24 @@ function SentShareRow({
             <TimerReset size={12} />
             {lang === 'bn' ? 'সময় বাড়ান' : 'Extend Time'}
           </button>
-          {share.status === 'accepted' && share.type === 'course' && (
-            <button
-              onClick={() => onAddSubjects(share)}
-              className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-teal-500/10 text-teal-600 hover:bg-teal-500/20 transition-colors text-xs font-semibold"
-            >
-              <ListPlus size={12} />
-              {lang === 'bn' ? 'সাবজেক্ট যোগ করুন' : 'Add Subjects'}
-            </button>
-          )}
+        )}
+        {share.status === 'accepted' && share.type === 'course' && (
           <button
-            onClick={() => onDelete(share)}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold"
+            onClick={() => onAddSubjects(share)}
+            className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-teal-500/10 text-teal-600 hover:bg-teal-500/20 transition-colors text-xs font-semibold"
           >
-            <Trash2 size={12} />
-            {lang === 'bn' ? 'ডিলিট' : 'Delete'}
+            <ListPlus size={12} />
+            {lang === 'bn' ? 'সাবজেক্ট যোগ করুন' : 'Add Subjects'}
           </button>
-        </div>
-      )}
+        )}
+        <button
+          onClick={() => onDelete(share)}
+          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold"
+        >
+          <Trash2 size={12} />
+          {lang === 'bn' ? 'ডিলিট' : 'Delete'}
+        </button>
+      </div>
     </div>
   );
 }

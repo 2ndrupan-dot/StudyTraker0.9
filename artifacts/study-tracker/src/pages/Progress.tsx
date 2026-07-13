@@ -7,7 +7,7 @@ import { useCourse } from '@/context/CourseContext';
 import { computeGranularProgress, formatProgressPercent } from '@/lib/timeEngine';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
-import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock } from 'lucide-react';
+import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock, Share2 } from 'lucide-react';
 import { NotificationBell } from '@/components/NotificationBell';
 import { useAdmin } from '@/context/AdminContext';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
@@ -1049,6 +1049,8 @@ export function Progress() {
             {courses.map((course, i) => {
               const isActive = course.id === activeCourseId;
               const canDelete = courses.length > 1;
+              const sharedMeta = sharedCoursesMeta[course.id];
+              const canRename = !sharedMeta || sharedMeta.permissions.renameCourse !== false;
               return (
                 <motion.div
                   key={course.id}
@@ -1070,23 +1072,31 @@ export function Progress() {
                     }}
                   >
                     <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                      isActive ? 'bg-primary/20' : 'bg-background'
+                      isActive ? 'bg-primary/20' : sharedMeta ? 'bg-indigo-500/10' : 'bg-background'
                     }`}>
-                      <BookMarked size={15} className={isActive ? 'text-primary' : 'text-muted-foreground'} />
+                      {sharedMeta
+                        ? <Share2 size={15} className={isActive ? 'text-primary' : 'text-indigo-500'} />
+                        : <BookMarked size={15} className={isActive ? 'text-primary' : 'text-muted-foreground'} />
+                      }
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className={`font-semibold text-sm line-clamp-2 break-words ${isActive ? 'text-primary' : 'text-foreground'}`}>
                         {course.name}
                       </p>
-                      {isActive && (
+                      {sharedMeta ? (
+                        <p className="text-[10px] text-indigo-500 font-medium mt-0.5">
+                          🔗 {lang === 'bn' ? 'শেয়ার্ড' : 'Shared'} · {sharedMeta.fromAdminName}
+                        </p>
+                      ) : isActive ? (
                         <p className="text-[10px] text-primary/60 font-medium">{t('currentCourse')}</p>
-                      )}
+                      ) : null}
                     </div>
                     {isActive && <CheckCircle2 size={15} className="text-primary shrink-0" />}
                   </button>
 
                   {/* Action icons */}
                   <div className="flex items-center gap-1 shrink-0">
+                    {canRename && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1097,6 +1107,7 @@ export function Progress() {
                     >
                       <Pencil size={14} />
                     </button>
+                    )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

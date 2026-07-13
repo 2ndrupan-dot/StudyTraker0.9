@@ -104,6 +104,44 @@ export function CourseProvider({ children }: { children: ReactNode }) {
     return () => unsub();
   }, [user?.id]); // eslint-disable-line
 
+  // ── Auto-remove shared courses once their access window expires ─────────
+  // Mirrors the "Countdown" shown next to the course in the switcher: when
+  // actualExpiresAt passes, the course disappears from this side too (the
+  // admin's own shareRequests doc is cleaned up independently in AdminContext).
+  useEffect(() => {
+    if (!user) return;
+    const purge = () => {
+      const now = Date.now();
+      const expiredIds = Object.values(sharedCoursesMeta)
+        .filter(meta => meta.actualExpiresAt && meta.actualExpiresAt <= now)
+        .map(meta => meta.courseId);
+      if (expiredIds.length === 0) return;
+      for (const courseId of expiredIds) {
+        deleteDoc(doc(db, 'users', user.id, 'sharedCourses', courseId)).catch(() => {});
+        deleteDoc(doc(db, 'users', user.id, 'courses', courseId)).catch(() => {});
+        deleteDoc(doc(db, 'users', user.id, 'studyData', courseId)).catch(() => {});
+        deleteDoc(doc(db, 'users', user.id, 'courseNotes', courseId)).catch(() => {});
+        deleteDoc(doc(db, 'users', user.id, 'todayData', courseId)).catch(() => {});
+      }
+      setCourses(prev => {
+        const remaining = prev.filter(c => !expiredIds.includes(c.id));
+        saveCoursesList(remaining, user.email);
+        return remaining;
+      });
+      setActiveCourseId(prev => {
+        if (!prev || !expiredIds.includes(prev)) return prev;
+        const remaining = courses.filter(c => !expiredIds.includes(c.id));
+        const next = remaining[0]?.id ?? null;
+        if (next) setActiveCourseIdInStorage(user.email, next);
+        return next;
+      });
+    };
+    purge();
+    const id = setInterval(purge, 15_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, sharedCoursesMeta]);
+
   useEffect(() => {
     if (!user) {
       setCourses([]);

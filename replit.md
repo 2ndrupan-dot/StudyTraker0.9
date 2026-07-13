@@ -116,5 +116,12 @@ The course data (studyData + notes) is embedded as a snapshot in the shareReques
 ### Firestore Security Rules
 No changes needed beyond what is already in the Firebase console. The existing `shareRequests` rules allow both admin and recipient to read the document (which includes the course snapshot).
 
+### Live countdowns, subject-level sharing, extend, and trash
+- **Live countdowns**: pending notifications (bell) and accepted shares ("My Courses" / Subjects header / Admin's Sent tab) show a live `D:HH:MM:SS` countdown (`src/components/Countdown.tsx`). When it hits zero the card/course disappears automatically — pending shares and accepted shares are hard-deleted from Firestore (via best-effort client-side purge loops in `AdminContext.tsx` and `CourseContext.tsx`), not moved to trash.
+- **Extend time**: admin can add extra time to a still-active pending or accepted share from the Sent tab ("Extend Time") — `extendShare()` in `AdminContext.tsx`.
+- **Subject-level sharing**: when sharing a course that has subjects, Step 2 of the wizard shows a checkbox list (+ "Select all"); only the chosen subjects (and their notes) are embedded in the snapshot (`sharedSubjectIds` field + `filterSubjectsByIds`/`filterNotesMapByIds` helpers in `AdminContext.tsx`). Courses with no subjects skip this and share as a whole.
+- **Add more subjects later**: for an active accepted course share, admin can reopen it ("Add Subjects") and send additional subjects — already-sent ones are shown as checked/disabled, only new ones can be picked. Reuses the existing content-sync channel (`courseSnapshot` + `syncedAt`) so the recipient picks it up live — `addSubjectsToShare()`.
+- **Manual delete → Trash**: admin deleting a share card (course/note/message) from the Sent tab requires confirmation and moves it to a Trash sub-tab (`status: 'trashed'`, `trashedAt`/`trashedFromStatus` fields) instead of deleting it outright. From Trash, admin can Restore or permanently delete. This only applies to manual deletes — automatic expiry always hard-deletes, never touches trash.
+
 ## User preferences
 - User plans to deploy via Render (GitHub → Render static site).

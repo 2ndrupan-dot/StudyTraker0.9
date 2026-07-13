@@ -526,14 +526,29 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         tempNotes?: unknown[];
         overallNote?: string;
         notePagesIndex?: unknown[];
+        notesMap?: Record<string, string>;
       };
       // Only apply if the active course is the one that was synced
       if (detail.shareId !== activeCourseIdRef.current) return;
       // Prevent the save-useEffect from echoing this update back to Firestore
       skipNextSaveRef.current = true;
-      if (detail.subjects)       setSubjects(detail.subjects as Subject[]);
+      // `detail.subjects`/`detail.tempNotes` are "structural only" — note content
+      // for a shared course lives in the separate courseNotes doc, not embedded
+      // in the synced subjects tree. Merge `notesMap` back in here (mirrors the
+      // withNotesDoc/mergeNotes path used on the normal Firestore-load path) so
+      // this instant event never wipes out a note that was just added — without
+      // this, the note would flash in briefly (from the Firestore onSnapshot
+      // merge) and then disappear again the moment this event applied.
+      let nextSubjects = detail.subjects as Subject[] | undefined;
+      let nextTempNotes = detail.tempNotes as TempNoteItem[] | undefined;
+      if (detail.notesMap && (nextSubjects || nextTempNotes)) {
+        const merged = mergeNotes(nextSubjects || [], nextTempNotes || [], detail.notesMap);
+        if (nextSubjects) nextSubjects = merged.subjects;
+        if (nextTempNotes) nextTempNotes = merged.tempNotes;
+      }
+      if (nextSubjects)          setSubjects(nextSubjects);
       if (detail.settings)       setSettings(prev => ({ ...prev, ...detail.settings }));
-      if (detail.tempNotes)      setTempNotes(detail.tempNotes as TempNoteItem[]);
+      if (nextTempNotes)         setTempNotes(nextTempNotes);
       if (detail.overallNote !== undefined) setOverallNoteState(detail.overallNote);
       if (detail.notePagesIndex) setNotePagesIndex(detail.notePagesIndex as NotePage[]);
     };

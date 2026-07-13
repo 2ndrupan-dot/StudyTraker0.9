@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import {
   collection, doc, getDoc, getDocs, setDoc,
-  query, where, onSnapshot, addDoc, updateDoc,
+  query, where, onSnapshot, addDoc, updateDoc, deleteDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from './AuthContext';
@@ -41,6 +41,11 @@ export interface ShareRequest {
   courseName?: string;
   // Embedded course data (set by sendShare, read by acceptShare)
   courseSnapshot?: CourseSnapshot;
+  // Subject-level selection for course shares. When the course has subjects,
+  // only the ids listed here are included in courseSnapshot. Absent/undefined
+  // means "whole course" (courses with no subjects, or shares created before
+  // this field existed).
+  sharedSubjectIds?: string[];
   // Note share
   noteTitle?: string;
   noteHtml?: string;
@@ -51,12 +56,19 @@ export interface ShareRequest {
   permissions: SharePermissions;
   durationValue: number;
   durationUnit: 'hours' | 'days' | 'months';
-  status: 'pending' | 'accepted' | 'declined';
+  status: 'pending' | 'accepted' | 'declined' | 'trashed';
   sentAt: number;
   pendingExpiresAt: number; // auto-expire the pending notification
   acceptedAt?: number;
   actualExpiresAt?: number; // when access expires after acceptance
+  acceptedByUid?: string; // recipient's uid, set once they accept
   seenAt?: number; // when the recipient opened/interacted with this notification
+  syncedAt?: number;
+  // Manual-delete trash (admin only). Only set when the admin explicitly
+  // deletes a card — never set by automatic expiry, which just removes the
+  // document outright.
+  trashedAt?: number;
+  trashedFromStatus?: 'pending' | 'accepted';
 }
 
 interface AdminContextType {
@@ -68,6 +80,7 @@ interface AdminContextType {
   removeAdmin: (email: string) => Promise<void>;
   sendShare: (params: SendShareParams) => Promise<void>;
   sentShares: ShareRequest[];
+  trashedShares: ShareRequest[];
   loadingSentShares: boolean;
   updateSharePermissions: (shareId: string, permissions: SharePermissions) => Promise<void>;
   cancelShare: (shareId: string) => Promise<void>;
@@ -76,12 +89,48 @@ interface AdminContextType {
   declineShare: (shareId: string) => Promise<void>;
   acceptedShares: ShareRequest[];
   markSeen: (shareId: string) => Promise<void>;
+  extendShare: (shareId: string, addValue: number, addUnit: 'hours' | 'days' | 'months') => Promise<void>;
+  getCourseSubjectsForShare: (courseId: string) => Promise<{ id: string; title: string }[]>;
+  addSubjectsToShare: (shareId: string, additionalSubjectIds: string[]) => Promise<void>;
+  trashShare: (shareId: string) => Promise<void>;
+  restoreShare: (shareId: string) => Promise<void>;
+  permanentlyDeleteShare: (shareId: string) => Promise<void>;
 }
 
 export type SendShareParams = Pick<ShareRequest,
   'toEmail' | 'type' | 'courseId' | 'courseName' | 'noteTitle' | 'noteHtml' | 'noteBreadcrumb' |
-  'messageText' | 'permissions' | 'durationValue' | 'durationUnit'
+  'messageText' | 'permissions' | 'durationValue' | 'durationUnit' | 'sharedSubjectIds'
 >;
+
+// ── Subject-tree helpers for partial (subject-level) course sharing ──────────
+// Collect every node id across all levels of a subjects tree, so a flat
+// "notes" map (keyed like "s:<id>", "c:<id>", "pt:<id>" ...) can be filtered
+// down to just the ids that belong to a chosen set of top-level subjects.
+function collectAllIds(nodes: unknown[], into: Set<string> = new Set()): Set<string> {
+  const childKeys = ['chapters', 'topics', 'subtopics', 'concepts', 'points'];
+  for (const n of nodes as Record<string, unknown>[]) {
+    if (n.id) into.add(n.id as string);
+    for (const key of childKeys) {
+      if (Array.isArray(n[key])) collectAllIds(n[key] as unknown[], into);
+    }
+  }
+  return into;
+}
+
+function filterSubjectsByIds(subjects: unknown[], ids: string[]): unknown[] {
+  const idSet = new Set(ids);
+  return (subjects as Record<string, unknown>[]).filter(s => idSet.has(s.id as string));
+}
+
+function filterNotesMapByIds(notes: Record<string, string>, idSet: Set<string>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(notes)) {
+    const sep = key.indexOf(':');
+    const rawId = sep >= 0 ? key.slice(sep + 1) : key;
+    if (idSet.has(rawId)) result[key] = value;
+  }
+  return result;
+}
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
 
@@ -198,6 +247,16 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const adminEmails = [...new Set([...SUPER_ADMIN_EMAILS, ...firestoreAdminEmails])];
   const isAdmin = adminEmails.includes(userEmail);
 
+  // Ticks once a minute purely to re-evaluate the expiry filters below (the
+  // live per-row countdown UIs manage their own 1s tick independently — this
+  // is just enough to make expired cards drop out of these lists reasonably
+  // promptly without re-rendering everything every second).
+  const [expiryTick, setExpiryTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setExpiryTick(v => v + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const now = Date.now();
   const pendingShares = allReceivedShares
     .filter(s => s.status === 'pending' && s.pendingExpiresAt > now)
@@ -205,7 +264,34 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const acceptedShares = allReceivedShares.filter(
     s => s.status === 'accepted' && (!s.actualExpiresAt || s.actualExpiresAt > now)
   );
-  const sentShares = allSentShares;
+  const sentShares = allSentShares.filter(s => s.status !== 'trashed');
+  const trashedShares = allSentShares.filter(s => s.status === 'trashed');
+  void expiryTick; // referenced only to satisfy the linter about the dependency
+
+  // ── Auto-expiry purge ────────────────────────────────────────────────────
+  // Automatic expiry is a hard delete (never goes to trash — that's reserved
+  // for admin-initiated manual deletes). Runs from both sides (admin's sent
+  // list and the recipient's received list) so a share is cleaned up whether
+  // or not the admin is currently online; deletes are best-effort/idempotent.
+  useEffect(() => {
+    const nowMs = Date.now();
+    for (const s of allSentShares) {
+      if (s.status === 'trashed') continue;
+      const expired = (s.status === 'pending' && s.pendingExpiresAt <= nowMs)
+        || (s.status === 'accepted' && s.actualExpiresAt !== undefined && s.actualExpiresAt <= nowMs);
+      if (expired) deleteDoc(doc(db, 'shareRequests', s.id)).catch(() => {});
+    }
+  }, [allSentShares, expiryTick]);
+
+  useEffect(() => {
+    const nowMs = Date.now();
+    for (const s of allReceivedShares) {
+      if (s.status === 'trashed') continue;
+      const expired = (s.status === 'pending' && s.pendingExpiresAt <= nowMs)
+        || (s.status === 'accepted' && s.actualExpiresAt !== undefined && s.actualExpiresAt <= nowMs);
+      if (expired) deleteDoc(doc(db, 'shareRequests', s.id)).catch(() => {});
+    }
+  }, [allReceivedShares, expiryTick]);
 
   // Load admin list from Firestore
   useEffect(() => {
@@ -315,6 +401,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
             );
 
             // Write notes if provided
+            let liveSyncNotesMap: Record<string, string> | undefined;
+            let liveSyncOverallNote: string | undefined = syncStudyData.overallNote as string | undefined;
             if (syncNotesJson) {
               try {
                 const notesData = JSON.parse(syncNotesJson) as { overallNote: string; notes: Record<string, string> };
@@ -323,6 +411,14 @@ export function AdminProvider({ children }: { children: ReactNode }) {
                   { savedAt: Date.now(), overallNote: notesData.overallNote || '', notes: notesData.notes || {}, chunked: false },
                   { merge: false },
                 );
+                // Keep the note map so the CustomEvent below can merge it into the
+                // subjects tree before applying — the studyData snapshot alone is
+                // "structural only" (notes live in the separate courseNotes doc),
+                // so without this the UI would briefly flash the newly synced note
+                // (from the Firestore onSnapshot merge) and then wipe it out again
+                // (from this event applying note-less subjects on top).
+                liveSyncNotesMap = notesData.notes || {};
+                liveSyncOverallNote = notesData.overallNote || liveSyncOverallNote;
               } catch { /* malformed JSON — skip notes */ }
             }
 
@@ -335,8 +431,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
                 subjects: mergedSubjects,
                 settings: syncStudyData.settings,
                 tempNotes: syncStudyData.tempNotes,
-                overallNote: syncStudyData.overallNote,
+                overallNote: liveSyncOverallNote,
                 notePagesIndex: syncStudyData.notePagesIndex,
+                notesMap: liveSyncNotesMap,
               },
             }));
 
@@ -423,8 +520,20 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        // Subject-level selection: if the admin picked specific subjects
+        // (course has subjects and didn't choose "select all"), narrow both
+        // the subjects tree and the notes map down to just those ids before
+        // embedding the snapshot.
+        let studyDataForSnapshot = rawSd as Record<string, unknown>;
+        if (params.sharedSubjectIds && Array.isArray(rawSd.subjects)) {
+          const filteredSubjects = filterSubjectsByIds(rawSd.subjects as unknown[], params.sharedSubjectIds);
+          const idSet = collectAllIds(filteredSubjects);
+          studyDataForSnapshot = { ...rawSd, subjects: filteredSubjects };
+          notesMap = filterNotesMapByIds(notesMap, idSet);
+        }
+
         const snapshot: CourseSnapshot = {
-          studyData: rawSd as Record<string, unknown>,
+          studyData: studyDataForSnapshot,
           notesJson: JSON.stringify({ notes: notesMap, overallNote }),
         };
         payload.courseSnapshot = snapshot;
@@ -458,6 +567,115 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
   const cancelShare = async (shareId: string) => {
     await updateDoc(doc(db, 'shareRequests', shareId), { status: 'declined' });
+  };
+
+  // ── Extend duration (admin only, before expiry) ───────────────────────────
+  const extendShare = async (shareId: string, addValue: number, addUnit: 'hours' | 'days' | 'months') => {
+    const share = allSentShares.find(s => s.id === shareId);
+    if (!share) return;
+    const addMs = durationToMs(addValue, addUnit);
+    if (share.status === 'accepted' && share.actualExpiresAt) {
+      const newExpiry = share.actualExpiresAt + addMs;
+      await updateDoc(doc(db, 'shareRequests', shareId), { actualExpiresAt: newExpiry });
+      if (share.acceptedByUid) {
+        await setDoc(
+          doc(db, 'users', share.acceptedByUid, 'sharedCourses', shareId),
+          { actualExpiresAt: newExpiry },
+          { merge: true },
+        ).catch(() => {});
+      }
+    } else if (share.status === 'pending') {
+      const newExpiry = share.pendingExpiresAt + addMs;
+      await updateDoc(doc(db, 'shareRequests', shareId), { pendingExpiresAt: newExpiry });
+    }
+  };
+
+  // ── Subject-level incremental sharing ─────────────────────────────────────
+  /** Fetch the top-level subjects (id + title) for one of the admin's own
+   *  courses, used to render the subject-picker in the Share wizard. */
+  const getCourseSubjectsForShare = async (courseId: string): Promise<{ id: string; title: string }[]> => {
+    if (!user) return [];
+    try {
+      const sdSnap = await getDoc(doc(db, 'users', user.id, 'studyData', courseId));
+      if (!sdSnap.exists()) return [];
+      const subjects = (sdSnap.data().subjects as Array<{ id: string; title: string }> | undefined) || [];
+      return subjects.map(s => ({ id: s.id, title: s.title }));
+    } catch {
+      return [];
+    }
+  };
+
+  /** Add more subjects to an already-sent (still-active) course share. Reuses
+   *  the existing content-sync channel (courseSnapshot + syncedAt) so the
+   *  recipient picks up the addition through the same live-sync path used for
+   *  ordinary note/structure edits — no separate propagation code needed. */
+  const addSubjectsToShare = async (shareId: string, additionalSubjectIds: string[]) => {
+    if (!user) return;
+    const share = allSentShares.find(s => s.id === shareId);
+    if (!share || share.type !== 'course' || !share.courseId) return;
+
+    const mergedIds = Array.from(new Set([...(share.sharedSubjectIds || []), ...additionalSubjectIds]));
+
+    const sdSnap = await getDoc(doc(db, 'users', user.id, 'studyData', share.courseId));
+    if (!sdSnap.exists()) return;
+    const rawSd = sdSnap.data();
+    const filteredSubjects = filterSubjectsByIds((rawSd.subjects as unknown[]) || [], mergedIds);
+    const idSet = collectAllIds(filteredSubjects);
+
+    let notesMap: Record<string, string> = {};
+    let overallNote = '';
+    if (rawSd.hasNotesDoc) {
+      const ndSnap = await getDoc(doc(db, 'users', user.id, 'courseNotes', share.courseId));
+      if (ndSnap.exists()) {
+        const nd = ndSnap.data() as { overallNote?: string; notes?: Record<string, string>; chunked?: boolean };
+        if (nd.chunked) {
+          const entries = await readChunkEntries(collection(db, 'users', user.id, 'courseNotes', share.courseId, 'chunks'));
+          const merged = reassembleEntries(entries);
+          overallNote = merged['__overall__'] || '';
+          delete merged['__overall__'];
+          notesMap = merged;
+        } else {
+          notesMap = nd.notes || {};
+          overallNote = nd.overallNote || '';
+        }
+      }
+    }
+    notesMap = filterNotesMapByIds(notesMap, idSet);
+
+    const studyDataForSnapshot = { ...rawSd, subjects: filteredSubjects };
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      sharedSubjectIds: mergedIds,
+      courseSnapshot: {
+        studyData: studyDataForSnapshot,
+        notesJson: JSON.stringify({ notes: notesMap, overallNote }),
+      },
+      syncedAt: Date.now(),
+    });
+  };
+
+  // ── Manual delete → trash → restore / permanent delete ────────────────────
+  const trashShare = async (shareId: string) => {
+    const share = allSentShares.find(s => s.id === shareId);
+    if (!share) return;
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      status: 'trashed',
+      trashedAt: Date.now(),
+      trashedFromStatus: share.status === 'accepted' ? 'accepted' : 'pending',
+    });
+  };
+
+  const restoreShare = async (shareId: string) => {
+    const share = allSentShares.find(s => s.id === shareId);
+    if (!share || share.status !== 'trashed') return;
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      status: share.trashedFromStatus || 'pending',
+      trashedAt: null,
+      trashedFromStatus: null,
+    });
+  };
+
+  const permanentlyDeleteShare = async (shareId: string) => {
+    await deleteDoc(doc(db, 'shareRequests', shareId));
   };
 
   const acceptShare = async (shareId: string) => {
@@ -552,10 +770,12 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     <AdminContext.Provider value={{
       isAdmin, isSuperAdmin, adminEmails, loadingAdmins,
       addAdmin, removeAdmin,
-      sendShare, sentShares, loadingSentShares,
+      sendShare, sentShares, trashedShares, loadingSentShares,
       updateSharePermissions, cancelShare,
       pendingShares, acceptShare, declineShare,
       acceptedShares, markSeen,
+      extendShare, getCourseSubjectsForShare, addSubjectsToShare,
+      trashShare, restoreShare, permanentlyDeleteShare,
     }}>
       {children}
     </AdminContext.Provider>

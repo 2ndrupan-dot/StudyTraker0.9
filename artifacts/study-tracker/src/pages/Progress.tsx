@@ -9,6 +9,7 @@ import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
 import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock, Share2 } from 'lucide-react';
 import { NotificationBell } from '@/components/NotificationBell';
+import { Countdown } from '@/components/Countdown';
 import { useAdmin } from '@/context/AdminContext';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 import { getTimezoneEntry, getCurrentOffset, getFlagUrl } from '@/lib/timezones';
@@ -1084,8 +1085,13 @@ export function Progress() {
                         {course.name}
                       </p>
                       {sharedMeta ? (
-                        <p className="text-[10px] text-indigo-500 font-medium mt-0.5">
-                          🔗 {lang === 'bn' ? 'শেয়ার্ড' : 'Shared'} · {sharedMeta.fromAdminName}
+                        <p className="text-[10px] text-indigo-500 font-medium mt-0.5 flex items-center gap-1 flex-wrap">
+                          <span>🔗 {lang === 'bn' ? 'শেয়ার্ড' : 'Shared'} · {sharedMeta.fromAdminName}</span>
+                          {sharedMeta.actualExpiresAt && (
+                            <span className="font-mono font-bold tabular-nums">
+                              · <Countdown targetMs={sharedMeta.actualExpiresAt} lang={lang} />
+                            </span>
+                          )}
                         </p>
                       ) : isActive ? (
                         <p className="text-[10px] text-primary/60 font-medium">{t('currentCourse')}</p>

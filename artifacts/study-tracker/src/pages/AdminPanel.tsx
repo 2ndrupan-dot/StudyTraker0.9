@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import {
   ShieldCheck, Users, Send, List, Plus, Trash2, Edit3, Check, X,
   BookOpen, StickyNote, ChevronRight, ChevronLeft, Clock, ArrowLeft,
   UserCheck, UserMinus, RefreshCw, Eye, EyeOff, Save, MessageSquare,
+  TimerReset, ListPlus, Undo2, AlertTriangle, Archive,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -14,6 +15,7 @@ import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
 import { Button, Input, Modal } from '@/components/ui';
 import { RichTextPreview } from '@/components/RichTextEditor';
+import { Countdown } from '@/components/Countdown';
 import type { Subject } from '@/lib/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -261,18 +263,24 @@ function PermissionsEditor({
 function SentShareRow({
   share, lang,
   onEditPermissions,
-  onCancel,
+  onDelete,
+  onExtend,
+  onAddSubjects,
 }: {
   share: ShareRequest;
   lang: string;
   onEditPermissions: (share: ShareRequest) => void;
-  onCancel: (shareId: string) => void;
+  onDelete: (share: ShareRequest) => void;
+  onExtend: (share: ShareRequest) => void;
+  onAddSubjects: (share: ShareRequest) => void;
 }) {
   // For note/message shares, "declined" means the recipient deleted the
   // notification themselves rather than the admin cancelling a pending share.
   const declinedLabel = share.type === 'course'
     ? (lang === 'bn' ? 'প্রত্যাখ্যান করেছে' : 'Rejected')
     : (lang === 'bn' ? 'ইউজার ডিলিট করেছে' : 'Deleted by user');
+
+  const countdownTarget = share.status === 'accepted' ? share.actualExpiresAt : share.pendingExpiresAt;
 
   return (
     <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-3">
@@ -310,41 +318,106 @@ function SentShareRow({
             </span>
             <span className="text-[10px] text-muted-foreground">{formatDate(share.sentAt)}</span>
           </div>
+          {(share.status === 'pending' || share.status === 'accepted') && countdownTarget && (
+            <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-primary/10">
+              <Clock size={10} className="text-primary" />
+              <span className="text-[11px] font-mono font-bold text-primary tabular-nums">
+                <Countdown targetMs={countdownTarget} lang={lang} />
+              </span>
+              <span className="text-[9px] text-primary/70">
+                {lang === 'bn' ? 'বাকি' : 'left'}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
-      {share.status !== 'declined' && share.type !== 'message' && (
-        <div className="flex gap-2">
-          <button
-            onClick={() => onEditPermissions(share)}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-secondary text-foreground hover:bg-secondary/70 transition-colors text-xs font-semibold"
-          >
-            <Edit3 size={12} />
-            {lang === 'bn' ? 'অনুমতি সম্পাদনা' : 'Edit Permissions'}
-          </button>
-          {share.status === 'pending' && (
+      {(share.status === 'pending' || share.status === 'accepted') && (
+        <div className="flex flex-wrap gap-2">
+          {share.type !== 'message' && (
             <button
-              onClick={() => onCancel(share.id)}
-              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold"
+              onClick={() => onEditPermissions(share)}
+              className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-secondary text-foreground hover:bg-secondary/70 transition-colors text-xs font-semibold"
             >
-              <X size={12} />
-              {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+              <Edit3 size={12} />
+              {lang === 'bn' ? 'অনুমতি' : 'Permissions'}
             </button>
           )}
-        </div>
-      )}
-
-      {share.status === 'pending' && share.type === 'message' && (
-        <div className="flex gap-2">
           <button
-            onClick={() => onCancel(share.id)}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold"
+            onClick={() => onExtend(share)}
+            className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 transition-colors text-xs font-semibold"
           >
-            <X size={12} />
-            {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+            <TimerReset size={12} />
+            {lang === 'bn' ? 'সময় বাড়ান' : 'Extend Time'}
+          </button>
+          {share.status === 'accepted' && share.type === 'course' && (
+            <button
+              onClick={() => onAddSubjects(share)}
+              className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-teal-500/10 text-teal-600 hover:bg-teal-500/20 transition-colors text-xs font-semibold"
+            >
+              <ListPlus size={12} />
+              {lang === 'bn' ? 'সাবজেক্ট যোগ করুন' : 'Add Subjects'}
+            </button>
+          )}
+          <button
+            onClick={() => onDelete(share)}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold"
+          >
+            <Trash2 size={12} />
+            {lang === 'bn' ? 'ডিলিট' : 'Delete'}
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Trashed Share Row ─────────────────────────────────────────────────────
+
+function TrashedShareRow({
+  share, lang, onRestore, onPermanentDelete,
+}: {
+  share: ShareRequest;
+  lang: string;
+  onRestore: (shareId: string) => void;
+  onPermanentDelete: (share: ShareRequest) => void;
+}) {
+  return (
+    <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-3 opacity-90">
+      <div className="flex items-start gap-3">
+        <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", typeColorClass(share.type))}>
+          {typeIcon(share.type, 16)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-foreground truncate">
+            {share.type === 'course' ? (share.courseName || '—')
+              : share.type === 'message' ? (share.messageText || '—')
+              : (share.noteTitle || '—')}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">→ {share.toEmail}</p>
+          {share.trashedAt && (
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {lang === 'bn' ? 'ডিলিট করা হয়েছে' : 'Deleted'} · {formatDate(share.trashedAt)}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onRestore(share.id)}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-green-500/10 text-green-700 hover:bg-green-500/20 transition-colors text-xs font-semibold"
+        >
+          <Undo2 size={12} />
+          {lang === 'bn' ? 'পুনরুদ্ধার' : 'Restore'}
+        </button>
+        <button
+          onClick={() => onPermanentDelete(share)}
+          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold"
+        >
+          <Trash2 size={12} />
+          {lang === 'bn' ? 'স্থায়ীভাবে মুছুন' : 'Delete Forever'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -356,11 +429,14 @@ export function AdminPanel() {
   const { user } = useAuth();
   const { lang } = useLang();
   const { isAdmin, isSuperAdmin, adminEmails, loadingAdmins, addAdmin, removeAdmin,
-    sendShare, sentShares, loadingSentShares, updateSharePermissions, cancelShare } = useAdmin();
+    sendShare, sentShares, trashedShares, loadingSentShares, updateSharePermissions,
+    extendShare, getCourseSubjectsForShare, addSubjectsToShare,
+    trashShare, restoreShare, permanentlyDeleteShare } = useAdmin();
   const { courses, activeCourse } = useCourse();
   const { subjects } = useStudy();
 
   const [tab, setTab] = useState<'admins' | 'share' | 'sent'>('admins');
+  const [sentSubTab, setSentSubTab] = useState<'active' | 'trash'>('active');
 
   // ── Admins tab state ──
   const [newAdminEmail, setNewAdminEmail] = useState('');
@@ -389,11 +465,52 @@ export function AdminPanel() {
   const [sendSuccess, setSendSuccess] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
+  // Subject-level selection for course shares (only relevant when the picked
+  // course actually has subjects — courses with none skip this entirely).
+  const [courseSubjects, setCourseSubjects] = useState<{ id: string; title: string }[]>([]);
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
+  const [loadingCourseSubjects, setLoadingCourseSubjects] = useState(false);
+
+  useEffect(() => {
+    if (shareForm.type !== 'course' || !shareForm.courseId) {
+      setCourseSubjects([]);
+      setSelectedSubjectIds([]);
+      return;
+    }
+    let active = true;
+    setLoadingCourseSubjects(true);
+    getCourseSubjectsForShare(shareForm.courseId).then(list => {
+      if (!active) return;
+      setCourseSubjects(list);
+      setSelectedSubjectIds(list.map(s => s.id)); // default: select all
+      setLoadingCourseSubjects(false);
+    });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareForm.type, shareForm.courseId]);
+
+  const toggleSubject = (id: string) => {
+    setSelectedSubjectIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+  const toggleSelectAllSubjects = () => {
+    setSelectedSubjectIds(prev => prev.length === courseSubjects.length ? [] : courseSubjects.map(s => s.id));
+  };
+
   // ── Sent tab state ──
   const [editPermModal, setEditPermModal] = useState<ShareRequest | null>(null);
   const [editPermissions, setEditPermissions] = useState<SharePermissions>({ ...DEFAULT_PERMISSIONS });
   const [savingPerms, setSavingPerms] = useState(false);
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [deleteConfirmShare, setDeleteConfirmShare] = useState<ShareRequest | null>(null);
+  const [permDeleteConfirmShare, setPermDeleteConfirmShare] = useState<ShareRequest | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [extendModal, setExtendModal] = useState<ShareRequest | null>(null);
+  const [extendValue, setExtendValue] = useState(1);
+  const [extendUnit, setExtendUnit] = useState<'hours' | 'days' | 'months'>('days');
+  const [extending, setExtending] = useState(false);
+  const [addSubjectsModal, setAddSubjectsModal] = useState<ShareRequest | null>(null);
+  const [addSubjectsAvailable, setAddSubjectsAvailable] = useState<{ id: string; title: string }[]>([]);
+  const [addSubjectsPicked, setAddSubjectsPicked] = useState<string[]>([]);
+  const [addingSubjects, setAddingSubjects] = useState(false);
 
   if (!isAdmin) {
     return (
@@ -446,6 +563,7 @@ export function AdminPanel() {
         permissions: shareForm.type === 'message' ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false, renameCourse: false, addItems: false } : shareForm.permissions,
         durationValue: shareForm.durationValue,
         durationUnit: shareForm.durationUnit,
+        sharedSubjectIds: shareForm.type === 'course' && courseSubjects.length > 0 ? selectedSubjectIds : undefined,
       });
       setSendSuccess(true);
       setShareStep(1);
@@ -454,6 +572,8 @@ export function AdminPanel() {
         noteBreadcrumb: [], messageText: '', durationValue: 7, durationUnit: 'days', permissions: { ...DEFAULT_PERMISSIONS },
       });
       setNotePicked(null);
+      setCourseSubjects([]);
+      setSelectedSubjectIds([]);
       setTimeout(() => setSendSuccess(false), 3000);
     } catch (err) {
       setSendError(
@@ -477,9 +597,67 @@ export function AdminPanel() {
     }
   };
 
-  const handleCancelShare = async (shareId: string) => {
-    setCancellingId(shareId);
-    try { await cancelShare(shareId); } finally { setCancellingId(null); }
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmShare) return;
+    setDeletingId(deleteConfirmShare.id);
+    try {
+      await trashShare(deleteConfirmShare.id);
+      setDeleteConfirmShare(null);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleRestore = async (shareId: string) => {
+    await restoreShare(shareId);
+  };
+
+  const handleConfirmPermanentDelete = async () => {
+    if (!permDeleteConfirmShare) return;
+    setDeletingId(permDeleteConfirmShare.id);
+    try {
+      await permanentlyDeleteShare(permDeleteConfirmShare.id);
+      setPermDeleteConfirmShare(null);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const openExtendModal = (share: ShareRequest) => {
+    setExtendModal(share);
+    setExtendValue(1);
+    setExtendUnit('days');
+  };
+
+  const handleConfirmExtend = async () => {
+    if (!extendModal) return;
+    setExtending(true);
+    try {
+      await extendShare(extendModal.id, extendValue, extendUnit);
+      setExtendModal(null);
+    } finally {
+      setExtending(false);
+    }
+  };
+
+  const openAddSubjectsModal = async (share: ShareRequest) => {
+    if (!share.courseId) return;
+    setAddSubjectsModal(share);
+    setAddSubjectsPicked([]);
+    const list = await getCourseSubjectsForShare(share.courseId);
+    setAddSubjectsAvailable(list);
+  };
+
+  const handleConfirmAddSubjects = async () => {
+    if (!addSubjectsModal || addSubjectsPicked.length === 0) return;
+    setAddingSubjects(true);
+    try {
+      await addSubjectsToShare(addSubjectsModal.id, addSubjectsPicked);
+      setAddSubjectsModal(null);
+      setAddSubjectsPicked([]);
+    } finally {
+      setAddingSubjects(false);
+    }
   };
 
   const tabs = [
@@ -732,6 +910,52 @@ export function AdminPanel() {
                         {shareForm.courseId === course.id && <Check size={14} className="text-primary shrink-0" />}
                       </button>
                     ))}
+
+                    {/* Subject-level selection — only shown for courses that actually
+                        have subjects; a course with none is shared as a whole. */}
+                    {shareForm.courseId && loadingCourseSubjects && (
+                      <p className="text-xs text-muted-foreground py-2">
+                        {lang === 'bn' ? 'সাবজেক্ট লোড হচ্ছে...' : 'Loading subjects...'}
+                      </p>
+                    )}
+                    {shareForm.courseId && !loadingCourseSubjects && courseSubjects.length > 0 && (
+                      <div className="pt-2 border-t border-border/40 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-bold text-foreground">
+                            {lang === 'bn' ? 'কোন সাবজেক্টগুলো পাঠাবেন?' : 'Which subjects to send?'}
+                          </p>
+                          <button
+                            onClick={toggleSelectAllSubjects}
+                            className="text-[11px] font-semibold text-primary hover:underline"
+                          >
+                            {selectedSubjectIds.length === courseSubjects.length
+                              ? (lang === 'bn' ? 'সব বাদ দিন' : 'Deselect all')
+                              : (lang === 'bn' ? 'সব সিলেক্ট করুন' : 'Select all')}
+                          </button>
+                        </div>
+                        <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                          {courseSubjects.map(s => (
+                            <label
+                              key={s.id}
+                              className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-secondary/60 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedSubjectIds.includes(s.id)}
+                                onChange={() => toggleSubject(s.id)}
+                                className="w-4 h-4 rounded accent-primary shrink-0"
+                              />
+                              <span className="text-sm text-foreground truncate">{s.title}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {selectedSubjectIds.length === 0 && (
+                          <p className="text-[11px] text-destructive">
+                            {lang === 'bn' ? 'অন্তত একটি সাবজেক্ট সিলেক্ট করুন' : 'Select at least one subject'}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : shareForm.type === 'message' ? (
                   <textarea
@@ -775,7 +999,7 @@ export function AdminPanel() {
                 <Button
                   className="w-full"
                   disabled={
-                    shareForm.type === 'course' ? !shareForm.courseId
+                    shareForm.type === 'course' ? (!shareForm.courseId || (courseSubjects.length > 0 && selectedSubjectIds.length === 0))
                       : shareForm.type === 'message' ? !shareForm.messageText.trim()
                       : !notePicked
                   }
@@ -881,26 +1105,73 @@ export function AdminPanel() {
         {/* ── Sent Tab ── */}
         {tab === 'sent' && (
           <div className="space-y-3 mt-2">
+            {/* Active / Trash sub-toggle */}
+            <div className="flex gap-2 p-1 bg-secondary/60 rounded-xl">
+              <button
+                onClick={() => setSentSubTab('active')}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                  sentSubTab === 'active' ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
+                )}
+              >
+                {lang === 'bn' ? 'পাঠানো' : 'Active'}
+              </button>
+              <button
+                onClick={() => setSentSubTab('trash')}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5",
+                  sentSubTab === 'trash' ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
+                )}
+              >
+                <Archive size={12} />
+                {lang === 'bn' ? 'ট্র্যাশ' : 'Trash'}
+                {trashedShares.length > 0 && (
+                  <span className="text-[10px] bg-destructive/15 text-destructive px-1.5 rounded-full">{trashedShares.length}</span>
+                )}
+              </button>
+            </div>
+
             {loadingSentShares ? (
               <div className="py-8 flex justify-center">
                 <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
-            ) : sentShares.length === 0 ? (
-              <div className="py-12 text-center">
-                <List size={32} className="text-muted-foreground/30 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  {lang === 'bn' ? 'এখনো কিছু পাঠানো হয়নি।' : 'Nothing sent yet.'}
-                </p>
-              </div>
-            ) : sentShares.map(share => (
-              <SentShareRow
-                key={share.id}
-                share={share}
-                lang={lang}
-                onEditPermissions={s => { setEditPermissions({ ...s.permissions }); setEditPermModal(s); }}
-                onCancel={id => handleCancelShare(id)}
-              />
-            ))}
+            ) : sentSubTab === 'active' ? (
+              sentShares.length === 0 ? (
+                <div className="py-12 text-center">
+                  <List size={32} className="text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    {lang === 'bn' ? 'এখনো কিছু পাঠানো হয়নি।' : 'Nothing sent yet.'}
+                  </p>
+                </div>
+              ) : sentShares.map(share => (
+                <SentShareRow
+                  key={share.id}
+                  share={share}
+                  lang={lang}
+                  onEditPermissions={s => { setEditPermissions({ ...s.permissions }); setEditPermModal(s); }}
+                  onDelete={s => setDeleteConfirmShare(s)}
+                  onExtend={s => openExtendModal(s)}
+                  onAddSubjects={s => openAddSubjectsModal(s)}
+                />
+              ))
+            ) : (
+              trashedShares.length === 0 ? (
+                <div className="py-12 text-center">
+                  <Archive size={32} className="text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    {lang === 'bn' ? 'ট্র্যাশ খালি।' : 'Trash is empty.'}
+                  </p>
+                </div>
+              ) : trashedShares.map(share => (
+                <TrashedShareRow
+                  key={share.id}
+                  share={share}
+                  lang={lang}
+                  onRestore={handleRestore}
+                  onPermanentDelete={s => setPermDeleteConfirmShare(s)}
+                />
+              ))
+            )}
           </div>
         )}
       </div>
@@ -926,6 +1197,171 @@ export function AdminPanel() {
               </>
             )}
           </Button>
+        </div>
+      </Modal>
+
+      {/* Extend Time Modal */}
+      <Modal
+        isOpen={!!extendModal}
+        onClose={() => setExtendModal(null)}
+        title={lang === 'bn' ? 'সময় বাড়ান' : 'Extend Time'}
+        align="bottom"
+        icon={TimerReset}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">→ {extendModal?.toEmail}</p>
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              min={1}
+              value={extendValue}
+              onChange={e => setExtendValue(Math.max(1, Number(e.target.value) || 1))}
+              className="flex-1"
+            />
+            <select
+              value={extendUnit}
+              onChange={e => setExtendUnit(e.target.value as 'hours' | 'days' | 'months')}
+              className="rounded-xl border border-border/60 bg-secondary px-3 text-sm text-foreground"
+            >
+              <option value="hours">{lang === 'bn' ? 'ঘণ্টা' : 'Hours'}</option>
+              <option value="days">{lang === 'bn' ? 'দিন' : 'Days'}</option>
+              <option value="months">{lang === 'bn' ? 'মাস' : 'Months'}</option>
+            </select>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {lang === 'bn'
+              ? 'বর্তমান মেয়াদ শেষ হওয়ার সময়ের সাথে এই সময় যোগ হবে।'
+              : 'This time will be added on top of the current expiry.'}
+          </p>
+          <Button className="w-full" onClick={handleConfirmExtend} disabled={extending}>
+            {extending ? '...' : (lang === 'bn' ? 'সময় বাড়ান' : 'Extend')}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Add Subjects Modal */}
+      <Modal
+        isOpen={!!addSubjectsModal}
+        onClose={() => setAddSubjectsModal(null)}
+        title={lang === 'bn' ? 'আরও সাবজেক্ট যোগ করুন' : 'Add More Subjects'}
+        align="bottom"
+        icon={ListPlus}
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">→ {addSubjectsModal?.toEmail}</p>
+          {(() => {
+            const alreadySent = new Set(addSubjectsModal?.sharedSubjectIds || []);
+            const remaining = addSubjectsAvailable.filter(s => !alreadySent.has(s.id));
+            const already = addSubjectsAvailable.filter(s => alreadySent.has(s.id));
+            return (
+              <>
+                {already.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground">
+                      {lang === 'bn' ? 'আগে পাঠানো হয়েছে' : 'Already sent'}
+                    </p>
+                    {already.map(s => (
+                      <div key={s.id} className="flex items-center gap-2 p-2 rounded-lg bg-secondary/40 opacity-60">
+                        <Check size={13} className="text-green-600 shrink-0" />
+                        <span className="text-sm text-foreground truncate">{s.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {remaining.length > 0 ? (
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground">
+                      {lang === 'bn' ? 'নতুন সাবজেক্ট' : 'New subjects'}
+                    </p>
+                    <div className="max-h-52 overflow-y-auto space-y-1">
+                      {remaining.map(s => (
+                        <label key={s.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-secondary/60 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={addSubjectsPicked.includes(s.id)}
+                            onChange={() => setAddSubjectsPicked(prev => prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id])}
+                            className="w-4 h-4 rounded accent-primary shrink-0"
+                          />
+                          <span className="text-sm text-foreground truncate">{s.title}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <Button className="w-full" onClick={handleConfirmAddSubjects} disabled={addingSubjects || addSubjectsPicked.length === 0}>
+                      {addingSubjects ? '...' : (lang === 'bn' ? 'যোগ করুন' : 'Add Selected')}
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center py-4">
+                    {lang === 'bn' ? 'সব সাবজেক্ট ইতিমধ্যে পাঠানো হয়েছে।' : 'All subjects already sent.'}
+                  </p>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      </Modal>
+
+      {/* Delete confirmation (moves to trash) */}
+      <Modal
+        isOpen={!!deleteConfirmShare}
+        onClose={() => setDeleteConfirmShare(null)}
+        title={lang === 'bn' ? 'ডিলিট নিশ্চিত করুন' : 'Confirm Delete'}
+        align="bottom"
+        icon={AlertTriangle}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
+            {lang === 'bn'
+              ? 'এই কার্ডটি ট্র্যাশে সরানো হবে। পরে ট্র্যাশ থেকে পুনরুদ্ধার করতে পারবেন।'
+              : 'This card will be moved to trash. You can restore it from trash later.'}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setDeleteConfirmShare(null)}
+              className="flex-1 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-semibold hover:bg-secondary/70 transition-colors"
+            >
+              {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleConfirmDelete}
+              disabled={deletingId === deleteConfirmShare?.id}
+              className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-50"
+            >
+              {deletingId === deleteConfirmShare?.id ? '...' : (lang === 'bn' ? 'ডিলিট করুন' : 'Delete')}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Permanent delete confirmation (from trash) */}
+      <Modal
+        isOpen={!!permDeleteConfirmShare}
+        onClose={() => setPermDeleteConfirmShare(null)}
+        title={lang === 'bn' ? 'স্থায়ীভাবে মুছুন' : 'Delete Forever'}
+        align="bottom"
+        icon={AlertTriangle}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
+            {lang === 'bn'
+              ? 'এটি স্থায়ীভাবে মুছে যাবে এবং আর ফিরিয়ে আনা যাবে না।'
+              : 'This will be permanently deleted and cannot be recovered.'}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPermDeleteConfirmShare(null)}
+              className="flex-1 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-semibold hover:bg-secondary/70 transition-colors"
+            >
+              {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleConfirmPermanentDelete}
+              disabled={deletingId === permDeleteConfirmShare?.id}
+              className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-50"
+            >
+              {deletingId === permDeleteConfirmShare?.id ? '...' : (lang === 'bn' ? 'মুছুন' : 'Delete')}
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

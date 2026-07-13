@@ -9,6 +9,7 @@ import {
   CheckCircle2, Circle, Pencil, Lock,
   Star, AlertTriangle, StickyNote, Filter, RotateCcw, GripVertical, ArrowUpDown,
 } from 'lucide-react';
+import { Countdown } from '@/components/Countdown';
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor, KeyboardSensor,
   useSensor, useSensors, type DragEndEvent,
@@ -641,8 +642,13 @@ export function Subjects() {
             <div className="min-w-0">
               <h1 className="font-bold text-white leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(1.05rem, 5.5vw, 1.5rem)', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('subjects')}</h1>
               {activeSharedMeta && (
-                <p className="text-[10px] text-white/75 font-medium mt-0.5 truncate">
-                  🔗 {lang === 'bn' ? 'শেয়ার্ড কোর্স' : 'Shared'} · {activeSharedMeta.fromAdminName}
+                <p className="text-[10px] text-white/75 font-medium mt-0.5 truncate flex items-center gap-1 flex-wrap">
+                  <span>🔗 {lang === 'bn' ? 'শেয়ার্ড কোর্স' : 'Shared'} · {activeSharedMeta.fromAdminName}</span>
+                  {activeSharedMeta.actualExpiresAt && (
+                    <span className="font-mono font-bold tabular-nums text-white/90">
+                      · <Countdown targetMs={activeSharedMeta.actualExpiresAt} lang={lang} />
+                    </span>
+                  )}
                 </p>
               )}
             </div>

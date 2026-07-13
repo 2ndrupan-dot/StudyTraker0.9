@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { useAdmin, ShareRequest } from '@/context/AdminContext';
 import { Modal, NoteEditorModal } from '@/components/ui';
 import { useLang } from '@/context/LangContext';
+import { Countdown } from '@/components/Countdown';
 
 function formatDuration(value: number, unit: string, lang: string) {
   if (lang === 'bn') {
@@ -13,15 +14,6 @@ function formatDuration(value: number, unit: string, lang: string) {
     return `${value} ${unitMap[unit] || unit}`;
   }
   return `${value} ${unit}`;
-}
-
-function formatExpiry(expiresAt: number, lang: string) {
-  const diff = expiresAt - Date.now();
-  if (diff <= 0) return lang === 'bn' ? 'মেয়াদ শেষ' : 'Expired';
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  if (days > 0) return lang === 'bn' ? `${days} দিন বাকি` : `${days}d left`;
-  return lang === 'bn' ? `${hours} ঘণ্টা বাকি` : `${hours}h left`;
 }
 
 // Shared notes open in the exact same note viewer used everywhere else in the
@@ -259,8 +251,18 @@ export function NotificationBell() {
                         <Clock size={10} className="text-muted-foreground" />
                         <span className="text-[10px] text-muted-foreground">
                           {formatDuration(share.durationValue, share.durationUnit, lang)}
-                          {' · '}
-                          {formatExpiry(share.pendingExpiresAt, lang)}
+                        </span>
+                      </div>
+                      <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-500/10">
+                        <Clock size={9} className="text-rose-600" />
+                        <span className="text-[10px] font-mono font-bold text-rose-600 tabular-nums">
+                          <Countdown
+                            targetMs={share.pendingExpiresAt}
+                            lang={lang}
+                          />
+                        </span>
+                        <span className="text-[9px] text-rose-600/70">
+                          {lang === 'bn' ? 'বাকি' : 'left'}
                         </span>
                       </div>
                     </div>

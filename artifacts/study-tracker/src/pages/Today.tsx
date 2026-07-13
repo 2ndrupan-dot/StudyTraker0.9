@@ -232,7 +232,13 @@ function generateSmartPlan(
     // Weighted random selection seeded by today's date
     // Over many days, each subject appears proportional to its urgencyScore
     // → less complete subjects with tighter deadlines appear more often
-    const dayIndex = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+    // IMPORTANT: seed from `todayStr` (the app's IST calendar date), NOT
+    // Date.now(). Date.now()/86400000 ticks over at UTC midnight, which is
+    // 5:30 AM IST — so a plan regenerated (e.g. by the "new structural item"
+    // effect, or an hours-setting change) later in the same IST day used to
+    // get a DIFFERENT random seed and could silently pick different subjects,
+    // looking exactly like "Load More" fired on its own.
+    const dayIndex = Math.floor(parseISO(todayStr).getTime() / (1000 * 60 * 60 * 24));
     const rand = lcgRandom(dayIndex * 31337 + 12345);
 
     const pool = [...subjCandidates];
@@ -644,6 +650,20 @@ export function Today() {
       .catch(e => console.warn('[todaySync] writeRevisions:', e));
   }, [user?.id, activeCourseId]); // eslint-disable-line
 
+  // Combined write for actions that change BOTH pending and revisions in one
+  // user action (e.g. completing a pending task: it leaves the pending list
+  // AND schedules a revision). Writing them as two separate setDoc calls used
+  // to make onSnapshot fire twice in a row, each time with only one of the
+  // two fields updated — the Pending/Revision panels would briefly flash the
+  // stale half-updated state before the second snapshot corrected it. One
+  // merged write means only one, fully-consistent snapshot is ever observed.
+  const writePendingAndRevisions = useCallback(async (items: PendingItem[], entries: RevisionEntry[]) => {
+    if (!user?.id || !activeCourseId) return;
+    lastWriteRef.current = Date.now();
+    await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { pending: items, revisions: entries }, { merge: true })
+      .catch(e => console.warn('[todaySync] writePendingAndRevisions:', e));
+  }, [user?.id, activeCourseId]); // eslint-disable-line
+
   // Append a dismissed pending key to Firestore (arrayUnion, no grace-period — doesn't
   // touch pending/revision arrays so onSnapshot echoes are harmless).
   const addDismissedPendingKey = useCallback(async (key: string) => {
@@ -671,6 +691,13 @@ export function Today() {
     savePending(email, activeCourseId, items);
     writePending(items);
   }, [email, activeCourseId, writePending]);
+
+  const syncPendingAndRevisions = useCallback((items: PendingItem[], entries: RevisionEntry[]) => {
+    if (!activeCourseId) return;
+    savePending(email, activeCourseId, items);
+    saveRevisions(email, activeCourseId, entries);
+    writePendingAndRevisions(items, entries);
+  }, [email, activeCourseId, writePendingAndRevisions]);
 
   const syncRevisions = useCallback((entries: RevisionEntry[]) => {
     if (!activeCourseId) return;
@@ -1172,10 +1199,35 @@ export function Today() {
   };
 
   const completePendingTask = (item: PendingItem) => {
-    // Mark the task complete in the hierarchy
-    markComplete(item.task);
-    // Remove from pending list
-    dismissPending(item.task.key);
+    const task = item.task;
+    const { subjectId: sId, chapterId: cId, topicId: tId, subtopicId: subId, conceptId: cId2, pointId: ptId } = task;
+    const wasCompleted = isTaskCompleted(subjects, task);
+    // Toggle underlying completion state (separate studyData doc/context —
+    // unrelated to the todayData pending/revisions write below).
+    if      (task.level === 'point'    && ptId && cId2 && subId && tId) togglePointComplete(sId, cId, tId, subId, cId2, ptId);
+    else if (task.level === 'concept'  && cId2 && subId && tId)         toggleConceptComplete(sId, cId, tId, subId, cId2);
+    else if (task.level === 'subtopic' && subId && tId)                 toggleSubtopicComplete(sId, cId, tId, subId);
+    else if (task.level === 'topic'    && tId)                          toggleTopicComplete(sId, cId, tId);
+    else                                                                 toggleChapterComplete(sId, cId);
+
+    // Build the updated pending + revisions arrays and write them together in
+    // ONE Firestore merge so the Pending/Revision panels never observe a
+    // half-updated intermediate state (see `writePendingAndRevisions`).
+    const updatedPending = pendingItems.filter(p => p.task.key !== task.key);
+    const updatedRevisions = wasCompleted ? revisions : buildScheduledRevisions(revisions, task);
+    setPendingItems(updatedPending);
+    setRevisions(updatedRevisions);
+    syncPendingAndRevisions(updatedPending, updatedRevisions);
+
+    // Persist the dismissal so any offline device that later comes online
+    // will not re-add this task to pending when it processes yesterday's plan.
+    if (activeCourseId) {
+      const existing = loadDismissedPendingKeys(email, activeCourseId);
+      if (!existing.includes(task.key)) {
+        saveDismissedPendingKeys(email, activeCourseId, [...existing, task.key]);
+      }
+      addDismissedPendingKey(task.key);
+    }
   };
 
   const confirmCompletePending = (item: PendingItem) => {
@@ -1250,14 +1302,16 @@ export function Today() {
     });
   };
 
-  // Schedule first revision when a task is marked complete (stage 0, INITIAL_REVISION_DAYS later)
-  const scheduleRevisions = (task: PlanTask) => {
-    const existing = revisions;
+  // Pure: compute the revisions array that results from scheduling the first
+  // revision for `task` (stage 0, INITIAL_REVISION_DAYS later). Returns the
+  // *same* array reference if nothing changed, so callers can cheaply check
+  // `result !== existing` to know whether a write is actually needed.
+  const buildScheduledRevisions = (existing: RevisionEntry[], task: PlanTask): RevisionEntry[] => {
     // Don't create if an active (undone) revision for this task already exists
-    if (existing.some(r => r.taskKey === task.key && !r.done)) return;
+    if (existing.some(r => r.taskKey === task.key && !r.done)) return existing;
     const scheduledDate = toDateStrIST(addDaysIST(nowIST(settings.timezone), INITIAL_REVISION_DAYS));
     const id = `${task.key}_rev_s0_${scheduledDate}`;
-    if (existing.some(r => r.id === id)) return;
+    if (existing.some(r => r.id === id)) return existing;
     const entry: RevisionEntry = {
       id,
       taskKey: task.key,
@@ -1271,7 +1325,15 @@ export function Today() {
       stage: 0,
       done: false,
     };
-    const merged = [...existing, entry];
+    return [...existing, entry];
+  };
+
+  // Schedule first revision when a task is marked complete (single-field
+  // write — used by call sites that don't also touch `pending` at the same
+  // time; see `completePendingTask` for the combined-write version).
+  const scheduleRevisions = (task: PlanTask) => {
+    const merged = buildScheduledRevisions(revisions, task);
+    if (merged === revisions) return;
     setRevisions(merged);
     syncRevisions(merged);
   };

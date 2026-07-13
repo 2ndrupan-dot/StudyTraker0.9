@@ -417,13 +417,22 @@ function doResetProgress(subjs: Subject[], currentSettings: CourseSettings, user
   return { subjects: resetSubjects, settings: resetSettings };
 }
 
-function pickNewerData(firestore: StudyData | null, local: StudyData | null): StudyData | null {
+// NOTE: this used to compare `firestore.savedAt` against `local.savedAt` with
+// plain `>` — but those two timestamps can come from the clocks of two
+// *different* devices (Firestore's value was written by whichever device
+// saved last; local's value was written by THIS device). Client clocks drift
+// (minutes to hours) across phones/browsers, so that comparison would
+// silently keep serving a stale local cache forever on a device whose clock
+// merely lags another device's — which is exactly the "completed on the app
+// but not showing on the website" symptom. We now decide using
+// `preferLocal` (whether THIS device has a local edit it knows Firestore
+// hasn't confirmed yet — see `hasUnsyncedEditRef` / the `*_unsynced` flag),
+// never by comparing two devices' clocks against each other.
+function pickNewerData(firestore: StudyData | null, local: StudyData | null, preferLocal: boolean): StudyData | null {
   if (!firestore && !local) return null;
   if (!firestore) return local;
   if (!local) return firestore;
-  const fsTime = firestore.savedAt ?? 0;
-  const lcTime = local.savedAt ?? 0;
-  return lcTime > fsTime ? local : firestore;
+  return preferLocal ? local : firestore;
 }
 
 export function StudyProvider({ children }: { children: ReactNode }) {
@@ -457,6 +466,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // remote onSnapshot. Without this, every incoming remote update would be
   // immediately re-saved to Firestore with a new timestamp, creating a sync loop.
   const skipNextSaveRef = useRef(false);
+  // True while this device has a local edit not yet confirmed written to
+  // Firestore (mirrors the `${lsKey}__unsynced` localStorage flag, kept as a
+  // ref too for synchronous checks inside the onSnapshot callback).
+  const hasUnsyncedEditRef = useRef(false);
 
   // Always-current refs so flushSave never captures stale closures
   const userRef = useRef(user);
@@ -654,6 +667,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
             const lsRaw = localKey('data');
             const localData = lsRaw ? getLocalData(lsRaw) : null;
+            // Did THIS device make an edit that was never confirmed written to
+            // Firestore (app closed mid-debounce, or while offline)? Only in
+            // that case should the local cache be allowed to win over Firestore.
+            const localUnsynced = lsRaw ? localStorage.getItem(`${lsRaw}__unsynced`) === '1' : false;
+            hasUnsyncedEditRef.current = localUnsynced;
 
             let legacySubjects: Subject[] | null = null;
             let legacySettings: CourseSettings | null = null;
@@ -666,7 +684,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
               } catch { /* ignore */ }
             }
 
-            let best = pickNewerData(fsData, localData);
+            let best = pickNewerData(fsData, localData, localUnsynced);
 
             // If a companion-doc / legacy-main self-heal recovered notes above,
             // re-apply them onto whichever source won the freshness comparison.
@@ -742,10 +760,18 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           })();
         } else {
           // ── Real-time update from another device ──
-          // Skip if not newer, if it's our own pending write, or same data we have.
+          // Skip if it's our own pending write, or if THIS device has a local
+          // edit that hasn't been confirmed written to Firestore yet (in the
+          // ~400ms debounce window before flushSave even starts). We used to
+          // also skip whenever `fsDataRaw.savedAt <= lastSavedAt.current` —
+          // but those two timestamps can be Date.now() from two *different*
+          // devices' clocks, so any clock drift made this device permanently
+          // ignore a genuinely newer remote update (e.g. a chapter completed
+          // on another device never showing up here). Gate purely on this
+          // device's own state instead.
           if (!fsDataRaw) return;
           if (snap.metadata.hasPendingWrites) return;
-          if (fsDataRaw.savedAt && fsDataRaw.savedAt <= lastSavedAt.current) return;
+          if (hasUnsyncedEditRef.current) return;
 
           // Kick off async notes-doc merge; guard with active + seq before applying.
           (async () => {
@@ -917,6 +943,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         await setDoc(notesDocRef, notesPayload, { merge: false });
       }
       await setDoc(docRef, mainPayload, { merge: false });
+      // Firestore now has this edit — clear the "unsynced" marker so a future
+      // load on this device trusts Firestore instead of this local cache.
+      const lsKeyForFlag = localKey('data');
+      if (lsKeyForFlag) localStorage.removeItem(`${lsKeyForFlag}__unsynced`);
+      hasUnsyncedEditRef.current = false;
       setSyncStatus('success');
       setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
     } catch (err) {
@@ -955,8 +986,17 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     // server snapshot arriving during the 400 ms debounce window is ignored.
     const payload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, savedAt: Date.now() };
     const lsKey = localKey('data');
-    if (lsKey) localStorage.setItem(lsKey, JSON.stringify(payload));
+    if (lsKey) {
+      localStorage.setItem(lsKey, JSON.stringify(payload));
+      // Mark this edit as not-yet-confirmed-in-Firestore. Cleared by flushSave
+      // once the write succeeds. If the app is closed/killed before that, this
+      // flag survives (it's in localStorage) so the next load on THIS device
+      // knows to prefer its own cache over Firestore instead of guessing from
+      // timestamps that may have been set by a different device's clock.
+      localStorage.setItem(`${lsKey}__unsynced`, '1');
+    }
     lastSavedAt.current = payload.savedAt!;
+    hasUnsyncedEditRef.current = true;
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSyncStatus('syncing');

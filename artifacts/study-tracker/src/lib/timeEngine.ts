@@ -256,7 +256,9 @@ export function isChapterContentDone(ch: Chapter): boolean {
 export function isChapterUnlocked(subj: Subject, chapterIndex: number): boolean {
   if (chapterIndex === 0) return true;
   for (let i = 0; i < chapterIndex; i++) {
-    if (!subj.chapters[i].completed) return false;
+    // A chapter only unlocks once the previous chapter is FULLY done (green),
+    // not just overview-complete (saffron). Applies at every level.
+    if (!isChapterContentDone(subj.chapters[i])) return false;
   }
   return true;
 }
@@ -265,25 +267,25 @@ export function isTopicUnlocked(chapter: Chapter, topicIndex: number): boolean {
   // First topic is always accessible within the chapter
   if (topicIndex === 0) return true;
   for (let i = 0; i < topicIndex; i++) {
-    if (!chapter.topics[i].completed) return false;
+    if (!isTopicContentDone(chapter.topics[i])) return false;
   }
   return true;
 }
 
-// TOPIC-FIRST: subtopics only unlock after the parent topic is complete
+// TOPIC-FIRST: subtopics only unlock after the parent topic's own overview is complete
 export function isSubtopicUnlocked(topic: Topic, subtopicIndex: number): boolean {
   if (!topic.completed) return false; // Topic must be completed first (Topic-First rule)
   for (let i = 0; i < subtopicIndex; i++) {
-    if (!topic.subtopics[i].completed) return false;
+    if (!isSubtopicContentDone(topic.subtopics[i])) return false;
   }
   return true;
 }
 
-// Parent-first: concepts unlock only after the parent subtopic is complete
+// Parent-first: concepts unlock only after the parent subtopic's own overview is complete
 export function isConceptUnlocked(subtopic: Subtopic, conceptIndex: number): boolean {
   if (!subtopic.completed) return false;
   for (let i = 0; i < conceptIndex; i++) {
-    if (!subtopic.concepts[i].completed) return false;
+    if (!isConceptContentDone(subtopic.concepts[i])) return false;
   }
   return true;
 }

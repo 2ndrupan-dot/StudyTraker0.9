@@ -6,7 +6,7 @@ import {
   Plus, Trash2, ChevronRight,
   BookOpen, Layers, List, Lightbulb, Dot, FolderPlus,
   CheckCircle2, Circle, Pencil, Lock,
-  BookOpenCheck, Star, AlertTriangle, StickyNote, Filter, RotateCcw, GripVertical, ArrowUpDown,
+  Star, AlertTriangle, StickyNote, Filter, RotateCcw, GripVertical, ArrowUpDown,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor, KeyboardSensor,
@@ -924,22 +924,11 @@ export function Subjects() {
                         {subj.chapters.length > 0 && subj.chapters.every(c => isChapterContentDone(c)) && (
                           <span className="px-1.5 py-0.5 bg-green-500/10 text-green-700 text-[9px] font-bold rounded-md">✓ {t('filterCompleted')}</span>
                         )}
-                        {counts.overviewOnly > 0 && (
-                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-indigo-500/15 text-indigo-700 text-[9px] font-bold rounded-md border border-indigo-300/60">
-                            <BookOpenCheck size={9} /> {counts.overviewOnly} {t('overviewBadge')}
-                          </span>
-                        )}
                         <MarksBadgeRow important={subj.important} weak={subj.weak} note={subj.note} onClickNote={() => openNote(subjPath, subj.note ?? '')} size="xs" />
                       </div>
                       {/* Meta row — chapters count + date */}
                       <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium overflow-hidden">
                         <span className="whitespace-nowrap">{t('chapters')}: {completedChapters}/{chapterCount}</span>
-                        {counts.overviewOnly > 0 && (
-                          <>
-                            <span className="shrink-0">•</span>
-                            <span className="text-indigo-600 font-bold whitespace-nowrap shrink-0">{counts.overviewOnly} {t('overviewDone')}</span>
-                          </>
-                        )}
                         <span className="shrink-0">•</span>
                         <span className="whitespace-nowrap shrink-0">{format(parseISO(subj.deadline), 'MMM d, yy')}</span>
                       </div>
@@ -1033,7 +1022,6 @@ export function Subjects() {
                             const chExpanded = expandedChapter === chapter.id;
                             const topicCount = chapter.topics.length;
                             const completedTopics = chapter.topics.filter(t => isTopicContentDone(t)).length;
-                            const overviewTopics = chapter.topics.filter(t => t.completed && !isTopicContentDone(t)).length;
                             let chSubtopics = 0, chCompletedSubs = 0;
                             chapter.topics.forEach(t => { chSubtopics += t.subtopics.length; chCompletedSubs += t.subtopics.filter(s => isSubtopicContentDone(s)).length; });
                             const chPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, level: 'chapter' };
@@ -1059,15 +1047,10 @@ export function Subjects() {
                                       disabled={chLocked}
                                       title={chLocked ? t('completePrevChapter') : undefined}
                                     >
-                                      {chLocked ? <Lock size={18} className="text-muted-foreground/50" /> : isChapterContentDone(chapter) ? <CheckCircle2 size={18} className="text-green-500" /> : <Circle size={18} />}
+                                      {chLocked ? <Lock size={18} className="text-muted-foreground/50" /> : isChapterContentDone(chapter) ? <CheckCircle2 size={18} className="text-green-500" /> : chapter.completed ? <CheckCircle2 size={18} className="text-amber-600" /> : <Circle size={18} />}
                                     </button>
                                     <div className="flex items-center gap-1 flex-wrap">
                                       <span className="text-[9px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L2</span>
-                                      {chapter.completed && !isChapterContentDone(chapter) && (
-                                        <span className="flex items-center gap-0.5 text-[9px] font-bold text-indigo-700 bg-indigo-500/15 px-1.5 py-0.5 rounded-full border border-indigo-400/60 shrink-0">
-                                          <BookOpenCheck size={9} /> {t('overviewBadge')}
-                                        </span>
-                                      )}
                                     </div>
                                     <div className="ml-auto flex items-center gap-0.5 shrink-0">
                                       <ItemActions
@@ -1100,7 +1083,6 @@ export function Subjects() {
                                   <MarksBadgeRow important={chapter.important} weak={chapter.weak} note={chapter.note} onClickNote={() => openNote(chPath, chapter.note ?? '')} />
                                   <p className="text-[10px] text-muted-foreground mt-0.5">
                                     {t('topics')}: {completedTopics}/{topicCount}
-                                    {overviewTopics > 0 ? ` • ${overviewTopics} ${t('overviewBadge')}` : ''}
                                     {chSubtopics > 0 ? ` • Subtopics: ${chCompletedSubs}/${chSubtopics}` : ''}
                                     {chapter.estimatedMinutes ? ` • ${formatTotalTime(chapter.estimatedMinutes, t)}` : ''}
                                   </p>
@@ -1126,7 +1108,6 @@ export function Subjects() {
                                           const topLocked = chLocked || !isTopicUnlocked(chapter, topIdx);
                                           const tExpanded = expandedTopic === topic.id;
                                           const completedSubs = topic.subtopics.filter(s => isSubtopicContentDone(s)).length;
-                                          const overviewSubs = topic.subtopics.filter(s => s.completed && !isSubtopicContentDone(s)).length;
                                           let topConcepts = 0, topCompletedConcepts = 0;
                                           topic.subtopics.forEach(s => { topConcepts += s.concepts.length; topCompletedConcepts += s.concepts.filter(c => c.completed).length; });
                                           const topPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, level: 'topic' };
@@ -1152,15 +1133,10 @@ export function Subjects() {
                                                     disabled={topLocked}
                                                     title={topLocked ? t('completePrevTopic') : undefined}
                                                   >
-                                                    {topLocked ? <Lock size={15} className="text-muted-foreground/40" /> : isTopicContentDone(topic) ? <CheckCircle2 size={15} className="text-green-500" /> : <Circle size={15} className="text-muted-foreground" />}
+                                                    {topLocked ? <Lock size={15} className="text-muted-foreground/40" /> : isTopicContentDone(topic) ? <CheckCircle2 size={15} className="text-green-500" /> : topic.completed ? <CheckCircle2 size={15} className="text-amber-600" /> : <Circle size={15} className="text-muted-foreground" />}
                                                   </button>
                                                   <div className="flex items-center gap-1 flex-wrap">
                                                     <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L3</span>
-                                                    {topic.completed && !isTopicContentDone(topic) && (
-                                                      <span className="flex items-center gap-0.5 text-[8px] font-bold text-indigo-700 bg-indigo-500/15 px-1.5 py-0.5 rounded-full border border-indigo-400/60 shrink-0">
-                                                        <BookOpenCheck size={8} /> {t('overviewBadge')}
-                                                      </span>
-                                                    )}
                                                   </div>
                                                   <div className="ml-auto flex items-center gap-0.5 shrink-0">
                                                     <ItemActions
@@ -1193,7 +1169,6 @@ export function Subjects() {
                                                 <MarksBadgeRow size="xs" important={topic.important} weak={topic.weak} note={topic.note} onClickNote={() => openNote(topPath, topic.note ?? '')} />
                                                 <p className="text-[9px] text-muted-foreground mt-0.5">
                                                   Subtopics: {completedSubs}/{topic.subtopics.length}
-                                                  {overviewSubs > 0 ? ` • ${overviewSubs} ${t('overviewBadge')}` : ''}
                                                   {topConcepts > 0 ? ` • Concepts: ${topCompletedConcepts}/${topConcepts}` : ''}
                                                   {topic.estimatedMinutes ? ` • ${formatTotalTime(topic.estimatedMinutes, t)}` : ''}
                                                 </p>
@@ -1219,7 +1194,6 @@ export function Subjects() {
                                                         const subLocked = topLocked || !isSubtopicUnlocked(topic, subIdx);
                                                         const subExpanded = expandedSubtopic === sub.id;
                                                         const completedConcepts = sub.concepts.filter(c => isConceptContentDone(c)).length;
-                                                        const overviewConcepts = sub.concepts.filter(c => c.completed && !isConceptContentDone(c)).length;
                                                         let subPoints = 0, subCompletedPoints = 0;
                                                         sub.concepts.forEach(c => { subPoints += c.points.length; subCompletedPoints += c.points.filter(p => p.completed).length; });
                                                         const subPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, level: 'subtopic' };
@@ -1240,15 +1214,10 @@ export function Subjects() {
                                                               </p>
                                                               <div className="flex items-center gap-1 mt-1 flex-wrap">
                                                                 <button onClick={e => { e.stopPropagation(); if (!subLocked) toggleSubtopicComplete(subj.id, chapter.id, topic.id, sub.id); }} disabled={subLocked} title={subLocked ? t('completePrevSubtopic') : undefined} className="shrink-0">
-                                                                  {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : isSubtopicContentDone(sub) ? <CheckCircle2 size={13} className="text-green-500" /> : <Circle size={13} className="text-muted-foreground" />}
+                                                                  {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : isSubtopicContentDone(sub) ? <CheckCircle2 size={13} className="text-green-500" /> : sub.completed ? <CheckCircle2 size={13} className="text-amber-600" /> : <Circle size={13} className="text-muted-foreground" />}
                                                                 </button>
                                                                 <div className="flex items-center gap-1 flex-wrap">
                                                                   <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L4</span>
-                                                                  {sub.completed && !isSubtopicContentDone(sub) && (
-                                                                    <span className="flex items-center gap-0.5 text-[8px] font-bold text-indigo-700 bg-indigo-500/15 px-1.5 py-0.5 rounded-full border border-indigo-400/60 shrink-0">
-                                                                      <BookOpenCheck size={8} /> {t('overviewBadge')}
-                                                                    </span>
-                                                                  )}
                                                                 </div>
                                                                 <div className="ml-auto flex items-center gap-0.5 shrink-0">
                                                                   <ItemActions
@@ -1275,7 +1244,6 @@ export function Subjects() {
                                                               <MarksBadgeRow size="xs" important={sub.important} weak={sub.weak} note={sub.note} onClickNote={() => openNote(subPath, sub.note ?? '')} />
                                                               <p className="text-[8px] text-muted-foreground">
                                                                 Concepts: {completedConcepts}/{sub.concepts.length}
-                                                                {overviewConcepts > 0 ? ` • ${overviewConcepts} ${t('overviewBadge')}` : ''}
                                                                 {subPoints > 0 ? ` • Points: ${subCompletedPoints}/${subPoints}` : ''}
                                                                 {sub.estimatedMinutes ? ` • ${formatTotalTime(sub.estimatedMinutes, t)}` : ''}
                                                               </p>
@@ -1312,16 +1280,11 @@ export function Subjects() {
                                                                             </p>
                                                                             <div className="flex items-center gap-1 mt-0.5">
                                                                               <button onClick={e => { e.stopPropagation(); if (!conLocked) toggleConceptComplete(subj.id, chapter.id, topic.id, sub.id, concept.id); }} disabled={conLocked} title={conLocked ? t('completePrevConcept') : undefined} className="shrink-0">
-                                                                                {conLocked ? <Lock size={11} className="text-muted-foreground/30" /> : isConceptContentDone(concept) ? <CheckCircle2 size={11} className="text-green-500" /> : <Circle size={11} className="text-muted-foreground" />}
+                                                                                {conLocked ? <Lock size={11} className="text-muted-foreground/30" /> : isConceptContentDone(concept) ? <CheckCircle2 size={11} className="text-green-500" /> : concept.completed ? <CheckCircle2 size={11} className="text-amber-600" /> : <Circle size={11} className="text-muted-foreground" />}
                                                                               </button>
                                                                               <div className="flex items-center gap-1 flex-wrap">
                                                                                 <Lightbulb size={8} className="text-yellow-500 shrink-0" />
                                                                                 <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L5</span>
-                                                                                {concept.completed && !isConceptContentDone(concept) && (
-                                                                                  <span className="flex items-center gap-0.5 text-[8px] font-bold text-indigo-700 bg-indigo-500/15 px-1.5 py-0.5 rounded-full border border-indigo-400/60 shrink-0">
-                                                                                    <BookOpenCheck size={7} /> {t('overviewBadge')}
-                                                                                  </span>
-                                                                                )}
                                                                               </div>
                                                                               <div className="ml-auto flex items-center gap-0.5 shrink-0">
                                                                                 <ItemActions

@@ -5,13 +5,13 @@ import { BookOpen } from 'lucide-react';
 const SEEN_KEY = '@study_splash_seen_session';
 
 /**
- * Mobile-only animated launch splash screen.
+ * Animated launch splash screen (mobile and desktop).
  * Sequence: logo slides up from the bottom → "StudyTrack" title fades in below it
- * → tagline fades in below the title → the app content reveals.
+ * → the app content reveals.
  * Shown once per browser session (so it doesn't replay on every in-app navigation/reload).
  */
 export function SplashScreen({ children }: { children: React.ReactNode }) {
-  const [stage, setStage] = useState<'logo' | 'title' | 'tagline' | 'done'>(() => {
+  const [stage, setStage] = useState<'logo' | 'title' | 'done'>(() => {
     try {
       return sessionStorage.getItem(SEEN_KEY) ? 'done' : 'logo';
     } catch {
@@ -22,24 +22,14 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (stage === 'done') return;
 
-    // This splash is mobile-only (md:hidden). Skip the whole sequence — timers,
-    // audio, and the session-seen write — on desktop viewports so nothing runs
-    // or plays behind the scenes when the overlay isn't even shown.
-    const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
-    if (!isMobile) {
-      setStage('done');
-      return;
-    }
-
     const t1 = setTimeout(() => setStage('title'), 650);
-    const t2 = setTimeout(() => setStage('tagline'), 1250);
-    const t3 = setTimeout(() => {
+    const t2 = setTimeout(() => {
       setStage('done');
       try { sessionStorage.setItem(SEEN_KEY, '1'); } catch { /* ignore */ }
-    }, 2350);
+    }, 1750);
 
     return () => {
-      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+      clearTimeout(t1); clearTimeout(t2);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -51,7 +41,7 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
         {stage !== 'done' && (
           <motion.div
             key="splash"
-            className="md:hidden fixed inset-0 z-[100] flex flex-col items-center justify-center gradient-hero"
+            className="fixed inset-0 z-[100] flex flex-col items-center justify-center gradient-hero"
             exit={{ opacity: 0 }}
             transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
           >
@@ -67,9 +57,9 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
               </div>
             </motion.div>
 
-            <div className="mt-5 text-center min-h-[64px]">
+            <div className="mt-5 text-center min-h-[44px]">
               <AnimatePresence>
-                {(stage === 'title' || stage === 'tagline') && (
+                {stage === 'title' && (
                   <motion.h1
                     key="title"
                     initial={{ opacity: 0, y: 12 }}
@@ -79,19 +69,6 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
                   >
                     StudyTrack
                   </motion.h1>
-                )}
-              </AnimatePresence>
-              <AnimatePresence>
-                {stage === 'tagline' && (
-                  <motion.p
-                    key="tagline"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                    className="text-white/85 mt-1.5 text-sm font-medium"
-                  >
-                    The Smart Learning Platform by Rupan Nama
-                  </motion.p>
                 )}
               </AnimatePresence>
             </div>

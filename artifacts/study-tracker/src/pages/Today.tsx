@@ -976,27 +976,34 @@ export function Today() {
     }
 
     if (stored && stored.date === todayStr) {
-      // One-time repair: plans locked before the one-item-per-subject fix may
-      // still hold several regular (non-Load-More) tasks per subject, and —
-      // worse — the *order* they were stored in doesn't necessarily match
-      // what the current rules (chapter overview → topic overview → ...)
-      // would pick as "the" item for that subject. Simply keeping "whichever
-      // one came first in the old array" can keep the WRONG item (e.g. a
-      // topic when the chapter overview is actually still incomplete),
-      // which then makes Load More add the real next item as a bogus
-      // "extra" even though nothing was completed.
+      // Same-day: preserve the stored plan as-is so that:
+      // 1. Completed tasks stay in lockedPlan → the "N completed" section
+      //    continues to render correctly after a refresh (generateSmartPlan
+      //    only returns incomplete items, so calling it here would drop them).
+      // 2. No new subjects auto-appear — generateSmartPlan considers all
+      //    eligible subjects and may select more than what was originally
+      //    planned for the day. The user must explicitly click "Load More"
+      //    to surface additional subjects or tasks.
       //
-      // Fix: recompute the canonical single-item-per-subject base plan fresh
-      // from current completion state, and keep only genuine Load-More
-      // extras (tasks not already covered by that canonical base) on top.
-      const canonicalBase = generateSmartPlan(subjects, dailyBudgetMins, pendingItems, todayStr);
-      const canonicalKeys = new Set(canonicalBase.map(t => t.key));
-      const loadMoreExtras = stored.tasks.filter(t => t.loadedFrom && !canonicalKeys.has(t.key));
-      const repaired = [...canonicalBase, ...loadMoreExtras];
+      // We only:
+      //   a) Drop tasks whose underlying item was deleted from the course.
+      //   b) Dedup: keep the first base task per subject (handles legacy plans
+      //      stored before the single-item-per-subject rule was enforced).
+      //   c) Keep all Load-More extras as-is.
+      const validTasks = stored.tasks.filter(t => doesTaskExist(subjects, t));
+      const seenSubjects = new Set<string>();
+      const repaired: PlanTask[] = [];
+      for (const t of validTasks) {
+        if (t.loadedFrom) { repaired.push(t); continue; } // always keep Load-More extras
+        if (!seenSubjects.has(t.subjectId)) {
+          seenSubjects.add(t.subjectId);
+          repaired.push(t);
+        }
+      }
       setLockedPlan(repaired);
-      const sameLength = repaired.length === stored.tasks.length;
-      const sameKeys = sameLength && repaired.every(t => stored.tasks.some(st => st.key === t.key));
-      if (!sameKeys) syncPlan(todayStr, repaired);
+      const changed = repaired.length !== stored.tasks.length ||
+        repaired.some((t, i) => t.key !== stored.tasks[i]?.key);
+      if (changed) syncPlan(todayStr, repaired);
     } else {
       if (stored && stored.date !== todayStr) {
         const stillIncomplete = stored.tasks.filter(t => !isTaskCompleted(subjects, t));

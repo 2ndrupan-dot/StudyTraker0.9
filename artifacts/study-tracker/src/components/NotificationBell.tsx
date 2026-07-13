@@ -246,32 +246,6 @@ export function NotificationBell() {
                     </div>
                   </div>
 
-                  {/* Permissions preview */}
-                  {share.type !== 'message' && (
-                    <div className="flex flex-wrap gap-1">
-                      {share.permissions.editNotes && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 font-medium">
-                          {lang === 'bn' ? 'সম্পাদনা' : 'Edit'}
-                        </span>
-                      )}
-                      {share.permissions.deleteNotes && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-600 font-medium">
-                          {lang === 'bn' ? 'ডিলিট' : 'Delete'}
-                        </span>
-                      )}
-                      {share.permissions.downloadNotes && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 font-medium">
-                          {lang === 'bn' ? 'ডাউনলোড' : 'Download'}
-                        </span>
-                      )}
-                      {share.permissions.copyNotes && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-600 font-medium">
-                          {lang === 'bn' ? 'কপি' : 'Copy'}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
                   {/* Actions */}
                   {share.type === 'course' ? (
                     <div className="flex gap-2">

@@ -1596,9 +1596,9 @@ export function Today() {
             );
           })()}
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            {/* Left: info badges — shrink-0 keeps natural size, no flex-grow */}
-            <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center justify-between gap-1.5">
+            {/* Left: info badges */}
+            <div className="flex items-center gap-1 shrink-0">
               <div className="flex items-center gap-1 text-muted-foreground text-[10px] sm:text-[11px] font-semibold bg-secondary/70 px-1.5 sm:px-2 py-1 rounded-lg whitespace-nowrap">
                 <Clock size={10} className="shrink-0" /> ~{formatMins(task.estimatedMins, t('hour'), t('mins'))}
               </div>
@@ -1609,16 +1609,17 @@ export function Today() {
                 </div>
               )}
             </div>
-            {/* Right: action buttons — ml-auto pushes to right edge on both single & wrapped rows */}
-            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+            {/* Right: action buttons — always on same row as badges */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
               {task.loadedFrom && !done && !opts?.isRevision && (
                 <button
                   onClick={() => returnToOriginal(task)}
                   title={t('returnToOriginTitle')}
-                  className="flex items-center gap-1 h-7 px-2 rounded-xl border border-indigo-200 text-indigo-600 bg-indigo-500/5 text-[10px] sm:text-[11px] font-bold hover:bg-indigo-500/15 transition-all whitespace-nowrap"
+                  className="flex items-center gap-1 h-7 w-7 sm:w-auto sm:px-2.5 justify-center rounded-xl border border-indigo-200 text-indigo-600 bg-indigo-500/5 text-[10px] sm:text-[11px] font-bold hover:bg-indigo-500/15 transition-all whitespace-nowrap"
                 >
                   <RotateCcw size={11} className="shrink-0" />
-                  <span className="sm:inline">{t('returnToOrigin')}</span>
+                  {/* Text hidden on mobile, visible on sm+ */}
+                  <span className="hidden sm:inline">{t('returnToOrigin')}</span>
                 </button>
               )}
               {!done ? (

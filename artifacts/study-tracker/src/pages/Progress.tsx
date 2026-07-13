@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useStudy } from '@/context/StudyContext';
 import type { MarkPath } from '@/lib/types';
 import { useCourse } from '@/context/CourseContext';
-import { computeGranularProgress } from '@/lib/timeEngine';
+import { computeGranularProgress, formatProgressPercent } from '@/lib/timeEngine';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
 import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock } from 'lucide-react';
@@ -689,13 +689,13 @@ export function Progress() {
               animate={{ scale: 1, opacity: 1 }}
               className="text-5xl font-black text-primary leading-none"
             >
-              {overallProg}%
+              {formatProgressPercent(overallProg)}%
             </motion.span>
           </div>
           <div className="h-4 w-full bg-secondary rounded-full overflow-hidden relative z-10 border border-border/50 shadow-inner">
             <motion.div
               initial={{ width: 0 }}
-              animate={{ width: `${overallProg}%` }}
+              animate={{ width: `${Math.max(overallProg, overallProg > 0 ? 0.5 : 0)}%` }}
               transition={{ duration: 1, ease: [0.34, 1.56, 0.64, 1] }}
               className="h-full bg-gradient-to-r from-primary to-primary/60 rounded-full"
             />
@@ -731,13 +731,13 @@ export function Progress() {
                   <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
                     <motion.div
                       initial={{ width: 0 }}
-                      animate={{ width: `${p}%` }}
+                      animate={{ width: `${Math.max(p, p > 0 ? 0.5 : 0)}%` }}
                       transition={{ duration: 0.6, delay: 0.1 * i }}
                       className="h-full rounded-full"
                       style={{ backgroundColor: s.color }}
                     />
                   </div>
-                  <span className="text-xs font-bold text-muted-foreground w-8 text-right">{p}%</span>
+                  <span className="text-xs font-bold text-muted-foreground w-10 text-right">{formatProgressPercent(p)}%</span>
                 </div>
               </ScrollReveal>
             );

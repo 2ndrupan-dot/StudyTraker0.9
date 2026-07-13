@@ -275,8 +275,24 @@ export function computeGranularProgress(subjects: Subject[]): { completed: numbe
       }
     }
   }
-  const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
+  // Keep the raw (unrounded) fraction — with a large tree, one item can be a
+  // tiny slice (e.g. 1/293 ≈ 0.34%), and rounding that to whole numbers would
+  // show "0%" right after finishing something, which feels discouraging.
+  const percent = total === 0 ? 0 : (completed / total) * 100;
   return { completed, total, percent };
+}
+
+// Formats a progress percentage so any real progress (completed > 0) always
+// reads as non-zero, even if it's a fraction of a percent. Picks the fewest
+// decimal places needed to show a non-zero value, up to 3 decimals.
+export function formatProgressPercent(percent: number): string {
+  if (percent <= 0) return '0';
+  if (percent >= 10) return percent.toFixed(0);
+  for (let decimals = 0; decimals <= 3; decimals++) {
+    const fixed = percent.toFixed(decimals);
+    if (parseFloat(fixed) > 0) return fixed;
+  }
+  return percent.toFixed(3);
 }
 
 // ─── Locked/Unlocked logic ───────────────────────────────────────────────────

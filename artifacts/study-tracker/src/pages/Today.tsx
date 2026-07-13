@@ -25,7 +25,7 @@ import {
   adjPoint, adjConcept, adjSubtopic, adjTopic, adjChapter,
   findNextItem, calculateAdaptivePressure,
   totalContentMinutes, totalAdjustedMinutes,
-  isChapterContentDone, isTopicContentDone, computeGranularProgress,
+  isChapterContentDone, isTopicContentDone, computeGranularProgress, formatProgressPercent,
 } from '@/lib/timeEngine';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -2141,13 +2141,13 @@ export function Today() {
                               <TrendingUp size={11} className="text-primary/60" />
                               {isBn ? 'সামগ্রিক অগ্রগতি' : 'Overall Progress'}
                             </span>
-                            <span className="text-foreground font-bold">{overallPercent}%</span>
+                            <span className="text-foreground font-bold">{formatProgressPercent(overallPercent)}%</span>
                           </div>
                           <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
                             <motion.div
                               className="h-full bg-primary/50 rounded-full"
                               initial={{ width: 0 }}
-                              animate={{ width: `${overallPercent}%` }}
+                              animate={{ width: `${Math.max(overallPercent, overallPercent > 0 ? 0.5 : 0)}%` }}
                               transition={{ duration: 0.8, ease: 'easeOut' }}
                             />
                           </div>

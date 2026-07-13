@@ -17,10 +17,12 @@ lib/               ← shared libraries (api-zod, db, etc.)
 ```
 
 ## Running on Replit
-The study-tracker runs via the `artifacts/study-tracker: web` workflow:
-```
-cd artifacts/study-tracker && PORT=5000 pnpm dev
-```
+This project is set up as three Replit artifacts, each with its own managed workflow:
+- **StudyTrack** (`artifacts/study-tracker`, web) — main React/Vite frontend
+- **API Server** (`artifacts/api-server`, api) — optional Express backend
+- **Component Preview Server** (`artifacts/mockup-sandbox`, design) — Vite sandbox for UI mockups
+
+The platform assigns each artifact's dev server a dynamic port via `$PORT`; don't hardcode a port in the `dev` script (previously `PORT=5000` was hardcoded in `study-tracker/package.json`, which conflicted with the platform-assigned port — removed).
 
 ## Environment variables
 Firebase credentials are configured in `.replit` under `[userenv.shared]`:

@@ -92,5 +92,29 @@ service cloud.firestore {
 4. **Publish directory**: `artifacts/study-tracker/dist/public`
 5. Add all `VITE_FIREBASE_*` env vars **and** `VITE_ADMIN_EMAILS` in the Render dashboard.
 
+## Course Sharing (Admin → User)
+
+### How it works
+1. Admin opens **Admin Panel → Share tab**, picks a course, sets permissions & duration, sends.
+2. The user sees a notification bell 🔔. They click **গ্রহণ করুন / Accept**.
+3. The accepted course immediately appears in their course list (page reloads to pick it up).
+4. The user can study the course — open subjects, chapters, topics, and notes — exactly like their own courses.
+
+### Permissions enforced in the note viewer
+| Admin sets | Effect on user's NoteEditorModal |
+|---|---|
+| `editNotes: false` | Edit/pencil button hidden; note is read-only |
+| `downloadNotes: false` | Download-as-PDF button hidden |
+| `copyNotes: false` | Copy button hidden |
+
+### Shared course indicator
+The Subjects page header shows **🔗 Shared · AdminName** when a shared course is active.
+
+### Architecture note
+The course data (studyData + notes) is embedded as a snapshot in the shareRequest Firestore document at send-time. On accept, it is copied to the user's own `users/{uid}/studyData`, `users/{uid}/courseNotes`, and `users/{uid}/courses` collections. A separate `users/{uid}/sharedCourses/{courseId}` doc tracks permissions and expiry for runtime enforcement. No new Firestore security rules are required.
+
+### Firestore Security Rules
+No changes needed beyond what is already in the Firebase console. The existing `shareRequests` rules allow both admin and recipient to read the document (which includes the course snapshot).
+
 ## User preferences
 - User plans to deploy via Render (GitHub → Render static site).

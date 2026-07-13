@@ -7,8 +7,10 @@ import {
   setDoc,
   deleteDoc,
   getDoc,
+  onSnapshot,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import type { SharePermissions } from './AdminContext';
 
 export interface Course {
   id: string;
@@ -20,6 +22,19 @@ export interface DeletedCourse extends Course {
   deletedAt: number; // unix ms — expires after 1 year
 }
 
+// Metadata stored in users/{uid}/sharedCourses/{courseId}
+export interface SharedCourseMeta {
+  shareId: string;
+  courseId: string;
+  originalCourseId: string;
+  courseName: string;
+  fromAdminName: string;
+  fromAdminEmail: string;
+  permissions: SharePermissions;
+  acceptedAt: number;
+  actualExpiresAt: number;
+}
+
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
 interface CourseContextType {
@@ -29,6 +44,8 @@ interface CourseContextType {
   activeCourse: Course | null;
   coursesLoaded: boolean;
   needsCourseCreation: boolean;
+  // Map of courseId → SharedCourseMeta for courses that came via admin share
+  sharedCoursesMeta: Record<string, SharedCourseMeta>;
   createCourse: (name: string) => Promise<string>;
   switchCourse: (courseId: string) => void;
   renameCourse: (courseId: string, name: string) => Promise<void>;
@@ -70,6 +87,22 @@ export function CourseProvider({ children }: { children: ReactNode }) {
   const [deletedCourses, setDeletedCourses] = useState<DeletedCourse[]>([]);
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const [coursesLoaded, setCoursesLoaded] = useState(false);
+  const [sharedCoursesMeta, setSharedCoursesMeta] = useState<Record<string, SharedCourseMeta>>({});
+
+  // ── Load shared-course metadata (real-time) ─────────────────────────────
+  useEffect(() => {
+    if (!user) { setSharedCoursesMeta({}); return; }
+    const colRef = collection(db, 'users', user.id, 'sharedCourses');
+    const unsub = onSnapshot(colRef, snap => {
+      const map: Record<string, SharedCourseMeta> = {};
+      snap.docs.forEach(d => {
+        const data = d.data() as SharedCourseMeta;
+        map[d.id] = data;
+      });
+      setSharedCoursesMeta(map);
+    }, () => { /* offline — keep previous */ });
+    return () => unsub();
+  }, [user?.id]); // eslint-disable-line
 
   useEffect(() => {
     if (!user) {
@@ -88,16 +121,6 @@ export function CourseProvider({ children }: { children: ReactNode }) {
     let resolved = false;
 
     // ── Cold-start safety net ────────────────────────────────────────────────
-    // On a freshly opened app (especially mobile, right after the device's
-    // network/radio reconnects), Firestore's getDocs() can hang for a long
-    // time before resolving or rejecting — there is no built-in timeout.
-    // Without a fallback, coursesLoaded (and therefore activeCourseId) would
-    // never be set, leaving the Today page stuck on its loading skeleton
-    // forever, until the user manually reloads. If the real fetch hasn't
-    // resolved within a short window, fall back to whatever we already have
-    // cached in localStorage so the app always becomes usable; the real
-    // fetch keeps running in the background and will silently reconcile
-    // (via the `active`/`resolved` guards below) the moment it does resolve.
     const staleLoadTimer = setTimeout(() => {
       if (!active || resolved) return;
       resolved = true;
@@ -207,23 +230,12 @@ export function CourseProvider({ children }: { children: ReactNode }) {
         if (legacySnap.exists()) {
           await setDoc(doc(db, 'users', user.id, 'studyData', id), legacySnap.data());
 
-          // The old single-course document may reference a companion
-          // "courseNotes/main" document (hasNotesDoc: true) holding all rich
-          // text notes. That companion doc is keyed by course id, so it must
-          // be migrated to "courseNotes/{id}" too — otherwise the notes
-          // silently vanish: studyData copies over fine (structure/settings),
-          // but the loader looks for courseNotes/{id}, finds nothing, and the
-          // subjects show up with empty notes even though the real note
-          // content still exists untouched under courseNotes/main.
           const legacyNotesRef = doc(db, 'users', user.id, 'courseNotes', 'main');
           const legacyNotesSnap = await getDoc(legacyNotesRef);
           if (legacyNotesSnap.exists()) {
             const notesData = legacyNotesSnap.data();
             await setDoc(doc(db, 'users', user.id, 'courseNotes', id), notesData);
 
-            // If the notes map itself was too large for one document, its
-            // content lives in a "chunks" subcollection under the notes doc —
-            // copy those chunk documents over as well.
             if (notesData?.chunked) {
               const legacyChunksSnap = await getDocs(
                 collection(db, 'users', user.id, 'courseNotes', 'main', 'chunks')
@@ -353,6 +365,7 @@ export function CourseProvider({ children }: { children: ReactNode }) {
       activeCourse,
       coursesLoaded,
       needsCourseCreation,
+      sharedCoursesMeta,
       createCourse,
       switchCourse,
       renameCourse,

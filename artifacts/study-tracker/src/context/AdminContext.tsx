@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import {
-  collection, doc, getDoc, setDoc,
+  collection, doc, getDoc, getDocs, setDoc,
   query, where, onSnapshot, addDoc, updateDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -19,6 +19,13 @@ export interface SharePermissions {
   copyNotes: boolean;
 }
 
+// Snapshot of a course's data embedded in the shareRequest at send-time so the
+// recipient can copy it to their own account when they accept.
+interface CourseSnapshot {
+  studyData: Record<string, unknown>;
+  notesJson: string; // JSON.stringify({ notes: Record<string,string>, overallNote: string })
+}
+
 export interface ShareRequest {
   id: string;
   fromAdminUid: string;
@@ -29,6 +36,8 @@ export interface ShareRequest {
   // Course share
   courseId?: string;
   courseName?: string;
+  // Embedded course data (set by sendShare, read by acceptShare)
+  courseSnapshot?: CourseSnapshot;
   // Note share
   noteTitle?: string;
   noteHtml?: string;
@@ -77,6 +86,46 @@ function durationToMs(value: number, unit: 'hours' | 'days' | 'months'): number 
   if (unit === 'hours') return value * 60 * 60 * 1000;
   if (unit === 'days') return value * 24 * 60 * 60 * 1000;
   return value * 30 * 24 * 60 * 60 * 1000;
+}
+
+// ─── Chunk helpers (mirrors the pattern in StudyContext) ──────────────────────
+/** Read all chunk docs from a chunks subcollection and flatten into [k,v] entries. */
+async function readChunkEntries(
+  chunksColRef: ReturnType<typeof collection>
+): Promise<Array<[string, string]>> {
+  const snap = await getDocs(chunksColRef);
+  const sorted = snap.docs.slice().sort((a, b) => Number(a.id) - Number(b.id));
+  const entries: Array<[string, string]> = [];
+  for (const d of sorted) {
+    const raw = d.data().data;
+    if (Array.isArray(raw)) {
+      for (const pair of raw as Array<{ k: string; v: string }>) entries.push([pair.k, pair.v]);
+    } else if (raw && typeof raw === 'object') {
+      entries.push(...Object.entries(raw as Record<string, string>));
+    }
+  }
+  return entries;
+}
+
+/** Reassemble split/chunked entries back into a single flat map. */
+function reassembleEntries(entries: Array<[string, string]>): Record<string, string> {
+  const groups = new Map<string, Array<{ index: number; value: string }>>();
+  const direct: Record<string, string> = {};
+  for (const [k, v] of entries) {
+    const parts = k.split('\u0001');
+    if (parts.length === 3) {
+      const base = parts[0];
+      if (!groups.has(base)) groups.set(base, []);
+      groups.get(base)!.push({ index: Number(parts[1]), value: v });
+    } else {
+      direct[k] = v;
+    }
+  }
+  groups.forEach((parts, base) => {
+    parts.sort((a, b) => a.index - b.index);
+    direct[base] = parts.map(p => p.value).join('');
+  });
+  return direct;
 }
 
 export function AdminProvider({ children }: { children: ReactNode }) {
@@ -170,10 +219,55 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       sentAt: ts,
       pendingExpiresAt,
     };
-    // Firestore rejects `undefined` field values (e.g. courseId/courseName when
-    // sharing a note, or noteTitle/noteHtml when sharing a course) — strip them
-    // out instead of sending them, otherwise addDoc() throws and the Send
-    // button silently does nothing.
+
+    // For course shares: embed a snapshot of the course data so the recipient
+    // can copy it to their own account when they accept. Best-effort — the share
+    // still goes through even if reading the snapshot fails.
+    if (params.type === 'course' && params.courseId) {
+      try {
+        const sdRef = doc(db, 'users', user.id, 'studyData', params.courseId);
+        const sdSnap = await getDoc(sdRef);
+        const rawSd = sdSnap.exists() ? sdSnap.data() : {};
+
+        // Read courseNotes (handles both chunked and non-chunked formats)
+        let notesMap: Record<string, string> = {};
+        let overallNote = '';
+        if (rawSd.hasNotesDoc) {
+          const ndRef = doc(db, 'users', user.id, 'courseNotes', params.courseId);
+          const ndSnap = await getDoc(ndRef);
+          if (ndSnap.exists()) {
+            const nd = ndSnap.data() as {
+              overallNote?: string;
+              notes?: Record<string, string>;
+              chunked?: boolean;
+            };
+            if (nd.chunked) {
+              const chunksCol = collection(
+                db, 'users', user.id, 'courseNotes', params.courseId, 'chunks'
+              );
+              const entries = await readChunkEntries(chunksCol);
+              const merged = reassembleEntries(entries);
+              overallNote = merged['__overall__'] || '';
+              delete merged['__overall__'];
+              notesMap = merged;
+            } else {
+              notesMap = nd.notes || {};
+              overallNote = nd.overallNote || '';
+            }
+          }
+        }
+
+        const snapshot: CourseSnapshot = {
+          studyData: rawSd as Record<string, unknown>,
+          notesJson: JSON.stringify({ notes: notesMap, overallNote }),
+        };
+        payload.courseSnapshot = snapshot;
+      } catch {
+        // Best-effort — the share is still sent without the snapshot
+      }
+    }
+
+    // Firestore rejects `undefined` field values — strip them out.
     for (const key of Object.keys(payload)) {
       if (payload[key] === undefined) delete payload[key];
     }
@@ -190,9 +284,69 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
   const acceptShare = async (shareId: string) => {
     const share = pendingShares.find(s => s.id === shareId);
-    if (!share) return;
+    if (!share || !user) return;
     const ts = Date.now();
     const actualExpiresAt = ts + durationToMs(share.durationValue, share.durationUnit);
+
+    // For course shares with an embedded snapshot: copy the course data into the
+    // user's own Firestore collections so it appears in their course list and they
+    // can study it just like any other course.
+    if (share.type === 'course' && share.courseId && share.courseSnapshot) {
+      try {
+        const snapshot = share.courseSnapshot;
+        // Use the shareId as the new courseId so it is always unique and traceable
+        const newCourseId = shareId;
+        const courseName = share.courseName || 'Shared Course';
+
+        // 1. Write the course entry (appears in course switcher)
+        await setDoc(doc(db, 'users', user.id, 'courses', newCourseId), {
+          id: newCourseId,
+          name: courseName,
+          createdAt: ts,
+        });
+
+        // 2. Write the study data (subjects tree without note HTML)
+        //    Always set hasNotesDoc: true so StudyContext loads notes from courseNotes.
+        const sdToWrite: Record<string, unknown> = {
+          ...snapshot.studyData,
+          hasNotesDoc: true,
+          savedAt: ts,
+        };
+        await setDoc(doc(db, 'users', user.id, 'studyData', newCourseId), sdToWrite);
+
+        // 3. Write the notes (HTML content for every item)
+        let parsedNotes: { notes: Record<string, string>; overallNote: string } = {
+          notes: {},
+          overallNote: '',
+        };
+        if (snapshot.notesJson) {
+          try {
+            parsedNotes = JSON.parse(snapshot.notesJson);
+          } catch { /* keep empty */ }
+        }
+        await setDoc(doc(db, 'users', user.id, 'courseNotes', newCourseId), {
+          notes: parsedNotes.notes || {},
+          overallNote: parsedNotes.overallNote || '',
+        });
+
+        // 4. Write shared-course metadata so permission checks can find it later
+        await setDoc(doc(db, 'users', user.id, 'sharedCourses', newCourseId), {
+          shareId,
+          courseId: newCourseId,
+          originalCourseId: share.courseId,
+          courseName,
+          fromAdminName: share.fromAdminName,
+          fromAdminEmail: share.fromAdminEmail,
+          permissions: share.permissions,
+          acceptedAt: ts,
+          actualExpiresAt,
+        });
+      } catch {
+        // If the course copy fails, still mark the share accepted — the user
+        // at least acknowledges the notification. They can re-request if needed.
+      }
+    }
+
     await updateDoc(doc(db, 'shareRequests', shareId), {
       status: 'accepted',
       acceptedAt: ts,

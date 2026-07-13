@@ -5,3 +5,4 @@
 - [Firestore cache switch to memory](firestore-memory-cache.md) — switched from persistentLocalCache to memoryLocalCache to fix accumulated-cache silent write failures.
 - [StudyTrack Today-page sync bugs](studytrack-today-sync-bugs.md) — cross-device clock-skew savedAt comparisons, UTC-seeded daily plan RNG, and non-atomic multi-field writes all caused sync/flicker bugs.
 - [StudyTrack granular overall-progress metric](studytrack-granular-progress.md) — every node at every level counts equally toward "Overall Progress"; use computeGranularProgress, don't reinvent the ratio.
+- [Course share accept flow](course-share-accept-flow.md) — snapshot embedded in shareRequest at send-time; copied to user's own collections on accept; permissions enforced via sharedCourses subcollection.

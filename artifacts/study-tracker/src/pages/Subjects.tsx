@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useStudy } from '@/context/StudyContext';
+import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
 import {
@@ -395,7 +396,12 @@ export function Subjects() {
     setNote, resetSubjectProgress,
     reorderSubjects, reorderChapters, reorderTopics, reorderSubtopics, reorderConcepts, reorderPoints,
   } = useStudy();
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const { sharedCoursesMeta, activeCourseId } = useCourse();
+
+  // If the active course was received via admin share, look up its permissions.
+  // undefined means the course is owned by the user — no restrictions.
+  const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
 
   const [reorderMode, setReorderMode] = useState(false);
   const registerTrunkRoot = useTreeTrunk();
@@ -429,6 +435,8 @@ export function Subjects() {
   const closeNote = () => { setNotePath(null); setNoteDraft(''); };
   const saveNote = () => {
     if (!notePath) return;
+    // Guard: respect editNotes permission for shared courses
+    if (activeSharedMeta && !activeSharedMeta.permissions.editNotes) { closeNote(); return; }
     setNote(notePath, noteDraft);
     closeNote();
   };
@@ -628,7 +636,14 @@ export function Subjects() {
             <button onClick={() => window.location.reload()} className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0 cursor-pointer hover:bg-white/30 transition-colors active:scale-95" title="Reload">
               <BookOpen size={22} className="text-white" strokeWidth={2.2} />
             </button>
-            <h1 className="font-bold text-white leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(1.05rem, 5.5vw, 1.5rem)', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('subjects')}</h1>
+            <div className="min-w-0">
+              <h1 className="font-bold text-white leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(1.05rem, 5.5vw, 1.5rem)', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('subjects')}</h1>
+              {activeSharedMeta && (
+                <p className="text-[10px] text-white/75 font-medium mt-0.5 truncate">
+                  🔗 {lang === 'bn' ? 'শেয়ার্ড কোর্স' : 'Shared'} · {activeSharedMeta.fromAdminName}
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <motion.div whileTap={{ scale: 0.95 }}>
@@ -1596,7 +1611,7 @@ export function Subjects() {
         isDanger={true}
       />
 
-      {/* Note editor */}
+      {/* Note editor — permissions are enforced for shared courses */}
       <NoteEditorModal
         isOpen={!!notePath}
         onClose={closeNote}
@@ -1610,6 +1625,9 @@ export function Subjects() {
         placeholder={t('notePlaceholder')}
         clearLabel={t('clearNote')}
         saveLabel={t('saveNote')}
+        editAllowed={!activeSharedMeta || activeSharedMeta.permissions.editNotes}
+        downloadAllowed={!activeSharedMeta || activeSharedMeta.permissions.downloadNotes}
+        copyAllowed={!activeSharedMeta || activeSharedMeta.permissions.copyNotes}
       />
 
       {/* Reset subject progress confirm */}

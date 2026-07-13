@@ -153,7 +153,18 @@ export function NotificationBell() {
 
   const handleAccept = async (share: ShareRequest) => {
     setAcceptingId(share.id);
-    try { await markSeen(share.id); await acceptShare(share.id); } finally { setAcceptingId(null); }
+    try {
+      await markSeen(share.id);
+      await acceptShare(share.id);
+      // For course shares the accepted course is now written to the user's own
+      // Firestore collections.  Reload so CourseContext picks up the new course
+      // and it appears in the course switcher immediately.
+      if (share.type === 'course' && share.courseSnapshot) {
+        window.location.reload();
+      }
+    } finally {
+      setAcceptingId(null);
+    }
   };
 
   const handleDecline = async (shareId: string) => {

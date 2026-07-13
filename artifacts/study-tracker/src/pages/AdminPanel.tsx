@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import {
   ShieldCheck, Users, Send, List, Plus, Trash2, Edit3, Check, X,
   BookOpen, StickyNote, ChevronRight, ChevronLeft, Clock, ArrowLeft,
-  UserCheck, UserMinus, RefreshCw, Eye, Save,
+  UserCheck, UserMinus, RefreshCw, Eye, EyeOff, Save, MessageSquare,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -34,6 +34,18 @@ function statusColor(status: string) {
   if (status === 'pending') return 'bg-amber-500/10 text-amber-700';
   if (status === 'accepted') return 'bg-green-500/10 text-green-700';
   return 'bg-red-500/10 text-red-600';
+}
+
+function typeIcon(type: ShareRequest['type'], size = 16) {
+  if (type === 'course') return <BookOpen size={size} />;
+  if (type === 'message') return <MessageSquare size={size} />;
+  return <StickyNote size={size} />;
+}
+
+function typeColorClass(type: ShareRequest['type']) {
+  if (type === 'course') return 'bg-indigo-500/10 text-indigo-600';
+  if (type === 'message') return 'bg-sky-500/10 text-sky-600';
+  return 'bg-amber-500/10 text-amber-600';
 }
 
 const DEFAULT_PERMISSIONS: SharePermissions = {
@@ -250,18 +262,23 @@ function SentShareRow({
   onEditPermissions: (share: ShareRequest) => void;
   onCancel: (shareId: string) => void;
 }) {
+  // For note/message shares, "declined" means the recipient deleted the
+  // notification themselves rather than the admin cancelling a pending share.
+  const declinedLabel = share.type === 'course'
+    ? (lang === 'bn' ? 'প্রত্যাখ্যান করেছে' : 'Rejected')
+    : (lang === 'bn' ? 'ইউজার ডিলিট করেছে' : 'Deleted by user');
+
   return (
     <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-3">
       <div className="flex items-start gap-3">
-        <div className={cn(
-          "w-9 h-9 rounded-xl flex items-center justify-center shrink-0",
-          share.type === 'course' ? "bg-indigo-500/10 text-indigo-600" : "bg-amber-500/10 text-amber-600"
-        )}>
-          {share.type === 'course' ? <BookOpen size={16} /> : <StickyNote size={16} />}
+        <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", typeColorClass(share.type))}>
+          {typeIcon(share.type, 16)}
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-foreground truncate">
-            {share.type === 'course' ? (share.courseName || '—') : (share.noteTitle || '—')}
+            {share.type === 'course' ? (share.courseName || '—')
+              : share.type === 'message' ? (share.messageText || '—')
+              : (share.noteTitle || '—')}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">→ {share.toEmail}</p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -270,7 +287,16 @@ function SentShareRow({
                 ? (lang === 'bn' ? 'অপেক্ষমাণ' : 'Pending')
                 : share.status === 'accepted'
                   ? (lang === 'bn' ? 'গৃহীত' : 'Accepted')
-                  : (lang === 'bn' ? 'বাতিল' : 'Declined')}
+                  : declinedLabel}
+            </span>
+            <span className={cn(
+              "text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1",
+              share.seenAt ? "bg-blue-500/10 text-blue-600" : "bg-secondary text-muted-foreground"
+            )}>
+              {share.seenAt ? <Eye size={10} /> : <EyeOff size={10} />}
+              {share.seenAt
+                ? (lang === 'bn' ? `দেখেছে · ${formatDate(share.seenAt)}` : `Seen · ${formatDate(share.seenAt)}`)
+                : (lang === 'bn' ? 'দেখেনি' : 'Not seen')}
             </span>
             <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
               <Clock size={9} />
@@ -281,7 +307,7 @@ function SentShareRow({
         </div>
       </div>
 
-      {share.status !== 'declined' && (
+      {share.status !== 'declined' && share.type !== 'message' && (
         <div className="flex gap-2">
           <button
             onClick={() => onEditPermissions(share)}
@@ -299,6 +325,18 @@ function SentShareRow({
               {lang === 'bn' ? 'বাতিল' : 'Cancel'}
             </button>
           )}
+        </div>
+      )}
+
+      {share.status === 'pending' && share.type === 'message' && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => onCancel(share.id)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold"
+          >
+            <X size={12} />
+            {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+          </button>
         </div>
       )}
     </div>
@@ -328,12 +366,13 @@ export function AdminPanel() {
   const [shareStep, setShareStep] = useState(1); // 1=recipient, 2=content, 3=duration+perms
   const [shareForm, setShareForm] = useState({
     toEmail: '',
-    type: 'course' as 'course' | 'note',
+    type: 'course' as 'course' | 'note' | 'message',
     courseId: '',
     courseName: '',
     noteTitle: '',
     noteHtml: '',
     noteBreadcrumb: [] as string[],
+    messageText: '',
     durationValue: 7,
     durationUnit: 'days' as 'hours' | 'days' | 'months',
     permissions: { ...DEFAULT_PERMISSIONS },
@@ -397,7 +436,8 @@ export function AdminPanel() {
         noteTitle: shareForm.type === 'note' ? (notePicked?.title || shareForm.noteTitle) : undefined,
         noteHtml: shareForm.type === 'note' ? (notePicked?.html || shareForm.noteHtml) : undefined,
         noteBreadcrumb: shareForm.type === 'note' ? (notePicked?.breadcrumb || []) : undefined,
-        permissions: shareForm.permissions,
+        messageText: shareForm.type === 'message' ? shareForm.messageText.trim() : undefined,
+        permissions: shareForm.type === 'message' ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false } : shareForm.permissions,
         durationValue: shareForm.durationValue,
         durationUnit: shareForm.durationUnit,
       });
@@ -405,7 +445,7 @@ export function AdminPanel() {
       setShareStep(1);
       setShareForm({
         toEmail: '', type: 'course', courseId: '', courseName: '', noteTitle: '', noteHtml: '',
-        noteBreadcrumb: [], durationValue: 7, durationUnit: 'days', permissions: { ...DEFAULT_PERMISSIONS },
+        noteBreadcrumb: [], messageText: '', durationValue: 7, durationUnit: 'days', permissions: { ...DEFAULT_PERMISSIONS },
       });
       setNotePicked(null);
       setTimeout(() => setSendSuccess(false), 3000);
@@ -616,23 +656,27 @@ export function AdminPanel() {
                   <p className="text-xs font-semibold text-muted-foreground mb-2">
                     {lang === 'bn' ? 'কী শেয়ার করবেন?' : 'What to share?'}
                   </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(['course', 'note'] as const).map(type => (
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['course', 'note', 'message'] as const).map(type => (
                       <button
                         key={type}
                         onClick={() => setShareForm(f => ({ ...f, type }))}
                         className={cn(
-                          "flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all",
+                          "flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all",
                           shareForm.type === type
                             ? "border-primary bg-primary/5"
                             : "border-border/50 bg-card hover:bg-secondary/50"
                         )}
                       >
-                        {type === 'course' ? <BookOpen size={24} className="text-indigo-500" /> : <StickyNote size={24} className="text-amber-500" />}
-                        <span className="text-sm font-semibold text-foreground">
+                        {type === 'course' ? <BookOpen size={22} className="text-indigo-500" />
+                          : type === 'note' ? <StickyNote size={22} className="text-amber-500" />
+                          : <MessageSquare size={22} className="text-sky-500" />}
+                        <span className="text-xs font-semibold text-foreground">
                           {type === 'course'
                             ? (lang === 'bn' ? 'কোর্স' : 'Course')
-                            : (lang === 'bn' ? 'নোট' : 'Note')}
+                            : type === 'note'
+                              ? (lang === 'bn' ? 'নোট' : 'Note')
+                              : (lang === 'bn' ? 'মেসেজ' : 'Message')}
                         </span>
                       </button>
                     ))}
@@ -658,7 +702,9 @@ export function AdminPanel() {
                   <p className="text-sm font-bold text-foreground">
                     {shareForm.type === 'course'
                       ? (lang === 'bn' ? '২. কোর্স সিলেক্ট করুন' : '2. Select Course')
-                      : (lang === 'bn' ? '২. নোট সিলেক্ট করুন' : '2. Select Note')}
+                      : shareForm.type === 'message'
+                        ? (lang === 'bn' ? '২. মেসেজ লিখুন' : '2. Write Message')
+                        : (lang === 'bn' ? '২. নোট সিলেক্ট করুন' : '2. Select Note')}
                   </p>
                 </div>
 
@@ -681,6 +727,14 @@ export function AdminPanel() {
                       </button>
                     ))}
                   </div>
+                ) : shareForm.type === 'message' ? (
+                  <textarea
+                    value={shareForm.messageText}
+                    onChange={e => setShareForm(f => ({ ...f, messageText: e.target.value }))}
+                    placeholder={lang === 'bn' ? 'ইউজারকে যে মেসেজ পাঠাতে চান তা লিখুন...' : 'Write the message you want to send this user...'}
+                    rows={6}
+                    className="w-full rounded-xl border border-border/60 bg-secondary px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                  />
                 ) : (
                   <>
                     {notePicked ? (
@@ -714,7 +768,11 @@ export function AdminPanel() {
 
                 <Button
                   className="w-full"
-                  disabled={shareForm.type === 'course' ? !shareForm.courseId : !notePicked}
+                  disabled={
+                    shareForm.type === 'course' ? !shareForm.courseId
+                      : shareForm.type === 'message' ? !shareForm.messageText.trim()
+                      : !notePicked
+                  }
                   onClick={() => setShareStep(3)}
                 >
                   {lang === 'bn' ? 'পরবর্তী' : 'Next'} →
@@ -766,24 +824,28 @@ export function AdminPanel() {
                   </div>
                 </div>
 
-                {/* Permissions */}
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-2">
-                    {lang === 'bn' ? 'অনুমতি সেট করুন' : 'Set Permissions'}
-                  </p>
-                  <PermissionsEditor
-                    permissions={shareForm.permissions}
-                    onChange={p => setShareForm(f => ({ ...f, permissions: p }))}
-                    lang={lang}
-                  />
-                </div>
+                {/* Permissions — not applicable to plain messages */}
+                {shareForm.type !== 'message' && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-2">
+                      {lang === 'bn' ? 'অনুমতি সেট করুন' : 'Set Permissions'}
+                    </p>
+                    <PermissionsEditor
+                      permissions={shareForm.permissions}
+                      onChange={p => setShareForm(f => ({ ...f, permissions: p }))}
+                      lang={lang}
+                    />
+                  </div>
+                )}
 
                 {/* Summary */}
                 <div className="bg-secondary/50 rounded-xl p-3 text-xs space-y-1">
                   <p><span className="text-muted-foreground">{lang === 'bn' ? 'প্রাপক:' : 'To:'}</span> <span className="font-semibold">{shareForm.toEmail}</span></p>
                   <p><span className="text-muted-foreground">{lang === 'bn' ? 'কন্টেন্ট:' : 'Content:'}</span>{' '}
                     <span className="font-semibold">
-                      {shareForm.type === 'course' ? shareForm.courseName : (notePicked?.title || '—')}
+                      {shareForm.type === 'course' ? shareForm.courseName
+                        : shareForm.type === 'message' ? shareForm.messageText
+                        : (notePicked?.title || '—')}
                     </span>
                   </p>
                   <p><span className="text-muted-foreground">{lang === 'bn' ? 'সময়:' : 'Duration:'}</span>{' '}

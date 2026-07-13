@@ -25,7 +25,7 @@ export interface ShareRequest {
   fromAdminEmail: string;
   fromAdminName: string;
   toEmail: string;
-  type: 'course' | 'note';
+  type: 'course' | 'note' | 'message';
   // Course share
   courseId?: string;
   courseName?: string;
@@ -33,6 +33,8 @@ export interface ShareRequest {
   noteTitle?: string;
   noteHtml?: string;
   noteBreadcrumb?: string[];
+  // Plain admin -> user message
+  messageText?: string;
   // Common
   permissions: SharePermissions;
   durationValue: number;
@@ -42,6 +44,7 @@ export interface ShareRequest {
   pendingExpiresAt: number; // auto-expire the pending notification
   acceptedAt?: number;
   actualExpiresAt?: number; // when access expires after acceptance
+  seenAt?: number; // when the recipient opened/interacted with this notification
 }
 
 interface AdminContextType {
@@ -60,11 +63,12 @@ interface AdminContextType {
   acceptShare: (shareId: string) => Promise<void>;
   declineShare: (shareId: string) => Promise<void>;
   acceptedShares: ShareRequest[];
+  markSeen: (shareId: string) => Promise<void>;
 }
 
 export type SendShareParams = Pick<ShareRequest,
   'toEmail' | 'type' | 'courseId' | 'courseName' | 'noteTitle' | 'noteHtml' | 'noteBreadcrumb' |
-  'permissions' | 'durationValue' | 'durationUnit'
+  'messageText' | 'permissions' | 'durationValue' | 'durationUnit'
 >;
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
@@ -90,9 +94,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const isAdmin = adminEmails.includes(userEmail);
 
   const now = Date.now();
-  const pendingShares = allReceivedShares.filter(
-    s => s.status === 'pending' && s.pendingExpiresAt > now
-  );
+  const pendingShares = allReceivedShares
+    .filter(s => s.status === 'pending' && s.pendingExpiresAt > now)
+    .sort((a, b) => b.sentAt - a.sentAt); // newest first
   const acceptedShares = allReceivedShares.filter(
     s => s.status === 'accepted' && (!s.actualExpiresAt || s.actualExpiresAt > now)
   );
@@ -200,6 +204,12 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     await updateDoc(doc(db, 'shareRequests', shareId), { status: 'declined' });
   };
 
+  const markSeen = async (shareId: string) => {
+    const share = allReceivedShares.find(s => s.id === shareId);
+    if (!share || share.seenAt) return; // already seen, avoid redundant writes
+    await updateDoc(doc(db, 'shareRequests', shareId), { seenAt: Date.now() });
+  };
+
   return (
     <AdminContext.Provider value={{
       isAdmin, isSuperAdmin, adminEmails, loadingAdmins,
@@ -207,7 +217,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       sendShare, sentShares, loadingSentShares,
       updateSharePermissions, cancelShare,
       pendingShares, acceptShare, declineShare,
-      acceptedShares,
+      acceptedShares, markSeen,
     }}>
       {children}
     </AdminContext.Provider>

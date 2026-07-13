@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import { useCourse } from './CourseContext';
 import { addDays, formatISO } from 'date-fns';
 import { nowIST, addDaysIST, toDateStrIST } from '@/lib/istTime';
-import { doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, collection, writeBatch, type CollectionReference, type DocumentReference } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, collection, writeBatch, query, where, type CollectionReference, type DocumentReference } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 // Firestore document size limit — documents above this are split across a
@@ -943,6 +943,34 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         await setDoc(notesDocRef, notesPayload, { merge: false });
       }
       await setDoc(docRef, mainPayload, { merge: false });
+
+      // ── Live-sync structure to accepted share recipients ──────────────────
+      // When the current user is an admin who has shared this course, propagate
+      // the updated subject structure (without notes) to every user who has
+      // already accepted that share.  This runs best-effort so a Firestore
+      // error here never blocks the primary save.
+      try {
+        const sharesQ = query(
+          collection(db, 'shareRequests'),
+          where('fromAdminUid', '==', currentUser.id),
+          where('courseId', '==', currentCourseId),
+          where('status', '==', 'accepted'),
+        );
+        const sharesSnap = await getDocs(sharesQ);
+        for (const shareDoc of sharesSnap.docs) {
+          const acceptedByUid = shareDoc.data().acceptedByUid as string | undefined;
+          if (!acceptedByUid) continue;
+          // Write only the structure payload (subjects tree + settings).
+          // Notes stay with the recipient — we never overwrite their courseNotes.
+          await setDoc(
+            doc(db, 'users', acceptedByUid, 'studyData', shareDoc.id),
+            { ...mainPayload, savedAt: Date.now() },
+            { merge: false },
+          );
+        }
+      } catch { /* best-effort — don't block the main save success path */ }
+      // ─────────────────────────────────────────────────────────────────────
+
       // Firestore now has this edit — clear the "unsynced" marker so a future
       // load on this device trusts Firestore instead of this local cache.
       const lsKeyForFlag = localKey('data');

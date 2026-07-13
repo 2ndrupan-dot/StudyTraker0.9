@@ -279,6 +279,18 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
   const updateSharePermissions = async (shareId: string, permissions: SharePermissions) => {
     await updateDoc(doc(db, 'shareRequests', shareId), { permissions });
+    // Also propagate to the recipient's sharedCourses doc so the live
+    // onSnapshot listener in CourseContext picks up the change immediately.
+    try {
+      const snap = await getDoc(doc(db, 'shareRequests', shareId));
+      const acceptedByUid = snap.data()?.acceptedByUid as string | undefined;
+      if (acceptedByUid) {
+        await updateDoc(
+          doc(db, 'users', acceptedByUid, 'sharedCourses', shareId),
+          { permissions },
+        );
+      }
+    } catch { /* best-effort — don't block the admin UI */ }
   };
 
   const cancelShare = async (shareId: string) => {
@@ -356,6 +368,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       status: 'accepted',
       acceptedAt: ts,
       actualExpiresAt,
+      acceptedByUid: user.id,   // stored so admin can later push permission/data updates
     });
   };
 

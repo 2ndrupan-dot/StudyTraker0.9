@@ -61,5 +61,5 @@ expertMode = true
 VITE_ADMIN_EMAILS = "2ndrupan@gmail.com"
 
     [nix]
-    channel = "stable-25_05"
+channel = "stable-25_05"
     

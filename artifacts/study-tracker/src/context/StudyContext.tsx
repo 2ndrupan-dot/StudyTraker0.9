@@ -1018,6 +1018,30 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             { ...mainPayload, subjects: mergedSubjects, savedAt: Date.now() },
             { merge: false },
           );
+
+          // Also sync notes (HTML content) to the recipient so any note the
+          // admin adds or edits appears immediately in the user's accepted copy.
+          // Notes are synced in full — the admin's version is authoritative.
+          if (!skipNotesWrite) {
+            const userNotesDocRef = doc(db, 'users', acceptedByUid, 'courseNotes', shareDoc.id);
+            const userNotesChunksRef = collection(userNotesDocRef, 'chunks');
+            const userNotesDataSize = byteSize(JSON.stringify(notesData));
+            let userNotesPayload: Record<string, unknown>;
+            if (userNotesDataSize > FIRESTORE_NOTE_LIMIT) {
+              // Notes exceed 1 MB — bin-pack into chunks subcollection
+              const rawEntries: Array<[string, string]> = [];
+              if (notesData.overallNote) rawEntries.push(['__overall__', notesData.overallNote]);
+              for (const [k, v] of Object.entries(notesData.notes)) if (v) rawEntries.push([k, v]);
+              const splitEntries = rawEntries.flatMap(([k, v]) => splitLargeValue(k, v, FIRESTORE_NOTE_LIMIT));
+              const userChunks = packEntries(splitEntries, FIRESTORE_NOTE_LIMIT);
+              await writeChunks(userNotesChunksRef, userChunks);
+              userNotesPayload = { savedAt: Date.now(), overallNote: '', notes: {}, chunked: true, chunkCount: userChunks.length };
+            } else {
+              await clearChunks(userNotesChunksRef);
+              userNotesPayload = { savedAt: Date.now(), ...notesData, chunked: false };
+            }
+            await setDoc(userNotesDocRef, userNotesPayload, { merge: false });
+          }
         }
       } catch { /* best-effort — don't block the main save success path */ }
       // ─────────────────────────────────────────────────────────────────────

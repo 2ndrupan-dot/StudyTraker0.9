@@ -1596,33 +1596,36 @@ export function Today() {
             );
           })()}
 
-          <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5 sm:gap-x-1.5">
-            <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
-              <div className="flex items-center gap-1 text-muted-foreground text-[10px] sm:text-[11px] font-semibold bg-secondary/70 px-1.5 sm:px-2 py-1 rounded-lg whitespace-nowrap shrink-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            {/* Left: info badges — shrink-0 keeps natural size, no flex-grow */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-1 text-muted-foreground text-[10px] sm:text-[11px] font-semibold bg-secondary/70 px-1.5 sm:px-2 py-1 rounded-lg whitespace-nowrap">
                 <Clock size={10} className="shrink-0" /> ~{formatMins(task.estimatedMins, t('hour'), t('mins'))}
               </div>
               {!opts?.isRevision && (
-                <div className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border whitespace-nowrap shrink-0 ${URGENCY_COLORS[task.urgency]}`}>
+                <div className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border whitespace-nowrap ${URGENCY_COLORS[task.urgency]}`}>
                   {task.urgency === 'high' && <Zap size={8} className="shrink-0" />}
                   <CalendarDays size={8} className="shrink-0" /> {task.daysLeft}d
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
+            {/* Right: action buttons — ml-auto pushes to right edge on both single & wrapped rows */}
+            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
               {task.loadedFrom && !done && !opts?.isRevision && (
                 <button
                   onClick={() => returnToOriginal(task)}
                   title={t('returnToOriginTitle')}
-                  className="flex items-center gap-1 h-7 sm:h-8 px-1.5 sm:px-2.5 rounded-xl border border-indigo-200 text-indigo-600 bg-indigo-500/5 text-[10px] sm:text-[11px] font-bold hover:bg-indigo-500/15 transition-all whitespace-nowrap"
+                  className="flex items-center gap-1 h-7 px-2 rounded-xl border border-indigo-200 text-indigo-600 bg-indigo-500/5 text-[10px] sm:text-[11px] font-bold hover:bg-indigo-500/15 transition-all whitespace-nowrap"
                 >
-                  <RotateCcw size={11} className="shrink-0" /> <span className="hidden xs:inline sm:inline">{t('returnToOrigin')}</span>
+                  <RotateCcw size={11} className="shrink-0" />
+                  <span className="sm:inline">{t('returnToOrigin')}</span>
                 </button>
               )}
               {!done ? (
                 <span className="spin-border-wrap">
                   <button
                     onClick={() => markComplete(task)}
-                    className="spin-border-inner flex items-center gap-1 h-6 sm:h-7 px-1.5 sm:px-2.5 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white text-[10px] sm:text-[11px] font-bold transition-all whitespace-nowrap"
+                    className="spin-border-inner flex items-center gap-1 h-6 sm:h-7 px-2 sm:px-2.5 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white text-[10px] sm:text-[11px] font-bold transition-all whitespace-nowrap"
                   >
                     <CheckCircle2 size={11} className="shrink-0" /> {t('markComplete')}
                   </button>

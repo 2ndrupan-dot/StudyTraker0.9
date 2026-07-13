@@ -190,6 +190,11 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   // the same sync on every snapshot update.
   const processedSyncRef = useRef<Map<string, number>>(new Map());
 
+  // Track last-applied permissions per shareId so we detect changes and relay
+  // them into the user's own sharedCourses doc (security rules block the admin
+  // from writing there directly, so the relay runs client-side like the content sync).
+  const processedPermissionsRef = useRef<Map<string, string>>(new Map());
+
   const adminEmails = [...new Set([...SUPER_ADMIN_EMAILS, ...firestoreAdminEmails])];
   const isAdmin = adminEmails.includes(userEmail);
 
@@ -237,13 +242,38 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       setAllReceivedShares(snap.docs.map(d => ({ id: d.id, ...d.data() } as ShareRequest)));
 
       // 2. Process any pending live-sync updates from the admin.
-      //    These arrive as syncStudyData / syncNotesJson + syncedAt fields that
-      //    the admin wrote into the shareRequest document (admin can write those;
-      //    user cannot write to admin's studyData directly due to security rules).
+      //    Content updates: courseSnapshot.studyData + syncedAt written by admin into
+      //    the shareRequest (admin can write there; user cannot write to admin's
+      //    studyData directly due to security rules).
+      //    Permission updates: permissions field in the same shareRequest doc; admin
+      //    cannot write to user's sharedCourses directly, so the relay runs here.
       const processedMap = processedSyncRef.current;
+      const permissionsMap = processedPermissionsRef.current;
+
       for (const shareDoc of snap.docs) {
         const data = shareDoc.data() as Record<string, unknown>;
         if (data.status !== 'accepted') continue;
+
+        // ── Permission relay ──────────────────────────────────────────────────
+        // Admin writes permissions to shareRequests (allowed). We mirror them to
+        // the user's own sharedCourses doc so CourseContext's onSnapshot picks up
+        // the change immediately.
+        const newPermissions = data.permissions as Record<string, unknown> | undefined;
+        if (newPermissions) {
+          const newPermJson = JSON.stringify(newPermissions);
+          const lastPermJson = permissionsMap.get(shareDoc.id) ?? null;
+          if (lastPermJson !== newPermJson) {
+            permissionsMap.set(shareDoc.id, newPermJson);
+            // Intentionally fire-and-forget; failure is safe (will retry next snapshot)
+            setDoc(
+              doc(db, 'users', uid, 'sharedCourses', shareDoc.id),
+              { permissions: newPermissions },
+              { merge: true },
+            ).catch(() => {});
+          }
+        }
+
+        // ── Content relay ─────────────────────────────────────────────────────
         const syncedAt = data.syncedAt as number | undefined;
         if (!syncedAt) continue;
         const lastProcessed = processedMap.get(shareDoc.id) ?? 0;
@@ -277,7 +307,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
               completionMap,
             );
 
-            // Write merged studyData to user's own collection
+            // Write merged studyData to user's own collection (persists across refreshes)
             await setDoc(
               doc(db, 'users', uid, 'studyData', shareId),
               { ...syncStudyData, subjects: mergedSubjects, savedAt: Date.now() },
@@ -295,6 +325,20 @@ export function AdminProvider({ children }: { children: ReactNode }) {
                 );
               } catch { /* malformed JSON — skip notes */ }
             }
+
+            // Also dispatch a synchronous window event so StudyContext can update
+            // the UI instantly without waiting for the Firestore onSnapshot chain
+            // (which has a hasPendingWrites guard that adds a round-trip delay).
+            window.dispatchEvent(new CustomEvent('study-livesync', {
+              detail: {
+                shareId,
+                subjects: mergedSubjects,
+                settings: syncStudyData.settings,
+                tempNotes: syncStudyData.tempNotes,
+                overallNote: syncStudyData.overallNote,
+                notePagesIndex: syncStudyData.notePagesIndex,
+              },
+            }));
 
             console.log('[AdminContext] Live-sync applied for share', shareId, 'syncedAt', syncedAt);
           } catch (err) {

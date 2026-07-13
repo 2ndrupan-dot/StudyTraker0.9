@@ -513,6 +513,34 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   const localKey = (suffix: string) => (user && activeCourseId) ? `@study_${suffix}_${activeCourseId}_${user.email}` : null;
 
+  // Listen for instant live-sync events dispatched by AdminContext when the admin
+  // pushes an update to a shared course.  This bypasses the Firestore onSnapshot
+  // round-trip (which has a hasPendingWrites guard that delays the update by one
+  // server round-trip) and updates the UI immediately.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        shareId: string;
+        subjects?: unknown[];
+        settings?: Record<string, unknown>;
+        tempNotes?: unknown[];
+        overallNote?: string;
+        notePagesIndex?: unknown[];
+      };
+      // Only apply if the active course is the one that was synced
+      if (detail.shareId !== activeCourseIdRef.current) return;
+      // Prevent the save-useEffect from echoing this update back to Firestore
+      skipNextSaveRef.current = true;
+      if (detail.subjects)       setSubjects(detail.subjects as Subject[]);
+      if (detail.settings)       setSettings(prev => ({ ...prev, ...detail.settings }));
+      if (detail.tempNotes)      setTempNotes(detail.tempNotes as TempNoteItem[]);
+      if (detail.overallNote !== undefined) setOverallNoteState(detail.overallNote);
+      if (detail.notePagesIndex) setNotePagesIndex(detail.notePagesIndex as NotePage[]);
+    };
+    window.addEventListener('study-livesync', handler);
+    return () => window.removeEventListener('study-livesync', handler);
+  }, []); // eslint-disable-line — uses activeCourseIdRef (always-current ref) and stable setters
+
   // Load data from Firestore and listen for real-time changes from other devices
   useEffect(() => {
     if (!user || !activeCourseId) {

@@ -336,6 +336,7 @@ function SearchBar({
 export const NoteEditorModal = ({
   isOpen, onClose, value, onChange, onClear, onSave,
   title, placeholder, clearLabel, saveLabel, icon: Icon, breadcrumb, notePath, copyAllowed,
+  downloadAllowed, editAllowed,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -353,6 +354,10 @@ export const NoteEditorModal = ({
   notePath?: any;
   /** When false, the copy button is hidden (used for shared content permission enforcement) */
   copyAllowed?: boolean;
+  /** When false, the download-as-PDF button is hidden (shared content permission enforcement) */
+  downloadAllowed?: boolean;
+  /** When false, the edit/pencil button is hidden (shared content permission enforcement) */
+  editAllowed?: boolean;
 }) => {
   const { setNote, subjects } = useStudy();
   const [, setLocation] = useLocation();
@@ -675,13 +680,15 @@ export const NoteEditorModal = ({
       )}
 
       {/* Download as PDF */}
-      <button
-        onClick={handleDownloadPdf}
-        className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
-        title="Download as PDF"
-      >
-        <FileDown size={16} />
-      </button>
+      {downloadAllowed !== false && (
+        <button
+          onClick={handleDownloadPdf}
+          className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
+          title="Download as PDF"
+        >
+          <FileDown size={16} />
+        </button>
+      )}
 
       {/* Find in note */}
       <button
@@ -702,18 +709,20 @@ export const NoteEditorModal = ({
       </button>
 
       {/* Toggle edit / view */}
-      <button
-        onClick={() => setEditing(e => !e)}
-        className={cn(
-          "p-2 rounded-full transition-colors",
-          editing
-            ? "text-primary bg-primary/10 hover:bg-primary/20"
-            : "text-muted-foreground hover:bg-secondary"
-        )}
-        title={editing ? "Switch to view mode" : "Edit note"}
-      >
-        {editing ? <Eye size={18} /> : <Pencil size={16} />}
-      </button>
+      {editAllowed !== false && (
+        <button
+          onClick={() => setEditing(e => !e)}
+          className={cn(
+            "p-2 rounded-full transition-colors",
+            editing
+              ? "text-primary bg-primary/10 hover:bg-primary/20"
+              : "text-muted-foreground hover:bg-secondary"
+          )}
+          title={editing ? "Switch to view mode" : "Edit note"}
+        >
+          {editing ? <Eye size={18} /> : <Pencil size={16} />}
+        </button>
+      )}
 
       {/* Expand / Minimize */}
       <button

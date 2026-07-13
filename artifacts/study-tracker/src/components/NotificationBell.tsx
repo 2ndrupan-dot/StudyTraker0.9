@@ -4,8 +4,7 @@ import { Bell, X, Check, Trash2, BookOpen, StickyNote, MessageSquare, Clock, Che
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAdmin, ShareRequest } from '@/context/AdminContext';
-import { Modal } from '@/components/ui';
-import { RichTextPreview } from '@/components/RichTextEditor';
+import { Modal, NoteEditorModal } from '@/components/ui';
 import { useLang } from '@/context/LangContext';
 
 function formatDuration(value: number, unit: string, lang: string) {
@@ -25,48 +24,38 @@ function formatExpiry(expiresAt: number, lang: string) {
   return lang === 'bn' ? `${hours} ঘণ্টা বাকি` : `${hours}h left`;
 }
 
-function NoteViewModal({
+// Shared notes open in the exact same note viewer used everywhere else in the
+// app (copy / download / search / edit / expand / close icon row), but the
+// copy/download/edit icons are shown or hidden based on the permissions the
+// admin granted for this specific share — not just always-on.
+function SharedNoteModal({
   isOpen, onClose, share,
 }: { isOpen: boolean; onClose: () => void; share: ShareRequest | null }) {
-  const { declineShare } = useAdmin();
-  const { lang } = useLang();
+  const [localHtml, setLocalHtml] = useState(share?.noteHtml ?? '');
+
+  useEffect(() => {
+    setLocalHtml(share?.noteHtml ?? '');
+  }, [share?.id, share?.noteHtml]);
+
   if (!share) return null;
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={share.noteTitle || 'Note'} icon={StickyNote}>
-      <div className="space-y-4">
-        {share.noteBreadcrumb && share.noteBreadcrumb.length > 0 && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
-            {share.noteBreadcrumb.map((c, i) => (
-              <React.Fragment key={i}>
-                {i > 0 && <ChevronRight size={10} className="text-border" />}
-                <span>{c}</span>
-              </React.Fragment>
-            ))}
-          </div>
-        )}
-        {share.noteHtml ? (
-          <div className="max-h-64 overflow-y-auto">
-            <RichTextPreview html={share.noteHtml} className="text-sm leading-relaxed" />
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground italic">
-            {lang === 'bn' ? 'কোনো কন্টেন্ট নেই।' : 'No content available.'}
-          </p>
-        )}
-        <p className="text-xs text-muted-foreground border-t border-border/40 pt-3">
-          {lang === 'bn' ? 'শেয়ার করেছেন' : 'Shared by'}: <span className="font-semibold">{share.fromAdminName}</span>
-          {' · '}
-          {lang === 'bn' ? 'মেয়াদ' : 'Expires'}: {formatExpiry(share.actualExpiresAt || share.pendingExpiresAt, lang)}
-        </p>
-        <button
-          onClick={async () => { await declineShare(share.id); onClose(); }}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-sm font-semibold"
-        >
-          <Trash2 size={14} />
-          {lang === 'bn' ? 'মুছে দিন' : 'Delete'}
-        </button>
-      </div>
-    </Modal>
+    <NoteEditorModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={share.noteTitle || 'Note'}
+      icon={StickyNote}
+      breadcrumb={share.noteBreadcrumb}
+      value={localHtml}
+      onChange={setLocalHtml}
+      onClear={() => setLocalHtml('')}
+      onSave={onClose}
+      placeholder="No content available."
+      clearLabel="Clear"
+      saveLabel="Done"
+      copyAllowed={share.permissions.copyNotes}
+      downloadAllowed={share.permissions.downloadNotes}
+      editAllowed={share.permissions.editNotes}
+    />
   );
 }
 
@@ -381,7 +370,7 @@ export function NotificationBell() {
       {typeof document !== 'undefined' && createPortal(panel, document.body)}
 
       {/* Note / message view modals */}
-      <NoteViewModal
+      <SharedNoteModal
         isOpen={!!viewNote}
         onClose={() => setViewNote(null)}
         share={viewNote}

@@ -282,17 +282,23 @@ export function computeGranularProgress(subjects: Subject[]): { completed: numbe
   return { completed, total, percent };
 }
 
-// Formats a progress percentage so any real progress (completed > 0) always
-// reads as non-zero, even if it's a fraction of a percent. Picks the fewest
-// decimal places needed to show a non-zero value, up to 3 decimals.
+// Formats a progress percentage so every real change is visible — never
+// rounds away a small bump (e.g. 1.5%, 1.05%, 2.6%, 3.1%), and for very tiny
+// slices (a single item out of a huge tree) keeps adding decimal places
+// until the value reads as non-zero (down to 0.001%). Trailing zero
+// decimals are trimmed for a clean look (1.50 -> 1.5, 100.00 -> 100).
 export function formatProgressPercent(percent: number): string {
   if (percent <= 0) return '0';
-  if (percent >= 10) return percent.toFixed(0);
-  for (let decimals = 0; decimals <= 3; decimals++) {
-    const fixed = percent.toFixed(decimals);
-    if (parseFloat(fixed) > 0) return fixed;
+  let decimals = 2;
+  let fixed = percent.toFixed(decimals);
+  while (parseFloat(fixed) === 0 && decimals < 4) {
+    decimals++;
+    fixed = percent.toFixed(decimals);
   }
-  return percent.toFixed(3);
+  if (fixed.includes('.')) {
+    fixed = fixed.replace(/0+$/, '').replace(/\.$/, '');
+  }
+  return fixed;
 }
 
 // ─── Locked/Unlocked logic ───────────────────────────────────────────────────

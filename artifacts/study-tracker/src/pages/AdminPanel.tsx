@@ -53,10 +53,12 @@ function typeColorClass(type: ShareRequest['type']) {
 const DEFAULT_PERMISSIONS: SharePermissions = {
   editNotes: false,
   deleteNotes: false,
-  downloadNotes: true,
-  copyNotes: true,
-  renameCourse: true,
+  downloadNotes: false,
+  copyNotes: false,
+  renameCourse: false,
   addItems: false,
+  takeScreenshot: false,
+  selectCopyText: false,
 };
 
 // ─── Note Picker (drill-down through subjects hierarchy) ──────────────────────
@@ -229,7 +231,9 @@ function PermissionsEditor({
   const items: { key: keyof SharePermissions; label: string; color: string; divider?: boolean }[] = [
     { key: 'downloadNotes', label: lang === 'bn' ? 'নোট ডাউনলোড করতে পারবে'  : 'Can download notes',       color: 'text-green-600' },
     { key: 'copyNotes',     label: lang === 'bn' ? 'নোট কপি করতে পারবে'       : 'Can copy notes',           color: 'text-purple-600', divider: true },
-    { key: 'renameCourse',  label: lang === 'bn' ? 'কোর্সের নাম পরিবর্তন করতে পারবে' : 'Can rename course', color: 'text-orange-600' },
+    { key: 'renameCourse',  label: lang === 'bn' ? 'কোর্সের নাম পরিবর্তন করতে পারবে' : 'Can rename course', color: 'text-orange-600', divider: true },
+    { key: 'takeScreenshot', label: lang === 'bn' ? 'স্ক্রিনশট / স্ক্রিন রেকর্ড নিতে পারবে' : 'Can take screenshots',      color: 'text-rose-600' },
+    { key: 'selectCopyText', label: lang === 'bn' ? 'টেক্সট সিলেক্ট করে কপি করতে পারবে'    : 'Can select & copy text',    color: 'text-cyan-600' },
   ];
 
   return (
@@ -558,7 +562,7 @@ export function AdminPanel() {
         noteHtml: shareForm.type === 'note' ? (notePicked?.html || shareForm.noteHtml) : undefined,
         noteBreadcrumb: shareForm.type === 'note' ? (notePicked?.breadcrumb || []) : undefined,
         messageText: shareForm.type === 'message' ? shareForm.messageText.trim() : undefined,
-        permissions: shareForm.type === 'message' ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false, renameCourse: false, addItems: false } : shareForm.permissions,
+        permissions: shareForm.type === 'message' ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false, renameCourse: false, addItems: false, takeScreenshot: false, selectCopyText: false } : shareForm.permissions,
         durationValue: shareForm.durationValue,
         durationUnit: shareForm.durationUnit,
         sharedSubjectIds: shareForm.type === 'course' && courseSubjects.length > 0 ? selectedSubjectIds : undefined,

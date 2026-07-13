@@ -16,6 +16,7 @@ import { PWAUpdater } from "./components/PWAUpdater";
 import { PWAInstallProvider } from "./context/PWAInstallContext";
 import { SplashScreen } from "./components/SplashScreen";
 import { AdminProvider } from "./context/AdminContext";
+import { ContentProtectionGuard } from "./components/ContentProtectionGuard";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -167,6 +168,7 @@ function App() {
               <CourseProvider>
                 <StudyProvider>
                   <AdminProvider>
+                    <ContentProtectionGuard />
                     <Router />
                     <PWAUpdater />
                   </AdminProvider>

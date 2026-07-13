@@ -20,6 +20,9 @@ export interface SharePermissions {
   // Structural permissions (course-level)
   renameCourse: boolean;  // can the user rename this shared course?
   addItems: boolean;      // can the user add subjects/chapters/topics/etc.?
+  // Device-level content protection while viewing this shared course.
+  takeScreenshot: boolean;  // can the user take screenshots / screen-record?
+  selectCopyText: boolean;  // can the user select & copy text on the page?
 }
 
 // Snapshot of a course's data embedded in the shareRequest at send-time so the

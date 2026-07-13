@@ -376,3 +376,38 @@ mark.search-hl.search-hl-active { background-color: #f97316; color: #fff; }
 .spin-border-round .spin-border-inner {
   border-radius: 50% !important;
 }
+
+/* ── Content protection (shared-course permissions) ─────────────────────── */
+.no-select-guard,
+.no-select-guard * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+.content-protection-blur-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  backdrop-filter: blur(28px);
+  background: rgba(10, 10, 20, 0.55);
+  pointer-events: none;
+}
+.content-protection-toast {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  background: #dc2626;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  animation: content-protection-toast-in 0.18s ease-out;
+}
+@keyframes content-protection-toast-in {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}

@@ -613,7 +613,7 @@ export const NoteEditorModal = ({
   <tfoot>
     <tr><td class="pdf-footer-cell">
       <div class="pdf-footer-inner">
-        <span>📝 Created by : Rupan Nama</span>
+        <span>📝 Created by : StudyTrack team</span>
         <span>💬 WhatsApp : 9366963022</span>
       </div>
     </td></tr>

@@ -612,6 +612,14 @@ export function Progress() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="font-bold text-foreground text-sm line-clamp-2 break-words">{activeCourse?.name ?? '—'}</p>
+                {activeCourseId && sharedCoursesMeta[activeCourseId]?.actualExpiresAt && (
+                  <p className="text-[10px] text-indigo-500 font-medium mt-0.5 flex items-center gap-1">
+                    <span>🔗</span>
+                    <span className="font-mono font-bold tabular-nums">
+                      <Countdown targetMs={sharedCoursesMeta[activeCourseId].actualExpiresAt!} lang={lang} />
+                    </span>
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex gap-1.5 shrink-0">

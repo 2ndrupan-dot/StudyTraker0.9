@@ -11,9 +11,11 @@ import { Progress } from "./pages/Progress";
 import { NotesIndex } from "./pages/NotesIndex";
 import { NoteEditor } from "./pages/NoteEditor";
 import { CreateCoursePage } from "./pages/CreateCoursePage";
+import { AdminPanel } from "./pages/AdminPanel";
 import { PWAUpdater } from "./components/PWAUpdater";
 import { PWAInstallProvider } from "./context/PWAInstallContext";
 import { SplashScreen } from "./components/SplashScreen";
+import { AdminProvider } from "./context/AdminContext";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -137,6 +139,7 @@ function Router() {
         <Route path="/today"><ProtectedRoute component={Today} /></Route>
         <Route path="/subjects"><ProtectedRoute component={Subjects} /></Route>
         <Route path="/progress"><ProtectedRoute component={Progress} /></Route>
+        <Route path="/admin"><ProtectedRoute component={AdminPanel} /></Route>
         <Route path="/notes/:id"><ProtectedRoute component={NoteEditor} /></Route>
         <Route path="/notes"><ProtectedRoute component={NotesIndex} /></Route>
         <Route path="/">
@@ -163,8 +166,10 @@ function App() {
             <PWAInstallProvider>
               <CourseProvider>
                 <StudyProvider>
-                  <Router />
-                  <PWAUpdater />
+                  <AdminProvider>
+                    <Router />
+                    <PWAUpdater />
+                  </AdminProvider>
                 </StudyProvider>
               </CourseProvider>
             </PWAInstallProvider>

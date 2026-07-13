@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2, Pencil, Eye, FileText, ExternalLink, StickyNote, ChevronRight, FileDown, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import { X, Maximize2, Minimize2, Pencil, Eye, FileText, ExternalLink, StickyNote, ChevronRight, FileDown, Search, ChevronUp, ChevronDown, Copy, CheckCheck } from 'lucide-react';
 import { RichTextEditor, RichTextPreview } from '@/components/RichTextEditor';
 import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
@@ -335,7 +335,7 @@ function SearchBar({
 // ─── Note Editor Modal (Rich Text — expand to A4 full-screen) ────────────────
 export const NoteEditorModal = ({
   isOpen, onClose, value, onChange, onClear, onSave,
-  title, placeholder, clearLabel, saveLabel, icon: Icon, breadcrumb, notePath,
+  title, placeholder, clearLabel, saveLabel, icon: Icon, breadcrumb, notePath, copyAllowed,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -351,11 +351,14 @@ export const NoteEditorModal = ({
   breadcrumb?: string[];
   /** When provided, the PDF download uses the actual item title instead of the generic modal title */
   notePath?: any;
+  /** When false, the copy button is hidden (used for shared content permission enforcement) */
+  copyAllowed?: boolean;
 }) => {
   const { setNote, subjects } = useStudy();
   const [, setLocation] = useLocation();
   const [expanded, setExpanded] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
 
   // Find-in-note search (highlights matches inside the rendered preview and
   // auto-scrolls to them, like Ctrl+F in a PDF viewer)
@@ -635,9 +638,42 @@ export const NoteEditorModal = ({
     setTimeout(() => { win.focus(); win.print(); }, 800);
   };
 
+  const handleCopy = React.useCallback(async () => {
+    try {
+      const htmlBlob = new Blob([value], { type: 'text/html' });
+      const plainText = previewContainerRef.current?.innerText || '';
+      const plainBlob = new Blob([plainText], { type: 'text/plain' });
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'text/html': htmlBlob, 'text/plain': plainBlob }),
+      ]);
+    } catch {
+      try {
+        await navigator.clipboard.writeText(previewContainerRef.current?.innerText || '');
+      } catch { /* ignore */ }
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [value]);
+
   // Shared header action buttons (pencil/eye + expand/minimize + close)
   const HeaderActions = ({ isExpanded }: { isExpanded: boolean }) => (
     <div className="flex items-center gap-1 shrink-0">
+      {/* Copy note */}
+      {copyAllowed !== false && (
+        <button
+          onClick={handleCopy}
+          className={cn(
+            "p-2 rounded-full transition-colors",
+            copied
+              ? "text-green-600 bg-green-500/10"
+              : "text-muted-foreground hover:bg-secondary"
+          )}
+          title={copied ? "Copied!" : "Copy note"}
+        >
+          {copied ? <CheckCheck size={16} /> : <Copy size={16} />}
+        </button>
+      )}
+
       {/* Download as PDF */}
       <button
         onClick={handleDownloadPdf}

@@ -8,6 +8,8 @@ import { computeGranularProgress, formatProgressPercent } from '@/lib/timeEngine
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
 import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock } from 'lucide-react';
+import { NotificationBell } from '@/components/NotificationBell';
+import { useAdmin } from '@/context/AdminContext';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 import { getTimezoneEntry, getCurrentOffset, getFlagUrl } from '@/lib/timezones';
 import { Modal, ConfirmModal, Input, Button, NoteEditorModal } from '@/components/ui';
@@ -312,7 +314,8 @@ export function Progress() {
   const { subjects, settings, setCourseStartDate, setTimezone } = useStudy();
   const { courses, deletedCourses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse, restoreCourse, permanentlyDeleteCourse } = useCourse();
   const { t, lang, setLang } = useLang();
-
+  const [, setLocation] = useLocation();
+  const { isAdmin } = useAdmin();
   const [modals, setModals] = useState({ profile: false, settings: false, logout: false, addCourse: false, switchCourse: false });
   const [tzSelectorOpen, setTzSelectorOpen] = useState(false);
   const [noteSearchOpen, setNoteSearchOpen] = useState(false);
@@ -503,7 +506,8 @@ export function Progress() {
             </button>
             <h1 className="font-bold text-white leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(1.05rem, 5.5vw, 1.5rem)', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('profileTab')}</h1>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <NotificationBell />
             <motion.button
               whileTap={{ scale: 0.93 }}
               onClick={() => setNoteSearchOpen(true)}
@@ -889,6 +893,20 @@ export function Progress() {
               <ChevronRight size={15} className="text-muted-foreground shrink-0" />
             </button>
           </div>
+
+          {/* Admin Panel shortcut */}
+          {isAdmin && (
+            <div className="border-t border-border/40 pt-5">
+              <button
+                onClick={() => { setModals({ ...modals, settings: false }); setLocation('/admin'); }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 text-primary hover:from-primary/20 hover:to-primary/10 transition-all text-sm font-semibold"
+              >
+                <ShieldCheck size={18} />
+                <span className="flex-1 text-left">{lang === 'bn' ? 'এডমিন প্যানেলে যান' : 'Switch to Admin Panel'}</span>
+                <ChevronRight size={16} className="shrink-0 opacity-60" />
+              </button>
+            </div>
+          )}
 
           {/* Course Starting Date */}
           <div className="border-t border-border/40 pt-5">

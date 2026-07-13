@@ -131,6 +131,22 @@ function reassembleEntries(entries: Array<[string, string]>): Record<string, str
   return direct;
 }
 
+// ── Progress-stripping helper ─────────────────────────────────────────────────
+// Recursively sets completed:false on every node in the subjects tree so the
+// share recipient always starts with zero progress regardless of what the admin
+// had already studied before sending the share.
+function stripProgress(nodes: unknown[]): unknown[] {
+  const childKeys = ['chapters', 'topics', 'subtopics', 'concepts', 'points'];
+  return (nodes as Record<string, unknown>[]).map(n => {
+    const result: Record<string, unknown> = { ...n, completed: false };
+    for (const key of childKeys) {
+      if (Array.isArray(n[key])) result[key] = stripProgress(n[key] as unknown[]);
+    }
+    return result;
+  });
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
 export function AdminProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const userEmail = user?.email?.toLowerCase() || '';
@@ -326,6 +342,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         //    Always set hasNotesDoc: true so StudyContext loads notes from courseNotes.
         const sdToWrite: Record<string, unknown> = {
           ...snapshot.studyData,
+          // Strip the admin's completion progress so the recipient always
+          // receives a fresh course with zero progress of their own.
+          subjects: stripProgress((snapshot.studyData.subjects as unknown[] | undefined) ?? []),
           hasNotesDoc: true,
           savedAt: ts,
         };

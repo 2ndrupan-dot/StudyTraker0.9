@@ -212,6 +212,40 @@ function sanitizeForFirestore(page: NotePage): NotePage {
 import { applyTimeAdjustment, isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone } from '@/lib/timeEngine';
 import type { DifficultyLevel } from '@/lib/types';
 
+// ── Completion-map helpers for shared-course structural sync ─────────────────
+// When admin pushes a structure update to a user who already accepted the course,
+// we preserve the user's own completion progress and only apply structural changes.
+
+/** Walk the user's subjects tree and record id → completed for every node. */
+function buildCompletionMap(nodes: unknown[], map: Map<string, boolean> = new Map()): Map<string, boolean> {
+  const childKeys = ['chapters', 'topics', 'subtopics', 'concepts', 'points'];
+  for (const n of nodes as Record<string, unknown>[]) {
+    if (typeof n.id === 'string') map.set(n.id, !!n.completed);
+    for (const key of childKeys) {
+      if (Array.isArray(n[key])) buildCompletionMap(n[key] as unknown[], map);
+    }
+  }
+  return map;
+}
+
+/** Apply the completion map to admin's new structure.
+ *  Nodes that existed in the user's tree keep their completed status.
+ *  Brand-new nodes (not in the map) start as incomplete (false). */
+function applyCompletionMap(nodes: unknown[], map: Map<string, boolean>): unknown[] {
+  const childKeys = ['chapters', 'topics', 'subtopics', 'concepts', 'points'];
+  return (nodes as Record<string, unknown>[]).map(n => {
+    const result: Record<string, unknown> = {
+      ...n,
+      completed: map.has(n.id as string) ? map.get(n.id as string) : false,
+    };
+    for (const key of childKeys) {
+      if (Array.isArray(n[key])) result[key] = applyCompletionMap(n[key] as unknown[], map);
+    }
+    return result;
+  });
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 export const newId = uid;
 
@@ -960,11 +994,28 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         for (const shareDoc of sharesSnap.docs) {
           const acceptedByUid = shareDoc.data().acceptedByUid as string | undefined;
           if (!acceptedByUid) continue;
-          // Write only the structure payload (subjects tree + settings).
-          // Notes stay with the recipient — we never overwrite their courseNotes.
+
+          // Fetch the user's current studyData so we can preserve their progress.
+          // User's completed flags must NEVER be overwritten by the admin's own progress.
+          const userDataSnap = await getDoc(
+            doc(db, 'users', acceptedByUid, 'studyData', shareDoc.id),
+          );
+          const userSubjects: unknown[] = userDataSnap.exists()
+            ? ((userDataSnap.data().subjects as unknown[] | undefined) ?? [])
+            : [];
+
+          // Build a flat id→completed map from what the user already has,
+          // then apply it onto admin's new structure so new nodes start fresh
+          // and existing nodes keep whatever progress the user had.
+          const completionMap = buildCompletionMap(userSubjects);
+          const mergedSubjects = applyCompletionMap(
+            (mainPayload.subjects as unknown[] | undefined) ?? [],
+            completionMap,
+          );
+
           await setDoc(
             doc(db, 'users', acceptedByUid, 'studyData', shareDoc.id),
-            { ...mainPayload, savedAt: Date.now() },
+            { ...mainPayload, subjects: mergedSubjects, savedAt: Date.now() },
             { merge: false },
           );
         }

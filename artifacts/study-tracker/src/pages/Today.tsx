@@ -1596,29 +1596,28 @@ export function Today() {
             );
           })()}
 
-          <div className="flex items-center justify-between gap-1.5">
-            {/* Left: info badges */}
-            <div className="flex items-center gap-1 shrink-0">
-              <div className="flex items-center gap-1 text-muted-foreground text-[10px] sm:text-[11px] font-semibold bg-secondary/70 px-1.5 sm:px-2 py-1 rounded-lg whitespace-nowrap">
-                <Clock size={10} className="shrink-0" /> ~{formatMins(task.estimatedMins, t('hour'), t('mins'))}
+          <div className="flex items-center justify-between gap-1 min-w-0">
+            {/* Left: info badges — shrink so right side always fits */}
+            <div className="flex items-center gap-1 min-w-0 shrink">
+              <div className="flex items-center gap-0.5 sm:gap-1 text-muted-foreground text-[9px] sm:text-[11px] font-semibold bg-secondary/70 px-1 sm:px-2 py-0.5 sm:py-1 rounded-lg whitespace-nowrap shrink-0">
+                <Clock size={9} className="shrink-0" /> ~{formatMins(task.estimatedMins, t('hour'), t('mins'))}
               </div>
               {!opts?.isRevision && (
-                <div className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border whitespace-nowrap ${URGENCY_COLORS[task.urgency]}`}>
-                  {task.urgency === 'high' && <Zap size={8} className="shrink-0" />}
-                  <CalendarDays size={8} className="shrink-0" /> {task.daysLeft}d
+                <div className={`px-1 sm:px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-bold flex items-center gap-0.5 sm:gap-1 border whitespace-nowrap shrink-0 ${URGENCY_COLORS[task.urgency]}`}>
+                  {task.urgency === 'high' && <Zap size={7} className="shrink-0" />}
+                  <CalendarDays size={7} className="shrink-0" /> {task.daysLeft}d
                 </div>
               )}
             </div>
-            {/* Right: action buttons — always on same row as badges */}
-            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            {/* Right: action buttons — always visible, never overflow */}
+            <div className="flex items-center gap-1 shrink-0">
               {task.loadedFrom && !done && !opts?.isRevision && (
                 <button
                   onClick={() => returnToOriginal(task)}
                   title={t('returnToOriginTitle')}
-                  className="flex items-center gap-1 h-7 w-7 sm:w-auto sm:px-2.5 justify-center rounded-xl border border-indigo-200 text-indigo-600 bg-indigo-500/5 text-[10px] sm:text-[11px] font-bold hover:bg-indigo-500/15 transition-all whitespace-nowrap"
+                  className="flex items-center justify-center gap-1 h-6 w-6 sm:h-7 sm:w-auto sm:px-2.5 rounded-xl border border-indigo-200 text-indigo-600 bg-indigo-500/5 text-[9px] sm:text-[11px] font-bold hover:bg-indigo-500/15 transition-all"
                 >
-                  <RotateCcw size={11} className="shrink-0" />
-                  {/* Text hidden on mobile, visible on sm+ */}
+                  <RotateCcw size={10} className="shrink-0" />
                   <span className="hidden sm:inline">{t('returnToOrigin')}</span>
                 </button>
               )}
@@ -1626,17 +1625,19 @@ export function Today() {
                 <span className="spin-border-wrap">
                   <button
                     onClick={() => markComplete(task)}
-                    className="spin-border-inner flex items-center gap-1 h-6 sm:h-7 px-2 sm:px-2.5 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white text-[10px] sm:text-[11px] font-bold transition-all whitespace-nowrap"
+                    className="spin-border-inner flex items-center gap-0.5 sm:gap-1 h-5 sm:h-7 px-1.5 sm:px-2.5 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white text-[9px] sm:text-[11px] font-bold transition-all whitespace-nowrap"
                   >
-                    <CheckCircle2 size={11} className="shrink-0" /> {t('markComplete')}
+                    <CheckCircle2 size={9} className="shrink-0 sm:hidden" />
+                    <CheckCircle2 size={11} className="shrink-0 hidden sm:block" />
+                    {t('markComplete')}
                   </button>
                 </span>
               ) : (
                 <button
                   onClick={() => markComplete(task)}
-                  className="flex items-center gap-1 h-6 px-2 rounded-full bg-indigo-500/10 border border-indigo-400/40 text-indigo-600 dark:text-indigo-400 text-[10px] sm:text-[11px] font-semibold hover:bg-indigo-500/20 transition-all whitespace-nowrap"
+                  className="flex items-center gap-0.5 sm:gap-1 h-5 sm:h-6 px-1.5 sm:px-2 rounded-full bg-indigo-500/10 border border-indigo-400/40 text-indigo-600 dark:text-indigo-400 text-[9px] sm:text-[11px] font-semibold hover:bg-indigo-500/20 transition-all whitespace-nowrap"
                 >
-                  <RotateCcw size={10} className="shrink-0" />
+                  <RotateCcw size={9} className="shrink-0" />
                   {isBn ? 'পূর্বাবস্থায় ফেরান' : 'Undo'}
                 </button>
               )}

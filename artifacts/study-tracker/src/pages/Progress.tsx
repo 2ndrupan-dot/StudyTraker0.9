@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useStudy } from '@/context/StudyContext';
 import type { MarkPath } from '@/lib/types';
 import { useCourse } from '@/context/CourseContext';
+import { computeGranularProgress } from '@/lib/timeEngine';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
 import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock } from 'lucide-react';
@@ -349,9 +350,8 @@ export function Progress() {
   const [showResetConfirm2, setShowResetConfirm2] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
 
-  const totalChapters = subjects.flatMap(s => s.chapters).length;
-  const completedChapters = subjects.flatMap(s => s.chapters).filter(c => c.completed).length;
-  const overallProg = totalChapters === 0 ? 0 : Math.round((completedChapters / totalChapters) * 100);
+  const granularProgress = computeGranularProgress(subjects);
+  const overallProg = granularProgress.percent;
   const completedSubjects = subjects.filter(s => s.completed).length;
 
   const handleUpdateProfile = async () => {
@@ -701,7 +701,7 @@ export function Progress() {
             />
           </div>
           <p className="text-xs font-medium text-muted-foreground mt-3 relative z-10">
-            {completedChapters} {t('completed')} / {totalChapters} {t('chapters')}
+            {granularProgress.completed} {t('completed')} / {granularProgress.total} {lang === 'bn' ? 'আইটেম' : 'Items'}
           </p>
         </div>
         </ScrollReveal>
@@ -710,9 +710,7 @@ export function Progress() {
         <h3 className="font-bold text-lg mb-4 text-foreground px-1">{t('subjects')}</h3>
         <div className="space-y-3">
           {subjects.map((s, i) => {
-            const chCount = s.chapters.length;
-            const cCount = s.chapters.filter(c => c.completed).length;
-            const p = chCount === 0 ? 0 : Math.round((cCount / chCount) * 100);
+            const p = computeGranularProgress([s]).percent;
             return (
               <ScrollReveal
                 key={s.id}

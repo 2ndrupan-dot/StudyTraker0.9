@@ -250,6 +250,35 @@ export function isChapterContentDone(ch: Chapter): boolean {
   return ch.completed;
 }
 
+// ─── Granular overall progress ────────────────────────────────────────────────
+// Counts every node at every level (subject, chapter, topic, subtopic, concept,
+// point) as one equally-weighted unit. Ticking the "overview" checkbox on ANY
+// item at ANY level — not just fully finishing a leaf — nudges the percentage,
+// so students see steady small gains as they work through the tree.
+export function computeGranularProgress(subjects: Subject[]): { completed: number; total: number; percent: number } {
+  let total = 0, completed = 0;
+  for (const subj of subjects) {
+    total++; if (subj.completed) completed++;
+    for (const ch of subj.chapters) {
+      total++; if (ch.completed) completed++;
+      for (const t of ch.topics) {
+        total++; if (t.completed) completed++;
+        for (const sub of t.subtopics) {
+          total++; if (sub.completed) completed++;
+          for (const c of sub.concepts) {
+            total++; if (c.completed) completed++;
+            for (const p of c.points) {
+              total++; if (p.completed) completed++;
+            }
+          }
+        }
+      }
+    }
+  }
+  const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
+  return { completed, total, percent };
+}
+
 // ─── Locked/Unlocked logic ───────────────────────────────────────────────────
 // Topic-First Rule: subtopics unlock ONLY after topic itself is complete.
 

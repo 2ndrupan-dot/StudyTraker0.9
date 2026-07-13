@@ -25,7 +25,7 @@ import {
   adjPoint, adjConcept, adjSubtopic, adjTopic, adjChapter,
   findNextItem, calculateAdaptivePressure,
   totalContentMinutes, totalAdjustedMinutes,
-  isChapterContentDone, isTopicContentDone,
+  isChapterContentDone, isTopicContentDone, computeGranularProgress,
 } from '@/lib/timeEngine';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -1412,23 +1412,10 @@ export function Today() {
   };
 
   // ── Overall course progress ─────────────────────────────────────────────
-  let totalLeaves = 0, completedLeaves = 0;
-  for (const subj of subjects) {
-    for (const ch of subj.chapters) {
-      if (ch.topics.length === 0) { totalLeaves++; if (ch.completed) completedLeaves++; continue; }
-      for (const t of ch.topics) {
-        if (t.subtopics.length === 0) { totalLeaves++; if (t.completed) completedLeaves++; continue; }
-        for (const sub of t.subtopics) {
-          if (sub.concepts.length === 0) { totalLeaves++; if (sub.completed) completedLeaves++; continue; }
-          for (const c of sub.concepts) {
-            if (c.points.length === 0) { totalLeaves++; if (c.completed) completedLeaves++; continue; }
-            for (const p of c.points) { totalLeaves++; if (p.completed) completedLeaves++; }
-          }
-        }
-      }
-    }
-  }
-  const overallPercent = totalLeaves === 0 ? 0 : Math.round((completedLeaves / totalLeaves) * 100);
+  // Every node at every level (subject/chapter/topic/subtopic/concept/point)
+  // counts as one equally-weighted unit, so completing anything anywhere
+  // nudges the percentage — not just fully finishing a leaf chain.
+  const { total: totalLeaves, completed: completedLeaves, percent: overallPercent } = computeGranularProgress(subjects);
 
   // ── Today's progress ───────────────────────────────────────────────────────
   const todayTotal = tasksWithStatus.length;

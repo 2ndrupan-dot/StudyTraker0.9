@@ -978,80 +978,43 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       }
       await setDoc(docRef, mainPayload, { merge: false });
 
-      // ── Live-sync structure to accepted share recipients ──────────────────
-      // When the current user is an admin who has shared this course, propagate
-      // the updated subject structure (without notes) to every user who has
-      // already accepted that share.  This runs best-effort so a Firestore
-      // error here never blocks the primary save.
+      // ── Live-sync: relay update through shareRequests ────────────────────
+      // Security rules prevent the admin from writing directly to another user's
+      // studyData/courseNotes collections.  Instead, we write the updated course
+      // data into each accepted shareRequests document (admin CAN write those
+      // because fromAdminUid == auth.uid).  The recipient's client has an
+      // onSnapshot on shareRequests and will detect the new syncedAt timestamp,
+      // then apply the data to their own collections themselves.
       //
-      // NOTE: We intentionally query only by `fromAdminUid` (a single equality
-      // filter) and then filter `courseId` + `status` in JavaScript.  A
-      // multi-field composite query would require a Firestore composite index
-      // created in the Firebase Console; without it the query throws and the
-      // catch block swallows the error, silently preventing any sync.
+      // Query only by fromAdminUid (single equality → no composite index needed).
       try {
         const sharesQ = query(
           collection(db, 'shareRequests'),
           where('fromAdminUid', '==', currentUser.id),
         );
         const sharesSnap = await getDocs(sharesQ);
+        const syncedAt = Date.now();
         for (const shareDoc of sharesSnap.docs) {
           const shareData = shareDoc.data();
-          // JS-side filters (avoids needing a Firestore composite index)
           if (shareData.courseId !== currentCourseId) continue;
           if (shareData.status !== 'accepted') continue;
-          const acceptedByUid = shareData.acceptedByUid as string | undefined;
-          if (!acceptedByUid) continue;
 
-          // Fetch the user's current studyData so we can preserve their progress.
-          // User's completed flags must NEVER be overwritten by the admin's own progress.
-          const userDataSnap = await getDoc(
-            doc(db, 'users', acceptedByUid, 'studyData', shareDoc.id),
-          );
-          const userSubjects: unknown[] = userDataSnap.exists()
-            ? ((userDataSnap.data().subjects as unknown[] | undefined) ?? [])
-            : [];
-
-          // Build a flat id→completed map from what the user already has,
-          // then apply it onto admin's new structure so new nodes start fresh
-          // and existing nodes keep whatever progress the user had.
-          const completionMap = buildCompletionMap(userSubjects);
-          const mergedSubjects = applyCompletionMap(
-            (mainPayload.subjects as unknown[] | undefined) ?? [],
-            completionMap,
-          );
-
-          await setDoc(
-            doc(db, 'users', acceptedByUid, 'studyData', shareDoc.id),
-            { ...mainPayload, subjects: mergedSubjects, savedAt: Date.now() },
-            { merge: false },
-          );
-
-          // Also sync notes (HTML content) to the recipient so any note the
-          // admin adds or edits appears immediately in the user's accepted copy.
-          // Notes are synced in full — the admin's version is authoritative.
+          // Push the updated course structure + notes into the shareRequest.
+          // The recipient's AdminContext listener picks this up via onSnapshot
+          // and writes it into their own Firestore docs.
+          const syncPayload: Record<string, unknown> = {
+            syncStudyData: mainPayload,   // subjects structure (admin's version)
+            syncedAt,
+          };
           if (!skipNotesWrite) {
-            const userNotesDocRef = doc(db, 'users', acceptedByUid, 'courseNotes', shareDoc.id);
-            const userNotesChunksRef = collection(userNotesDocRef, 'chunks');
-            const userNotesDataSize = byteSize(JSON.stringify(notesData));
-            let userNotesPayload: Record<string, unknown>;
-            if (userNotesDataSize > FIRESTORE_NOTE_LIMIT) {
-              // Notes exceed 1 MB — bin-pack into chunks subcollection
-              const rawEntries: Array<[string, string]> = [];
-              if (notesData.overallNote) rawEntries.push(['__overall__', notesData.overallNote]);
-              for (const [k, v] of Object.entries(notesData.notes)) if (v) rawEntries.push([k, v]);
-              const splitEntries = rawEntries.flatMap(([k, v]) => splitLargeValue(k, v, FIRESTORE_NOTE_LIMIT));
-              const userChunks = packEntries(splitEntries, FIRESTORE_NOTE_LIMIT);
-              await writeChunks(userNotesChunksRef, userChunks);
-              userNotesPayload = { savedAt: Date.now(), overallNote: '', notes: {}, chunked: true, chunkCount: userChunks.length };
-            } else {
-              await clearChunks(userNotesChunksRef);
-              userNotesPayload = { savedAt: Date.now(), ...notesData, chunked: false };
-            }
-            await setDoc(userNotesDocRef, userNotesPayload, { merge: false });
+            // Embed notes as a JSON string (same pattern as courseSnapshot.notesJson)
+            syncPayload.syncNotesJson = JSON.stringify(notesData);
           }
+          await updateDoc(doc(db, 'shareRequests', shareDoc.id), syncPayload);
         }
-      } catch { /* best-effort — don't block the main save success path */ }
+      } catch (syncErr) {
+        console.error('[StudyContext] Live-sync relay write failed:', syncErr);
+      }
       // ─────────────────────────────────────────────────────────────────────
 
       // Firestore now has this edit — clear the "unsynced" marker so a future

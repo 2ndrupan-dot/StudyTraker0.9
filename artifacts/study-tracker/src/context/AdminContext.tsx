@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import {
   collection, doc, getDoc, getDocs, setDoc,
   query, where, onSnapshot, addDoc, updateDoc,
@@ -145,6 +145,34 @@ function stripProgress(nodes: unknown[]): unknown[] {
     return result;
   });
 }
+// ── Completion-map helpers (mirrors StudyContext) ─────────────────────────────
+// Used by the live-sync receiver to preserve the user's own progress when the
+// admin pushes a structural update.
+
+function buildCompletionMap(nodes: unknown[], map: Map<string, boolean> = new Map()): Map<string, boolean> {
+  const childKeys = ['chapters', 'topics', 'subtopics', 'concepts', 'points'];
+  for (const n of nodes as Record<string, unknown>[]) {
+    if (n.id) map.set(n.id as string, !!(n.completed));
+    for (const key of childKeys) {
+      if (Array.isArray(n[key])) buildCompletionMap(n[key] as unknown[], map);
+    }
+  }
+  return map;
+}
+
+function applyCompletionMap(nodes: unknown[], map: Map<string, boolean>): unknown[] {
+  const childKeys = ['chapters', 'topics', 'subtopics', 'concepts', 'points'];
+  return (nodes as Record<string, unknown>[]).map(n => {
+    const result: Record<string, unknown> = {
+      ...n,
+      completed: n.id ? (map.get(n.id as string) ?? false) : false,
+    };
+    for (const key of childKeys) {
+      if (Array.isArray(n[key])) result[key] = applyCompletionMap(n[key] as unknown[], map);
+    }
+    return result;
+  });
+}
 // ──────────────────────────────────────────────────────────────────────────────
 
 export function AdminProvider({ children }: { children: ReactNode }) {
@@ -157,6 +185,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const [allSentShares, setAllSentShares] = useState<ShareRequest[]>([]);
   const [loadingSentShares, setLoadingSentShares] = useState(false);
   const [allReceivedShares, setAllReceivedShares] = useState<ShareRequest[]>([]);
+
+  // Track which syncedAt timestamps we've already applied so we don't re-run
+  // the same sync on every snapshot update.
+  const processedSyncRef = useRef<Map<string, number>>(new Map());
 
   const adminEmails = [...new Set([...SUPER_ADMIN_EMAILS, ...firestoreAdminEmails])];
   const isAdmin = adminEmails.includes(userEmail);
@@ -195,15 +227,83 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     return () => unsub();
   }, [user?.id, isAdmin]); // eslint-disable-line
 
-  // Load received shares (user as recipient)
+  // Load received shares (user as recipient) + apply live-sync updates from admin
   useEffect(() => {
-    if (!user?.email) { setAllReceivedShares([]); return; }
+    if (!user?.email || !user?.id) { setAllReceivedShares([]); return; }
+    const uid = user.id;
     const q = query(collection(db, 'shareRequests'), where('toEmail', '==', user.email.toLowerCase()));
     const unsub = onSnapshot(q, snap => {
+      // 1. Update UI state
       setAllReceivedShares(snap.docs.map(d => ({ id: d.id, ...d.data() } as ShareRequest)));
+
+      // 2. Process any pending live-sync updates from the admin.
+      //    These arrive as syncStudyData / syncNotesJson + syncedAt fields that
+      //    the admin wrote into the shareRequest document (admin can write those;
+      //    user cannot write to admin's studyData directly due to security rules).
+      const processedMap = processedSyncRef.current;
+      for (const shareDoc of snap.docs) {
+        const data = shareDoc.data() as Record<string, unknown>;
+        if (data.status !== 'accepted') continue;
+        const syncedAt = data.syncedAt as number | undefined;
+        if (!syncedAt) continue;
+        const lastProcessed = processedMap.get(shareDoc.id) ?? 0;
+        if (syncedAt <= lastProcessed) continue;
+
+        // Mark as processed immediately to prevent double-processing
+        processedMap.set(shareDoc.id, syncedAt);
+
+        const syncStudyData = data.syncStudyData as Record<string, unknown> | undefined;
+        const syncNotesJson = data.syncNotesJson as string | undefined;
+        if (!syncStudyData) continue;
+
+        // Run async in the background — do not block the snapshot handler
+        (async () => {
+          try {
+            const shareId = shareDoc.id;
+
+            // Fetch the user's current studyData to preserve their progress
+            const userDataSnap = await getDoc(doc(db, 'users', uid, 'studyData', shareId));
+            const userSubjects: unknown[] = userDataSnap.exists()
+              ? ((userDataSnap.data().subjects as unknown[] | undefined) ?? [])
+              : [];
+
+            // Merge: keep the admin's new structure but restore user's completed flags
+            const completionMap = buildCompletionMap(userSubjects);
+            const mergedSubjects = applyCompletionMap(
+              (syncStudyData.subjects as unknown[] | undefined) ?? [],
+              completionMap,
+            );
+
+            // Write merged studyData to user's own collection
+            await setDoc(
+              doc(db, 'users', uid, 'studyData', shareId),
+              { ...syncStudyData, subjects: mergedSubjects, savedAt: Date.now() },
+              { merge: false },
+            );
+
+            // Write notes if provided
+            if (syncNotesJson) {
+              try {
+                const notesData = JSON.parse(syncNotesJson) as { overallNote: string; notes: Record<string, string> };
+                await setDoc(
+                  doc(db, 'users', uid, 'courseNotes', shareId),
+                  { savedAt: Date.now(), overallNote: notesData.overallNote || '', notes: notesData.notes || {}, chunked: false },
+                  { merge: false },
+                );
+              } catch { /* malformed JSON — skip notes */ }
+            }
+
+            console.log('[AdminContext] Live-sync applied for share', shareId, 'syncedAt', syncedAt);
+          } catch (err) {
+            console.error('[AdminContext] Failed to apply live-sync for share', shareDoc.id, err);
+            // Reset so we retry on next snapshot
+            processedMap.delete(shareDoc.id);
+          }
+        })();
+      }
     }, () => {});
     return () => unsub();
-  }, [user?.email]);
+  }, [user?.email, user?.id]); // eslint-disable-line
 
   const addAdmin = async (email: string) => {
     const e = email.trim().toLowerCase();

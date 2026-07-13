@@ -91,13 +91,22 @@ function MessageViewModal({
 // that ancestor and becomes an invisible sliver. Escaping to a portal avoids
 // any ancestor's overflow/transform/z-index clipping it.
 function useAnchoredPosition(anchorRef: React.RefObject<HTMLElement | null>, open: boolean) {
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; right: number; width: number } | null>(null);
 
   const recompute = useCallback(() => {
     const el = anchorRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    setPos({ top: rect.bottom + 8, right: Math.max(8, window.innerWidth - rect.right) });
+    // Panel width shrinks to fit narrow phones (16px total side margin) instead
+    // of a fixed 320px that can overflow small viewports.
+    const width = Math.min(320, window.innerWidth - 16);
+    // Anchor to the bell's right edge by default, but clamp so the panel
+    // never extends past either screen edge — this is what previously let
+    // the dropdown hang half off-screen on narrow phones.
+    const idealRight = window.innerWidth - rect.right;
+    const maxRight = window.innerWidth - 8 - width;
+    const right = Math.min(Math.max(idealRight, 8), Math.max(8, maxRight));
+    setPos({ top: rect.bottom + 8, right, width });
   }, [anchorRef]);
 
   useLayoutEffect(() => {
@@ -172,8 +181,8 @@ export function NotificationBell() {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 6, scale: 0.95 }}
         transition={{ duration: 0.15, ease: 'easeOut' }}
-        style={{ position: 'fixed', top: pos.top, right: pos.right, zIndex: 9999 }}
-        className="w-80 max-w-[calc(100vw-1rem)] bg-card border border-border/60 rounded-2xl shadow-2xl overflow-hidden"
+        style={{ position: 'fixed', top: pos.top, right: pos.right, width: pos.width, zIndex: 9999 }}
+        className="bg-card border border-border/60 rounded-2xl shadow-2xl overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-secondary/30">
@@ -319,13 +328,14 @@ export function NotificationBell() {
         onClick={() => setOpen(v => !v)}
         title={lang === 'bn' ? 'নোটিফিকেশন' : 'Notifications'}
         className={cn(
-          "p-2.5 rounded-full hover:bg-white/25 transition-colors border",
+          "p-2 sm:p-2.5 rounded-full hover:bg-white/25 transition-colors border shrink-0",
           open
             ? "bg-white/30 text-white border-white/40"
             : "bg-white/15 text-white border-white/20"
         )}
       >
-        <Bell size={18} />
+        <Bell size={16} className="sm:hidden" />
+        <Bell size={18} className="hidden sm:block" />
         <AnimatePresence>
           {unread > 0 && (
             <motion.span

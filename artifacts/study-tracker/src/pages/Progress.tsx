@@ -499,36 +499,39 @@ export function Progress() {
       {/* ── Gradient header banner ── */}
       <div className="sticky top-0 z-20 relative overflow-hidden rounded-b-2xl" style={{ background: 'linear-gradient(135deg, hsl(152 70% 42%) 0%, hsl(172 70% 38%) 50%, hsl(192 85% 45%) 100%)' }}>
         <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl" />
-        <div className="relative px-5 pt-5 pb-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <button onClick={() => window.location.reload()} className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0 cursor-pointer hover:bg-white/30 transition-colors active:scale-95" title="Reload">
-              <UserIcon size={22} className="text-white" strokeWidth={2.2} />
+        <div className="relative px-5 pt-5 pb-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+            <button onClick={() => window.location.reload()} className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0 cursor-pointer hover:bg-white/30 transition-colors active:scale-95" title="Reload">
+              <UserIcon size={20} className="text-white" strokeWidth={2.2} />
             </button>
-            <h1 className="font-bold text-white leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(1.05rem, 5.5vw, 1.5rem)', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('profileTab')}</h1>
+            <h1 className="font-bold text-white leading-tight truncate min-w-0" style={{ fontSize: 'clamp(1rem, 4.5vw, 1.5rem)', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('profileTab')}</h1>
           </div>
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-1 sm:gap-2 items-center shrink-0">
             <NotificationBell />
             <motion.button
               whileTap={{ scale: 0.93 }}
               onClick={() => setNoteSearchOpen(true)}
               title={t('noteSearch')}
-              className="p-2.5 bg-white/15 text-white rounded-full hover:bg-white/25 transition-colors border border-white/20"
+              className="p-2 sm:p-2.5 bg-white/15 text-white rounded-full hover:bg-white/25 transition-colors border border-white/20 shrink-0"
             >
-              <Search size={18} />
+              <Search size={16} className="sm:hidden" />
+              <Search size={18} className="hidden sm:block" />
             </motion.button>
             <motion.button
               whileTap={{ scale: 0.93 }}
               onClick={() => setModals({ ...modals, settings: true })}
-              className="p-2.5 bg-white/15 text-white rounded-full hover:bg-white/25 transition-colors border border-white/20"
+              className="p-2 sm:p-2.5 bg-white/15 text-white rounded-full hover:bg-white/25 transition-colors border border-white/20 shrink-0"
             >
-              <Settings size={18} />
+              <Settings size={16} className="sm:hidden" />
+              <Settings size={18} className="hidden sm:block" />
             </motion.button>
             <motion.button
               whileTap={{ scale: 0.93 }}
               onClick={() => setModals({ ...modals, logout: true })}
-              className="p-2.5 bg-white/15 text-white rounded-full hover:bg-white/25 transition-colors border border-white/20"
+              className="p-2 sm:p-2.5 bg-white/15 text-white rounded-full hover:bg-white/25 transition-colors border border-white/20 shrink-0"
             >
-              <LogOut size={18} />
+              <LogOut size={16} className="sm:hidden" />
+              <LogOut size={18} className="hidden sm:block" />
             </motion.button>
           </div>
         </div>

@@ -342,6 +342,7 @@ export function AdminPanel() {
   const [notePicked, setNotePicked] = useState<{ title: string; html: string; breadcrumb: string[] } | null>(null);
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   // ── Sent tab state ──
   const [editPermModal, setEditPermModal] = useState<ShareRequest | null>(null);
@@ -386,6 +387,7 @@ export function AdminPanel() {
 
   const handleSendShare = async () => {
     setSending(true);
+    setSendError(null);
     try {
       await sendShare({
         toEmail: shareForm.toEmail,
@@ -407,6 +409,12 @@ export function AdminPanel() {
       });
       setNotePicked(null);
       setTimeout(() => setSendSuccess(false), 3000);
+    } catch (err) {
+      setSendError(
+        err instanceof Error
+          ? err.message
+          : (lang === 'bn' ? 'শেয়ার পাঠাতে সমস্যা হয়েছে।' : 'Failed to send share.')
+      );
     } finally {
       setSending(false);
     }
@@ -782,6 +790,12 @@ export function AdminPanel() {
                     <span className="font-semibold">{formatDuration(shareForm.durationValue, shareForm.durationUnit, lang)}</span>
                   </p>
                 </div>
+
+                {sendError && (
+                  <p className="text-destructive text-xs text-center bg-destructive/10 rounded-lg py-2 px-3">
+                    {sendError}
+                  </p>
+                )}
 
                 <Button className="w-full" onClick={handleSendShare} disabled={sending}>
                   {sending ? (

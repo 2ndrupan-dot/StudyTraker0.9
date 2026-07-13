@@ -156,7 +156,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     if (!user) return;
     const ts = Date.now();
     const pendingExpiresAt = ts + durationToMs(params.durationValue, params.durationUnit);
-    await addDoc(collection(db, 'shareRequests'), {
+    const payload: Record<string, unknown> = {
       ...params,
       toEmail: params.toEmail.toLowerCase(),
       fromAdminUid: user.id,
@@ -165,7 +165,15 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       status: 'pending',
       sentAt: ts,
       pendingExpiresAt,
-    });
+    };
+    // Firestore rejects `undefined` field values (e.g. courseId/courseName when
+    // sharing a note, or noteTitle/noteHtml when sharing a course) — strip them
+    // out instead of sending them, otherwise addDoc() throws and the Send
+    // button silently does nothing.
+    for (const key of Object.keys(payload)) {
+      if (payload[key] === undefined) delete payload[key];
+    }
+    await addDoc(collection(db, 'shareRequests'), payload);
   };
 
   const updateSharePermissions = async (shareId: string, permissions: SharePermissions) => {

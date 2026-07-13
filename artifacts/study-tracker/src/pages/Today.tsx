@@ -1596,8 +1596,8 @@ export function Today() {
             );
           })()}
 
-          <div className="flex items-center justify-between gap-1 sm:gap-1.5">
-            <div className="flex items-center gap-1 sm:gap-2 min-w-0 shrink">
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5 sm:gap-x-1.5">
+            <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
               <div className="flex items-center gap-1 text-muted-foreground text-[10px] sm:text-[11px] font-semibold bg-secondary/70 px-1.5 sm:px-2 py-1 rounded-lg whitespace-nowrap shrink-0">
                 <Clock size={10} className="shrink-0" /> ~{formatMins(task.estimatedMins, t('hour'), t('mins'))}
               </div>
@@ -1608,14 +1608,14 @@ export function Today() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
               {task.loadedFrom && !done && !opts?.isRevision && (
                 <button
                   onClick={() => returnToOriginal(task)}
                   title={t('returnToOriginTitle')}
                   className="flex items-center gap-1 h-7 sm:h-8 px-1.5 sm:px-2.5 rounded-xl border border-indigo-200 text-indigo-600 bg-indigo-500/5 text-[10px] sm:text-[11px] font-bold hover:bg-indigo-500/15 transition-all whitespace-nowrap"
                 >
-                  <RotateCcw size={11} className="shrink-0" /> <span className="hidden sm:inline">{t('returnToOrigin')}</span>
+                  <RotateCcw size={11} className="shrink-0" /> <span className="hidden xs:inline sm:inline">{t('returnToOrigin')}</span>
                 </button>
               )}
               {!done ? (

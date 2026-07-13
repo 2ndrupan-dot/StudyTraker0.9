@@ -252,8 +252,11 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         // Mark as processed immediately to prevent double-processing
         processedMap.set(shareDoc.id, syncedAt);
 
-        const syncStudyData = data.syncStudyData as Record<string, unknown> | undefined;
-        const syncNotesJson = data.syncNotesJson as string | undefined;
+        // Admin overwrites courseSnapshot in-place (dot-notation update),
+        // so read the latest data from there.
+        const courseSnapshot = data.courseSnapshot as { studyData?: Record<string, unknown>; notesJson?: string } | undefined;
+        const syncStudyData = courseSnapshot?.studyData;
+        const syncNotesJson = courseSnapshot?.notesJson;
         if (!syncStudyData) continue;
 
         // Run async in the background — do not block the snapshot handler

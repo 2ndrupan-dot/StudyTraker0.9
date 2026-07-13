@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import { useCourse } from './CourseContext';
 import { addDays, formatISO } from 'date-fns';
 import { nowIST, addDaysIST, toDateStrIST } from '@/lib/istTime';
-import { doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, collection, writeBatch, query, where, type CollectionReference, type DocumentReference } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, collection, writeBatch, query, where, updateDoc, type CollectionReference, type DocumentReference } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 // Firestore document size limit — documents above this are split across a
@@ -993,27 +993,32 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           where('fromAdminUid', '==', currentUser.id),
         );
         const sharesSnap = await getDocs(sharesQ);
+        console.log(`[LiveSync] Admin save for course "${currentCourseId}" — found ${sharesSnap.size} sent share(s) total`);
         const syncedAt = Date.now();
+        let syncCount = 0;
         for (const shareDoc of sharesSnap.docs) {
           const shareData = shareDoc.data();
           if (shareData.courseId !== currentCourseId) continue;
           if (shareData.status !== 'accepted') continue;
+          syncCount++;
 
-          // Push the updated course structure + notes into the shareRequest.
-          // The recipient's AdminContext listener picks this up via onSnapshot
-          // and writes it into their own Firestore docs.
+          // Overwrite courseSnapshot in-place (dot-notation → no extra fields added,
+          // document size stays stable) and bump syncedAt as the change signal.
+          // The recipient's AdminContext listener detects the new syncedAt via
+          // onSnapshot and applies the update to their own Firestore docs.
           const syncPayload: Record<string, unknown> = {
-            syncStudyData: mainPayload,   // subjects structure (admin's version)
+            'courseSnapshot.studyData': mainPayload,
             syncedAt,
           };
           if (!skipNotesWrite) {
-            // Embed notes as a JSON string (same pattern as courseSnapshot.notesJson)
-            syncPayload.syncNotesJson = JSON.stringify(notesData);
+            syncPayload['courseSnapshot.notesJson'] = JSON.stringify(notesData);
           }
           await updateDoc(doc(db, 'shareRequests', shareDoc.id), syncPayload);
+          console.log(`[LiveSync] ✅ Relay pushed to shareRequest "${shareDoc.id}" — syncedAt=${syncedAt}`);
         }
+        if (syncCount === 0) console.warn(`[LiveSync] ⚠️ No accepted shares found for course "${currentCourseId}"`);
       } catch (syncErr) {
-        console.error('[StudyContext] Live-sync relay write failed:', syncErr);
+        console.error('[LiveSync] ❌ Relay write failed:', syncErr);
       }
       // ─────────────────────────────────────────────────────────────────────
 

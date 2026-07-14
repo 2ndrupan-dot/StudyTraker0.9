@@ -1790,30 +1790,39 @@ export function Today() {
                 <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight break-words" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('todayPlan')}</h1>
               </div>
             </div>
-            {/* Stat pills row + install button */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={() => { setDaysInput(settings.courseTotalDays?.toString() || ''); setDaysModalOpen(true); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
-              >
-                <Target size={12} className="text-white/80 shrink-0" />
-                <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('courseCompletion')}:</span>
-                <span className="text-white text-[12px] font-bold">{settings.courseTotalDays ? `${settings.courseTotalDays} Days` : '—'}</span>
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={() => { setHoursInput(settings.dailyStudyHours?.toString() || '3'); setHoursModalOpen(true); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
-              >
-                <AlarmClock size={12} className="text-white/80 shrink-0" />
-                <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('dailyStudyHours')}:</span>
-                <span className="text-white text-[12px] font-bold">{settings.dailyStudyHours ?? 3} Hours</span>
-              </motion.button>
+            {/* Stat pills row + install button. The pills wrap in their own
+                flex-wrap container (`flex-1`) so their line-breaking is only
+                ever driven by the pills' own widths — the action-button
+                group sits beside them as a separate flex item (not one of
+                the wrapped items), so its height (taller when the contact +
+                install buttons are stacked on mobile) never inflates a pill
+                row's height and creates a phantom gap before the next
+                wrapped pill. */}
+            <div className="flex items-start gap-2">
+              <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => { setDaysInput(settings.courseTotalDays?.toString() || ''); setDaysModalOpen(true); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
+                >
+                  <Target size={12} className="text-white/80 shrink-0" />
+                  <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('courseCompletion')}:</span>
+                  <span className="text-white text-[12px] font-bold">{settings.courseTotalDays ? `${settings.courseTotalDays} Days` : '—'}</span>
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => { setHoursInput(settings.dailyStudyHours?.toString() || '3'); setHoursModalOpen(true); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
+                >
+                  <AlarmClock size={12} className="text-white/80 shrink-0" />
+                  <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('dailyStudyHours')}:</span>
+                  <span className="text-white text-[12px] font-bold">{settings.dailyStudyHours ?? 3} Hours</span>
+                </motion.button>
+              </div>
 
               {/* Right-side action buttons: contact (always) + install (mobile only, not installed) */}
               {(appContact.supportLink || (isMobileBrowser && !isInstalled)) && (
-                <div className={`ml-auto shrink-0 flex items-center gap-1.5 ${isMobileBrowser ? 'flex-col' : 'flex-row'}`}>
+                <div className={`shrink-0 flex items-center gap-1.5 ${isMobileBrowser ? 'flex-col' : 'flex-row'}`}>
                   {/* Contact button — always shown when support link is configured */}
                   {appContact.supportLink && (
                     <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(263 80% 58%)' } as React.CSSProperties}>

@@ -23,20 +23,59 @@ function formatDuration(value: number, unit: string, lang: string) {
 function SharedNoteModal({
   isOpen, onClose, share,
 }: { isOpen: boolean; onClose: () => void; share: ShareRequest | null }) {
-  const [localHtml, setLocalHtml] = useState(share?.noteHtml ?? '');
+  const notes = share?.notes && share.notes.length > 0 ? share.notes : undefined;
+  const singleNote = notes?.[0];
+  const [localHtml, setLocalHtml] = useState(singleNote?.html ?? share?.noteHtml ?? '');
 
   useEffect(() => {
-    setLocalHtml(share?.noteHtml ?? '');
-  }, [share?.id, share?.noteHtml]);
+    setLocalHtml(singleNote?.html ?? share?.noteHtml ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [share?.id]);
 
   if (!share) return null;
+
+  // A share carrying multiple notes together is shown as a read-only,
+  // stacked list — editing semantics don't map cleanly onto several
+  // unrelated notes at once, so this view focuses on reading/copying.
+  if (notes && notes.length > 1) {
+    return (
+      <Modal isOpen={isOpen} onClose={onClose} title={`${notes.length} Notes`} icon={StickyNote}>
+        <div className="space-y-3">
+          {notes.map((note, i) => (
+            <div key={i} className="p-3 bg-secondary/40 rounded-xl space-y-2">
+              <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
+                {note.breadcrumb.map((c, ci) => (
+                  <React.Fragment key={ci}>
+                    {ci > 0 && <ChevronRight size={9} />}
+                    <span className={ci === note.breadcrumb.length - 1 ? 'text-foreground font-semibold' : ''}>{c}</span>
+                  </React.Fragment>
+                ))}
+              </p>
+              {note.html ? (
+                <div
+                  className={cn(
+                    "text-sm leading-relaxed rich-text-content",
+                    !share.permissions.selectCopyText && "select-none"
+                  )}
+                  dangerouslySetInnerHTML={{ __html: note.html }}
+                />
+              ) : (
+                <p className="text-xs text-muted-foreground italic">No content available.</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <NoteEditorModal
       isOpen={isOpen}
       onClose={onClose}
-      title={share.noteTitle || 'Note'}
+      title={singleNote?.title || share.noteTitle || 'Note'}
       icon={StickyNote}
-      breadcrumb={share.noteBreadcrumb}
+      breadcrumb={singleNote?.breadcrumb || share.noteBreadcrumb}
       value={localHtml}
       onChange={setLocalHtml}
       onClear={() => setLocalHtml('')}
@@ -238,7 +277,9 @@ export function NotificationBell() {
                           ? (share.courseName || (lang === 'bn' ? 'কোর্স শেয়ার' : 'Course Share'))
                           : share.type === 'message'
                             ? (lang === 'bn' ? 'নতুন মেসেজ' : 'New message')
-                            : (share.noteTitle || (lang === 'bn' ? 'নোট শেয়ার' : 'Note Share'))
+                            : share.notes && share.notes.length > 1
+                              ? (lang === 'bn' ? `${share.notes.length}টি নোট` : `${share.notes.length} notes`)
+                              : (share.notes?.[0]?.title || share.noteTitle || (lang === 'bn' ? 'নোট শেয়ার' : 'Note Share'))
                         }
                       </p>
                       {share.type === 'message' && (

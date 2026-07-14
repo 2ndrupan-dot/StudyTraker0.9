@@ -12,6 +12,12 @@ const SUPER_ADMIN_EMAILS: string[] = (import.meta.env.VITE_ADMIN_EMAILS || '')
   .map((e: string) => e.trim().toLowerCase())
   .filter(Boolean);
 
+export interface NoteShareItem {
+  title: string;
+  html: string;
+  breadcrumb: string[];
+}
+
 export interface SharePermissions {
   editNotes: boolean;
   deleteNotes: boolean;
@@ -49,10 +55,16 @@ export interface ShareRequest {
   // means "whole course" (courses with no subjects, or shares created before
   // this field existed).
   sharedSubjectIds?: string[];
-  // Note share
+  // Note share (single note — legacy field set, still written for the
+  // first note so old display code / old records keep working)
   noteTitle?: string;
   noteHtml?: string;
   noteBreadcrumb?: string[];
+  // Note share — one or more notes selected together and sent as one card.
+  // When present (length >= 1) this is the source of truth for note shares;
+  // the singular noteTitle/noteHtml/noteBreadcrumb above are kept in sync
+  // with notes[0] for backward compatibility with older display code.
+  notes?: NoteShareItem[];
   // Plain admin -> user message
   messageText?: string;
   // Common
@@ -102,7 +114,7 @@ interface AdminContextType {
 
 export type SendShareParams = Pick<ShareRequest,
   'toEmail' | 'type' | 'courseId' | 'courseName' | 'noteTitle' | 'noteHtml' | 'noteBreadcrumb' |
-  'messageText' | 'permissions' | 'durationValue' | 'durationUnit' | 'sharedSubjectIds'
+  'notes' | 'messageText' | 'permissions' | 'durationValue' | 'durationUnit' | 'sharedSubjectIds'
 >;
 
 // ── Subject-tree helpers for partial (subject-level) course sharing ──────────
@@ -485,6 +497,15 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       sentAt: ts,
       pendingExpiresAt,
     };
+
+    // When a note share carries a `notes` array, mirror the first entry into
+    // the legacy singular fields so any older display code that still reads
+    // noteTitle/noteHtml/noteBreadcrumb keeps working.
+    if (params.type === 'note' && params.notes && params.notes.length > 0) {
+      payload.noteTitle = params.notes[0].title;
+      payload.noteHtml = params.notes[0].html;
+      payload.noteBreadcrumb = params.notes[0].breadcrumb;
+    }
 
     // For course shares: embed a snapshot of the course data so the recipient
     // can copy it to their own account when they accept. Best-effort — the share

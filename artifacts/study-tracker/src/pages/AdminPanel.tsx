@@ -4,7 +4,7 @@ import {
   ShieldCheck, Users, Send, List, Plus, Trash2, Edit3, Check, X,
   BookOpen, StickyNote, ChevronRight, ChevronLeft, Clock, ArrowLeft,
   UserCheck, UserMinus, RefreshCw, Eye, EyeOff, Save, MessageSquare,
-  TimerReset, ListPlus, Undo2, AlertTriangle, Archive,
+  TimerReset, ListPlus, Undo2, AlertTriangle, Archive, Search,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -50,6 +50,16 @@ function typeColorClass(type: ShareRequest['type']) {
   return 'bg-amber-500/10 text-amber-600';
 }
 
+/** Human-readable title for any share card, handling multi-note shares. */
+function shareTitle(share: ShareRequest, lang: string): string {
+  if (share.type === 'course') return share.courseName || '—';
+  if (share.type === 'message') return share.messageText || '—';
+  if (share.notes && share.notes.length > 1) {
+    return lang === 'bn' ? `${share.notes.length}টি নোট` : `${share.notes.length} notes`;
+  }
+  return share.notes?.[0]?.title || share.noteTitle || '—';
+}
+
 const DEFAULT_PERMISSIONS: SharePermissions = {
   editNotes: false,
   deleteNotes: false,
@@ -73,11 +83,15 @@ interface NotePick {
 
 function NotePicker({
   subjects,
-  onPick,
+  onToggle,
+  pickedIds,
   lang,
 }: {
   subjects: Subject[];
-  onPick: (pick: NotePick) => void;
+  /** Toggles the given item in/out of the multi-select list. */
+  onToggle: (pick: NotePick & { id: string }) => void;
+  /** ids of notes already selected — used to render the checked state. */
+  pickedIds: Set<string>;
   lang: string;
 }) {
   const [level, setLevel] = useState<NoteLevel>('subjects');
@@ -146,7 +160,7 @@ function NotePicker({
   const pickNote = (item: any) => {
     const html = item.note || '';
     const breadcrumb = [...buildBreadcrumb(), item.title];
-    onPick({ title: item.title, html, breadcrumb });
+    onToggle({ id: item.id, title: item.title, html, breadcrumb });
   };
 
   const accentColor = sel.subject?.color ?? '#6366f1';
@@ -209,9 +223,17 @@ function NotePicker({
                 {item.note?.trim() && (
                   <button
                     onClick={() => pickNote(item)}
-                    className="p-2 mr-1 rounded-lg bg-primary/10 text-primary text-xs font-semibold shrink-0 hover:bg-primary/20 transition-colors"
+                    className={cn(
+                      "flex items-center gap-1 p-2 mr-1 rounded-lg text-xs font-semibold shrink-0 transition-colors",
+                      pickedIds.has(item.id)
+                        ? "bg-green-500/15 text-green-700 hover:bg-green-500/25"
+                        : "bg-primary/10 text-primary hover:bg-primary/20"
+                    )}
                   >
-                    {lang === 'bn' ? 'সিলেক্ট' : 'Select'}
+                    {pickedIds.has(item.id) && <Check size={11} />}
+                    {pickedIds.has(item.id)
+                      ? (lang === 'bn' ? 'যোগ হয়েছে' : 'Added')
+                      : (lang === 'bn' ? 'সিলেক্ট' : 'Select')}
                   </button>
                 )}
               </div>
@@ -291,9 +313,7 @@ function SentShareRow({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-foreground truncate">
-            {share.type === 'course' ? (share.courseName || '—')
-              : share.type === 'message' ? (share.messageText || '—')
-              : (share.noteTitle || '—')}
+            {shareTitle(share, lang)}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">→ {share.toEmail}</p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -391,9 +411,7 @@ function TrashedShareRow({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-foreground truncate">
-            {share.type === 'course' ? (share.courseName || '—')
-              : share.type === 'message' ? (share.messageText || '—')
-              : (share.noteTitle || '—')}
+            {shareTitle(share, lang)}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">→ {share.toEmail}</p>
           {share.trashedAt && (
@@ -448,7 +466,10 @@ export function AdminPanel() {
   // ── Share tab state ──
   const [shareStep, setShareStep] = useState(1); // 1=recipient, 2=content, 3=duration+perms
   const [shareForm, setShareForm] = useState({
-    toEmail: '',
+    // One or more recipients. A single email behaves exactly like the old
+    // single-recipient flow; multiple emails fan out into one separate
+    // shareRequest card per recipient when sent.
+    toEmails: [] as string[],
     type: 'course' as 'course' | 'note' | 'message',
     courseId: '',
     courseName: '',
@@ -460,8 +481,10 @@ export function AdminPanel() {
     durationUnit: 'days' as 'hours' | 'days' | 'months',
     permissions: { ...DEFAULT_PERMISSIONS },
   });
-  const [notePicking, setNotePicking] = useState(false);
-  const [notePicked, setNotePicked] = useState<{ title: string; html: string; breadcrumb: string[] } | null>(null);
+  const [emailInput, setEmailInput] = useState('');
+  const [emailInputError, setEmailInputError] = useState('');
+  // One or more notes picked together to be sent as a single share card.
+  const [notesPickedList, setNotesPickedList] = useState<Array<NotePick & { id: string }>>([]);
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -498,6 +521,10 @@ export function AdminPanel() {
   };
 
   // ── Sent tab state ──
+  const [sentSearch, setSentSearch] = useState('');
+  const filteredSentShares = sentSearch.trim()
+    ? sentShares.filter(s => s.toEmail.toLowerCase().includes(sentSearch.trim().toLowerCase()))
+    : sentShares;
   const [editPermModal, setEditPermModal] = useState<ShareRequest | null>(null);
   const [editPermissions, setEditPermissions] = useState<SharePermissions>({ ...DEFAULT_PERMISSIONS });
   const [savingPerms, setSavingPerms] = useState(false);
@@ -549,31 +576,62 @@ export function AdminPanel() {
     try { await removeAdmin(email); } finally { setRemovingEmail(null); }
   };
 
+  // ── Multi-recipient email chip helpers ──
+  // Accepts a single email or a batch pasted/typed with commas, spaces, or
+  // newlines between them, and adds every valid, not-yet-added one as a chip.
+  const addEmailChips = (raw: string) => {
+    const candidates = raw.split(/[,\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (candidates.length === 0) return;
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const valid: string[] = [];
+    let sawInvalid = false;
+    for (const c of candidates) {
+      if (emailRe.test(c)) valid.push(c);
+      else sawInvalid = true;
+    }
+    setShareForm(f => ({ ...f, toEmails: Array.from(new Set([...f.toEmails, ...valid])) }));
+    setEmailInput('');
+    setEmailInputError(sawInvalid ? (lang === 'bn' ? 'কিছু ইমেইল সঠিক নয়, বাদ দেওয়া হয়েছে।' : 'Some emails were invalid and skipped.') : '');
+  };
+  const removeEmailChip = (email: string) => {
+    setShareForm(f => ({ ...f, toEmails: f.toEmails.filter(e => e !== email) }));
+  };
+
   const handleSendShare = async () => {
     setSending(true);
     setSendError(null);
     try {
-      await sendShare({
-        toEmail: shareForm.toEmail,
-        type: shareForm.type,
-        courseId: shareForm.type === 'course' ? shareForm.courseId : undefined,
-        courseName: shareForm.type === 'course' ? shareForm.courseName : undefined,
-        noteTitle: shareForm.type === 'note' ? (notePicked?.title || shareForm.noteTitle) : undefined,
-        noteHtml: shareForm.type === 'note' ? (notePicked?.html || shareForm.noteHtml) : undefined,
-        noteBreadcrumb: shareForm.type === 'note' ? (notePicked?.breadcrumb || []) : undefined,
-        messageText: shareForm.type === 'message' ? shareForm.messageText.trim() : undefined,
-        permissions: shareForm.type === 'message' ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false, renameCourse: false, addItems: false, takeScreenshot: false, selectCopyText: false } : shareForm.permissions,
-        durationValue: shareForm.durationValue,
-        durationUnit: shareForm.durationUnit,
-        sharedSubjectIds: shareForm.type === 'course' && courseSubjects.length > 0 ? selectedSubjectIds : undefined,
-      });
+      const noteItems = shareForm.type === 'note'
+        ? notesPickedList.map(({ id: _id, ...rest }) => rest)
+        : undefined;
+      // Fan out to a separate shareRequest doc per recipient — each recipient
+      // gets their own independent card (own status/permissions/expiry).
+      for (const toEmail of shareForm.toEmails) {
+        await sendShare({
+          toEmail,
+          type: shareForm.type,
+          courseId: shareForm.type === 'course' ? shareForm.courseId : undefined,
+          courseName: shareForm.type === 'course' ? shareForm.courseName : undefined,
+          noteTitle: shareForm.type === 'note' ? noteItems?.[0]?.title : undefined,
+          noteHtml: shareForm.type === 'note' ? noteItems?.[0]?.html : undefined,
+          noteBreadcrumb: shareForm.type === 'note' ? noteItems?.[0]?.breadcrumb : undefined,
+          notes: noteItems,
+          messageText: shareForm.type === 'message' ? shareForm.messageText.trim() : undefined,
+          permissions: shareForm.type === 'message' ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false, renameCourse: false, addItems: false, takeScreenshot: false, selectCopyText: false } : shareForm.permissions,
+          durationValue: shareForm.durationValue,
+          durationUnit: shareForm.durationUnit,
+          sharedSubjectIds: shareForm.type === 'course' && courseSubjects.length > 0 ? selectedSubjectIds : undefined,
+        });
+      }
       setSendSuccess(true);
       setShareStep(1);
       setShareForm({
-        toEmail: '', type: 'course', courseId: '', courseName: '', noteTitle: '', noteHtml: '',
+        toEmails: [], type: 'course', courseId: '', courseName: '', noteTitle: '', noteHtml: '',
         noteBreadcrumb: [], messageText: '', durationValue: 7, durationUnit: 'days', permissions: { ...DEFAULT_PERMISSIONS },
       });
-      setNotePicked(null);
+      setEmailInput('');
+      setEmailInputError('');
+      setNotesPickedList([]);
       setCourseSubjects([]);
       setSelectedSubjectIds([]);
       setTimeout(() => setSendSuccess(false), 3000);
@@ -834,12 +892,51 @@ export function AdminPanel() {
                 <p className="text-sm font-bold text-foreground">
                   {lang === 'bn' ? '১. প্রাপক ও কন্টেন্ট টাইপ' : '1. Recipient & Content Type'}
                 </p>
-                <Input
-                  type="email"
-                  placeholder={lang === 'bn' ? 'প্রাপকের ইমেইল আইডি' : 'Recipient email'}
-                  value={shareForm.toEmail}
-                  onChange={e => setShareForm(f => ({ ...f, toEmail: e.target.value }))}
-                />
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    {lang === 'bn'
+                      ? 'একজনের ইমেইল দিন, অথবা একাধিক ইমেইল কমা/স্পেস দিয়ে লিখে একসাথে অনেকজনকে পাঠান'
+                      : 'Add one email, or paste several separated by commas/spaces to send to many at once'}
+                  </p>
+                  {shareForm.toEmails.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {shareForm.toEmails.map(email => (
+                        <span
+                          key={email}
+                          className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold"
+                        >
+                          {email}
+                          <button
+                            onClick={() => removeEmailChip(email)}
+                            className="p-0.5 rounded-full hover:bg-primary/20 transition-colors"
+                          >
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      placeholder={lang === 'bn' ? 'প্রাপকের ইমেইল আইডি' : 'Recipient email(s)'}
+                      value={emailInput}
+                      onChange={e => { setEmailInput(e.target.value); setEmailInputError(''); }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); addEmailChips(emailInput); }
+                      }}
+                      className="flex-1"
+                    />
+                    <Button
+                      onClick={() => addEmailChips(emailInput)}
+                      disabled={!emailInput.trim()}
+                      className="px-4 py-0 h-12"
+                    >
+                      <Plus size={14} />
+                    </Button>
+                  </div>
+                  {emailInputError && <p className="text-xs text-destructive mt-1">{emailInputError}</p>}
+                </div>
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground mb-2">
                     {lang === 'bn' ? 'কী শেয়ার করবেন?' : 'What to share?'}
@@ -872,7 +969,7 @@ export function AdminPanel() {
                 </div>
                 <Button
                   className="w-full"
-                  disabled={!shareForm.toEmail.trim()}
+                  disabled={shareForm.toEmails.length === 0}
                   onClick={() => setShareStep(2)}
                 >
                   {lang === 'bn' ? 'পরবর্তী' : 'Next'} →
@@ -970,34 +1067,52 @@ export function AdminPanel() {
                     className="w-full rounded-xl border border-border/60 bg-secondary px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                   />
                 ) : (
-                  <>
-                    {notePicked ? (
-                      <div className="p-3 bg-amber-500/5 border border-amber-300/50 rounded-xl space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                              {notePicked.breadcrumb.map((c, i) => (
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold text-muted-foreground">
+                      {lang === 'bn'
+                        ? 'একটি বা একাধিক নোট সিলেক্ট করুন — সবগুলো একসাথে একটি কার্ড হিসেবে পাঠানো হবে'
+                        : 'Select one or more notes — they will all be sent together as a single card'}
+                    </p>
+
+                    {notesPickedList.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] font-bold text-foreground">
+                          {lang === 'bn'
+                            ? `সিলেক্ট করা হয়েছে (${notesPickedList.length})`
+                            : `Selected (${notesPickedList.length})`}
+                        </p>
+                        {notesPickedList.map(note => (
+                          <div key={note.id} className="flex items-center justify-between gap-2 p-2.5 bg-amber-500/5 border border-amber-300/50 rounded-xl">
+                            <p className="text-xs text-foreground flex items-center gap-1 flex-wrap min-w-0 flex-1">
+                              {note.breadcrumb.map((c, i) => (
                                 <React.Fragment key={i}>
-                                  {i > 0 && <ChevronRight size={9} />}
-                                  <span>{c}</span>
+                                  {i > 0 && <ChevronRight size={9} className="shrink-0" />}
+                                  <span className={i === note.breadcrumb.length - 1 ? 'font-semibold' : ''}>{c}</span>
                                 </React.Fragment>
                               ))}
                             </p>
+                            <button
+                              onClick={() => setNotesPickedList(list => list.filter(n => n.id !== note.id))}
+                              className="p-1 rounded hover:bg-secondary text-muted-foreground shrink-0"
+                            >
+                              <X size={12} />
+                            </button>
                           </div>
-                          <button onClick={() => setNotePicked(null)} className="p-1 rounded hover:bg-secondary text-muted-foreground shrink-0">
-                            <X size={12} />
-                          </button>
-                        </div>
-                        {notePicked.html && (
-                          <div className="max-h-24 overflow-hidden rounded-lg bg-background/60 p-2">
-                            <RichTextPreview html={notePicked.html} className="text-xs leading-relaxed" />
-                          </div>
-                        )}
+                        ))}
                       </div>
-                    ) : (
-                      <NotePicker subjects={subjects} onPick={setNotePicked} lang={lang} />
                     )}
-                  </>
+
+                    <NotePicker
+                      subjects={subjects}
+                      pickedIds={new Set(notesPickedList.map(n => n.id))}
+                      onToggle={pick => setNotesPickedList(list =>
+                        list.some(n => n.id === pick.id)
+                          ? list.filter(n => n.id !== pick.id)
+                          : [...list, pick]
+                      )}
+                      lang={lang}
+                    />
+                  </div>
                 )}
 
                 <Button
@@ -1005,7 +1120,7 @@ export function AdminPanel() {
                   disabled={
                     shareForm.type === 'course' ? (!shareForm.courseId || (courseSubjects.length > 0 && selectedSubjectIds.length === 0))
                       : shareForm.type === 'message' ? !shareForm.messageText.trim()
-                      : !notePicked
+                      : notesPickedList.length === 0
                   }
                   onClick={() => setShareStep(3)}
                 >
@@ -1074,12 +1189,21 @@ export function AdminPanel() {
 
                 {/* Summary */}
                 <div className="bg-secondary/50 rounded-xl p-3 text-xs space-y-1">
-                  <p><span className="text-muted-foreground">{lang === 'bn' ? 'প্রাপক:' : 'To:'}</span> <span className="font-semibold">{shareForm.toEmail}</span></p>
+                  <p>
+                    <span className="text-muted-foreground">
+                      {lang === 'bn'
+                        ? `প্রাপক (${shareForm.toEmails.length}):`
+                        : `To (${shareForm.toEmails.length}):`}
+                    </span>{' '}
+                    <span className="font-semibold">{shareForm.toEmails.join(', ')}</span>
+                  </p>
                   <p><span className="text-muted-foreground">{lang === 'bn' ? 'কন্টেন্ট:' : 'Content:'}</span>{' '}
                     <span className="font-semibold">
                       {shareForm.type === 'course' ? shareForm.courseName
                         : shareForm.type === 'message' ? shareForm.messageText
-                        : (notePicked?.title || '—')}
+                        : notesPickedList.length > 1
+                          ? (lang === 'bn' ? `${notesPickedList.length}টি নোট` : `${notesPickedList.length} notes`)
+                          : (notesPickedList[0]?.title || '—')}
                     </span>
                   </p>
                   <p><span className="text-muted-foreground">{lang === 'bn' ? 'সময়:' : 'Duration:'}</span>{' '}
@@ -1135,19 +1259,43 @@ export function AdminPanel() {
               </button>
             </div>
 
+            {/* Search by recipient email — jump straight to a specific user's cards to edit them */}
+            {sentSubTab === 'active' && (
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={sentSearch}
+                  onChange={e => setSentSearch(e.target.value)}
+                  placeholder={lang === 'bn' ? 'ইমেইল দিয়ে খুঁজুন...' : 'Search by email...'}
+                  className="w-full h-10 pl-9 pr-8 rounded-xl border border-border/60 bg-secondary text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                {sentSearch && (
+                  <button
+                    onClick={() => setSentSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-secondary/80 text-muted-foreground"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            )}
+
             {loadingSentShares ? (
               <div className="py-8 flex justify-center">
                 <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             ) : sentSubTab === 'active' ? (
-              sentShares.length === 0 ? (
+              filteredSentShares.length === 0 ? (
                 <div className="py-12 text-center">
                   <List size={32} className="text-muted-foreground/30 mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground">
-                    {lang === 'bn' ? 'এখনো কিছু পাঠানো হয়নি।' : 'Nothing sent yet.'}
+                    {sentShares.length === 0
+                      ? (lang === 'bn' ? 'এখনো কিছু পাঠানো হয়নি।' : 'Nothing sent yet.')
+                      : (lang === 'bn' ? 'এই ইমেইলে কিছু পাঠানো হয়নি।' : 'Nothing sent to this email.')}
                   </p>
                 </div>
-              ) : sentShares.map(share => (
+              ) : filteredSentShares.map(share => (
                 <SentShareRow
                   key={share.id}
                   share={share}

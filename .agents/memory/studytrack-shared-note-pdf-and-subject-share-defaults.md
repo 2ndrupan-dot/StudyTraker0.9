@@ -8,7 +8,7 @@ description: Two related "shared content looks/behaves wrong" bugs in StudyTrack
 
 **Why:** `NotificationBell.tsx`'s `SharedNoteModal` (the viewer used when a recipient opens a single shared note from the notification bell) rendered `NoteEditorModal` without any `pdf*` props at all — a different call site than `Subjects.tsx`/`Today.tsx`, which do wire them up. Only the note-type share path was missing them.
 
-**How to apply:** When adding/debugging PDF-footer or other `pdf*`-prop-driven behavior in `NoteEditorModal`, check *every* place that renders it (`Subjects.tsx`, `Today.tsx`, `NotificationBell.tsx`'s `SharedNoteModal`), not just the primary editor page.
+**How to apply:** When adding/debugging PDF-footer or other `pdf*`-prop-driven behavior in `NoteEditorModal`, check *every* place that renders it — `Subjects.tsx`, `Today.tsx`, `NotificationBell.tsx`'s `SharedNoteModal`, and also `NotesIndex.tsx` (the /notes page) and `Progress.tsx`'s `NoteSearchModal`/`OverallNotesCard` — not just the primary editor page. Several of these hardcoded `pdfIsShared={false}` instead of deriving it from `sharedCoursesMeta[activeCourseId]` like `Subjects.tsx` does, so a shared course's own notes/overall-note/notes-index still printed the recipient's email instead of "StudyTrack team" in the PDF footer.
 
 ## Partial-subject course sharing "leaked" unselected subjects
 The actual filtering code (`filterSubjectsByIds`/`collectAllIds`/`filterNotesMapByIds` in `src/lib/courseShare.ts`, applied in both `sendShare` and the `StudyContext` live-sync relay) is correct and scoped. The real bug was a UX default: the subject checkbox list in `AdminPanel.tsx`'s share wizard defaulted to **all subjects pre-checked** when a course was picked.

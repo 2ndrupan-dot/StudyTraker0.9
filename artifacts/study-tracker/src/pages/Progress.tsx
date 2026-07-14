@@ -35,6 +35,8 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
   const { t } = useLang();
   const { user } = useAuth();
   const { isAdmin, appContact } = useAdmin();
+  const { activeCourseId, sharedCoursesMeta } = useCourse();
+  const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
   const [, setLocation] = useLocation();
 
   // Drill-down state
@@ -236,7 +238,7 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
           saveLabel={t('saveNote')}
           pdfUserEmail={user?.email ?? ''}
           pdfIsAdmin={isAdmin}
-          pdfIsShared={false}
+          pdfIsShared={!!activeSharedMeta}
           pdfWhatsApp={appContact.whatsapp}
           pdfWebsite={appContact.website}
         />
@@ -252,6 +254,8 @@ function OverallNotesCard() {
   const { t } = useLang();
   const { user } = useAuth();
   const { isAdmin, appContact } = useAdmin();
+  const { activeCourseId, sharedCoursesMeta } = useCourse();
+  const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
   const [modalOpen, setModalOpen] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -316,7 +320,7 @@ function OverallNotesCard() {
         saveLabel={t('saveNote')}
         pdfUserEmail={user?.email ?? ''}
         pdfIsAdmin={isAdmin}
-        pdfIsShared={false}
+        pdfIsShared={!!activeSharedMeta}
         pdfWhatsApp={appContact.whatsapp}
         pdfWebsite={appContact.website}
       />

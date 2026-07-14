@@ -3,6 +3,7 @@ import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
 import { useAuth } from '@/context/AuthContext';
 import { useAdmin } from '@/context/AdminContext';
+import { useCourse } from '@/context/CourseContext';
 import { Layout } from '@/components/Layout';
 import { Plus, FileText, Trash2, Pencil, Check, X, StickyNote, Loader2, ArrowUpDown, GripVertical } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -54,6 +55,8 @@ export function NotesIndex() {
   const { t, lang } = useLang();
   const { user } = useAuth();
   const { isAdmin, appContact } = useAdmin();
+  const { activeCourseId, sharedCoursesMeta } = useCourse();
+  const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
 
   // Create state
   const [isCreating, setIsCreating] = useState(false);
@@ -339,7 +342,7 @@ export function NotesIndex() {
         saveLabel={t('saveNote')}
         pdfUserEmail={user?.email ?? ''}
         pdfIsAdmin={isAdmin}
-        pdfIsShared={false}
+        pdfIsShared={!!activeSharedMeta}
         pdfWhatsApp={appContact.whatsapp}
         pdfWebsite={appContact.website}
       />

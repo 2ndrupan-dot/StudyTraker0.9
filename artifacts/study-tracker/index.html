@@ -122,7 +122,7 @@
       #app-shell-loader .as-overlay {
         position: absolute;
         inset: 0;
-        background: rgba(20, 16, 40, 0.45);
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 45%, #d946ef 100%);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -131,12 +131,12 @@
       }
       #app-shell-loader .as-logo {
         position: relative;
-        width: 72px;
-        height: 72px;
+        width: 76px;
+        height: 76px;
         border-radius: 26px;
-        background: linear-gradient(135deg, rgba(255,255,255,0.28), rgba(255,255,255,0.12));
+        background: linear-gradient(135deg, #6d63f5 0%, #b24bd6 100%);
         border: 1px solid rgba(255,255,255,0.4);
-        box-shadow: 0 12px 30px rgba(30,20,80,0.35);
+        box-shadow: 0 14px 32px rgba(30,20,80,0.4), 0 0 0 6px rgba(255,255,255,0.08);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -159,13 +159,12 @@
         animation: as-title-in 0.5s cubic-bezier(.22,1,.36,1) 0.62s forwards;
       }
       #app-shell-loader .as-spinner {
+        display: none;
         width: 30px;
         height: 30px;
         border-radius: 50%;
         border: 3px solid rgba(255,255,255,0.28);
         border-top-color: #ffffff;
-        animation: as-spin 0.7s linear infinite, as-title-in 0.4s cubic-bezier(.22,1,.36,1) 1.05s forwards;
-        opacity: 0;
       }
       @keyframes as-spin {
         to { transform: rotate(360deg); }
@@ -189,6 +188,7 @@
         background: rgba(20, 16, 40, 0.16);
       }
       html.as-reload #app-shell-loader .as-spinner {
+        display: block;
         border-color: rgba(81, 73, 243, 0.18);
         border-top-color: #5149f3;
         animation: as-spin 0.7s linear infinite;

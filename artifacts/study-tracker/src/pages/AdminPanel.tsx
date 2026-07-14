@@ -886,14 +886,17 @@ export function AdminPanel() {
           )}
         </div>
 
-        {/* Tabs */}
-        <div className="flex px-5 pb-0 gap-1">
+        {/* Tabs — horizontally scrollable so all four tabs stay reachable on
+            narrow mobile screens instead of being clipped by the header's
+            fixed width (the previous plain `flex` row had no overflow
+            handling, so "Contact" got cut off on small devices). */}
+        <div className="flex px-5 pb-0 gap-1 overflow-x-auto no-scrollbar">
           {tabs.map(({ id, label, Icon }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
               className={cn(
-                "flex items-center gap-1.5 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all",
+                "flex items-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap",
                 tab === id
                   ? "bg-background text-primary shadow-sm"
                   : "text-white/60 hover:text-white/90 hover:bg-white/10"
@@ -907,7 +910,7 @@ export function AdminPanel() {
       </div>
 
       {/* Content */}
-      <div className="p-5 max-w-2xl mx-auto">
+      <div className="p-4 sm:p-5 max-w-2xl mx-auto">
 
         {/* ── Admins Tab ── */}
         {tab === 'admins' && (

@@ -518,8 +518,9 @@ export const NoteEditorModal = ({
     const printedBySpan = isOfficial && pdfUserEmail
       ? `<span>🖨️ Printed by : ${pdfUserEmail}</span>`
       : '';
+    // WhatsApp is intentionally excluded from the PDF footer — only
+    // "Created by", "Website", and "Printed by" should appear.
     let footerInner: string = createdBySpan
-      + (pdfWhatsApp ? `<span>💬 WhatsApp : ${pdfWhatsApp}</span>` : '')
       + websiteSpan
       + printedBySpan;
     if (!footerInner.trim()) footerInner = `<span>📝 Created by : StudyTrack team</span>`;

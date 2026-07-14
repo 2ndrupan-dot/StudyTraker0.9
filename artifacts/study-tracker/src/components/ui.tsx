@@ -523,6 +523,19 @@ export const NoteEditorModal = ({
       + websiteSpan
       + printedBySpan;
     if (!footerInner.trim()) footerInner = `<span>📝 Created by : StudyTrack team</span>`;
+    // Fit all footer items on a single line: previously each item could wrap
+    // its own label+value onto two lines once 3-4 fields (Created by /
+    // WhatsApp / Website / Printed by) didn't fit the printable width at the
+    // default font size. Shrink font size + gap based on how much text and
+    // how many fields are present, and force nowrap everywhere so a single
+    // item's label/value — or a long URL/email — never breaks across lines.
+    const footerFieldCount = (footerInner.match(/<span/g) || []).length;
+    const footerTextLength = footerInner.replace(/<[^>]+>/g, '').length;
+    let footerFontSize = 12;
+    let footerGap = 24;
+    if (footerFieldCount >= 4 || footerTextLength > 110) { footerFontSize = 9; footerGap = 12; }
+    else if (footerFieldCount >= 3 || footerTextLength > 80) { footerFontSize = 10; footerGap = 16; }
+    else if (footerTextLength > 55) { footerFontSize = 11; footerGap = 20; }
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -580,20 +593,25 @@ export const NoteEditorModal = ({
     .pdf-footer-cell {
       height: 44px;
       vertical-align: middle;
-      font-size: 12px;
+      font-size: ${footerFontSize}px;
       color: #6b7280;
       font-family: sans-serif;
       background: #f9fafb;
       border-top: 1px solid #e5e7eb;
+      overflow: hidden;
     }
     .pdf-footer-inner {
       display: flex;
+      flex-wrap: nowrap;
       align-items: center;
       justify-content: center;
-      gap: 24px;
+      gap: ${footerGap}px;
       height: 100%;
+      white-space: nowrap;
+      padding: 0 10px;
     }
-    .pdf-footer-inner span { display: flex; align-items: center; gap: 5px; }
+    .pdf-footer-inner span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0; }
+    .pdf-footer-inner a { white-space: nowrap; }
 
     /* ── Content cell ── */
     .pdf-content-cell { padding: 36px 48px 28px; }

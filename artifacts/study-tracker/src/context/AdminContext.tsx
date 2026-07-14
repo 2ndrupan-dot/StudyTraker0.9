@@ -342,20 +342,31 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       // 1b. Cascade cleanup: when admin permanently deletes a shareRequest that the
       //     user had already accepted, the doc disappears from this snapshot. We
       //     detect the disappearance here (user has write permission to their own
-      //     sub-collections) and delete the cloned course data.
+      //     sub-collections) and delete the cloned course data. A page reload is
+      //     triggered so the course immediately disappears from My Courses — the
+      //     same UX as accepting a share (which also reloads). This also covers
+      //     auto-expiry, since expiry deletes the shareRequest doc the same way.
       const tracking = acceptedSharesTrackingRef.current;
       const currentIds = new Set(snap.docs.map(d => d.id));
+      let courseWasRemoved = false;
       for (const [trackedShareId, trackedType] of tracking) {
         if (!currentIds.has(trackedShareId)) {
-          // Share was deleted by admin — remove user's copy of the course data.
+          // Share was deleted by admin (or expired) — remove user's copy of the course data.
           if (trackedType === 'course') {
             deleteDoc(doc(db, 'users', uid, 'courses', trackedShareId)).catch(() => {});
             deleteDoc(doc(db, 'users', uid, 'studyData', trackedShareId)).catch(() => {});
             deleteDoc(doc(db, 'users', uid, 'courseNotes', trackedShareId)).catch(() => {});
             deleteDoc(doc(db, 'users', uid, 'sharedCourses', trackedShareId)).catch(() => {});
+            courseWasRemoved = true;
           }
           tracking.delete(trackedShareId);
         }
+      }
+      // Reload the page once (after a short delay so Firestore writes can settle)
+      // so the removed course disappears from My Courses immediately — mirrors
+      // the reload that happens when a share is accepted.
+      if (courseWasRemoved) {
+        setTimeout(() => window.location.reload(), 800);
       }
       // Update tracking map: record any share the user has ever accepted so that
       // future snapshots can detect permanent deletion and trigger cleanup.

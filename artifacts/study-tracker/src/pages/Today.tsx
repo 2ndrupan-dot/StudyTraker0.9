@@ -8,8 +8,34 @@ import {
   Layers, Zap, Sun, ChevronRight, AlarmClock, Hash, Lightbulb, List,
   ChevronDown, AlertTriangle, X, RotateCcw, TrendingUp, PlayCircle,
   Lock, Flame, ThumbsUp, RefreshCw, Plus, StickyNote, Star, AlertOctagon,
-  Download, Share2, Check, GraduationCap, Headphones,
+  Download, Share2, Check, GraduationCap,
 } from 'lucide-react';
+
+/** Customer-care / support chat icon — headset inside a speech bubble */
+function CustomerCareIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      {/* Speech bubble (outer shape) */}
+      <path
+        d="M2 4A2 2 0 0 1 4 2H20A2 2 0 0 1 22 4V15A2 2 0 0 1 20 17H8L4 21V17H4A2 2 0 0 1 2 15V4Z"
+        fill="currentColor"
+      />
+      {/* Three dots near top of bubble */}
+      <circle cx="9"  cy="6" r="1.1" fill="white"/>
+      <circle cx="12" cy="6" r="1.1" fill="white"/>
+      <circle cx="15" cy="6" r="1.1" fill="white"/>
+      {/* Headset arc */}
+      <path d="M8.5 11a3.5 3.5 0 0 1 7 0" stroke="white" strokeWidth="1.8" strokeLinecap="round" fill="none"/>
+      {/* Left ear cup */}
+      <rect x="6.5" y="10.5" width="3" height="4" rx="1.5" fill="white"/>
+      {/* Right ear cup */}
+      <rect x="14.5" y="10.5" width="3" height="4" rx="1.5" fill="white"/>
+      {/* Mic arm */}
+      <path d="M7.5 14 Q7 16.5 11 17" stroke="white" strokeWidth="1.3" strokeLinecap="round" fill="none"/>
+      <circle cx="12" cy="17.1" r="1" fill="white"/>
+    </svg>
+  );
+}
 import { usePWAInstall } from '@/context/PWAInstallContext';
 import { differenceInDays, parseISO } from 'date-fns';
 import { todayIST, nowIST, toDateStrIST, addDaysIST, formatTodayDisplayIST, msUntilISTMidnight } from '@/lib/istTime';
@@ -1823,7 +1849,7 @@ export function Today() {
                         className="spin-border-inner w-9 h-9 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
                         aria-label="Contact Support"
                       >
-                        <Headphones size={16} className="text-white" />
+                        <CustomerCareIcon size={16} />
                       </motion.button>
                     </span>
                   )}

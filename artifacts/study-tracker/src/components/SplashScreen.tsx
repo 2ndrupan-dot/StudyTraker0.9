@@ -72,6 +72,21 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
                 )}
               </AnimatePresence>
             </div>
+
+            {/* Spinner — pinned to the bottom of the splash, fades in with the title */}
+            <AnimatePresence>
+              {stage === 'title' && (
+                <motion.div
+                  key="splash-spinner"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.4, delay: 0.2 }}
+                  className="absolute bottom-20 left-1/2 -translate-x-1/2"
+                >
+                  <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>

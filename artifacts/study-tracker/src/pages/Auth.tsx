@@ -42,12 +42,12 @@ function LoginSplashOverlay() {
         StudyTrack
       </motion.h1>
 
-      {/* Spinner */}
+      {/* Spinner — pinned to the very bottom of the screen */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4, delay: 0.55 }}
-        className="mt-8"
+        className="absolute bottom-20 left-1/2 -translate-x-1/2"
       >
         <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
       </motion.div>

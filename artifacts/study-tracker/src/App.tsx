@@ -20,19 +20,26 @@ import { BookOpen } from "lucide-react";
 import { hideAppShell } from "./lib/appShell";
 
 // Branded full-screen loader shown whenever auth/course data is still being
-// fetched (e.g. right after a page reload). Replaces the old near-white
-// skeleton so a reload never reads as a blank/broken white page — it always
-// shows the app's own colors plus a spinner, on both mobile and desktop.
+// fetched (e.g. right after a page reload). Same visual language as the
+// SplashScreen: logo + "StudyTrack" text centered, spinner at the bottom.
 function LoadingScreen() {
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gradient-hero">
+      {/* Logo */}
       <div className="relative">
         <div className="absolute inset-0 rounded-3xl bg-white/30 blur-xl scale-110" />
-        <div className="relative w-16 h-16 bg-white/20 backdrop-blur-sm shadow-2xl rounded-3xl flex items-center justify-center border border-white/40">
-          <BookOpen size={32} className="text-white drop-shadow-lg" />
+        <div className="relative w-20 h-20 bg-white/20 backdrop-blur-sm shadow-2xl rounded-3xl flex items-center justify-center border border-white/40">
+          <BookOpen size={40} className="text-white drop-shadow-lg" />
         </div>
       </div>
-      <div className="mt-6 w-10 h-10 border-[3px] border-white/25 border-t-white rounded-full animate-spin" />
+      {/* App name */}
+      <h1 className="mt-5 text-3xl font-bold tracking-tight text-white drop-shadow select-none">
+        StudyTrack
+      </h1>
+      {/* Spinner pinned to the bottom */}
+      <div className="absolute bottom-20 left-1/2 -translate-x-1/2">
+        <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+      </div>
     </div>
   );
 }

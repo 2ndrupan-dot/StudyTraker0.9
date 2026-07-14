@@ -8,29 +8,8 @@ import {
   Layers, Zap, Sun, ChevronRight, AlarmClock, Hash, Lightbulb, List,
   ChevronDown, AlertTriangle, X, RotateCcw, TrendingUp, PlayCircle,
   Lock, Flame, ThumbsUp, RefreshCw, Plus, StickyNote, Star, AlertOctagon,
-  Download, Share2, Check, GraduationCap,
+  Download, Share2, Check, GraduationCap, Headset,
 } from 'lucide-react';
-
-/** Customer-support icon — a simple person silhouette wearing a headset, single-tone flat glyph */
-function CustomerCareIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      {/* Head */}
-      <circle cx="12" cy="9.4" r="4.2" fill="currentColor"/>
-      {/* Shoulders / bust */}
-      <path d="M4 20.2c0-3.7 3.6-5.6 8-5.6s8 1.9 8 5.6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" fill="currentColor"/>
-      {/* Headset band over the head */}
-      <path d="M6.6 9.4a5.4 5.4 0 0 1 10.8 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" fill="none"/>
-      {/* Left ear cup */}
-      <rect x="5.3" y="8.7" width="2.7" height="4" rx="1.35" fill="currentColor"/>
-      {/* Right ear cup */}
-      <rect x="16" y="8.7" width="2.7" height="4" rx="1.35" fill="currentColor"/>
-      {/* Mic boom curving toward the mouth */}
-      <path d="M17.3 12.5q0 2.6-3.6 2.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none"/>
-      <circle cx="13.1" cy="15.3" r="0.9" fill="currentColor"/>
-    </svg>
-  );
-}
 import { usePWAInstall } from '@/context/PWAInstallContext';
 import { differenceInDays, parseISO } from 'date-fns';
 import { todayIST, nowIST, toDateStrIST, addDaysIST, formatTodayDisplayIST, msUntilISTMidnight } from '@/lib/istTime';
@@ -1844,7 +1823,7 @@ export function Today() {
                         className="spin-border-inner w-9 h-9 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
                         aria-label="Contact Support"
                       >
-                        <CustomerCareIcon size={16} />
+                        <Headset size={16} className="text-white" />
                       </motion.button>
                     </span>
                   )}

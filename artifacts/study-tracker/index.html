@@ -159,12 +159,13 @@
         animation: as-title-in 0.5s cubic-bezier(.22,1,.36,1) 0.62s forwards;
       }
       #app-shell-loader .as-spinner {
-        display: none;
         width: 30px;
         height: 30px;
         border-radius: 50%;
         border: 3px solid rgba(255,255,255,0.28);
         border-top-color: #ffffff;
+        opacity: 0;
+        animation: as-spinner-in 0.4s ease 1.05s forwards, as-spin 0.7s linear infinite 1.05s;
       }
       @keyframes as-spin {
         to { transform: rotate(360deg); }
@@ -177,6 +178,9 @@
         from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: translateY(0); }
       }
+      @keyframes as-spinner-in {
+        to { opacity: 1; }
+      }
 
       /* Reload within the same session: skip the brand intro entirely and
          just show a plain spinner (no logo, no title, no entrance delay). */
@@ -188,7 +192,6 @@
         background: rgba(20, 16, 40, 0.16);
       }
       html.as-reload #app-shell-loader .as-spinner {
-        display: block;
         border-color: rgba(81, 73, 243, 0.18);
         border-top-color: #5149f3;
         animation: as-spin 0.7s linear infinite;

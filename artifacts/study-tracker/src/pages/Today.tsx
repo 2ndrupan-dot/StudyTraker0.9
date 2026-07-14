@@ -1813,7 +1813,7 @@ export function Today() {
 
               {/* Right-side action buttons: contact (always) + install (mobile only, not installed) */}
               {(appContact.supportLink || (isMobileBrowser && !isInstalled)) && (
-                <div className="ml-auto shrink-0 flex items-center gap-1.5">
+                <div className={`ml-auto shrink-0 flex items-center gap-1.5 ${isMobileBrowser ? 'flex-col' : 'flex-row'}`}>
                   {/* Contact button — always shown when support link is configured */}
                   {appContact.supportLink && (
                     <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(263 80% 58%)' } as React.CSSProperties}>

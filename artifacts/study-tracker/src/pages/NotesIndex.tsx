@@ -56,6 +56,10 @@ export function NotesIndex() {
   const { user } = useAuth();
   const { isAdmin, appContact } = useAdmin();
   const { activeCourseId, sharedCoursesMeta } = useCourse();
+  // Same as Subjects.tsx: undefined activeSharedMeta means this is the user's
+  // own course — no restrictions. When it's a shared course, the admin's
+  // per-share permissions must gate editing/downloading/copying notes here
+  // exactly the way they already gate notes inside the subject tree.
   const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
 
   // Create state
@@ -140,6 +144,9 @@ export function NotesIndex() {
 
   const saveNote = async () => {
     if (!noteModalId || !currentPage) return;
+    // Guard: respect editNotes permission for shared courses — same rule
+    // Subjects.tsx applies to subject-tree notes.
+    if (activeSharedMeta && !activeSharedMeta.permissions.editNotes) { closeNote(); return; }
     const updated: NotePage = { ...currentPage, html: noteDraft };
     await saveNotePage(updated);
     setHtmlCache(prev => ({ ...prev, [noteModalId]: noteDraft }));
@@ -340,6 +347,9 @@ export function NotesIndex() {
         placeholder={t('notePlaceholder')}
         clearLabel={t('clearNote')}
         saveLabel={t('saveNote')}
+        editAllowed={!activeSharedMeta || activeSharedMeta.permissions.editNotes}
+        downloadAllowed={!activeSharedMeta || activeSharedMeta.permissions.downloadNotes}
+        copyAllowed={!activeSharedMeta || activeSharedMeta.permissions.copyNotes}
         pdfUserEmail={user?.email ?? ''}
         pdfIsAdmin={isAdmin}
         pdfIsShared={!!activeSharedMeta}

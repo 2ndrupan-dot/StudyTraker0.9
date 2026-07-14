@@ -226,16 +226,23 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
           value={viewNote.draft}
           onChange={v => setViewNote(prev => prev ? { ...prev, draft: v } : null)}
           onClear={() => {
+            // Guard: respect editNotes permission for shared courses.
+            if (activeSharedMeta && !activeSharedMeta.permissions.editNotes) { setViewNote(null); return; }
             setNote(viewNote.path, '');
             setViewNote(null);
           }}
           onSave={() => {
+            // Guard: respect editNotes permission for shared courses.
+            if (activeSharedMeta && !activeSharedMeta.permissions.editNotes) { setViewNote(null); return; }
             setNote(viewNote.path, viewNote.draft);
             setViewNote(null);
           }}
           placeholder={t('overallNotePlaceholder')}
           clearLabel={t('clearNote')}
           saveLabel={t('saveNote')}
+          editAllowed={!activeSharedMeta || activeSharedMeta.permissions.editNotes}
+          downloadAllowed={!activeSharedMeta || activeSharedMeta.permissions.downloadNotes}
+          copyAllowed={!activeSharedMeta || activeSharedMeta.permissions.copyNotes}
           pdfUserEmail={user?.email ?? ''}
           pdfIsAdmin={isAdmin}
           pdfIsShared={!!activeSharedMeta}
@@ -278,6 +285,8 @@ function OverallNotesCard() {
   }, []); // eslint-disable-line
   const closeModal = () => { setModalOpen(false); setDraft(''); };
   const saveNote = () => {
+    // Guard: respect editNotes permission for shared courses.
+    if (activeSharedMeta && !activeSharedMeta.permissions.editNotes) { closeModal(); return; }
     setOverallNote(draft);
     closeModal();
   };
@@ -318,6 +327,9 @@ function OverallNotesCard() {
         placeholder={t('overallNotePlaceholder')}
         clearLabel={t('clearNote')}
         saveLabel={t('saveNote')}
+        editAllowed={!activeSharedMeta || activeSharedMeta.permissions.editNotes}
+        downloadAllowed={!activeSharedMeta || activeSharedMeta.permissions.downloadNotes}
+        copyAllowed={!activeSharedMeta || activeSharedMeta.permissions.copyNotes}
         pdfUserEmail={user?.email ?? ''}
         pdfIsAdmin={isAdmin}
         pdfIsShared={!!activeSharedMeta}

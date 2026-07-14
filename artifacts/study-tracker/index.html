@@ -19,6 +19,23 @@
   <body>
     <div id="root"></div>
 
+    <!-- Runs before the shell below is parsed: marks whether the brand
+         logo/title intro has already played this browser session. First-ever
+         open of the site plays the full intro; every reload after that
+         within the same tab session only shows the plain spinner. -->
+    <script>
+      (function () {
+        try {
+          var KEY = '@study_splash_seen_session';
+          if (sessionStorage.getItem(KEY)) {
+            document.documentElement.classList.add('as-reload');
+          } else {
+            sessionStorage.setItem(KEY, '1');
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
+
     <!-- Static pre-hydration app shell: painted by the browser instantly from
          raw HTML/CSS, before React, Vite, or any JS module has run. This is
          what a reload shows first, so it must never be blank/white. It fades
@@ -160,6 +177,22 @@
       @keyframes as-title-in {
         from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: translateY(0); }
+      }
+
+      /* Reload within the same session: skip the brand intro entirely and
+         just show a plain spinner (no logo, no title, no entrance delay). */
+      html.as-reload #app-shell-loader .as-logo,
+      html.as-reload #app-shell-loader .as-title {
+        display: none;
+      }
+      html.as-reload #app-shell-loader .as-overlay {
+        background: rgba(20, 16, 40, 0.16);
+      }
+      html.as-reload #app-shell-loader .as-spinner {
+        border-color: rgba(81, 73, 243, 0.18);
+        border-top-color: #5149f3;
+        animation: as-spin 0.7s linear infinite;
+        opacity: 1;
       }
     </style>
     <div id="app-shell-loader">

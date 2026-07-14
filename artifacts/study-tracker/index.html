@@ -130,12 +130,14 @@
         gap: 18px;
       }
       /* First-load: spinner anchored to bottom (logo+title are in center),
-         matching BrandedLoadingScreen.tsx layout used post-login. */
+         matching BrandedLoadingScreen.tsx layout used post-login.
+         Use margin-left instead of translateX so the as-spin rotation
+         animation (which also uses transform) doesn't conflict. */
       #app-shell-loader .as-spinner {
         position: absolute;
         bottom: 64px;
         left: 50%;
-        transform: translateX(-50%);
+        margin-left: -15px;
       }
       /* Reload (same session): logo+title are hidden, so put spinner back
          in the center of the overlay instead of the bottom. */

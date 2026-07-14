@@ -18,6 +18,7 @@ import { SplashScreen } from "./components/SplashScreen";
 import { AdminProvider } from "./context/AdminContext";
 import { ContentProtectionGuard } from "./components/ContentProtectionGuard";
 import { BookOpen } from "lucide-react";
+import { hideAppShell } from "./lib/appShell";
 
 // Branded full-screen loader shown whenever auth/course data is still being
 // fetched (e.g. right after a page reload). Replaces the old near-white
@@ -47,6 +48,12 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
       setLocation('/auth');
     }
   }, [user, loading, location, setLocation]);
+
+  useEffect(() => {
+    if (!loading && coursesLoaded) {
+      hideAppShell();
+    }
+  }, [loading, coursesLoaded]);
 
   if (loading || !coursesLoaded) {
     return <LoadingScreen />;
@@ -103,6 +110,12 @@ function Router() {
         return r && RESTORABLE_ROUTES.includes(r) ? r : '/today';
       })()
     : null;
+
+  useEffect(() => {
+    if (!loading && !user) {
+      hideAppShell();
+    }
+  }, [loading, user]);
 
   if (loading) {
     return <LoadingScreen />;

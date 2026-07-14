@@ -18,6 +18,145 @@
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- Static pre-hydration app shell: painted by the browser instantly from
+         raw HTML/CSS, before React, Vite, or any JS module has run. This is
+         what a reload shows first, so it must never be blank/white. It fades
+         out once real content is ready (see src/lib/appShell.ts). -->
+    <style>
+      #app-shell-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 999999;
+        background: #f4f4fb;
+        transition: opacity 0.26s ease;
+        overflow: hidden;
+      }
+      #app-shell-loader .as-content {
+        filter: blur(3px);
+        opacity: 0.55;
+        transform: scale(1.01);
+      }
+      #app-shell-loader .as-header {
+        height: 120px;
+        background: linear-gradient(135deg, #6d63f5 0%, #9450d6 100%);
+        border-radius: 0 0 24px 24px;
+        padding: 20px;
+        box-sizing: border-box;
+      }
+      #app-shell-loader .as-header-line {
+        height: 14px;
+        width: 40%;
+        background: rgba(255,255,255,0.55);
+        border-radius: 7px;
+        margin-bottom: 10px;
+      }
+      #app-shell-loader .as-header-line.short {
+        width: 25%;
+        height: 22px;
+      }
+      #app-shell-loader .as-body {
+        max-width: 420px;
+        margin: 18px auto 0;
+        padding: 0 18px;
+      }
+      #app-shell-loader .as-card {
+        background: #ffffff;
+        border: 1px solid #e7e7f2;
+        border-radius: 18px;
+        padding: 16px;
+        margin-bottom: 14px;
+      }
+      #app-shell-loader .as-line {
+        height: 12px;
+        background: #eceaf7;
+        border-radius: 6px;
+        margin-bottom: 8px;
+      }
+      #app-shell-loader .as-line.w60 { width: 60%; }
+      #app-shell-loader .as-line.w40 { width: 40%; }
+      #app-shell-loader .as-line.w90 { width: 90%; }
+      #app-shell-loader .as-bar {
+        height: 8px;
+        width: 100%;
+        background: #eceaf7;
+        border-radius: 999px;
+      }
+      #app-shell-loader .as-nav {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 68px;
+        background: #ffffff;
+        border-top: 1px solid #e7e7f2;
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+        padding: 0 12px;
+        box-sizing: border-box;
+      }
+      #app-shell-loader .as-nav-item {
+        width: 22px;
+        height: 22px;
+        border-radius: 7px;
+        background: #ddd9f2;
+      }
+      #app-shell-loader .as-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(20, 16, 40, 0.16);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #app-shell-loader .as-spinner {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        border: 4px solid rgba(255,255,255,0.55);
+        border-top-color: #5149f3;
+        background: rgba(255,255,255,0.85);
+        animation: as-spin 0.8s linear infinite;
+        box-shadow: 0 4px 18px rgba(30,27,75,0.25);
+      }
+      @keyframes as-spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+    <div id="app-shell-loader">
+      <div class="as-content">
+        <div class="as-header">
+          <div class="as-header-line short"></div>
+          <div class="as-header-line"></div>
+        </div>
+        <div class="as-body">
+          <div class="as-card">
+            <div class="as-line w40"></div>
+            <div class="as-line w90"></div>
+            <div class="as-bar"></div>
+          </div>
+          <div class="as-card">
+            <div class="as-line w60"></div>
+            <div class="as-line w40"></div>
+          </div>
+          <div class="as-card">
+            <div class="as-line w90"></div>
+            <div class="as-line w60"></div>
+          </div>
+        </div>
+        <div class="as-nav">
+          <div class="as-nav-item"></div>
+          <div class="as-nav-item"></div>
+          <div class="as-nav-item"></div>
+          <div class="as-nav-item"></div>
+          <div class="as-nav-item"></div>
+        </div>
+      </div>
+      <div class="as-overlay">
+        <div class="as-spinner"></div>
+      </div>
+    </div>
     <!-- Capture the PWA install prompt before React mounts so the browser's
          native mini-infobar never appears on any page (including login). -->
     <script>

@@ -888,24 +888,31 @@ export function AdminPanel() {
 
         {/* Tabs — horizontally scrollable so all four tabs stay reachable on
             narrow mobile screens instead of being clipped by the header's
-            fixed width (the previous plain `flex` row had no overflow
-            handling, so "Contact" got cut off on small devices). */}
-        <div className="flex px-5 pb-0 gap-1 overflow-x-auto no-scrollbar">
-          {tabs.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              className={cn(
-                "flex items-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap",
-                tab === id
-                  ? "bg-background text-primary shadow-sm"
-                  : "text-white/60 hover:text-white/90 hover:bg-white/10"
-              )}
-            >
-              <Icon size={13} />
-              {label}
-            </button>
-          ))}
+            fixed width. Extra right padding (`pr-8`) keeps the last tab's
+            white active-state box from butting straight into the screen
+            edge/rounded corner when scrolled all the way right — it looked
+            cramped and unfinished jammed into the corner with no breathing
+            room. Bottom padding on the wrapper reserves room for that same
+            active tab's rounded-top box so it doesn't get sliced by the
+            parent's `overflow-hidden`. */}
+        <div className="pb-1 -mb-1 overflow-x-auto no-scrollbar">
+          <div className="flex pl-5 pr-8 pb-0 gap-1.5 w-max">
+            {tabs.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap",
+                  tab === id
+                    ? "bg-background text-primary shadow-sm"
+                    : "text-white/60 hover:text-white/90 hover:bg-white/10"
+                )}
+              >
+                <Icon size={13} />
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

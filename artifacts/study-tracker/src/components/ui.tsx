@@ -518,9 +518,14 @@ export const NoteEditorModal = ({
     const printedBySpan = isOfficial && pdfUserEmail
       ? `<span>🖨️ Printed by : ${pdfUserEmail}</span>`
       : '';
-    // WhatsApp is intentionally excluded from the PDF footer — only
-    // "Created by", "Website", and "Printed by" should appear.
+    // WhatsApp only belongs on official footers: notes the admin authored or
+    // shared with a user. A user's own self-created note must never show the
+    // admin's WhatsApp number when that user downloads it as a PDF.
+    const whatsAppSpan = (isOfficial && pdfWhatsApp)
+      ? `<span>💬 WhatsApp : ${pdfWhatsApp}</span>`
+      : '';
     let footerInner: string = createdBySpan
+      + whatsAppSpan
       + websiteSpan
       + printedBySpan;
     if (!footerInner.trim()) footerInner = `<span>📝 Created by : StudyTrack team</span>`;

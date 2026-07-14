@@ -896,7 +896,14 @@ export function AdminPanel() {
             which tab is active or how narrow the screen is. Still scrolls
             horizontally as a safety net for very narrow screens / longer
             translated labels. */}
-        <div className="px-5 pb-4 overflow-x-auto no-scrollbar">
+        {/* pb-6 (not pb-4) gives real clearance below the pill track before
+            the header box's own bottom edge — the header's rounded-b-2xl
+            corner (16px radius) was curving inward right where the pill
+            track's bottom-left/right corners sat, so the corner mask bit
+            into the track and let the page's white background peek through
+            in the notch, making it look like the pill bar spilled outside
+            the purple card. */}
+        <div className="px-5 pb-6 overflow-x-auto no-scrollbar">
           <div className="flex gap-1 p-1 rounded-2xl bg-white/10 border border-white/15 w-max min-w-full sm:min-w-0">
             {tabs.map(({ id, label, Icon }) => (
               <button

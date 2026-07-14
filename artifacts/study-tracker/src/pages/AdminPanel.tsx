@@ -386,7 +386,7 @@ function SentShareRow({
   const countdownTarget = share.status === 'accepted' ? share.actualExpiresAt : share.pendingExpiresAt;
 
   return (
-    <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-3">
+    <div className="bg-card border-2 border-border rounded-2xl p-4 space-y-3">
       <div className="flex items-start gap-3">
         <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", typeColorClass(share.type))}>
           {typeIcon(share.type, 16)}
@@ -484,7 +484,7 @@ function TrashedShareRow({
   onPermanentDelete: (share: ShareRequest) => void;
 }) {
   return (
-    <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-3 opacity-90">
+    <div className="bg-card border-2 border-border rounded-2xl p-4 space-y-3 opacity-90">
       <div className="flex items-start gap-3">
         <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", typeColorClass(share.type))}>
           {typeIcon(share.type, 16)}

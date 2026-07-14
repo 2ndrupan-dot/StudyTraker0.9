@@ -129,6 +129,14 @@
         justify-content: center;
         gap: 18px;
       }
+      /* Spinner pulled out of the center group and anchored to the bottom,
+         matching BrandedLoadingScreen.tsx (React component used post-login). */
+      #app-shell-loader .as-spinner {
+        position: absolute !important;
+        bottom: 64px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
       #app-shell-loader .as-logo {
         position: relative;
         width: 76px;

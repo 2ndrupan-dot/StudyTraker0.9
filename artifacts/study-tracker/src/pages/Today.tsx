@@ -1798,7 +1798,7 @@ export function Today() {
                 install buttons are stacked on mobile) never inflates a pill
                 row's height and creates a phantom gap before the next
                 wrapped pill. */}
-            <div className="flex items-start gap-2">
+            <div className={`flex gap-2 ${isMobileBrowser ? 'items-stretch' : 'items-start'}`}>
               <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
                 <motion.button
                   whileTap={{ scale: 0.97 }}
@@ -1822,7 +1822,7 @@ export function Today() {
 
               {/* Right-side action buttons: contact (always) + install (mobile only, not installed) */}
               {(appContact.supportLink || (isMobileBrowser && !isInstalled)) && (
-                <div className={`shrink-0 flex items-center gap-1.5 ${isMobileBrowser ? 'flex-col' : 'flex-row'}`}>
+                <div className={`shrink-0 flex items-center gap-1.5 ${isMobileBrowser ? 'flex-col justify-between' : 'flex-row'}`}>
                   {/* Contact button — always shown when support link is configured */}
                   {appContact.supportLink && (
                     <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(263 80% 58%)' } as React.CSSProperties}>

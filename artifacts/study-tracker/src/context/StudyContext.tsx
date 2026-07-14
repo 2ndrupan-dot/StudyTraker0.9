@@ -566,6 +566,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       setNotePagesIndex([]);
       setDataLoaded(false);
       isInitialLoad.current = true;
+      notesGuardArmedRef.current = true;
       return;
     }
 
@@ -576,6 +577,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setOverallNoteState('');
     setNotePagesIndex([]);
     setDataLoaded(false);
+    notesGuardArmedRef.current = true;
 
     const docRef = doc(db, 'users', user.id, 'studyData', activeCourseId);
     const notesDocRef = doc(db, 'users', user.id, 'courseNotes', activeCourseId);
@@ -900,6 +902,17 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // Save data (debounced for Firestore, immediate for localStorage)
   const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; overallNote: string; notePagesIndex: NotePageMeta[] } | null>(null);
 
+  // Guards the "don't let empty notes overwrite existing Firestore notes" safety
+  // net below so it only ever fires on the FIRST flushSave of a course session
+  // (right after load, when a flawed merge/migration/stale-cache bug could in
+  // theory produce a spurious empty state). Every flushSave after that first one
+  // reflects a real, already-running, user-controlled in-memory state, so an
+  // empty result there is a genuine intentional delete/clear and must be allowed
+  // through — otherwise clearing the last remaining note (or all notes) appears
+  // to save/delete locally but silently reverts on the next reload. Re-armed
+  // whenever the active course/user changes (see the reset effect above).
+  const notesGuardArmedRef = useRef(true);
+
   const flushSave = async (
     subjectsToSave: Subject[],
     settingsToSave: CourseSettings,
@@ -967,7 +980,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       const incomingHasNotes =
         !!notesData.overallNote || Object.values(notesData.notes).some((v) => !!v);
       let skipNotesWrite = false;
-      if (!incomingHasNotes) {
+      if (!incomingHasNotes && notesGuardArmedRef.current) {
         try {
           const existingNotesSnap = await getDoc(notesDocRef);
           if (existingNotesSnap.exists()) {
@@ -994,6 +1007,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           // than blocking the save entirely.
         }
       }
+      // This safety net only ever gets one chance, on the first flushSave of the
+      // course session — every subsequent flush reflects a real, live,
+      // user-controlled state, so an empty result then is a genuine intentional
+      // clear/delete (e.g. deleting the last remaining note) and must go through.
+      notesGuardArmedRef.current = false;
 
       if (!skipNotesWrite) {
         const notesDataSize = byteSize(JSON.stringify(notesData));

@@ -904,26 +904,24 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // Save data (debounced for Firestore, immediate for localStorage)
   const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; overallNote: string; notePagesIndex: NotePageMeta[] } | null>(null);
 
-  // Guards the "don't let empty notes overwrite existing Firestore notes" safety
-  // net below so it only ever fires on the FIRST flushSave of a course session
-  // (right after load, when a flawed merge/migration/stale-cache bug could in
-  // theory produce a spurious empty state). Every flushSave after that first one
-  // reflects a real, already-running, user-controlled in-memory state, so an
-  // empty result there is a genuine intentional delete/clear and must be allowed
-  // through — otherwise clearing the last remaining note (or all notes) appears
-  // to save/delete locally but silently reverts on the next reload. Re-armed
-  // whenever the active course/user changes (see the reset effect above).
+  // NOTE: this used to also gate a "skip the write" safety net for the very
+  // first flushSave of a course session (see studytrack-clear-note-first-save
+  // memory for why that was removed) — a real user's first action after
+  // loading is very often exactly "open a note, clear it, save", and that is
+  // indistinguishable from the stale-state bug the guard was trying to catch.
+  // Since isInitialLoad already prevents the load itself from ever triggering
+  // a save, every flushSave call past that point reflects a genuine, live,
+  // user-controlled state change, so an "empty" result must always be honored
+  // as a real intentional clear/delete. This ref is kept only so the one-time
+  // diagnostic warning below still fires just once per session instead of on
+  // every keystroke.
   const notesGuardArmedRef = useRef(true);
 
-  // Same rationale as notesGuardArmedRef, applied to the "don't save an empty
-  // subjects array over real data" safety net below. This used to be an
-  // unconditional `if (subjectsToSave.length === 0) return` that ran on EVERY
-  // flush — which also silently blocked notePagesIndex/tempNotes/settings from
-  // ever saving for a course that has always had zero subjects (e.g. one used
-  // only for the standalone Notes section), making deletes there look like
-  // they "revert" on reload. Scoping it to the first flush of the session only
-  // (like the notes guard) keeps the original crash protection while letting
-  // every other field save normally. Re-armed in the same reset effect above.
+  // Diagnostic-only counterpart to notesGuardArmedRef, for an empty subjects
+  // array. Never blocks the write (see notesGuardArmedRef comment for why a
+  // blocking version breaks a real user's first intentional clear/delete of
+  // the session) — only logs once per session so an unexpected empty-subjects
+  // save is still visible in the console if it ever happens.
   const subjectsGuardArmedRef = useRef(true);
 
   const flushSave = async (
@@ -942,23 +940,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     const notesDocRef = doc(db, 'users', currentUser.id, 'courseNotes', currentCourseId);
 
     if (subjectsToSave.length === 0 && subjectsGuardArmedRef.current) {
-      try {
-        const existingSnap = await getDoc(docRef);
-        const existingSubjects = existingSnap.exists()
-          ? (existingSnap.data().subjects as unknown[] | undefined)
-          : undefined;
-        if (existingSubjects && existingSubjects.length > 0) {
-          subjectsGuardArmedRef.current = false;
-          console.warn(
-            '[StudyContext] Skipped saving an empty subjects array over existing non-empty subjects — ' +
-            'this looks like a transient in-memory state, not an intentional reset.',
-          );
-          return;
-        }
-      } catch {
-        // Can't check (offline) — fall through and save as-is rather than
-        // blocking this course's saves forever.
-      }
+      console.info(
+        '[StudyContext] First save of this session has an empty subjects array — saving as-is ' +
+        '(this is expected when the user just deleted their last subject).',
+      );
     }
     subjectsGuardArmedRef.current = false;
 
@@ -1000,53 +985,23 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       // are already routed to Storage.
       const notesData = { overallNote: overallNoteToSave, notes };
 
-      // Safety guard: never let an in-memory state that is *missing* notes
-      // (empty overallNote + empty notes map) silently overwrite note content
-      // that already exists in Firestore. This is the underlying condition
-      // that let earlier bugs (a flawed course migration, then a stale local
-      // cache winning a freshness comparison) permanently destroy notes even
-      // though the in-memory "empty" state was itself just a symptom of
-      // something else going wrong upstream. Closing it here means that
-      // *class* of bug — not just the specific ones already fixed — can no
-      // longer cause permanent data loss: worst case, a save is skipped once
-      // and retried on the next edit, instead of real notes being wiped out.
-      const incomingHasNotes =
-        !!notesData.overallNote || Object.values(notesData.notes).some((v) => !!v);
-      let skipNotesWrite = false;
-      if (!incomingHasNotes && notesGuardArmedRef.current) {
-        try {
-          const existingNotesSnap = await getDoc(notesDocRef);
-          if (existingNotesSnap.exists()) {
-            const existing = existingNotesSnap.data() as {
-              overallNote?: string;
-              notes?: Record<string, string>;
-              chunked?: boolean;
-              chunkCount?: number;
-            };
-            const existingHasNotes =
-              !!existing.overallNote ||
-              (existing.notes && Object.values(existing.notes).some((v) => !!v)) ||
-              (!!existing.chunked && (existing.chunkCount || 0) > 0);
-            if (existingHasNotes) {
-              skipNotesWrite = true;
-              console.warn(
-                '[StudyContext] Skipped saving an empty notes payload over existing non-empty notes — ' +
-                'this looks like a transient in-memory state, not an intentional clear.',
-              );
-            }
-          }
-        } catch {
-          // If we can't check, fall through to the normal write below rather
-          // than blocking the save entirely.
+      // Diagnostic only (does NOT block the write — see notesGuardArmedRef
+      // comment above for why blocking here breaks legitimate first-clears).
+      // Still useful in logs to distinguish "user really cleared everything"
+      // from "something upstream produced an unexpectedly empty state".
+      if (notesGuardArmedRef.current) {
+        const incomingHasNotes =
+          !!notesData.overallNote || Object.values(notesData.notes).some((v) => !!v);
+        if (!incomingHasNotes) {
+          console.info(
+            '[StudyContext] First save of this session has empty notes — saving as-is ' +
+            '(this is expected when the user just cleared/deleted their last note).',
+          );
         }
+        notesGuardArmedRef.current = false;
       }
-      // This safety net only ever gets one chance, on the first flushSave of the
-      // course session — every subsequent flush reflects a real, live,
-      // user-controlled state, so an empty result then is a genuine intentional
-      // clear/delete (e.g. deleting the last remaining note) and must go through.
-      notesGuardArmedRef.current = false;
 
-      if (!skipNotesWrite) {
+      {
         const notesDataSize = byteSize(JSON.stringify(notesData));
         const notesChunksRef = collection(notesDocRef, 'chunks');
         let notesPayload: Record<string, unknown>;
@@ -1102,11 +1057,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           // onSnapshot and applies the update to their own Firestore docs.
           const syncPayload: Record<string, unknown> = {
             'courseSnapshot.studyData': mainPayload,
+            'courseSnapshot.notesJson': JSON.stringify(notesData),
             syncedAt,
           };
-          if (!skipNotesWrite) {
-            syncPayload['courseSnapshot.notesJson'] = JSON.stringify(notesData);
-          }
           await updateDoc(doc(db, 'shareRequests', shareDoc.id), syncPayload);
           console.log(`[LiveSync] ✅ Relay pushed to shareRequest "${shareDoc.id}" — syncedAt=${syncedAt}`);
         }

@@ -3,20 +3,33 @@ import { BookOpen } from 'lucide-react';
 
 /**
  * Shared branded loading/splash screen: logo slides up and fades in,
- * "StudyTrack" title fades in below it, spinner fades in pinned to the
- * bottom. Used both for the app-launch loading screen (App.tsx) and the
- * post-login transition overlay (Auth.tsx) so the two feel identical.
+ * "StudyTrack" title fades in below it, spinner sits at the bottom of
+ * the screen (not inline with the logo/title).
+ *
+ * Layout:
+ *   ┌─────────────────┐
+ *   │                 │
+ *   │   ┌──────────┐  │  ← flex-1 (top spacer)
+ *   │   │  Logo    │  │
+ *   │   │StudyTrack│  │  ← logo + title centered here
+ *   │   └──────────┘  │
+ *   │                 │  ← flex-1 (bottom spacer)
+ *   │      ( ⟳ )      │  ← spinner, pb-16 from very bottom
+ *   └─────────────────┘
  */
 export function BrandedLoadingScreen({ className = 'fixed inset-0 z-50' }: { className?: string }) {
   return (
     <motion.div
       key="branded-loading"
-      className={`${className} flex flex-col items-center justify-center gradient-hero`}
+      className={`${className} flex flex-col items-center gradient-hero`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
     >
+      {/* Top spacer — pushes logo+title to vertical center */}
+      <div className="flex-1" />
+
       {/* Logo — slides up */}
       <motion.div
         initial={{ opacity: 0, y: 48 }}
@@ -40,12 +53,15 @@ export function BrandedLoadingScreen({ className = 'fixed inset-0 z-50' }: { cla
         StudyTrack
       </motion.h1>
 
-      {/* Spinner — pinned to the very bottom of the screen */}
+      {/* Bottom spacer — separates title from spinner */}
+      <div className="flex-1" />
+
+      {/* Spinner — at the bottom of the screen in normal flow */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4, delay: 0.55 }}
-        className="absolute bottom-28 left-1/2 -translate-x-1/2"
+        className="pb-16 flex items-center justify-center"
       >
         <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
       </motion.div>

@@ -357,15 +357,18 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           tracking.delete(trackedShareId);
         }
       }
-      // Update tracking map: record currently accepted shares so future snapshots
-      // can detect deletions.
+      // Update tracking map: record any share the user has ever accepted so that
+      // future snapshots can detect permanent deletion and trigger cleanup.
+      // We track by acceptedByUid (not status) so that trashed shares — which were
+      // accepted before being moved to trash — stay in the map and trigger cleanup
+      // when the admin permanently deletes them from the Trash list.
       for (const shareDoc of snap.docs) {
         const data = shareDoc.data() as ShareRequest;
-        if (data.status === 'accepted') {
+        if (data.acceptedByUid) {
           tracking.set(shareDoc.id, data.type);
-        } else {
-          tracking.delete(shareDoc.id);
         }
+        // Never remove from tracking here — removal only happens above when the
+        // doc is confirmed gone (which triggers the actual cleanup).
       }
 
       // 2. Process any pending live-sync updates from the admin.

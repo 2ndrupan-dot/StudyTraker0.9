@@ -33,7 +33,7 @@ function LoadingScreen() {
           <BookOpen size={32} className="text-white drop-shadow-lg" />
         </div>
       </div>
-      <div className="mt-6 w-8 h-8 border-[3px] border-white/30 border-t-white rounded-full animate-spin" />
+      <div className="mt-6 w-10 h-10 border-[3px] border-white/25 border-t-white rounded-full animate-spin" />
     </div>
   );
 }

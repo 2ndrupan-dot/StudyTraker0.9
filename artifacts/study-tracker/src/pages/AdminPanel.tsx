@@ -245,6 +245,85 @@ function NotePicker({
   );
 }
 
+// ─── Note Pages Picker (standalone "Notes" section — notePagesIndex) ─────────
+// Unlike NotePicker (which drills through the subjects hierarchy), standalone
+// note pages only have metadata (id/title) in memory — the HTML content lives
+// in a separate Firestore doc per page. Selecting a page fetches that content
+// on demand via loadNotePage() and produces the same NotePick shape used by
+// the subject-tree picker, so the rest of the send/accept pipeline (NoteShareItem,
+// shareRequest.notes[]) needs no changes at all.
+function NotePagesPicker({
+  notePagesIndex,
+  loadNotePage,
+  onToggle,
+  pickedIds,
+  lang,
+}: {
+  notePagesIndex: { id: string; title: string }[];
+  loadNotePage: (id: string) => Promise<{ html?: string } | null>;
+  onToggle: (pick: NotePick & { id: string }) => void;
+  pickedIds: Set<string>;
+  lang: string;
+}) {
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  const handlePick = async (page: { id: string; title: string }) => {
+    if (pickedIds.has(page.id)) {
+      // Already selected — toggling off doesn't need the content.
+      onToggle({ id: page.id, title: page.title, html: '', breadcrumb: [lang === 'bn' ? 'নোট' : 'Notes', page.title] });
+      return;
+    }
+    setLoadingId(page.id);
+    try {
+      const full = await loadNotePage(page.id);
+      onToggle({
+        id: page.id,
+        title: page.title,
+        html: full?.html || '',
+        breadcrumb: [lang === 'bn' ? 'নোট' : 'Notes', page.title],
+      });
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  if (notePagesIndex.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground text-center py-6">
+        {lang === 'bn' ? 'কোনো নোট নেই।' : 'No notes yet.'}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-1 max-h-52 overflow-y-auto">
+      {notePagesIndex.map(page => (
+        <div key={page.id} className="flex items-center gap-2 p-2.5 rounded-xl hover:bg-secondary/60 transition-colors">
+          <StickyNote size={14} className="text-primary shrink-0" />
+          <span className="text-sm font-medium truncate flex-1">{page.title}</span>
+          <button
+            onClick={() => handlePick(page)}
+            disabled={loadingId === page.id}
+            className={cn(
+              "flex items-center gap-1 p-2 rounded-lg text-xs font-semibold shrink-0 transition-colors disabled:opacity-60",
+              pickedIds.has(page.id)
+                ? "bg-green-500/15 text-green-700 hover:bg-green-500/25"
+                : "bg-primary/10 text-primary hover:bg-primary/20"
+            )}
+          >
+            {pickedIds.has(page.id) && <Check size={11} />}
+            {loadingId === page.id
+              ? (lang === 'bn' ? 'লোড হচ্ছে...' : 'Loading...')
+              : pickedIds.has(page.id)
+                ? (lang === 'bn' ? 'যোগ হয়েছে' : 'Added')
+                : (lang === 'bn' ? 'সিলেক্ট' : 'Select')}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Permissions Checkboxes ────────────────────────────────────────────────────
 
 function PermissionsEditor({
@@ -452,7 +531,7 @@ export function AdminPanel() {
     extendShare, getCourseSubjectsForShare, addSubjectsToShare,
     trashShare, restoreShare, permanentlyDeleteShare } = useAdmin();
   const { courses, activeCourse } = useCourse();
-  const { subjects } = useStudy();
+  const { subjects, notePagesIndex, loadNotePage } = useStudy();
 
   const [tab, setTab] = useState<'admins' | 'share' | 'sent'>('admins');
   const [sentSubTab, setSentSubTab] = useState<'active' | 'trash'>('active');
@@ -485,6 +564,10 @@ export function AdminPanel() {
   const [emailInputError, setEmailInputError] = useState('');
   // One or more notes picked together to be sent as a single share card.
   const [notesPickedList, setNotesPickedList] = useState<Array<NotePick & { id: string }>>([]);
+  // Which picker is shown for note shares: inline subject/chapter/topic notes,
+  // or standalone pages from the top-level "Notes" section. Both feed the same
+  // notesPickedList / NoteShareItem[] pipeline, so they can be mixed freely.
+  const [noteSource, setNoteSource] = useState<'inline' | 'pages'>('inline');
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -632,6 +715,7 @@ export function AdminPanel() {
       setEmailInput('');
       setEmailInputError('');
       setNotesPickedList([]);
+      setNoteSource('inline');
       setCourseSubjects([]);
       setSelectedSubjectIds([]);
       setTimeout(() => setSendSuccess(false), 3000);
@@ -1102,16 +1186,52 @@ export function AdminPanel() {
                       </div>
                     )}
 
-                    <NotePicker
-                      subjects={subjects}
-                      pickedIds={new Set(notesPickedList.map(n => n.id))}
-                      onToggle={pick => setNotesPickedList(list =>
-                        list.some(n => n.id === pick.id)
-                          ? list.filter(n => n.id !== pick.id)
-                          : [...list, pick]
-                      )}
-                      lang={lang}
-                    />
+                    {/* Source toggle: subject/chapter/topic notes vs. standalone Notes-page items */}
+                    <div className="flex items-center gap-1.5 p-1 bg-secondary rounded-xl">
+                      <button
+                        onClick={() => setNoteSource('inline')}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                          noteSource === 'inline' ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"
+                        )}
+                      >
+                        {lang === 'bn' ? 'সাবজেক্ট নোট' : 'Subject notes'}
+                      </button>
+                      <button
+                        onClick={() => setNoteSource('pages')}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                          noteSource === 'pages' ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"
+                        )}
+                      >
+                        {lang === 'bn' ? 'নোট সেকশন' : 'Notes section'}
+                      </button>
+                    </div>
+
+                    {noteSource === 'inline' ? (
+                      <NotePicker
+                        subjects={subjects}
+                        pickedIds={new Set(notesPickedList.map(n => n.id))}
+                        onToggle={pick => setNotesPickedList(list =>
+                          list.some(n => n.id === pick.id)
+                            ? list.filter(n => n.id !== pick.id)
+                            : [...list, pick]
+                        )}
+                        lang={lang}
+                      />
+                    ) : (
+                      <NotePagesPicker
+                        notePagesIndex={notePagesIndex}
+                        loadNotePage={loadNotePage}
+                        pickedIds={new Set(notesPickedList.map(n => n.id))}
+                        onToggle={pick => setNotesPickedList(list =>
+                          list.some(n => n.id === pick.id)
+                            ? list.filter(n => n.id !== pick.id)
+                            : [...list, pick]
+                        )}
+                        lang={lang}
+                      />
+                    )}
                   </div>
                 )}
 

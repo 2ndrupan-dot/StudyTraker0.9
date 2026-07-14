@@ -8,3 +8,4 @@
 - [Course share accept flow](course-share-accept-flow.md) — snapshot embedded in shareRequest at send-time; copied to user's own collections on accept; permissions enforced via sharedCourses subcollection.
 - [Course share lifecycle features](course-share-lifecycle-features.md) — auto-expiry is always hard-delete, trash is manual-delete-only, partial-subject sharing filters flat notes map by id.
 - [StudyTrack notes-empty-write guard](studytrack-notes-empty-write-guard.md) — the empty-notes safety net must only fire on the first flush of a course session, or it silently blocks real deletes.
+- [StudyTrack subjects-empty guard](studytrack-subjects-empty-guard.md) — blanket "subjects.length===0 -> skip save" blocked notePagesIndex/tempNotes/settings saves too; scope it to first-flush-only like the notes guard.

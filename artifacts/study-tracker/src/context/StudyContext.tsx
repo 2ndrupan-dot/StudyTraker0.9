@@ -567,6 +567,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       setDataLoaded(false);
       isInitialLoad.current = true;
       notesGuardArmedRef.current = true;
+      subjectsGuardArmedRef.current = true;
       return;
     }
 
@@ -578,6 +579,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setNotePagesIndex([]);
     setDataLoaded(false);
     notesGuardArmedRef.current = true;
+    subjectsGuardArmedRef.current = true;
 
     const docRef = doc(db, 'users', user.id, 'studyData', activeCourseId);
     const notesDocRef = doc(db, 'users', user.id, 'courseNotes', activeCourseId);
@@ -913,6 +915,17 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // whenever the active course/user changes (see the reset effect above).
   const notesGuardArmedRef = useRef(true);
 
+  // Same rationale as notesGuardArmedRef, applied to the "don't save an empty
+  // subjects array over real data" safety net below. This used to be an
+  // unconditional `if (subjectsToSave.length === 0) return` that ran on EVERY
+  // flush — which also silently blocked notePagesIndex/tempNotes/settings from
+  // ever saving for a course that has always had zero subjects (e.g. one used
+  // only for the standalone Notes section), making deletes there look like
+  // they "revert" on reload. Scoping it to the first flush of the session only
+  // (like the notes guard) keeps the original crash protection while letting
+  // every other field save normally. Re-armed in the same reset effect above.
+  const subjectsGuardArmedRef = useRef(true);
+
   const flushSave = async (
     subjectsToSave: Subject[],
     settingsToSave: CourseSettings,
@@ -924,8 +937,31 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     const currentUser = userRef.current;
     const currentCourseId = activeCourseIdRef.current;
     if (!currentUser || !currentCourseId) return;
-    // Never save an empty subjects array — guard against accidental reset
-    if (subjectsToSave.length === 0) return;
+
+    const docRef = doc(db, 'users', currentUser.id, 'studyData', currentCourseId);
+    const notesDocRef = doc(db, 'users', currentUser.id, 'courseNotes', currentCourseId);
+
+    if (subjectsToSave.length === 0 && subjectsGuardArmedRef.current) {
+      try {
+        const existingSnap = await getDoc(docRef);
+        const existingSubjects = existingSnap.exists()
+          ? (existingSnap.data().subjects as unknown[] | undefined)
+          : undefined;
+        if (existingSubjects && existingSubjects.length > 0) {
+          subjectsGuardArmedRef.current = false;
+          console.warn(
+            '[StudyContext] Skipped saving an empty subjects array over existing non-empty subjects — ' +
+            'this looks like a transient in-memory state, not an intentional reset.',
+          );
+          return;
+        }
+      } catch {
+        // Can't check (offline) — fall through and save as-is rather than
+        // blocking this course's saves forever.
+      }
+    }
+    subjectsGuardArmedRef.current = false;
+
     const savedAt = Date.now();
     lastSavedAt.current = savedAt;
     const lsKey = `@study_data_${currentCourseId}_${currentUser.email}`;
@@ -940,9 +976,6 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     // localStorage always gets the full payload (no size limit)
     localStorage.setItem(lsKey, JSON.stringify(payload));
     try {
-      const docRef = doc(db, 'users', currentUser.id, 'studyData', currentCourseId);
-      const notesDocRef = doc(db, 'users', currentUser.id, 'courseNotes', currentCourseId);
-
       // Extract all rich-text note content from subjects and tempNotes so the main
       // Firestore document stays well under the 1 MB limit.  The notes are saved to
       // a separate "courseNotes/{courseId}" document and merged back on load.
@@ -1106,7 +1139,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       skipNextSaveRef.current = false;
       return;
     }
-    if (subjects.length === 0) return;
+    // Note: this used to bail out entirely whenever `subjects.length === 0`,
+    // which also blocked notePagesIndex/tempNotes/settings from ever being
+    // saved for a course that genuinely has zero subjects (e.g. one used only
+    // for the standalone Notes section) — deletes there looked like they
+    // silently "reverted" on reload. The empty-subjects protection now lives
+    // in flushSave's `subjectsGuardArmedRef` check, which only skips the
+    // subjects field itself (once, on the session's first flush) instead of
+    // blocking every other field forever.
 
     // Remote update arrived via onSnapshot — persist to localStorage so it
     // survives a reload, but do NOT echo it back to Firestore (that would

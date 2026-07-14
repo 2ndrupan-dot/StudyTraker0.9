@@ -14,7 +14,6 @@ import { CreateCoursePage } from "./pages/CreateCoursePage";
 import { AdminPanel } from "./pages/AdminPanel";
 import { PWAUpdater } from "./components/PWAUpdater";
 import { PWAInstallProvider } from "./context/PWAInstallContext";
-import { SplashScreen } from "./components/SplashScreen";
 import { AdminProvider } from "./context/AdminContext";
 import { ContentProtectionGuard } from "./components/ContentProtectionGuard";
 import { BookOpen } from "lucide-react";
@@ -152,25 +151,23 @@ function Router() {
 
 function App() {
   return (
-    <SplashScreen>
-      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-        <LangProvider>
-          <AuthProvider>
-            <PWAInstallProvider>
-              <CourseProvider>
-                <StudyProvider>
-                  <AdminProvider>
-                    <ContentProtectionGuard />
-                    <Router />
-                    <PWAUpdater />
-                  </AdminProvider>
-                </StudyProvider>
-              </CourseProvider>
-            </PWAInstallProvider>
-          </AuthProvider>
-        </LangProvider>
-      </WouterRouter>
-    </SplashScreen>
+    <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+      <LangProvider>
+        <AuthProvider>
+          <PWAInstallProvider>
+            <CourseProvider>
+              <StudyProvider>
+                <AdminProvider>
+                  <ContentProtectionGuard />
+                  <Router />
+                  <PWAUpdater />
+                </AdminProvider>
+              </StudyProvider>
+            </CourseProvider>
+          </PWAInstallProvider>
+        </AuthProvider>
+      </LangProvider>
+    </WouterRouter>
   );
 }
 

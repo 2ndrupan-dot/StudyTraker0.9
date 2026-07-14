@@ -11,27 +11,23 @@ import {
   Download, Share2, Check, GraduationCap,
 } from 'lucide-react';
 
-/** Customer-care icon — a head wearing a headset, like a classic support-agent logo */
+/** Customer-support icon — a simple person silhouette wearing a headset, single-tone flat glyph */
 function CustomerCareIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      {/* Headset band over the top of the head */}
-      <path d="M6 11a6 6 0 0 1 12 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
+      {/* Head */}
+      <circle cx="12" cy="9.4" r="4.2" fill="currentColor"/>
+      {/* Shoulders / bust */}
+      <path d="M4 20.2c0-3.7 3.6-5.6 8-5.6s8 1.9 8 5.6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" fill="currentColor"/>
+      {/* Headset band over the head */}
+      <path d="M6.6 9.4a5.4 5.4 0 0 1 10.8 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" fill="none"/>
       {/* Left ear cup */}
-      <rect x="4.3" y="10.2" width="3.4" height="5" rx="1.7" fill="currentColor"/>
+      <rect x="5.3" y="8.7" width="2.7" height="4" rx="1.35" fill="currentColor"/>
       {/* Right ear cup */}
-      <rect x="16.3" y="10.2" width="3.4" height="5" rx="1.7" fill="currentColor"/>
-      {/* Mic arm curving from the right ear cup toward the mouth */}
-      <path d="M18 15.2 Q18 18.4 13.2 18.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none"/>
-      <circle cx="12.6" cy="18.6" r="1.1" fill="currentColor"/>
-      {/* Head silhouette */}
-      <circle cx="12" cy="11.3" r="5.1" fill="currentColor"/>
-      {/* Simple face — eyes + smile, cut out of the head in white */}
-      <circle cx="9.7" cy="10.6" r="0.85" fill="white"/>
-      <circle cx="14.3" cy="10.6" r="0.85" fill="white"/>
-      <path d="M9.3 13a3 3 0 0 0 5.4 0" stroke="white" strokeWidth="1.2" strokeLinecap="round" fill="none"/>
-      {/* Shoulders */}
-      <path d="M4.5 21c0-3 3.4-4.6 7.5-4.6s7.5 1.6 7.5 4.6" fill="currentColor"/>
+      <rect x="16" y="8.7" width="2.7" height="4" rx="1.35" fill="currentColor"/>
+      {/* Mic boom curving toward the mouth */}
+      <path d="M17.3 12.5q0 2.6-3.6 2.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none"/>
+      <circle cx="13.1" cy="15.3" r="0.9" fill="currentColor"/>
     </svg>
   );
 }
@@ -1845,10 +1841,10 @@ export function Today() {
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => window.open(appContact.supportLink, '_blank', 'noopener,noreferrer')}
-                        className="spin-border-inner w-14 h-14 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
+                        className="spin-border-inner w-9 h-9 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
                         aria-label="Contact Support"
                       >
-                        <CustomerCareIcon size={26} />
+                        <CustomerCareIcon size={16} />
                       </motion.button>
                     </span>
                   )}

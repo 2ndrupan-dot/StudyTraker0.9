@@ -10,3 +10,4 @@
 - [StudyTrack notes-empty-write guard](studytrack-notes-empty-write-guard.md) — the empty-notes safety net must only fire on the first flush of a course session, or it silently blocks real deletes.
 - [StudyTrack subjects-empty guard](studytrack-subjects-empty-guard.md) — blanket "subjects.length===0 -> skip save" blocked notePagesIndex/tempNotes/settings saves too; scope it to first-flush-only like the notes guard.
 - [StudyTrack first-save guards must never block](studytrack-clear-note-first-save.md) — "looks empty on first flush of session" guards must only log, never skip the write — they broke a real user's first clear-note-and-save action.
+- [StudyTrack shared-note PDF + subject-share defaults](studytrack-shared-note-pdf-and-subject-share-defaults.md) — PDF footer needs pdf* props at every NoteEditorModal call site; subject share picker must default to empty, not select-all.

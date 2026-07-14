@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { useAdmin, ShareRequest } from '@/context/AdminContext';
 import { Modal, NoteEditorModal } from '@/components/ui';
 import { useLang } from '@/context/LangContext';
+import { useAuth } from '@/context/AuthContext';
 import { Countdown } from '@/components/Countdown';
 
 function formatDuration(value: number, unit: string, lang: string) {
@@ -23,6 +24,8 @@ function formatDuration(value: number, unit: string, lang: string) {
 function SharedNoteModal({
   isOpen, onClose, share,
 }: { isOpen: boolean; onClose: () => void; share: ShareRequest | null }) {
+  const { appContact } = useAdmin();
+  const { user } = useAuth();
   const notes = share?.notes && share.notes.length > 0 ? share.notes : undefined;
   const singleNote = notes?.[0];
   const [localHtml, setLocalHtml] = useState(singleNote?.html ?? share?.noteHtml ?? '');
@@ -86,6 +89,10 @@ function SharedNoteModal({
       copyAllowed={share.permissions.copyNotes}
       downloadAllowed={share.permissions.downloadNotes}
       editAllowed={share.permissions.editNotes}
+      pdfIsShared
+      pdfUserEmail={user?.email ?? ''}
+      pdfWhatsApp={appContact.whatsapp}
+      pdfWebsite={appContact.website}
     />
   );
 }

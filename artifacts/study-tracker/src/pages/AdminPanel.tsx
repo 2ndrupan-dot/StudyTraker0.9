@@ -601,7 +601,13 @@ export function AdminPanel() {
     getCourseSubjectsForShare(shareForm.courseId).then(list => {
       if (!active) return;
       setCourseSubjects(list);
-      setSelectedSubjectIds(list.map(s => s.id)); // default: select all
+      // Default to NONE selected (not "select all"). Previously this defaulted to
+      // every subject pre-checked, so an admin who only clicked the 1-2 subjects
+      // they wanted to share saw no visible change (they were already checked)
+      // and every other subject — still checked — went out with the share too.
+      // Forcing an explicit, from-scratch selection makes "what's checked" always
+      // equal "what gets shared".
+      setSelectedSubjectIds([]);
       setLoadingCourseSubjects(false);
     });
     return () => { active = false; };

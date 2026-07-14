@@ -1831,10 +1831,10 @@ export function Today() {
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => window.open(appContact.supportLink, '_blank', 'noopener,noreferrer')}
-                        className="spin-border-inner w-9 h-9 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
+                        className="spin-border-inner w-8 h-8 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
                         aria-label="Contact Support"
                       >
-                        <Headset size={16} className="text-white" />
+                        <Headset size={14} className="text-white" />
                       </motion.button>
                     </span>
                   )}
@@ -1845,10 +1845,10 @@ export function Today() {
                         <motion.button
                           whileTap={{ scale: 0.9 }}
                           onClick={() => setShowInstallMenu(v => !v)}
-                          className="spin-border-inner w-9 h-9 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
+                          className="spin-border-inner w-8 h-8 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
                           aria-label={t('installApp')}
                         >
-                          <Download size={16} className="text-white" />
+                          <Download size={14} className="text-white" />
                         </motion.button>
                       </span>
                       <AnimatePresence>

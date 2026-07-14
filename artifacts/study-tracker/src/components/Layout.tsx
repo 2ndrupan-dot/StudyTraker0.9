@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText, User as UserIcon } from 'lucide-react';
+import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText, User as UserIcon, Headset } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
 import { usePWAInstall } from '@/context/PWAInstallContext';
+import { useAdmin } from '@/context/AdminContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GlobalSearch } from './GlobalSearch';
 
@@ -169,6 +170,7 @@ function ConnectionStatus() {
 function InstallSection() {
   const { t } = useLang();
   const { canInstall, isInstalled, installApp } = usePWAInstall();
+  const { appContact } = useAdmin();
   const [copied, setCopied] = useState(false);
 
   const handleShare = async () => {
@@ -190,7 +192,21 @@ function InstallSection() {
     }
   };
 
-  if (isInstalled) return null;
+  // Once the app is already installed there's nothing left to install/share
+  // here — replace this slot with a Contact button instead of leaving it
+  // empty, so installed-app users still have a way to reach support.
+  if (isInstalled) {
+    if (!appContact.supportLink) return null;
+    return (
+      <button
+        onClick={() => window.open(appContact.supportLink, '_blank', 'noopener,noreferrer')}
+        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white/15 text-white hover:bg-white/25 transition-colors border border-white/15"
+      >
+        <Headset size={14} />
+        <span>{t('contactSupport')}</span>
+      </button>
+    );
+  }
 
   return (
     <div className="space-y-1.5">
@@ -305,10 +321,26 @@ function SideNav({ onSearch }: { onSearch: () => void }) {
 function MobileInstallButton() {
   const { t } = useLang();
   const { canInstall, isInstalled, installApp } = usePWAInstall();
+  const { appContact } = useAdmin();
   const [copied, setCopied] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
 
-  if (isInstalled) return null;
+  // Once installed there's nothing to install/share from this FAB — show a
+  // Contact button in its place instead of just removing the button.
+  if (isInstalled) {
+    if (!appContact.supportLink) return null;
+    return (
+      <motion.button
+        whileTap={{ scale: 0.9 }}
+        onClick={() => window.open(appContact.supportLink, '_blank', 'noopener,noreferrer')}
+        className="fixed bottom-[88px] left-4 z-40 w-12 h-12 rounded-full shadow-lg flex items-center justify-center bg-card border border-border/60 text-muted-foreground"
+        aria-label={t('contactSupport')}
+        title={t('contactSupport')}
+      >
+        <Headset size={20} />
+      </motion.button>
+    );
+  }
 
   const handleShare = async () => {
     const url = window.location.origin;

@@ -6,6 +6,7 @@ import { addDays, formatISO } from 'date-fns';
 import { nowIST, addDaysIST, toDateStrIST } from '@/lib/istTime';
 import { doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, collection, writeBatch, query, where, updateDoc, type CollectionReference, type DocumentReference } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { collectAllIds, filterSubjectsByIds, filterNotesMapByIds } from '@/lib/courseShare';
 
 // Firestore document size limit — documents above this are split across a
 // "chunks" subcollection instead of relying on Firebase Storage (which
@@ -1051,13 +1052,29 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           if (shareData.status !== 'accepted') continue;
           syncCount++;
 
+          // Partial-subject shares must keep being filtered on every re-sync,
+          // not just at the initial share — otherwise the very next edit the
+          // admin makes pushes the FULL course back over the top of the
+          // recipient's restricted subset (previously reported as "all
+          // subjects come back after accepting a partial course share").
+          const sharedSubjectIds = shareData.sharedSubjectIds as string[] | undefined;
+          let syncSubjects = mainPayload.subjects as unknown[];
+          let syncNotes = notesData.notes;
+          if (sharedSubjectIds && Array.isArray(mainPayload.subjects)) {
+            syncSubjects = filterSubjectsByIds(mainPayload.subjects as unknown[], sharedSubjectIds);
+            const idSet = collectAllIds(syncSubjects);
+            syncNotes = filterNotesMapByIds(notesData.notes, idSet);
+          }
+          const syncStudyDataPayload = { ...mainPayload, subjects: syncSubjects };
+          const syncNotesDataPayload = { ...notesData, notes: syncNotes };
+
           // Overwrite courseSnapshot in-place (dot-notation → no extra fields added,
           // document size stays stable) and bump syncedAt as the change signal.
           // The recipient's AdminContext listener detects the new syncedAt via
           // onSnapshot and applies the update to their own Firestore docs.
           const syncPayload: Record<string, unknown> = {
-            'courseSnapshot.studyData': mainPayload,
-            'courseSnapshot.notesJson': JSON.stringify(notesData),
+            'courseSnapshot.studyData': syncStudyDataPayload,
+            'courseSnapshot.notesJson': JSON.stringify(syncNotesDataPayload),
             syncedAt,
           };
           await updateDoc(doc(db, 'shareRequests', shareDoc.id), syncPayload);

@@ -73,15 +73,17 @@ export function MarksBadgeRow({
   const { t } = useLang();
   if (!important && !weak && !note) return null;
   const px = size === 'xs' ? 'text-[9px] px-1 py-0' : 'text-[10px] px-1.5 py-0.5';
+  // flex-nowrap + shrink keeps all active badges on one line regardless of
+  // how many are present, instead of wrapping to a second line.
   return (
-    <div className="flex items-center gap-1 flex-wrap">
+    <div className="flex items-center gap-1 flex-nowrap overflow-x-auto no-scrollbar">
       {important && (
-        <span className={`flex items-center gap-0.5 ${px} rounded font-bold text-yellow-700 bg-yellow-400/20 border border-yellow-300/60`}>
+        <span className={`flex items-center gap-0.5 ${px} rounded font-bold text-yellow-700 bg-yellow-400/20 border border-yellow-300/60 shrink-0`}>
           <Star size={size === 'xs' ? 8 : 9} fill="currentColor" />
         </span>
       )}
       {weak && (
-        <span className={`flex items-center gap-0.5 ${px} rounded font-bold text-rose-700 bg-rose-500/15 border border-rose-300/60`}>
+        <span className={`flex items-center gap-0.5 ${px} rounded font-bold text-rose-700 bg-rose-500/15 border border-rose-300/60 shrink-0`}>
           <AlertTriangle size={size === 'xs' ? 8 : 9} fill="currentColor" />
         </span>
       )}
@@ -89,10 +91,10 @@ export function MarksBadgeRow({
         <button
           type="button"
           onClick={e => { e.stopPropagation(); onClickNote?.(); }}
-          className={`flex items-center gap-0.5 ${px} rounded font-bold text-amber-700 bg-amber-400/15 border border-amber-300/60 hover:bg-amber-400/25`}
+          className={`flex items-center gap-0.5 ${px} rounded font-bold text-amber-700 bg-amber-400/15 border border-amber-300/60 hover:bg-amber-400/25 shrink min-w-0`}
         >
-          <StickyNote size={size === 'xs' ? 8 : 9} />
-          <span>{t('note')}</span>
+          <StickyNote size={size === 'xs' ? 8 : 9} className="shrink-0" />
+          <span className="truncate">{t('note')}</span>
         </button>
       )}
     </div>

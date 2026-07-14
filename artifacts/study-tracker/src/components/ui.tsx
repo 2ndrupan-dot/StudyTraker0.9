@@ -505,23 +505,23 @@ export const NoteEditorModal = ({
     const websiteSpan = safeWebsite
       ? `<span>🌐 Website : <a href="${safeWebsite}">${safeWebsite}</a></span>`
       : '';
-    let footerInner: string;
-    if (pdfIsAdmin) {
-      // Admin downloading any note
-      footerInner = `<span>📝 Created by : StudyTrack team</span>`
-        + (pdfWhatsApp ? `<span>💬 WhatsApp : ${pdfWhatsApp}</span>` : '')
-        + websiteSpan;
-    } else if (pdfIsShared) {
-      // Normal user downloading an admin-shared note
-      footerInner = `<span>📝 Created by : StudyTrack team</span>`
-        + (pdfWhatsApp ? `<span>💬 WhatsApp : ${pdfWhatsApp}</span>` : '')
-        + websiteSpan
-        + (pdfUserEmail ? `<span>🖨️ Printed by : ${pdfUserEmail}</span>` : '');
-    } else {
-      // Normal user downloading their own note
-      footerInner = `<span>📝 Created by : ${pdfUserEmail || 'StudyTrack team'}</span>`
-        + websiteSpan;
-    }
+    // Unified footer: any note that is admin-authored or admin-shared always
+    // gets the full set of available fields (Created by / WhatsApp / Website /
+    // Printed by) — previously the admin branch silently dropped "Printed by"
+    // and per-page callers that hadn't wired up `pdfIsShared` fell into the
+    // "own note" branch which dropped WhatsApp + Printed by entirely, so the
+    // PDF footer for a shared note sometimes showed only "Created by : StudyTrack team".
+    const isOfficial = pdfIsAdmin || pdfIsShared;
+    const createdBySpan = isOfficial
+      ? `<span>📝 Created by : StudyTrack team</span>`
+      : `<span>📝 Created by : ${pdfUserEmail || 'StudyTrack team'}</span>`;
+    const printedBySpan = isOfficial && pdfUserEmail
+      ? `<span>🖨️ Printed by : ${pdfUserEmail}</span>`
+      : '';
+    let footerInner: string = createdBySpan
+      + (pdfWhatsApp ? `<span>💬 WhatsApp : ${pdfWhatsApp}</span>` : '')
+      + websiteSpan
+      + printedBySpan;
     if (!footerInner.trim()) footerInner = `<span>📝 Created by : StudyTrack team</span>`;
     const html = `<!DOCTYPE html>
 <html lang="en">

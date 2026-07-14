@@ -714,24 +714,31 @@ export function AdminPanel() {
       const noteItems = shareForm.type === 'note'
         ? notesPickedList.map(({ id: _id, ...rest }) => rest)
         : undefined;
-      // Fan out to a separate shareRequest doc per recipient — each recipient
-      // gets their own independent card (own status/permissions/expiry).
+      // Fan out to a separate shareRequest doc per recipient AND, for note
+      // shares, per note — each recipient gets their own independent card
+      // (own status/permissions/expiry), and each selected note becomes its
+      // own notification instead of being bundled into one "N notes" card.
+      const noteBatches = shareForm.type === 'note'
+        ? (noteItems && noteItems.length > 0 ? noteItems.map(n => [n]) : [undefined])
+        : [undefined];
       for (const toEmail of shareForm.toEmails) {
-        await sendShare({
-          toEmail,
-          type: shareForm.type,
-          courseId: shareForm.type === 'course' ? shareForm.courseId : undefined,
-          courseName: shareForm.type === 'course' ? shareForm.courseName : undefined,
-          noteTitle: shareForm.type === 'note' ? noteItems?.[0]?.title : undefined,
-          noteHtml: shareForm.type === 'note' ? noteItems?.[0]?.html : undefined,
-          noteBreadcrumb: shareForm.type === 'note' ? noteItems?.[0]?.breadcrumb : undefined,
-          notes: noteItems,
-          messageText: shareForm.type === 'message' ? shareForm.messageText.trim() : undefined,
-          permissions: shareForm.type === 'message' ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false, renameCourse: false, addItems: false, takeScreenshot: false, selectCopyText: false } : shareForm.permissions,
-          durationValue: shareForm.durationValue,
-          durationUnit: shareForm.durationUnit,
-          sharedSubjectIds: shareForm.type === 'course' && courseSubjects.length > 0 ? selectedSubjectIds : undefined,
-        });
+        for (const noteBatch of noteBatches) {
+          await sendShare({
+            toEmail,
+            type: shareForm.type,
+            courseId: shareForm.type === 'course' ? shareForm.courseId : undefined,
+            courseName: shareForm.type === 'course' ? shareForm.courseName : undefined,
+            noteTitle: shareForm.type === 'note' ? noteBatch?.[0]?.title : undefined,
+            noteHtml: shareForm.type === 'note' ? noteBatch?.[0]?.html : undefined,
+            noteBreadcrumb: shareForm.type === 'note' ? noteBatch?.[0]?.breadcrumb : undefined,
+            notes: noteBatch,
+            messageText: shareForm.type === 'message' ? shareForm.messageText.trim() : undefined,
+            permissions: shareForm.type === 'message' ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false, renameCourse: false, addItems: false, takeScreenshot: false, selectCopyText: false } : shareForm.permissions,
+            durationValue: shareForm.durationValue,
+            durationUnit: shareForm.durationUnit,
+            sharedSubjectIds: shareForm.type === 'course' && courseSubjects.length > 0 ? selectedSubjectIds : undefined,
+          });
+        }
       }
       setSendSuccess(true);
       setShareStep(1);

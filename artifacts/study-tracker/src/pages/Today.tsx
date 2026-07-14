@@ -1547,39 +1547,43 @@ export function Today() {
             const marks = getTaskMarks(task);
             const hasMarks = marks.important || marks.weak || marks.note;
             if (!opts?.pendingLabel && !done && !hasMarks) return null;
+            // Keep every active badge on one line no matter how many are present
+            // (previously wrapped to a second line once 3-4 showed at once) —
+            // flex-nowrap + shrink + truncate lets each badge give up width
+            // before the row wraps, and the row scrolls as a last resort.
             return (
-              <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+              <div className="flex items-center gap-1 mb-2 flex-nowrap overflow-x-auto no-scrollbar">
                 {opts?.pendingLabel && (
-                  <span className={`flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                  <span className={`flex items-center gap-1 min-w-0 shrink text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded border whitespace-nowrap ${
                     opts.pendingDLeft !== undefined && opts.pendingDLeft <= 3
                       ? 'text-red-600 bg-red-500/10 border-red-200'
                       : 'text-orange-600 bg-orange-500/10 border-orange-200'
                   }`}>
-                    <AlertTriangle size={8} /> {opts.pendingLabel}
+                    <AlertTriangle size={8} className="shrink-0" /> <span className="truncate">{opts.pendingLabel}</span>
                   </span>
                 )}
                 {done && (
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-500/10 border border-green-200 px-1.5 py-0.5 rounded">
-                    <CheckCircle2 size={8} /> {isBn ? 'সম্পন্ন' : 'Done'}
+                  <span className="flex items-center gap-1 min-w-0 shrink text-[9px] sm:text-[10px] font-bold text-green-600 bg-green-500/10 border border-green-200 px-1 sm:px-1.5 py-0.5 rounded whitespace-nowrap">
+                    <CheckCircle2 size={8} className="shrink-0" /> <span className="truncate">{isBn ? 'সম্পন্ন' : 'Done'}</span>
                   </span>
                 )}
                 {marks.important && (
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-yellow-700 bg-yellow-500/15 border border-yellow-300 px-1.5 py-0.5 rounded">
-                    <Star size={8} className="fill-yellow-500" /> {t('important')}
+                  <span className="flex items-center gap-1 min-w-0 shrink text-[9px] sm:text-[10px] font-bold text-yellow-700 bg-yellow-500/15 border border-yellow-300 px-1 sm:px-1.5 py-0.5 rounded whitespace-nowrap">
+                    <Star size={8} className="fill-yellow-500 shrink-0" /> <span className="truncate">{t('important')}</span>
                   </span>
                 )}
                 {marks.weak && (
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-500/15 border border-rose-300 px-1.5 py-0.5 rounded">
-                    <AlertOctagon size={8} /> {t('weak')}
+                  <span className="flex items-center gap-1 min-w-0 shrink text-[9px] sm:text-[10px] font-bold text-rose-700 bg-rose-500/15 border border-rose-300 px-1 sm:px-1.5 py-0.5 rounded whitespace-nowrap">
+                    <AlertOctagon size={8} className="shrink-0" /> <span className="truncate">{t('weak')}</span>
                   </span>
                 )}
                 {marks.note && (
                   <button
                     type="button"
                     onClick={e => { e.stopPropagation(); openNoteModal(taskToMarkPath(task), marks.note ?? ''); }}
-                    className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-500/15 border border-amber-300 px-1.5 py-0.5 rounded hover:bg-amber-500/25 active:scale-95 transition-all"
+                    className="flex items-center gap-1 min-w-0 shrink text-[9px] sm:text-[10px] font-bold text-amber-700 bg-amber-500/15 border border-amber-300 px-1 sm:px-1.5 py-0.5 rounded hover:bg-amber-500/25 active:scale-95 transition-all whitespace-nowrap"
                   >
-                    <StickyNote size={8} /> {t('note')}
+                    <StickyNote size={8} className="shrink-0" /> <span className="truncate">{t('note')}</span>
                   </button>
                 )}
               </div>

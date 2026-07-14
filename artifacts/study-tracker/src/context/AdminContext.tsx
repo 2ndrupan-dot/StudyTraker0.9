@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from './AuthContext';
+import { collectAllIds, filterSubjectsByIds, filterNotesMapByIds } from '@/lib/courseShare';
 
 // Super admins from env var (cannot be removed)
 const SUPER_ADMIN_EMAILS: string[] = (import.meta.env.VITE_ADMIN_EMAILS || '')
@@ -118,36 +119,6 @@ export type SendShareParams = Pick<ShareRequest,
   'toEmail' | 'type' | 'courseId' | 'courseName' | 'noteTitle' | 'noteHtml' | 'noteBreadcrumb' |
   'notes' | 'messageText' | 'permissions' | 'durationValue' | 'durationUnit' | 'sharedSubjectIds'
 >;
-
-// ── Subject-tree helpers for partial (subject-level) course sharing ──────────
-// Collect every node id across all levels of a subjects tree, so a flat
-// "notes" map (keyed like "s:<id>", "c:<id>", "pt:<id>" ...) can be filtered
-// down to just the ids that belong to a chosen set of top-level subjects.
-function collectAllIds(nodes: unknown[], into: Set<string> = new Set()): Set<string> {
-  const childKeys = ['chapters', 'topics', 'subtopics', 'concepts', 'points'];
-  for (const n of nodes as Record<string, unknown>[]) {
-    if (n.id) into.add(n.id as string);
-    for (const key of childKeys) {
-      if (Array.isArray(n[key])) collectAllIds(n[key] as unknown[], into);
-    }
-  }
-  return into;
-}
-
-function filterSubjectsByIds(subjects: unknown[], ids: string[]): unknown[] {
-  const idSet = new Set(ids);
-  return (subjects as Record<string, unknown>[]).filter(s => idSet.has(s.id as string));
-}
-
-function filterNotesMapByIds(notes: Record<string, string>, idSet: Set<string>): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(notes)) {
-    const sep = key.indexOf(':');
-    const rawId = sep >= 0 ? key.slice(sep + 1) : key;
-    if (idSet.has(rawId)) result[key] = value;
-  }
-  return result;
-}
 
 export interface AppContact {
   whatsapp: string;

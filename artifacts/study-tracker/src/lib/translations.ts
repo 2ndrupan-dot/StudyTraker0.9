@@ -346,6 +346,7 @@ export const translations = {
     installBtn: "Install",
     updateAvailable: "Update available – tap to refresh",
     shareInstallLink: "Share install link",
+    contactSupport: "Contact",
     linkCopied: "Link copied!",
     appInstalled: "App installed",
 
@@ -720,6 +721,7 @@ export const translations = {
     installBtn: "ইনস্টল",
     updateAvailable: "আপডেট আছে – রিফ্রেশ করতে ট্যাপ করুন",
     shareInstallLink: "ইনস্টল লিংক শেয়ার করুন",
+    contactSupport: "যোগাযোগ",
     linkCopied: "লিংক কপি হয়েছে!",
     appInstalled: "অ্যাপ ইনস্টল হয়েছে",
 

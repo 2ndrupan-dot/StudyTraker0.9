@@ -129,13 +129,21 @@
         justify-content: center;
         gap: 18px;
       }
-      /* Spinner pulled out of the center group and anchored to the bottom,
-         matching BrandedLoadingScreen.tsx (React component used post-login). */
+      /* First-load: spinner anchored to bottom (logo+title are in center),
+         matching BrandedLoadingScreen.tsx layout used post-login. */
       #app-shell-loader .as-spinner {
-        position: absolute !important;
+        position: absolute;
         bottom: 64px;
         left: 50%;
         transform: translateX(-50%);
+      }
+      /* Reload (same session): logo+title are hidden, so put spinner back
+         in the center of the overlay instead of the bottom. */
+      html.as-reload #app-shell-loader .as-spinner {
+        position: static;
+        bottom: auto;
+        left: auto;
+        transform: none;
       }
       #app-shell-loader .as-logo {
         position: relative;

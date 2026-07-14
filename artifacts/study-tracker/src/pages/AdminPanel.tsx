@@ -886,26 +886,27 @@ export function AdminPanel() {
           )}
         </div>
 
-        {/* Tabs — horizontally scrollable so all four tabs stay reachable on
-            narrow mobile screens instead of being clipped by the header's
-            fixed width. Extra right padding (`pr-8`) keeps the last tab's
-            white active-state box from butting straight into the screen
-            edge/rounded corner when scrolled all the way right — it looked
-            cramped and unfinished jammed into the corner with no breathing
-            room. Bottom padding on the wrapper reserves room for that same
-            active tab's rounded-top box so it doesn't get sliced by the
-            parent's `overflow-hidden`. */}
-        <div className="pb-1 -mb-1 overflow-x-auto no-scrollbar">
-          <div className="flex pl-5 pr-8 pb-0 gap-1.5 w-max">
+        {/* Tabs — redesigned as a fully-rounded segmented-control pill bar
+            instead of "notebook tab" shapes (rounded-top only, square
+            bottom/side corners). The old shape looked jarring/unfinished
+            whichever tab landed at the far right edge, because its exposed
+            square corner sat right next to the screen edge. A pill bar with
+            equal rounding on every tab, inset inside a translucent track
+            with side padding, has no exposed corners at all — regardless of
+            which tab is active or how narrow the screen is. Still scrolls
+            horizontally as a safety net for very narrow screens / longer
+            translated labels. */}
+        <div className="px-5 pb-4 overflow-x-auto no-scrollbar">
+          <div className="flex gap-1 p-1 rounded-2xl bg-white/10 border border-white/15 w-max min-w-full sm:min-w-0">
             {tabs.map(({ id, label, Icon }) => (
               <button
                 key={id}
                 onClick={() => setTab(id)}
                 className={cn(
-                  "flex items-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap",
+                  "flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap flex-1",
                   tab === id
                     ? "bg-background text-primary shadow-sm"
-                    : "text-white/60 hover:text-white/90 hover:bg-white/10"
+                    : "text-white/70 hover:text-white/90 hover:bg-white/10"
                 )}
               >
                 <Icon size={13} />

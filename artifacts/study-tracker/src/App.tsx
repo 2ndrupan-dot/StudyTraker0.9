@@ -16,32 +16,15 @@ import { PWAUpdater } from "./components/PWAUpdater";
 import { PWAInstallProvider } from "./context/PWAInstallContext";
 import { AdminProvider } from "./context/AdminContext";
 import { ContentProtectionGuard } from "./components/ContentProtectionGuard";
-import { BookOpen } from "lucide-react";
 import { hideAppShell } from "./lib/appShell";
+import { BrandedLoadingScreen } from "./components/BrandedLoadingScreen";
 
 // Branded full-screen loader shown whenever auth/course data is still being
-// fetched (e.g. right after a page reload). Same visual language as the
-// SplashScreen: logo + "StudyTrack" text centered, spinner at the bottom.
+// fetched (e.g. right after a page reload). Reuses the same animated
+// entrance (logo slide + fade → title fade → spinner fade) as the
+// post-login transition in Auth.tsx, so app-open and post-login feel identical.
 function LoadingScreen() {
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gradient-hero">
-      {/* Logo */}
-      <div className="relative">
-        <div className="absolute inset-0 rounded-3xl bg-white/30 blur-xl scale-110" />
-        <div className="relative w-20 h-20 bg-white/20 backdrop-blur-sm shadow-2xl rounded-3xl flex items-center justify-center border border-white/40">
-          <BookOpen size={40} className="text-white drop-shadow-lg" />
-        </div>
-      </div>
-      {/* App name */}
-      <h1 className="mt-5 text-3xl font-bold tracking-tight text-white drop-shadow select-none">
-        StudyTrack
-      </h1>
-      {/* Spinner pinned to the bottom */}
-      <div className="absolute bottom-20 left-1/2 -translate-x-1/2">
-        <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-      </div>
-    </div>
-  );
+  return <BrandedLoadingScreen className="fixed inset-0 z-50" />;
 }
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {

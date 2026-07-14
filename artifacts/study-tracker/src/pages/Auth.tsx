@@ -7,52 +7,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { BrandedLoadingScreen } from '@/components/BrandedLoadingScreen';
 
-/** Spinning loader identical to the one shown during app launch */
+/** Shown while submitting the login/register form — identical animated
+ * entrance (logo slide+fade → title fade → spinner fade) as the app-open
+ * loading screen, so login and app-launch feel like the same moment. */
 function LoginSplashOverlay() {
-  return (
-    <motion.div
-      key="login-splash"
-      className="fixed inset-0 z-[200] flex flex-col items-center justify-center gradient-hero"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-    >
-      {/* Logo — slides up */}
-      <motion.div
-        initial={{ opacity: 0, y: 48 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-        className="relative"
-      >
-        <div className="absolute inset-0 rounded-3xl bg-white/30 blur-xl scale-110" />
-        <div className="relative w-20 h-20 bg-white/20 backdrop-blur-sm shadow-2xl rounded-3xl flex items-center justify-center border border-white/40">
-          <BookOpen size={40} className="text-white drop-shadow-lg" />
-        </div>
-      </motion.div>
-
-      {/* StudyTrack title — fades in after logo */}
-      <motion.h1
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-        className="text-3xl font-bold tracking-tight text-white drop-shadow mt-5"
-      >
-        StudyTrack
-      </motion.h1>
-
-      {/* Spinner — pinned to the very bottom of the screen */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.4, delay: 0.55 }}
-        className="absolute bottom-20 left-1/2 -translate-x-1/2"
-      >
-        <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-      </motion.div>
-    </motion.div>
-  );
+  return <BrandedLoadingScreen className="fixed inset-0 z-[200]" />;
 }
 
 function GoogleIcon() {

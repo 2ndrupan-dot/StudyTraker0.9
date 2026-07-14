@@ -11,28 +11,27 @@ import {
   Download, Share2, Check, GraduationCap,
 } from 'lucide-react';
 
-/** Customer-care / support chat icon — headset inside a speech bubble */
+/** Customer-care icon — a head wearing a headset, like a classic support-agent logo */
 function CustomerCareIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      {/* Speech bubble (outer shape) */}
-      <path
-        d="M2 4A2 2 0 0 1 4 2H20A2 2 0 0 1 22 4V15A2 2 0 0 1 20 17H8L4 21V17H4A2 2 0 0 1 2 15V4Z"
-        fill="currentColor"
-      />
-      {/* Three dots near top of bubble */}
-      <circle cx="9"  cy="6" r="1.1" fill="white"/>
-      <circle cx="12" cy="6" r="1.1" fill="white"/>
-      <circle cx="15" cy="6" r="1.1" fill="white"/>
-      {/* Headset arc */}
-      <path d="M8.5 11a3.5 3.5 0 0 1 7 0" stroke="white" strokeWidth="1.8" strokeLinecap="round" fill="none"/>
+      {/* Headset band over the top of the head */}
+      <path d="M6 11a6 6 0 0 1 12 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
       {/* Left ear cup */}
-      <rect x="6.5" y="10.5" width="3" height="4" rx="1.5" fill="white"/>
+      <rect x="4.3" y="10.2" width="3.4" height="5" rx="1.7" fill="currentColor"/>
       {/* Right ear cup */}
-      <rect x="14.5" y="10.5" width="3" height="4" rx="1.5" fill="white"/>
-      {/* Mic arm */}
-      <path d="M7.5 14 Q7 16.5 11 17" stroke="white" strokeWidth="1.3" strokeLinecap="round" fill="none"/>
-      <circle cx="12" cy="17.1" r="1" fill="white"/>
+      <rect x="16.3" y="10.2" width="3.4" height="5" rx="1.7" fill="currentColor"/>
+      {/* Mic arm curving from the right ear cup toward the mouth */}
+      <path d="M18 15.2 Q18 18.4 13.2 18.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none"/>
+      <circle cx="12.6" cy="18.6" r="1.1" fill="currentColor"/>
+      {/* Head silhouette */}
+      <circle cx="12" cy="11.3" r="5.1" fill="currentColor"/>
+      {/* Simple face — eyes + smile, cut out of the head in white */}
+      <circle cx="9.7" cy="10.6" r="0.85" fill="white"/>
+      <circle cx="14.3" cy="10.6" r="0.85" fill="white"/>
+      <path d="M9.3 13a3 3 0 0 0 5.4 0" stroke="white" strokeWidth="1.2" strokeLinecap="round" fill="none"/>
+      {/* Shoulders */}
+      <path d="M4.5 21c0-3 3.4-4.6 7.5-4.6s7.5 1.6 7.5 4.6" fill="currentColor"/>
     </svg>
   );
 }

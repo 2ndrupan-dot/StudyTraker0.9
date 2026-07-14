@@ -8,6 +8,53 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 
+/** Spinning loader identical to the one shown during app launch */
+function LoginSplashOverlay() {
+  return (
+    <motion.div
+      key="login-splash"
+      className="fixed inset-0 z-[200] flex flex-col items-center justify-center gradient-hero"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {/* Logo — slides up */}
+      <motion.div
+        initial={{ opacity: 0, y: 48 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        className="relative"
+      >
+        <div className="absolute inset-0 rounded-3xl bg-white/30 blur-xl scale-110" />
+        <div className="relative w-20 h-20 bg-white/20 backdrop-blur-sm shadow-2xl rounded-3xl flex items-center justify-center border border-white/40">
+          <BookOpen size={40} className="text-white drop-shadow-lg" />
+        </div>
+      </motion.div>
+
+      {/* StudyTrack title — fades in after logo */}
+      <motion.h1
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+        className="text-3xl font-bold tracking-tight text-white drop-shadow mt-5"
+      >
+        StudyTrack
+      </motion.h1>
+
+      {/* Spinner */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4, delay: 0.55 }}
+        className="mt-8"
+      >
+        <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function GoogleIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
@@ -95,6 +142,12 @@ export function Auth() {
   };
 
   return (
+    <>
+    {/* Full-screen login splash — shown while submitting, mirrors the app launch animation */}
+    <AnimatePresence>
+      {submitting && <LoginSplashOverlay />}
+    </AnimatePresence>
+
     <div className="min-h-[100dvh] flex flex-col items-center relative overflow-hidden gradient-hero">
       {/* Decorative blobs */}
       <div className="absolute top-[-60px] right-[-60px] w-80 h-80 rounded-full bg-white/10 blur-3xl pointer-events-none" />
@@ -113,7 +166,7 @@ export function Auth() {
 
         <div className="text-center mb-5">
           <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow">StudyTrack</h1>
-          <p className="text-white/85 mt-1.5 text-sm font-medium">Powered by : Rupan's Learning Hub</p>
+          <p className="text-white/85 mt-1.5 text-sm font-medium">Powered by : StudyTrack team</p>
         </div>
 
         {/* Language toggle */}
@@ -312,6 +365,12 @@ export function Auth() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Decorative bottom spinner — always visible, far below the form */}
+      <div className="w-full flex justify-center pb-10 pt-4 mt-auto">
+        <div className="w-7 h-7 border-2 border-white/25 border-t-white/70 rounded-full animate-spin" />
+      </div>
     </div>
+    </>
   );
 }

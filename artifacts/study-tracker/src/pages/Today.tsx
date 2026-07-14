@@ -8,7 +8,7 @@ import {
   Layers, Zap, Sun, ChevronRight, AlarmClock, Hash, Lightbulb, List,
   ChevronDown, AlertTriangle, X, RotateCcw, TrendingUp, PlayCircle,
   Lock, Flame, ThumbsUp, RefreshCw, Plus, StickyNote, Star, AlertOctagon,
-  Download, Share2, Check, GraduationCap, MessageCircle,
+  Download, Share2, Check, GraduationCap, Headphones,
 } from 'lucide-react';
 import { usePWAInstall } from '@/context/PWAInstallContext';
 import { differenceInDays, parseISO } from 'date-fns';
@@ -1823,7 +1823,7 @@ export function Today() {
                         className="spin-border-inner w-9 h-9 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
                         aria-label="Contact Support"
                       >
-                        <MessageCircle size={16} className="text-white" />
+                        <Headphones size={16} className="text-white" />
                       </motion.button>
                     </span>
                   )}

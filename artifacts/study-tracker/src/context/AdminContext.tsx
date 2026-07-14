@@ -700,6 +700,28 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   };
 
   const permanentlyDeleteShare = async (shareId: string) => {
+    // If the share was accepted by a user, cascade-delete their course/notification data.
+    // The shareId is used as the courseId when the course is copied to the user's account.
+    const share = allSentShares.find(s => s.id === shareId);
+    if (share?.acceptedByUid) {
+      const uid = share.acceptedByUid;
+      const deletions: Promise<void>[] = [];
+
+      if (share.type === 'course') {
+        // Remove the cloned course from the recipient's account entirely:
+        // course entry, study data, notes, and shared-course metadata.
+        deletions.push(deleteDoc(doc(db, 'users', uid, 'courses', shareId)));
+        deletions.push(deleteDoc(doc(db, 'users', uid, 'studyData', shareId)));
+        deletions.push(deleteDoc(doc(db, 'users', uid, 'courseNotes', shareId)));
+        deletions.push(deleteDoc(doc(db, 'users', uid, 'sharedCourses', shareId)));
+      }
+      // For note/message shares, deleting the shareRequest doc below is enough —
+      // pending/accepted note notifications are derived from that document.
+
+      await Promise.all(deletions);
+    }
+
+    // Remove the shareRequest document itself (clears pending notifications for all types).
     await deleteDoc(doc(db, 'shareRequests', shareId));
   };
 

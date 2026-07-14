@@ -626,6 +626,10 @@ export function AdminPanel() {
   const filteredSentShares = sentSearch.trim()
     ? sentShares.filter(s => s.toEmail.toLowerCase().includes(sentSearch.trim().toLowerCase()))
     : sentShares;
+  const [trashSearch, setTrashSearch] = useState('');
+  const filteredTrashedShares = trashSearch.trim()
+    ? trashedShares.filter(s => s.toEmail.toLowerCase().includes(trashSearch.trim().toLowerCase()))
+    : trashedShares;
   const [editPermModal, setEditPermModal] = useState<ShareRequest | null>(null);
   const [editPermissions, setEditPermissions] = useState<SharePermissions>({ ...DEFAULT_PERMISSIONS });
   const [savingPerms, setSavingPerms] = useState(false);
@@ -1460,6 +1464,28 @@ export function AdminPanel() {
               </div>
             )}
 
+            {/* Search by email — shown for the trash sub-tab */}
+            {sentSubTab === 'trash' && (
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={trashSearch}
+                  onChange={e => setTrashSearch(e.target.value)}
+                  placeholder={lang === 'bn' ? 'ইমেইল দিয়ে খুঁজুন...' : 'Search by email...'}
+                  className="w-full h-10 pl-9 pr-8 rounded-xl border border-border/60 bg-secondary text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                {trashSearch && (
+                  <button
+                    onClick={() => setTrashSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-secondary/80 text-muted-foreground"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            )}
+
             {loadingSentShares ? (
               <div className="py-8 flex justify-center">
                 <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -1486,14 +1512,16 @@ export function AdminPanel() {
                 />
               ))
             ) : (
-              trashedShares.length === 0 ? (
+              filteredTrashedShares.length === 0 ? (
                 <div className="py-12 text-center">
                   <Archive size={32} className="text-muted-foreground/30 mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground">
-                    {lang === 'bn' ? 'ট্র্যাশ খালি।' : 'Trash is empty.'}
+                    {trashedShares.length === 0
+                      ? (lang === 'bn' ? 'ট্র্যাশ খালি।' : 'Trash is empty.')
+                      : (lang === 'bn' ? 'এই ইমেইলে কিছু পাওয়া যায়নি।' : 'Nothing found for this email.')}
                   </p>
                 </div>
-              ) : trashedShares.map(share => (
+              ) : filteredTrashedShares.map(share => (
                 <TrashedShareRow
                   key={share.id}
                   share={share}

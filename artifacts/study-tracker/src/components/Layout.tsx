@@ -400,7 +400,7 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
 
   return (
     <>
-      <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border pb-safe z-40 shadow-[0_-4px_24px_rgba(99,102,241,0.10)]">
+      <div className="fixed bottom-0 left-0 right-0 bg-secondary/90 backdrop-blur-md border-t-2 border-border/80 pb-safe z-40 shadow-[0_-8px_28px_rgba(30,27,75,0.16)]">
         <div className="flex items-center justify-around h-[68px] px-1 max-w-md mx-auto">
           {tabs.map(tab => {
             const isActive =

@@ -17,6 +17,25 @@ import { PWAInstallProvider } from "./context/PWAInstallContext";
 import { SplashScreen } from "./components/SplashScreen";
 import { AdminProvider } from "./context/AdminContext";
 import { ContentProtectionGuard } from "./components/ContentProtectionGuard";
+import { BookOpen } from "lucide-react";
+
+// Branded full-screen loader shown whenever auth/course data is still being
+// fetched (e.g. right after a page reload). Replaces the old near-white
+// skeleton so a reload never reads as a blank/broken white page — it always
+// shows the app's own colors plus a spinner, on both mobile and desktop.
+function LoadingScreen() {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gradient-hero">
+      <div className="relative">
+        <div className="absolute inset-0 rounded-3xl bg-white/30 blur-xl scale-110" />
+        <div className="relative w-16 h-16 bg-white/20 backdrop-blur-sm shadow-2xl rounded-3xl flex items-center justify-center border border-white/40">
+          <BookOpen size={32} className="text-white drop-shadow-lg" />
+        </div>
+      </div>
+      <div className="mt-6 w-8 h-8 border-[3px] border-white/30 border-t-white rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -30,35 +49,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   }, [user, loading, location, setLocation]);
 
   if (loading || !coursesLoaded) {
-    return (
-      <div className="min-h-[100dvh] max-w-md mx-auto bg-background p-5 pb-24">
-        <div className="skeleton h-8 w-36 mb-6 mt-4" />
-        <div className="space-y-4">
-          {[1,2,3].map(i => (
-            <div key={i} className="bg-card rounded-2xl border border-border/50 p-4 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="skeleton h-4 w-4 rounded-full" />
-                <div className="skeleton h-4 flex-1 rounded" />
-                <div className="skeleton h-4 w-12 rounded" />
-              </div>
-              <div className="skeleton h-2 w-full rounded-full" />
-              <div className="flex gap-2">
-                <div className="skeleton h-6 w-16 rounded-lg" />
-                <div className="skeleton h-6 w-20 rounded-lg" />
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="fixed bottom-0 left-0 right-0 bg-card/90 border-t border-border h-[68px] flex items-center justify-around px-4">
-          {[1,2,3].map(i => (
-            <div key={i} className="flex flex-col items-center gap-1.5">
-              <div className="skeleton h-6 w-6 rounded" />
-              <div className="skeleton h-2.5 w-12 rounded" />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (!user) return null;
@@ -114,19 +105,7 @@ function Router() {
     : null;
 
   if (loading) {
-    return (
-      <div className="min-h-[100dvh] max-w-md mx-auto bg-background p-5 pb-24">
-        <div className="skeleton h-8 w-36 mb-6 mt-4" />
-        <div className="space-y-4">
-          {[1,2,3].map(i => (
-            <div key={i} className="bg-card rounded-2xl border border-border/50 p-4 space-y-3">
-              <div className="skeleton h-4 w-full rounded" />
-              <div className="skeleton h-2 w-3/4 rounded-full" />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   return (

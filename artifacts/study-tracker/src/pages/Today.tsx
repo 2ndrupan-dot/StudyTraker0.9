@@ -1845,10 +1845,10 @@ export function Today() {
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => window.open(appContact.supportLink, '_blank', 'noopener,noreferrer')}
-                        className="spin-border-inner w-9 h-9 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
+                        className="spin-border-inner w-14 h-14 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
                         aria-label="Contact Support"
                       >
-                        <CustomerCareIcon size={16} />
+                        <CustomerCareIcon size={26} />
                       </motion.button>
                     </span>
                   )}

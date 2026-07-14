@@ -239,6 +239,11 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   // from writing there directly, so the relay runs client-side like the content sync).
   const processedPermissionsRef = useRef<Map<string, string>>(new Map());
 
+  // Tracks accepted course shares by shareId so we can detect when admin
+  // permanently deletes one and cascade-clean the user's own course collections.
+  // Key = shareId, Value = share type ('course' | 'note' | 'message').
+  const acceptedSharesTrackingRef = useRef<Map<string, string>>(new Map());
+
   const adminEmails = [...new Set([...SUPER_ADMIN_EMAILS, ...firestoreAdminEmails])];
   const isAdmin = adminEmails.includes(userEmail);
 
@@ -333,6 +338,35 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const unsub = onSnapshot(q, snap => {
       // 1. Update UI state
       setAllReceivedShares(snap.docs.map(d => ({ id: d.id, ...d.data() } as ShareRequest)));
+
+      // 1b. Cascade cleanup: when admin permanently deletes a shareRequest that the
+      //     user had already accepted, the doc disappears from this snapshot. We
+      //     detect the disappearance here (user has write permission to their own
+      //     sub-collections) and delete the cloned course data.
+      const tracking = acceptedSharesTrackingRef.current;
+      const currentIds = new Set(snap.docs.map(d => d.id));
+      for (const [trackedShareId, trackedType] of tracking) {
+        if (!currentIds.has(trackedShareId)) {
+          // Share was deleted by admin — remove user's copy of the course data.
+          if (trackedType === 'course') {
+            deleteDoc(doc(db, 'users', uid, 'courses', trackedShareId)).catch(() => {});
+            deleteDoc(doc(db, 'users', uid, 'studyData', trackedShareId)).catch(() => {});
+            deleteDoc(doc(db, 'users', uid, 'courseNotes', trackedShareId)).catch(() => {});
+            deleteDoc(doc(db, 'users', uid, 'sharedCourses', trackedShareId)).catch(() => {});
+          }
+          tracking.delete(trackedShareId);
+        }
+      }
+      // Update tracking map: record currently accepted shares so future snapshots
+      // can detect deletions.
+      for (const shareDoc of snap.docs) {
+        const data = shareDoc.data() as ShareRequest;
+        if (data.status === 'accepted') {
+          tracking.set(shareDoc.id, data.type);
+        } else {
+          tracking.delete(shareDoc.id);
+        }
+      }
 
       // 2. Process any pending live-sync updates from the admin.
       //    Content updates: courseSnapshot.studyData + syncedAt written by admin into
@@ -700,28 +734,11 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   };
 
   const permanentlyDeleteShare = async (shareId: string) => {
-    // If the share was accepted by a user, cascade-delete their course/notification data.
-    // The shareId is used as the courseId when the course is copied to the user's account.
-    const share = allSentShares.find(s => s.id === shareId);
-    if (share?.acceptedByUid) {
-      const uid = share.acceptedByUid;
-      const deletions: Promise<void>[] = [];
-
-      if (share.type === 'course') {
-        // Remove the cloned course from the recipient's account entirely:
-        // course entry, study data, notes, and shared-course metadata.
-        deletions.push(deleteDoc(doc(db, 'users', uid, 'courses', shareId)));
-        deletions.push(deleteDoc(doc(db, 'users', uid, 'studyData', shareId)));
-        deletions.push(deleteDoc(doc(db, 'users', uid, 'courseNotes', shareId)));
-        deletions.push(deleteDoc(doc(db, 'users', uid, 'sharedCourses', shareId)));
-      }
-      // For note/message shares, deleting the shareRequest doc below is enough —
-      // pending/accepted note notifications are derived from that document.
-
-      await Promise.all(deletions);
-    }
-
-    // Remove the shareRequest document itself (clears pending notifications for all types).
+    // Always delete the shareRequest document first — this is the source of truth
+    // for notifications (pending) and is what the admin has write permission to.
+    // User-side cleanup (courses, studyData, etc.) is handled by the recipient's
+    // own onSnapshot listener (see "cascade cleanup" block below) which fires when
+    // it detects the shareRequest has disappeared from their received-shares query.
     await deleteDoc(doc(db, 'shareRequests', shareId));
   };
 

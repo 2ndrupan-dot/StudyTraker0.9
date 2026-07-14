@@ -45,7 +45,7 @@ export function BrandedLoadingScreen({ className = 'fixed inset-0 z-50' }: { cla
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4, delay: 0.55 }}
-        className="absolute bottom-20 left-1/2 -translate-x-1/2"
+        className="absolute bottom-28 left-1/2 -translate-x-1/2"
       >
         <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
       </motion.div>

@@ -337,6 +337,7 @@ export const NoteEditorModal = ({
   isOpen, onClose, value, onChange, onClear, onSave,
   title, placeholder, clearLabel, saveLabel, icon: Icon, breadcrumb, notePath, copyAllowed,
   downloadAllowed, editAllowed,
+  pdfUserEmail, pdfIsAdmin, pdfIsShared, pdfWhatsApp, pdfWebsite,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -358,6 +359,12 @@ export const NoteEditorModal = ({
   downloadAllowed?: boolean;
   /** When false, the edit/pencil button is hidden (shared content permission enforcement) */
   editAllowed?: boolean;
+  // PDF footer context — determines what appears at the bottom of downloaded PDFs
+  pdfUserEmail?: string;
+  pdfIsAdmin?: boolean;
+  pdfIsShared?: boolean;
+  pdfWhatsApp?: string;
+  pdfWebsite?: string;
 }) => {
   const { setNote, subjects } = useStudy();
   const [, setLocation] = useLocation();
@@ -492,6 +499,30 @@ export const NoteEditorModal = ({
     const now = new Date();
     const safeDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
       + ', ' + now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+    // Build dynamic PDF footer based on who is downloading and whether note is shared
+    const safeWebsite = (pdfWebsite || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const websiteSpan = safeWebsite
+      ? `<span>🌐 Website : <a href="${safeWebsite}">${safeWebsite}</a></span>`
+      : '';
+    let footerInner: string;
+    if (pdfIsAdmin) {
+      // Admin downloading any note
+      footerInner = `<span>📝 Created by : StudyTrack team</span>`
+        + (pdfWhatsApp ? `<span>💬 WhatsApp : ${pdfWhatsApp}</span>` : '')
+        + websiteSpan;
+    } else if (pdfIsShared) {
+      // Normal user downloading an admin-shared note
+      footerInner = `<span>📝 Created by : StudyTrack team</span>`
+        + (pdfWhatsApp ? `<span>💬 WhatsApp : ${pdfWhatsApp}</span>` : '')
+        + websiteSpan
+        + (pdfUserEmail ? `<span>🖨️ Printed by : ${pdfUserEmail}</span>` : '');
+    } else {
+      // Normal user downloading their own note
+      footerInner = `<span>📝 Created by : ${pdfUserEmail || 'StudyTrack team'}</span>`
+        + websiteSpan;
+    }
+    if (!footerInner.trim()) footerInner = `<span>📝 Created by : StudyTrack team</span>`;
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -613,8 +644,7 @@ export const NoteEditorModal = ({
   <tfoot>
     <tr><td class="pdf-footer-cell">
       <div class="pdf-footer-inner">
-        <span>📝 Created by : StudyTrack team</span>
-        <span>💬 WhatsApp : 9366963022</span>
+        ${footerInner}
       </div>
     </td></tr>
   </tfoot>

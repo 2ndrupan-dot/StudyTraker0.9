@@ -110,6 +110,8 @@ interface AdminContextType {
   trashShare: (shareId: string) => Promise<void>;
   restoreShare: (shareId: string) => Promise<void>;
   permanentlyDeleteShare: (shareId: string) => Promise<void>;
+  appContact: AppContact;
+  saveContactSettings: (c: Partial<AppContact>) => Promise<void>;
 }
 
 export type SendShareParams = Pick<ShareRequest,
@@ -145,6 +147,12 @@ function filterNotesMapByIds(notes: Record<string, string>, idSet: Set<string>):
     if (idSet.has(rawId)) result[key] = value;
   }
   return result;
+}
+
+export interface AppContact {
+  whatsapp: string;
+  website: string;
+  supportLink: string;
 }
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
@@ -249,6 +257,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const [allSentShares, setAllSentShares] = useState<ShareRequest[]>([]);
   const [loadingSentShares, setLoadingSentShares] = useState(false);
   const [allReceivedShares, setAllReceivedShares] = useState<ShareRequest[]>([]);
+  const [appContact, setAppContact] = useState<AppContact>({ whatsapp: '', website: '', supportLink: '' });
 
   // Track which syncedAt timestamps we've already applied so we don't re-run
   // the same sync on every snapshot update.
@@ -307,6 +316,18 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       if (expired) deleteDoc(doc(db, 'shareRequests', s.id)).catch(() => {});
     }
   }, [allReceivedShares, expiryTick]);
+
+  // Load contact settings from Firestore (live, updates all users in real-time)
+  useEffect(() => {
+    const ref = doc(db, 'adminConfig', 'contactInfo');
+    const unsub = onSnapshot(ref, snap => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setAppContact({ whatsapp: d.whatsapp || '', website: d.website || '', supportLink: d.supportLink || '' });
+      }
+    }, () => {});
+    return () => unsub();
+  }, []);
 
   // Load admin list from Firestore
   useEffect(() => {
@@ -472,6 +493,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     if (!existing.includes(e)) {
       await setDoc(ref, { emails: [...existing, e] }, { merge: true });
     }
+  };
+
+  const saveContactSettings = async (c: Partial<AppContact>) => {
+    await setDoc(doc(db, 'adminConfig', 'contactInfo'), c, { merge: true });
   };
 
   const removeAdmin = async (email: string) => {
@@ -805,6 +830,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       acceptedShares, markSeen,
       extendShare, getCourseSubjectsForShare, addSubjectsToShare,
       trashShare, restoreShare, permanentlyDeleteShare,
+      appContact, saveContactSettings,
     }}>
       {children}
     </AdminContext.Provider>

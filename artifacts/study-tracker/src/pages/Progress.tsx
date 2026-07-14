@@ -33,6 +33,8 @@ function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = 
 function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { subjects, setNote } = useStudy();
   const { t } = useLang();
+  const { user } = useAuth();
+  const { isAdmin, appContact } = useAdmin();
   const [, setLocation] = useLocation();
 
   // Drill-down state
@@ -232,6 +234,11 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
           placeholder={t('overallNotePlaceholder')}
           clearLabel={t('clearNote')}
           saveLabel={t('saveNote')}
+          pdfUserEmail={user?.email ?? ''}
+          pdfIsAdmin={isAdmin}
+          pdfIsShared={false}
+          pdfWhatsApp={appContact.whatsapp}
+          pdfWebsite={appContact.website}
         />
       )}
 
@@ -243,6 +250,8 @@ function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
 function OverallNotesCard() {
   const { overallNote, setOverallNote } = useStudy();
   const { t } = useLang();
+  const { user } = useAuth();
+  const { isAdmin, appContact } = useAdmin();
   const [modalOpen, setModalOpen] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -305,6 +314,11 @@ function OverallNotesCard() {
         placeholder={t('overallNotePlaceholder')}
         clearLabel={t('clearNote')}
         saveLabel={t('saveNote')}
+        pdfUserEmail={user?.email ?? ''}
+        pdfIsAdmin={isAdmin}
+        pdfIsShared={false}
+        pdfWhatsApp={appContact.whatsapp}
+        pdfWebsite={appContact.website}
       />
     </>
   );
@@ -316,7 +330,7 @@ export function Progress() {
   const { courses, deletedCourses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse, restoreCourse, permanentlyDeleteCourse, sharedCoursesMeta } = useCourse();
   const { t, lang, setLang } = useLang();
   const [, setLocation] = useLocation();
-  const { isAdmin } = useAdmin();
+  const { isAdmin, appContact } = useAdmin();
   const [modals, setModals] = useState({ profile: false, settings: false, logout: false, addCourse: false, switchCourse: false });
   const [tzSelectorOpen, setTzSelectorOpen] = useState(false);
   const [noteSearchOpen, setNoteSearchOpen] = useState(false);

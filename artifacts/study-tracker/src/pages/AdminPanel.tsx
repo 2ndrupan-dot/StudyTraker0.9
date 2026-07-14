@@ -5,6 +5,7 @@ import {
   BookOpen, StickyNote, ChevronRight, ChevronLeft, Clock, ArrowLeft,
   UserCheck, UserMinus, RefreshCw, Eye, EyeOff, Save, MessageSquare,
   TimerReset, ListPlus, Undo2, AlertTriangle, Archive, Search,
+  Phone, Globe, Link2, MessageCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -529,12 +530,23 @@ export function AdminPanel() {
   const { isAdmin, isSuperAdmin, adminEmails, loadingAdmins, addAdmin, removeAdmin,
     sendShare, sentShares, trashedShares, loadingSentShares, updateSharePermissions,
     extendShare, getCourseSubjectsForShare, addSubjectsToShare,
-    trashShare, restoreShare, permanentlyDeleteShare } = useAdmin();
+    trashShare, restoreShare, permanentlyDeleteShare,
+    appContact, saveContactSettings } = useAdmin();
   const { courses, activeCourse } = useCourse();
   const { subjects, notePagesIndex, loadNotePage } = useStudy();
 
-  const [tab, setTab] = useState<'admins' | 'share' | 'sent'>('admins');
+  const [tab, setTab] = useState<'admins' | 'share' | 'sent' | 'contact'>('admins');
   const [sentSubTab, setSentSubTab] = useState<'active' | 'trash'>('active');
+
+  // ── Contact tab state ──
+  const [contactForm, setContactForm] = useState({ whatsapp: '', website: '', supportLink: '' });
+  const [savingContact, setSavingContact] = useState(false);
+  const [contactSaved, setContactSaved] = useState(false);
+
+  // Sync form whenever Firestore data loads/updates
+  useEffect(() => {
+    setContactForm({ whatsapp: appContact.whatsapp, website: appContact.website, supportLink: appContact.supportLink });
+  }, [appContact.whatsapp, appContact.website, appContact.supportLink]);
 
   // ── Admins tab state ──
   const [newAdminEmail, setNewAdminEmail] = useState('');
@@ -657,6 +669,21 @@ export function AdminPanel() {
   const handleRemoveAdmin = async (email: string) => {
     setRemovingEmail(email);
     try { await removeAdmin(email); } finally { setRemovingEmail(null); }
+  };
+
+  const handleSaveContact = async () => {
+    setSavingContact(true);
+    try {
+      await saveContactSettings({
+        whatsapp: contactForm.whatsapp.trim(),
+        website: contactForm.website.trim(),
+        supportLink: contactForm.supportLink.trim(),
+      });
+      setContactSaved(true);
+      setTimeout(() => setContactSaved(false), 3000);
+    } finally {
+      setSavingContact(false);
+    }
   };
 
   // ── Multi-recipient email chip helpers ──
@@ -810,6 +837,7 @@ export function AdminPanel() {
     { id: 'admins', label: lang === 'bn' ? 'এডমিন' : 'Admins', Icon: Users },
     { id: 'share', label: lang === 'bn' ? 'শেয়ার' : 'Share', Icon: Send },
     { id: 'sent', label: lang === 'bn' ? 'পাঠানো' : 'Sent', Icon: List },
+    { id: 'contact', label: lang === 'bn' ? 'কন্টাক্ট' : 'Contact', Icon: Phone },
   ] as const;
 
   return (
@@ -1443,6 +1471,120 @@ export function AdminPanel() {
                   onPermanentDelete={s => setPermDeleteConfirmShare(s)}
                 />
               ))
+            )}
+          </div>
+        )}
+
+        {/* ── Contact Tab ── */}
+        {tab === 'contact' && (
+          <div className="space-y-4 mt-2">
+            <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-4">
+              <p className="text-sm font-bold text-foreground">
+                {lang === 'bn' ? 'কন্টাক্ট তথ্য সেট করুন' : 'Set Contact Information'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {lang === 'bn'
+                  ? 'এখানে সেট করা তথ্য সব ইউজারের PDF ফুটারে এবং কন্টাক্ট বাটনে লাইভ আপডেট হবে।'
+                  : 'These settings appear in PDF footers and the contact button for all users, updated live.'}
+              </p>
+
+              {/* WhatsApp Number */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <MessageCircle size={12} className="text-green-600" />
+                  {lang === 'bn' ? 'WhatsApp নম্বর' : 'WhatsApp Number'}
+                </label>
+                <Input
+                  type="text"
+                  placeholder={lang === 'bn' ? 'যেমন: 9999999999' : 'e.g. 9999999999'}
+                  value={contactForm.whatsapp}
+                  onChange={e => setContactForm(f => ({ ...f, whatsapp: e.target.value }))}
+                  className="h-10 text-sm"
+                />
+              </div>
+
+              {/* Website Link */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <Globe size={12} className="text-blue-600" />
+                  {lang === 'bn' ? 'ওয়েবসাইট লিঙ্ক' : 'Website Link'}
+                </label>
+                <Input
+                  type="url"
+                  placeholder="https://example.com"
+                  value={contactForm.website}
+                  onChange={e => setContactForm(f => ({ ...f, website: e.target.value }))}
+                  className="h-10 text-sm"
+                />
+              </div>
+
+              {/* Support Link */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <Link2 size={12} className="text-indigo-600" />
+                  {lang === 'bn' ? 'সাপোর্ট লিঙ্ক (WhatsApp/Telegram চ্যাট)' : 'Support Link (WhatsApp/Telegram chat)'}
+                </label>
+                <Input
+                  type="url"
+                  placeholder="https://wa.me/91... or https://t.me/..."
+                  value={contactForm.supportLink}
+                  onChange={e => setContactForm(f => ({ ...f, supportLink: e.target.value }))}
+                  className="h-10 text-sm"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {lang === 'bn'
+                    ? 'এই লিঙ্কটি Today পেজের Contact বাটনে ওপেন হবে।'
+                    : 'This link opens when users tap the Contact button on the Today page.'}
+                </p>
+              </div>
+
+              <Button
+                onClick={handleSaveContact}
+                disabled={savingContact}
+                className="w-full h-10 text-sm"
+              >
+                {savingContact
+                  ? <RefreshCw size={14} className="animate-spin mr-2" />
+                  : <Save size={14} className="mr-2" />}
+                {lang === 'bn' ? 'সেভ করুন' : 'Save'}
+              </Button>
+
+              {contactSaved && (
+                <motion.p
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-xs text-green-600 text-center font-semibold"
+                >
+                  {lang === 'bn' ? '✓ সফলভাবে সেভ হয়েছে!' : '✓ Saved successfully!'}
+                </motion.p>
+              )}
+            </div>
+
+            {/* Current settings preview */}
+            {(appContact.whatsapp || appContact.website || appContact.supportLink) && (
+              <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-2">
+                <p className="text-xs font-bold text-muted-foreground">
+                  {lang === 'bn' ? 'বর্তমান তথ্য' : 'Current Settings'}
+                </p>
+                {appContact.whatsapp && (
+                  <p className="text-sm text-foreground flex items-center gap-2">
+                    <MessageCircle size={13} className="text-green-600 shrink-0" />
+                    {appContact.whatsapp}
+                  </p>
+                )}
+                {appContact.website && (
+                  <p className="text-sm text-foreground flex items-center gap-2 break-all">
+                    <Globe size={13} className="text-blue-600 shrink-0" />
+                    {appContact.website}
+                  </p>
+                )}
+                {appContact.supportLink && (
+                  <p className="text-sm text-foreground flex items-center gap-2 break-all">
+                    <Link2 size={13} className="text-indigo-600 shrink-0" />
+                    {appContact.supportLink}
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}

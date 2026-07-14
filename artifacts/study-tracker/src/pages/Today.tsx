@@ -8,7 +8,7 @@ import {
   Layers, Zap, Sun, ChevronRight, AlarmClock, Hash, Lightbulb, List,
   ChevronDown, AlertTriangle, X, RotateCcw, TrendingUp, PlayCircle,
   Lock, Flame, ThumbsUp, RefreshCw, Plus, StickyNote, Star, AlertOctagon,
-  Download, Share2, Check, GraduationCap,
+  Download, Share2, Check, GraduationCap, MessageCircle,
 } from 'lucide-react';
 import { usePWAInstall } from '@/context/PWAInstallContext';
 import { differenceInDays, parseISO } from 'date-fns';
@@ -21,6 +21,7 @@ import { ItemActions } from '@/components/ItemActions';
 import { doc, onSnapshot, setDoc, getDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useCourse } from '@/context/CourseContext';
+import { useAdmin } from '@/context/AdminContext';
 import {
   adjPoint, adjConcept, adjSubtopic, adjTopic, adjChapter,
   findNextItem, calculateAdaptivePressure,
@@ -526,7 +527,9 @@ export function Today() {
   const { t, lang } = useLang();
   const isBn = lang === 'bn';
   const email = user?.email ?? 'guest';
-  const { activeCourseId } = useCourse();
+  const { activeCourseId, sharedCoursesMeta } = useCourse();
+  const { isAdmin: userIsAdmin, appContact } = useAdmin();
+  const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
   const registerTrunkRoot = useTreeTrunk();
 
   // PWA install — mobile browser only
@@ -1808,49 +1811,67 @@ export function Today() {
                 <span className="text-white text-[12px] font-bold">{settings.dailyStudyHours ?? 3} Hours</span>
               </motion.button>
 
-              {/* Mobile browser only: install/share — aligned to the right */}
-              {isMobileBrowser && !isInstalled && (
-                <div className="relative ml-auto shrink-0">
-                  <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(263 80% 58%)' } as React.CSSProperties}>
-                    <motion.button
-                      whileTap={{ scale: 0.9 }}
-                      onClick={() => setShowInstallMenu(v => !v)}
-                      className="spin-border-inner w-9 h-9 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
-                      aria-label={t('installApp')}
-                    >
-                      <Download size={16} className="text-white" />
-                    </motion.button>
-                  </span>
-                  <AnimatePresence>
-                    {showInstallMenu && (
-                      <>
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.9, y: 6 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.9, y: 6 }}
-                          className="absolute bottom-11 right-0 z-50 bg-card border border-border/60 rounded-2xl shadow-xl p-2 min-w-[185px]"
+              {/* Right-side action buttons: contact (always) + install (mobile only, not installed) */}
+              {(appContact.supportLink || (isMobileBrowser && !isInstalled)) && (
+                <div className="ml-auto shrink-0 flex items-center gap-1.5">
+                  {/* Contact button — always shown when support link is configured */}
+                  {appContact.supportLink && (
+                    <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(263 80% 58%)' } as React.CSSProperties}>
+                      <motion.button
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => window.open(appContact.supportLink, '_blank', 'noopener,noreferrer')}
+                        className="spin-border-inner w-9 h-9 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
+                        aria-label="Contact Support"
+                      >
+                        <MessageCircle size={16} className="text-white" />
+                      </motion.button>
+                    </span>
+                  )}
+                  {/* Install/share button — mobile browser only, when not yet installed */}
+                  {isMobileBrowser && !isInstalled && (
+                    <div className="relative shrink-0">
+                      <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(263 80% 58%)' } as React.CSSProperties}>
+                        <motion.button
+                          whileTap={{ scale: 0.9 }}
+                          onClick={() => setShowInstallMenu(v => !v)}
+                          className="spin-border-inner w-9 h-9 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
+                          aria-label={t('installApp')}
                         >
-                          {canInstall && (
-                            <button
-                              onClick={() => { installApp(); setShowInstallMenu(false); }}
-                              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"
+                          <Download size={16} className="text-white" />
+                        </motion.button>
+                      </span>
+                      <AnimatePresence>
+                        {showInstallMenu && (
+                          <>
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.9, y: 6 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.9, y: 6 }}
+                              className="absolute bottom-11 right-0 z-50 bg-card border border-border/60 rounded-2xl shadow-xl p-2 min-w-[185px]"
                             >
-                              <Download size={15} />
-                              {t('installApp')}
-                            </button>
-                          )}
-                          <button
-                            onClick={handleInstallShare}
-                            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-foreground hover:bg-secondary transition-colors"
-                          >
-                            {installCopied ? <Check size={15} className="text-green-500" /> : <Share2 size={15} />}
-                            {installCopied ? t('linkCopied') : t('shareInstallLink')}
-                          </button>
-                        </motion.div>
-                        <div className="fixed inset-0 z-40" onClick={() => setShowInstallMenu(false)} />
-                      </>
-                    )}
-                  </AnimatePresence>
+                              {canInstall && (
+                                <button
+                                  onClick={() => { installApp(); setShowInstallMenu(false); }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"
+                                >
+                                  <Download size={15} />
+                                  {t('installApp')}
+                                </button>
+                              )}
+                              <button
+                                onClick={handleInstallShare}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-foreground hover:bg-secondary transition-colors"
+                              >
+                                {installCopied ? <Check size={15} className="text-green-500" /> : <Share2 size={15} />}
+                                {installCopied ? t('linkCopied') : t('shareInstallLink')}
+                              </button>
+                            </motion.div>
+                            <div className="fixed inset-0 z-40" onClick={() => setShowInstallMenu(false)} />
+                          </>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2683,6 +2704,11 @@ export function Today() {
         placeholder={t('notePlaceholder')}
         clearLabel={t('clearNote')}
         saveLabel={t('saveNote')}
+        pdfUserEmail={user?.email ?? ''}
+        pdfIsAdmin={userIsAdmin}
+        pdfIsShared={!!activeSharedMeta}
+        pdfWhatsApp={appContact.whatsapp}
+        pdfWebsite={appContact.website}
       />
     </Layout>
   );

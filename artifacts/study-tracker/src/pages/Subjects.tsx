@@ -2,6 +2,8 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useStudy } from '@/context/StudyContext';
 import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
+import { useAuth } from '@/context/AuthContext';
+import { useAdmin } from '@/context/AdminContext';
 import { Layout } from '@/components/Layout';
 import {
   Plus, Trash2, ChevronRight,
@@ -399,6 +401,8 @@ export function Subjects() {
   } = useStudy();
   const { t, lang } = useLang();
   const { sharedCoursesMeta, activeCourseId } = useCourse();
+  const { user } = useAuth();
+  const { isAdmin, appContact } = useAdmin();
 
   // If the active course was received via admin share, look up its permissions.
   // undefined means the course is owned by the user — no restrictions.
@@ -1640,6 +1644,11 @@ export function Subjects() {
         editAllowed={!activeSharedMeta || activeSharedMeta.permissions.editNotes}
         downloadAllowed={!activeSharedMeta || activeSharedMeta.permissions.downloadNotes}
         copyAllowed={!activeSharedMeta || activeSharedMeta.permissions.copyNotes}
+        pdfUserEmail={user?.email ?? ''}
+        pdfIsAdmin={isAdmin}
+        pdfIsShared={!!activeSharedMeta}
+        pdfWhatsApp={appContact.whatsapp}
+        pdfWebsite={appContact.website}
       />
 
       {/* Reset subject progress confirm */}

@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
+import { useAuth } from '@/context/AuthContext';
+import { useAdmin } from '@/context/AdminContext';
 import { Layout } from '@/components/Layout';
 import { Plus, FileText, Trash2, Pencil, Check, X, StickyNote, Loader2, ArrowUpDown, GripVertical } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -50,6 +52,8 @@ function SortableNoteCard({ id, reorderMode, children }: {
 export function NotesIndex() {
   const { notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage, reorderNotePages } = useStudy();
   const { t, lang } = useLang();
+  const { user } = useAuth();
+  const { isAdmin, appContact } = useAdmin();
 
   // Create state
   const [isCreating, setIsCreating] = useState(false);
@@ -333,6 +337,11 @@ export function NotesIndex() {
         placeholder={t('notePlaceholder')}
         clearLabel={t('clearNote')}
         saveLabel={t('saveNote')}
+        pdfUserEmail={user?.email ?? ''}
+        pdfIsAdmin={isAdmin}
+        pdfIsShared={false}
+        pdfWhatsApp={appContact.whatsapp}
+        pdfWebsite={appContact.website}
       />
 
       {/* ── Delete confirm ── */}

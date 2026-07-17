@@ -979,7 +979,7 @@ function SubjectNotesCompilerModal({
 }) {
   const { user } = useAuth();
   const { appContact } = useAdmin();
-  const { createNotePage, saveNotePage } = useStudy();
+  const { createNotePage, saveNotePage, notePagesIndex } = useStudy();
 
   const [step, setStep] = useState<'pick' | 'view'>('pick');
   const [selected, setSelected] = useState<Subject | null>(null);
@@ -988,19 +988,23 @@ function SubjectNotesCompilerModal({
   const [savedId, setSavedId] = useState<string | null>(null);
 
   const handleSelect = (subj: Subject) => {
-    setSavedId(null);
+    // Restore savedId if a compiled note for this subject already exists
+    const pageTitle = `${subj.title} — All Notes`;
+    const existing = notePagesIndex.find(p => p.title === pageTitle);
+    setSavedId(existing?.id ?? null);
     setSelected(subj);
     setSections(collectNoteSections(subj));
     setStep('view');
   };
 
-  // Save compiled notes as a new re-openable note page
+  // Save compiled notes — reuse existing note if one already exists for this subject
   const handleSaveAsNote = async () => {
     if (!selected || saving) return;
     setSaving(true);
     try {
       const pageTitle = `${selected.title} — All Notes`;
-      const id = createNotePage(pageTitle);
+      const existing = notePagesIndex.find(p => p.title === pageTitle);
+      const id = existing ? existing.id : createNotePage(pageTitle);
       const now = Date.now();
       await saveNotePage({
         id,
@@ -1008,7 +1012,7 @@ function SubjectNotesCompilerModal({
         elements: [],
         pageCount: 1,
         html: sectionsToSaveHtml(sections),
-        createdAt: now,
+        createdAt: existing ? existing.createdAt : now,
         updatedAt: now,
       });
       setSavedId(id);

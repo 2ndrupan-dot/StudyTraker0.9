@@ -982,6 +982,7 @@ function SubjectNotesCompilerModal({
    *  via the editor's onChange rather than creating a separate note page. */
   onSaveToCurrentNote?: (html: string) => void;
 }) {
+  const { t } = useLang();
   const { user } = useAuth();
   const { appContact } = useAdmin();
   const { createNotePage, saveNotePage, notePagesIndex } = useStudy();
@@ -1290,7 +1291,7 @@ function SubjectNotesCompilerModal({
               onClick={() => { setStep('pick'); setSavedId(null); setEditing(true); }}
               className="flex-1 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
             >
-              ফিরে যান
+              {t('compilerBack')}
             </button>
             <button
               type="button"
@@ -1298,7 +1299,7 @@ function SubjectNotesCompilerModal({
               disabled={saving}
               className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
-              {saving ? 'সেভ হচ্ছে…' : savedId ? '✓ আপডেট হয়েছে' : 'সেভ করুন'}
+              {saving ? t('compilerSaving') : savedId ? t('compilerUpdated') : t('compilerOk')}
             </button>
           </div>
         )}

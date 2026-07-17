@@ -600,6 +600,16 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           notesMap = filterNotesMapByIds(notesMap, idSet);
         }
 
+        // Strip library-compiler notes (privateNote=true) before embedding the
+        // snapshot — they are admin-only and must never reach shared courses.
+        if (Array.isArray(studyDataForSnapshot.notePagesIndex)) {
+          studyDataForSnapshot = {
+            ...studyDataForSnapshot,
+            notePagesIndex: (studyDataForSnapshot.notePagesIndex as Array<{ privateNote?: boolean }>)
+              .filter(p => !p.privateNote),
+          };
+        }
+
         const snapshot: CourseSnapshot = {
           studyData: studyDataForSnapshot,
           notesJson: JSON.stringify({ notes: notesMap, overallNote }),

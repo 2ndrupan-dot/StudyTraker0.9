@@ -1068,7 +1068,8 @@ function SubjectNotesCompilerModal({
     setSaving(true);
     try {
       const pageTitle = uniqueNoteTitle(selected.title);
-      const id = createNotePage(pageTitle);
+      // privateNote=true → this note is excluded from all course share syncs
+      const id = createNotePage(pageTitle, true);
       const now = Date.now();
       await saveNotePage({
         id,
@@ -1076,6 +1077,7 @@ function SubjectNotesCompilerModal({
         elements: [],
         pageCount: 1,
         html: editHtml,
+        privateNote: true,
         createdAt: now,
         updatedAt: now,
       });

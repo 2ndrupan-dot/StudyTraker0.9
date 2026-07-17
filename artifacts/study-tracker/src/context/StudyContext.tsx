@@ -317,6 +317,8 @@ interface NotePageMeta {
   id: string;
   title: string;
   pageCount: number;
+  /** When true this note was created via the subject-library compiler and is never synced to shared courses */
+  privateNote?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -393,7 +395,7 @@ interface StudyContextType {
 
   // A4 Note pages
   notePagesIndex: NotePageMeta[];
-  createNotePage: (title?: string) => string;
+  createNotePage: (title?: string, privateNote?: boolean) => string;
   renameNotePage: (id: string, title: string) => void;
   deleteNotePage: (id: string) => Promise<void>;
   loadNotePage: (id: string) => Promise<NotePage | null>;
@@ -1066,7 +1068,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             const idSet = collectAllIds(syncSubjects);
             syncNotes = filterNotesMapByIds(notesData.notes, idSet);
           }
-          const syncStudyDataPayload = { ...mainPayload, subjects: syncSubjects };
+          // Strip library-compiler notes (privateNote=true) — they are admin-only
+          // and must never appear in a shared course copy.
+          const syncNotePagesIndex = (mainPayload.notePagesIndex as NotePageMeta[] | undefined)
+            ?.filter(p => !p.privateNote) ?? [];
+          const syncStudyDataPayload = { ...mainPayload, subjects: syncSubjects, notePagesIndex: syncNotePagesIndex };
           const syncNotesDataPayload = { ...notesData, notes: syncNotes };
 
           // Overwrite courseSnapshot in-place (dot-notation → no extra fields added,
@@ -2165,13 +2171,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const localPageKey = (id: string) =>
     user ? `@study_notepage_${user.email}_${id}` : null;
 
-  const createNotePage = (title?: string): string => {
+  const createNotePage = (title?: string, privateNote?: boolean): string => {
     const id = uid();
     const now = Date.now();
     const meta: NotePageMeta = {
       id,
       title: title?.trim() || 'Untitled page',
       pageCount: 1,
+      ...(privateNote ? { privateNote: true } : {}),
       createdAt: now,
       updatedAt: now,
     };

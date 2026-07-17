@@ -739,7 +739,7 @@ function FontSizeSelect({ editor, t }: { editor: Editor; t: (key: any) => string
   const storedSize = getStoredFontSize(editor);
   const activeSizeFromStored = storedSize ? FONT_SIZE_VALUES.find(s => s.value === storedSize) : null;
   const active = activeSizeFromSelection ?? activeSizeFromStored ?? null;
-  const label = active ? t(active.tKey) : t('fontSize');
+  const label = active ? t(active.tKey) : t('fontSizeNormal');
 
   return (
     <div className="relative" ref={ref}>

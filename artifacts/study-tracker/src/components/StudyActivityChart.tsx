@@ -119,8 +119,15 @@ interface Props {
 export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
   const { t, lang } = useLang();
   const [view, setView] = useState<'week' | 'month'>('week');
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
   const today = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => fmt(today), [today]);
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   // snapshots merged from localStorage + Firestore
   const [snaps, setSnaps] = useState<SnapMap>(() =>
@@ -301,7 +308,7 @@ export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
                 tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
                 axisLine={false} tickLine={false} tickCount={4} />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--secondary))' }} />
-              <Bar dataKey="progress" radius={[6, 6, 3, 3]} maxBarSize={36}
+              <Bar dataKey="progress" radius={[6, 6, 3, 3]} maxBarSize={isMobile ? 52 : 36}
                 label={<BarTopLabel />}>
                 {data.map((entry, idx) => (
                   <Cell key={idx}

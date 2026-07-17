@@ -70,6 +70,15 @@ const NoteRef = Node.create({
   },
 });
 
+// ─── Normalize a URL so it always has a protocol before opening ───────────────
+function normalizeHref(raw: string): string {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) return trimmed;
+  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmed)) return trimmed; // has protocol
+  if (/^(mailto:|tel:)/i.test(trimmed)) return trimmed;              // mailto / tel
+  return `https://${trimmed}`;                                        // bare hostname
+}
+
 // ─── Custom Link extension (with openOnClick: false + Space exits link) ──────
 const CustomLink = Link.extend({
   addAttributes() {
@@ -114,12 +123,20 @@ const CustomLink = Link.extend({
         props: {
           handleDOMEvents: {
             click: (_view, event) => {
-              if ((event.target as HTMLElement).closest('a')) {
+              const anchor = (event.target as HTMLElement).closest('a');
+              if (!anchor) return false;
+              // Ctrl/Cmd+click → open the link in a new tab
+              if (event.ctrlKey || event.metaKey) {
                 event.preventDefault();
                 event.stopPropagation();
+                const href = normalizeHref(anchor.getAttribute('href') ?? '');
+                if (href) window.open(href, '_blank', 'noopener,noreferrer');
                 return true;
               }
-              return false;
+              // Regular click → prevent navigation so the cursor can be placed
+              event.preventDefault();
+              event.stopPropagation();
+              return true;
             },
           },
         },
@@ -128,7 +145,7 @@ const CustomLink = Link.extend({
   },
 }).configure({
   openOnClick: false,
-  HTMLAttributes: {},
+  HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
 });
 
 // ─── Custom FontSize extension ────────────────────────────────────────────────
@@ -556,7 +573,7 @@ function LinkPopover({
   const [label, setLabel] = useState(initialText);
 
   const submit = () => {
-    const href = url.trim();
+    const href = normalizeHref(url.trim());
     if (!href) {
       if (isEditingExisting) {
         editor.chain().focus().setTextSelection({ from: initialFrom, to: initialTo }).unsetLink().run();
@@ -1299,7 +1316,7 @@ export function RichTextPreview({
 
       const link = (e.target as HTMLElement).closest('a');
       if (link) {
-        const href = link.getAttribute('href') || '';
+        const href = normalizeHref(link.getAttribute('href') || '');
         if (href && !href.startsWith('#')) {
           e.preventDefault();
           window.open(href, '_blank', 'noopener,noreferrer');

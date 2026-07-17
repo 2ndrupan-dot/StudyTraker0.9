@@ -89,32 +89,36 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-// ── Custom Bar Label (inside the bar) ─────────────────────────────────────────
+// ── Custom Bar Label ───────────────────────────────────────────────────────────
+// • Tall bar  (height ≥ 14 px): label sits inside the bar, white text.
+// • Short bar (height < 14 px): label floats just above the bar, primary color.
+//   The y position is clamped to ≥ 10 so it never clips the chart top boundary.
+// • Narrow bar (width < 36 px): "%" is omitted so the number always fits.
 function BarTopLabel({ x, y, width, height, value }: any) {
   if (!value || value <= 0) return null;
 
-  // Determine if we have room to show the label inside the bar.
-  // Font size shrinks on narrow bars; hide entirely when bar is too short.
-  const fontSize = width < 32 ? 7 : 8;
-  const minHeight = fontSize + 4; // need at least font + 4px padding
-  if (height < minHeight) return null;
+  const isNarrow = width < 36;
+  const label = isNarrow ? `${value}` : `${value}%`;
+  const fontSize = isNarrow ? 7 : 8;
+  const cx = x + width / 2;
 
-  // Place text near the top-inside of the bar
-  const labelY = y + Math.min(height / 2, fontSize + 2);
+  if (height >= 14) {
+    // Inside the bar
+    return (
+      <text x={cx} y={y + Math.min(height / 2, fontSize + 3)}
+        textAnchor="middle" dominantBaseline="middle"
+        fontSize={fontSize} fontWeight={700} fill="white">
+        {label}
+      </text>
+    );
+  }
 
-  // On narrow bars drop the % sign so the number fits
-  const label = width < 36 ? `${value}` : `${value}%`;
-
+  // Above the bar — clamp so it never goes above the top of the chart area
+  const labelY = Math.max(10, y - 3);
   return (
-    <text
-      x={x + width / 2}
-      y={labelY}
-      textAnchor="middle"
-      dominantBaseline="middle"
-      fontSize={fontSize}
-      fontWeight={700}
-      fill="white"
-    >
+    <text x={cx} y={labelY}
+      textAnchor="middle" dominantBaseline="auto"
+      fontSize={fontSize} fontWeight={700} fill="hsl(var(--primary))">
       {label}
     </text>
   );

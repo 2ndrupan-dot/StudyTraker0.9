@@ -29,7 +29,7 @@ import {
   ChevronLeft, ChevronRight, StickyNote,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   IndentIncrease, IndentDecrease,
-  Library, X, FileDown, ChevronUp,
+  BookOpen, X, FileDown, ChevronUp,
   Copy, CheckCheck, Eye, Pencil, Search, Maximize2, Minimize2,
 } from 'lucide-react';
 
@@ -1208,7 +1208,7 @@ function SubjectNotesCompilerModal({
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/50 flex-shrink-0">
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <Library size={18} className="text-primary shrink-0" />
+            <BookOpen size={18} className="text-primary shrink-0" />
             <span className="font-semibold text-base text-foreground truncate">
               {!inView ? t('selectSubjectPrompt') : (selected?.title ?? 'Notes')}
             </span>
@@ -1686,7 +1686,7 @@ export function RichTextEditor({
               active={showCompiler}
               title="Compile All Subject Notes (Admin)"
             >
-              <Library size={13} />
+              <BookOpen size={13} />
             </ToolbarBtn>
           </>
         )}

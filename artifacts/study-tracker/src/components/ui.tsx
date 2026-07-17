@@ -103,7 +103,7 @@ export const Modal = ({
               <div className={cn(
                 "w-full bg-card flex flex-col overflow-hidden",
                 align === 'bottom'
-                  ? "rounded-t-3xl pb-8 border-t-[2px] border-x-[2px] border-indigo-500/70"
+                  ? "rounded-t-3xl pb-8 border-t-[2px] border-x-[2px] border-indigo-500/70 max-h-[82vh]"
                   : "rounded-[calc(1.5rem-1.5px)] max-h-[85vh]"
               )}>
               <div className="flex items-center justify-between p-6 border-b border-border/50">

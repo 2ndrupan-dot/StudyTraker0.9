@@ -3,10 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, X, Download } from 'lucide-react';
 import { useLang } from '@/context/LangContext';
 import { usePWAInstall } from '@/context/PWAInstallContext';
+import { useLocation } from 'wouter';
 
 export function PWAUpdater() {
   const { t } = useLang();
   const { canInstall, installApp } = usePWAInstall();
+  const [location] = useLocation();
+  const isAuthPage = location === '/auth';
   const [installDismissed, setInstallDismissed] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
@@ -82,7 +85,7 @@ export function PWAUpdater() {
         </motion.button>
       )}
 
-      {!updateAvailable && canInstall && !installDismissed && (
+      {!updateAvailable && canInstall && !installDismissed && !isAuthPage && (
         <motion.div
           key="install"
           initial={{ opacity: 0, y: 30 }}

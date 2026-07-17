@@ -391,6 +391,20 @@ export const translations = {
     // Subject Notes Compiler
     selectSubjectPrompt: "Select a Subject",
     sectionUnit: "sections",
+
+    // Study Activity Chart
+    studyActivity: "Study Activity",
+    activityWeek: "Week",
+    activityMonth: "Month",
+    activityNoData: "No activity recorded yet. Keep studying!",
+    activityDaySat: "Sat",
+    activityDaySun: "Sun",
+    activityDayMon: "Mon",
+    activityDayTue: "Tue",
+    activityDayWed: "Wed",
+    activityDayThu: "Thu",
+    activityDayFri: "Fri",
+    activityWeekLabel: "Wk",
   },
   bn: {
     // Auth
@@ -782,5 +796,19 @@ export const translations = {
     // Subject Notes Compiler
     selectSubjectPrompt: "সাবজেক্ট বাছাই করুন",
     sectionUnit: "সেকশন",
+
+    // Study Activity Chart
+    studyActivity: "স্টাডি অ্যাক্টিভিটি",
+    activityWeek: "সাপ্তাহিক",
+    activityMonth: "মাসিক",
+    activityNoData: "এখনো কোনো অ্যাক্টিভিটি নেই। পড়াশোনা চালিয়ে যান!",
+    activityDaySat: "শনি",
+    activityDaySun: "রবি",
+    activityDayMon: "সোম",
+    activityDayTue: "মঙ্গল",
+    activityDayWed: "বুধ",
+    activityDayThu: "বৃহঃ",
+    activityDayFri: "শুক্র",
+    activityWeekLabel: "সপ্তাহ",
   }
 };

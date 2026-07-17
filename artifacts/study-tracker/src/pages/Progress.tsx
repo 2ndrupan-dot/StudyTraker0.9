@@ -17,6 +17,7 @@ import { Modal, ConfirmModal, Input, Button, NoteEditorModal } from '@/component
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollReveal } from '@/components/ScrollReveal';
+import { StudyActivityChart } from '@/components/StudyActivityChart';
 import { format, parseISO, isValid } from 'date-fns';
 
 function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = '—'): string {
@@ -726,6 +727,11 @@ export function Progress() {
             <p className="text-[11px] sm:text-xs font-semibold text-muted-foreground tracking-normal whitespace-nowrap">{t('activeSubjects')}</p>
           </ScrollReveal>
         </div>
+
+        {/* Study Activity Chart */}
+        <ScrollReveal className="mb-0">
+          <StudyActivityChart courseId={activeCourseId ?? ''} overallProg={overallProg} />
+        </ScrollReveal>
 
         {/* Big Progress */}
         <ScrollReveal className="mb-6">

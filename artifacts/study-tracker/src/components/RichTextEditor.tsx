@@ -18,6 +18,9 @@ import { TextAlign } from '@tiptap/extension-text-align';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
+import { useAdmin } from '@/context/AdminContext';
+import { useAuth } from '@/context/AuthContext';
+import { Subject } from '@/lib/types';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, RemoveFormatting, Palette, Highlighter, ChevronDown,
@@ -26,6 +29,7 @@ import {
   ChevronLeft, ChevronRight, StickyNote,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   IndentIncrease, IndentDecrease,
+  Library, X, FileDown, ChevronUp,
 } from 'lucide-react';
 
 // ─── NoteRef inline node (atomic chip — cursor cannot enter) ──────────────────
@@ -897,6 +901,311 @@ function ToolbarBtn({
   );
 }
 
+// ─── Subject Notes Compiler (admin-only) ──────────────────────────────────────
+
+/** Recursively collect all nodes with notes, in DFS order */
+interface NoteSection { title: string; html: string; depth: number; }
+
+function collectNoteSections(subject: Subject): NoteSection[] {
+  const sections: NoteSection[] = [];
+
+  const push = (title: string, note: string | undefined, depth: number) => {
+    if (note && note.trim()) sections.push({ title, html: note, depth });
+  };
+
+  push(subject.title, subject.note, 0);
+
+  for (const ch of (subject.chapters ?? [])) {
+    push(ch.title, ch.note, 1);
+    for (const tp of (ch.topics ?? [])) {
+      push(tp.title, tp.note, 2);
+      for (const st of (tp.subtopics ?? [])) {
+        push(st.title, st.note, 3);
+        for (const co of (st.concepts ?? [])) {
+          push(co.title, co.note, 4);
+          for (const pt of (co.points ?? [])) {
+            push(pt.title, pt.note, 5);
+          }
+        }
+      }
+    }
+  }
+
+  return sections;
+}
+
+function buildCompiledHtml(sections: NoteSection[]): string {
+  return sections.map(({ title, html }) => `
+    <div class="note-section">
+      <div class="section-heading">${title.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      <div class="section-body">${html}</div>
+    </div>
+  `).join('');
+}
+
+function SubjectNotesCompilerModal({
+  subjects,
+  onClose,
+}: {
+  subjects: Subject[];
+  onClose: () => void;
+}) {
+  const { user } = useAuth();
+  const { isAdmin, appContact } = useAdmin();
+
+  const [step, setStep] = useState<'pick' | 'view'>('pick');
+  const [selected, setSelected] = useState<Subject | null>(null);
+  const [sections, setSections] = useState<NoteSection[]>([]);
+
+  const handleSelect = (subj: Subject) => {
+    const found = collectNoteSections(subj);
+    setSelected(subj);
+    setSections(found);
+    setStep('view');
+  };
+
+  const handleDownloadPdf = () => {
+    if (!selected) return;
+    const safeTitle = (selected.title).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const now = new Date();
+    const safeDate =
+      now.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+      ', ' + now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+    const safeWebsite = (appContact.website || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const websiteSpan = safeWebsite
+      ? `<span>🌐 Website : <a href="${safeWebsite}">${safeWebsite}</a></span>`
+      : '';
+    const whatsAppSpan = appContact.whatsapp
+      ? `<span>💬 WhatsApp : ${appContact.whatsapp}</span>`
+      : '';
+    const printedBySpan = user?.email
+      ? `<span>🖨️ Printed by : ${user.email}</span>`
+      : '';
+
+    const footerInner = `<span>📝 Created by : StudyTrack team</span>${whatsAppSpan}${websiteSpan}${printedBySpan}`;
+    const footerFieldCount = (footerInner.match(/<span/g) || []).length;
+    const footerTextLength = footerInner.replace(/<[^>]+>/g, '').length;
+    let footerFontSize = 12;
+    let footerGap = 24;
+    if (footerFieldCount >= 4 || footerTextLength > 110) { footerFontSize = 9; footerGap = 12; }
+    else if (footerFieldCount >= 3 || footerTextLength > 80) { footerFontSize = 10; footerGap = 16; }
+    else if (footerTextLength > 55) { footerFontSize = 11; footerGap = 20; }
+
+    const sectionsHtml = sections.length
+      ? sections.map(({ title, html }) => `
+          <div class="note-section">
+            <div class="section-heading">${title.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+            <div class="section-body">${html}</div>
+          </div>`).join('')
+      : '<p style="color:#9ca3af">No notes found in this subject.</p>';
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${safeTitle}</title>
+  <style>
+    @page { size: A4; margin: 0 0 26px 0; }
+    @page { @bottom-right { content: counter(page) " / " counter(pages); font-size: 10px; color: #9ca3af;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 4px 10px 0 0; } }
+    * { box-sizing: border-box; margin: 0; padding: 0;
+        -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    html, body { width: 100%; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, Helvetica, sans-serif;
+      color: #111; text-rendering: geometricPrecision; }
+    *, p, span, li, td, th, h1, h2, h3, blockquote {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, Helvetica, sans-serif !important; }
+    table.pdf-layout { width: 100%; border-collapse: collapse; }
+    thead { display: table-header-group; } tfoot { display: table-footer-group; } tbody { display: table-row-group; }
+    .pdf-header-cell { height: 44px; vertical-align: middle; font-size: 12px; background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb; padding: 0 48px; }
+    .pdf-header-spacer { height: 24px; background: #fff; }
+    .pdf-header-inner { display: flex; align-items: center; justify-content: space-between; height: 100%; }
+    .pdf-header-date { color: #6b7280; font-weight: 400; }
+    .pdf-header-title { color: #374151; font-weight: 600; text-align: right; }
+    .pdf-footer-cell { height: 44px; vertical-align: middle; font-size: ${footerFontSize}px;
+      color: #6b7280; background: #f9fafb; border-top: 1px solid #e5e7eb; overflow: hidden; }
+    .pdf-footer-inner { display: flex; flex-wrap: nowrap; align-items: center; justify-content: center;
+      gap: ${footerGap}px; height: 100%; white-space: nowrap; padding: 0 10px; }
+    .pdf-footer-inner span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0; }
+    .pdf-content-cell { padding: 36px 48px 28px; }
+    h1 { font-size: 22px; font-weight: bold; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }
+    p { margin-bottom: 10px; line-height: 1.7; font-size: 14px; }
+    strong { font-weight: bold; } em { font-style: italic; } u { text-decoration: underline; }
+    ul, ol { padding-left: 22px; margin-bottom: 10px; }
+    li { margin-bottom: 4px; font-size: 14px; line-height: 1.6; }
+    h2 { font-size: 18px; font-weight: bold; margin: 20px 0 10px; }
+    h3 { font-size: 16px; font-weight: bold; margin: 16px 0 8px; }
+    a { color: #2563eb; text-decoration: underline; }
+    .pdf-content-cell table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+    .pdf-content-cell th, .pdf-content-cell td { border: 1px solid #d1d5db; padding: 6px 10px; font-size: 13px; }
+    .pdf-content-cell th { background: #f9fafb; font-weight: bold; }
+    mark { display: inline; border-radius: 2px; padding: 0 1px; }
+    /* Compiled-notes specific styles */
+    .note-section { margin-bottom: 28px; }
+    .section-heading {
+      font-weight: bold;
+      font-size: 16px;
+      text-align: center;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #e5e7eb;
+      color: #1e1b4b;
+    }
+    .section-body { font-size: 14px; line-height: 1.7; }
+  </style>
+</head>
+<body>
+<table class="pdf-layout">
+  <thead>
+    <tr><td class="pdf-header-cell">
+      <div class="pdf-header-inner">
+        <span class="pdf-header-date">${safeDate}</span>
+        <span class="pdf-header-title">${safeTitle} — All Notes</span>
+      </div>
+    </td></tr>
+    <tr><td class="pdf-header-spacer"></td></tr>
+  </thead>
+  <tfoot>
+    <tr><td class="pdf-footer-cell">
+      <div class="pdf-footer-inner">${footerInner}</div>
+    </td></tr>
+  </tfoot>
+  <tbody>
+    <tr><td class="pdf-content-cell">
+      <h1>${safeTitle} — All Notes</h1>
+      ${sectionsHtml}
+    </td></tr>
+  </tbody>
+</table>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    let printed = false;
+    const doPrint = () => { if (printed) return; printed = true; win.focus(); win.print(); };
+    win.addEventListener('load', () => {
+      const fonts = (win.document as any).fonts as FontFaceSet | undefined;
+      if (fonts) fonts.ready.then(doPrint); else setTimeout(doPrint, 200);
+    });
+    setTimeout(doPrint, 1500);
+  };
+
+  return ReactDOM.createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-card border border-border/60 rounded-2xl shadow-2xl flex flex-col w-full max-w-2xl max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Library size={18} className="text-primary" />
+            <span className="font-semibold text-base text-foreground">
+              {step === 'pick' ? 'Select Subject' : (selected?.title ?? 'Notes')}
+            </span>
+            {step === 'view' && (
+              <span className="text-xs text-muted-foreground ml-1">
+                ({sections.length} section{sections.length !== 1 ? 's' : ''} with notes)
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            {step === 'view' && (
+              <>
+                <button
+                  type="button"
+                  title="Download as PDF"
+                  onClick={handleDownloadPdf}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium transition-colors mr-2"
+                >
+                  <FileDown size={13} />
+                  Download PDF
+                </button>
+                <button
+                  type="button"
+                  title="Back to subject list"
+                  onClick={() => setStep('pick')}
+                  className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ChevronUp size={15} />
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              title="Close"
+              onClick={onClose}
+              className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto">
+          {step === 'pick' ? (
+            <div className="p-4">
+              {subjects.length === 0 ? (
+                <p className="text-center text-muted-foreground text-sm py-8">No subjects found in this course.</p>
+              ) : (
+                <div className="space-y-2">
+                  {subjects.map(subj => (
+                    <button
+                      key={subj.id}
+                      type="button"
+                      onClick={() => handleSelect(subj)}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-border/60 hover:border-primary/40 hover:bg-primary/5 transition-all text-left group"
+                    >
+                      {subj.color && (
+                        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: subj.color }} />
+                      )}
+                      <span className="flex-1 font-medium text-sm text-foreground">{subj.title}</span>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-primary transition-colors" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-5">
+              {sections.length === 0 ? (
+                <p className="text-center text-muted-foreground text-sm py-8">
+                  No notes found in this subject yet.
+                </p>
+              ) : (
+                <div className="space-y-6">
+                  {sections.map((sec, i) => (
+                    <div key={i} className="note-compiled-section">
+                      {/* Centered bold heading */}
+                      <div
+                        className="font-bold text-center text-base text-foreground mb-2 pb-2 border-b border-border/40"
+                      >
+                        {sec.title}
+                      </div>
+                      {/* Note body rendered as HTML */}
+                      <div
+                        className="rich-editor-content text-sm text-foreground leading-relaxed"
+                        dangerouslySetInnerHTML={{ __html: sec.html }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── HTML helpers ─────────────────────────────────────────────────────────────
 export function toSafeHtml(value: string): string {
   if (!value) return '';
@@ -928,8 +1237,12 @@ export function RichTextEditor({
   className, minHeight = '8rem', maxHeight, autoFocus = false,
 }: RichTextEditorProps) {
   const { t } = useLang();
-  const { settings } = useStudy();
+  const { settings, subjects } = useStudy();
+  const { isAdmin } = useAdmin();
   const [, setTick] = useState(0);
+
+  // Admin-only: Subject notes compiler modal
+  const [showCompiler, setShowCompiler] = useState(false);
 
   // Link popover
   const [showLinkPopover, setShowLinkPopover] = useState(false);
@@ -1213,6 +1526,20 @@ export function RichTextEditor({
         <ToolbarBtn onClick={() => (editor.commands as any).indent()} active={false} title="Increase Indent (Tab)">
           <IndentIncrease size={13} />
         </ToolbarBtn>
+
+        {/* Admin-only: compile all notes from a subject */}
+        {isAdmin && (
+          <>
+            <div className="w-px h-4 bg-border/60 mx-1" />
+            <ToolbarBtn
+              onClick={() => setShowCompiler(true)}
+              active={showCompiler}
+              title="Compile All Subject Notes (Admin)"
+            >
+              <Library size={13} />
+            </ToolbarBtn>
+          </>
+        )}
       </div>
 
       {/* ── Editor area ── */}
@@ -1248,6 +1575,14 @@ export function RichTextEditor({
         )}
         <EditorContent editor={editor} />
       </div>
+
+      {/* Admin-only: Subject notes compiler modal */}
+      {isAdmin && showCompiler && (
+        <SubjectNotesCompilerModal
+          subjects={subjects}
+          onClose={() => setShowCompiler(false)}
+        />
+      )}
     </div>
   );
 }

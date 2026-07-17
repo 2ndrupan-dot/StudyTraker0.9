@@ -89,34 +89,19 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-// ── Custom Bar Label ───────────────────────────────────────────────────────────
-// • Tall bar  (height ≥ 14 px): label sits inside the bar, white text.
-// • Short bar (height < 14 px): label floats just above the bar, primary color.
-//   The y position is clamped to ≥ 10 so it never clips the chart top boundary.
-// • Narrow bar (width < 36 px): "%" is omitted so the number always fits.
-function BarTopLabel({ x, y, width, height, value }: any) {
+// ── Custom Bar Label (always above the bar) ────────────────────────────────────
+// • Narrow bar (width < 36 px): "%" is omitted so the number fits.
+// • y is clamped to ≥ 10 so the label never clips the chart top boundary.
+function BarTopLabel({ x, y, width, value }: any) {
   if (!value || value <= 0) return null;
 
   const isNarrow = width < 36;
   const label = isNarrow ? `${value}` : `${value}%`;
   const fontSize = isNarrow ? 7 : 8;
-  const cx = x + width / 2;
-
-  if (height >= 14) {
-    // Inside the bar
-    return (
-      <text x={cx} y={y + Math.min(height / 2, fontSize + 3)}
-        textAnchor="middle" dominantBaseline="middle"
-        fontSize={fontSize} fontWeight={700} fill="white">
-        {label}
-      </text>
-    );
-  }
-
-  // Above the bar — clamp so it never goes above the top of the chart area
   const labelY = Math.max(10, y - 3);
+
   return (
-    <text x={cx} y={labelY}
+    <text x={x + width / 2} y={labelY}
       textAnchor="middle" dominantBaseline="auto"
       fontSize={fontSize} fontWeight={700} fill="hsl(var(--primary))">
       {label}

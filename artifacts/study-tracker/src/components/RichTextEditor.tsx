@@ -1019,6 +1019,7 @@ function SubjectNotesCompilerModal({
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [inserted, setInserted] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -1047,6 +1048,15 @@ function SubjectNotesCompilerModal({
     let n = 1;
     while (existingTitles.has(`${base} (${n})`)) n++;
     return `${base} (${n})`;
+  };
+
+  // Insert compiled notes into the currently-open note (updates the editor's content
+  // in place) — used when the compiler is opened from within an existing note editor.
+  const handleInsertToCurrentNote = () => {
+    if (!onSaveToCurrentNote || !editHtml) return;
+    onSaveToCurrentNote(editHtml);
+    setInserted(true);
+    setTimeout(() => { onClose(); }, 800);
   };
 
   // Save compiled notes (possibly edited by user) → always creates a brand-new
@@ -1312,14 +1322,27 @@ function SubjectNotesCompilerModal({
             >
               {t('compilerBack')}
             </button>
-            <button
-              type="button"
-              onClick={handleSaveAsNote}
-              disabled={saving}
-              className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-            >
-              {saving ? t('compilerSaving') : savedId ? t('compilerSaved') : t('compilerOk')}
-            </button>
+            {onSaveToCurrentNote ? (
+              /* Insert into the currently-open note — don't create a new one */
+              <button
+                type="button"
+                onClick={handleInsertToCurrentNote}
+                disabled={inserted}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {inserted ? t('compilerInserted') : t('compilerInsert')}
+              </button>
+            ) : (
+              /* Create a brand-new note page in the Notes section */
+              <button
+                type="button"
+                onClick={handleSaveAsNote}
+                disabled={saving}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {saving ? t('compilerSaving') : savedId ? t('compilerSaved') : t('compilerOk')}
+              </button>
+            )}
           </div>
         )}
       </div>

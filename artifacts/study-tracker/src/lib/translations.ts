@@ -384,6 +384,10 @@ export const translations = {
     resetSubjectTitle: "Reset Subject Progress?",
     resetSubjectConfirm: "All chapters, topics, subtopics, concepts, and points in this subject will be marked as incomplete. Today's plan will regenerate. This cannot be undone.",
     resetSubjectDone: "Progress reset successfully!",
+
+    // Subject Notes Compiler
+    selectSubjectPrompt: "Select a Subject",
+    sectionUnit: "sections",
   },
   bn: {
     // Auth
@@ -768,5 +772,9 @@ export const translations = {
     resetSubjectTitle: "সাবজেক্টের অগ্রগতি রিসেট করবেন?",
     resetSubjectConfirm: "এই সাবজেক্টের সমস্ত চ্যাপ্টার, টপিক, সাবটপিক, কনসেপ্ট ও পয়েন্ট অসম্পন্ন হয়ে যাবে। আজকের পরিকল্পনা নতুনভাবে তৈরি হবে। এটি আর ফিরিয়ে আনা যাবে না।",
     resetSubjectDone: "অগ্রগতি সফলভাবে রিসেট হয়েছে!",
+
+    // Subject Notes Compiler
+    selectSubjectPrompt: "সাবজেক্ট বাছাই করুন",
+    sectionUnit: "সেকশন",
   }
 };

@@ -961,14 +961,15 @@ function collectNoteSections(subject: Subject): NoteSection[] {
   return sections;
 }
 
-/** Colour assigned to each hierarchy level in the compiled note headings. */
-const SECTION_HEADING_COLORS: Record<string, string> = {
-  Subject:  '#1e40af', // blue-800
-  Chapter:  '#1d4ed8', // blue-700  — bold blue
-  Topic:    '#6d28d9', // violet-700
-  Subtopic: '#0369a1', // sky-700
-  Concept:  '#b45309', // amber-700
-  Point:    '#15803d', // green-700
+/** Background highlight colour for each hierarchy level in the compiled note headings.
+ *  Text stays black; a coloured highlight is drawn behind the heading text. */
+const SECTION_HIGHLIGHT_COLORS: Record<string, string> = {
+  Subject:  '#E0E7FF', // light indigo
+  Chapter:  '#FEF08A', // yellow  — classic highlighter
+  Topic:    '#BBF7D0', // light green
+  Subtopic: '#BAE6FD', // light sky-blue
+  Concept:  '#FED7AA', // light orange
+  Point:    '#E9D5FF', // light lavender
 };
 
 /** Build a single Tiptap-compatible HTML string from compiled sections — used
@@ -976,7 +977,7 @@ const SECTION_HEADING_COLORS: Record<string, string> = {
  *
  *  Layout per section:
  *    <blank line>          ← gap before heading (separates previous content)
- *    <heading>             ← coloured, centred, bold
+ *    <heading>             ← black text, coloured background highlight, centred, bold
  *    <blank line>          ← gap after heading (before content)
  *    <content>             ← the rich-text note body (if any)
  *    <blank line>          ← gap after content (before next heading)
@@ -985,8 +986,9 @@ function sectionsToSaveHtml(sections: NoteSection[]): string {
   const gap = '<p></p>';
   return sections.map(({ label, title, html }) => {
     const safeTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const color = SECTION_HEADING_COLORS[label] ?? '#1e293b';
-    const heading = `<p style="text-align:center"><strong><span style="color:${color}">${label} : ${safeTitle}</span></strong></p>`;
+    const bg = SECTION_HIGHLIGHT_COLORS[label] ?? '#F1F5F9';
+    // Use <mark> so Tiptap's highlight extension recognises it; text colour is explicitly black.
+    const heading = `<p style="text-align:center"><strong><mark data-color="${bg}" style="background-color:${bg};color:#000000;">${label} : ${safeTitle}</mark></strong></p>`;
     return html.trim()
       ? `${gap}${heading}${gap}${html}${gap}`
       : `${gap}${heading}${gap}`;
@@ -1004,7 +1006,7 @@ function SubjectNotesCompilerModal({
    *  via the editor's onChange rather than creating a separate note page. */
   onSaveToCurrentNote?: (html: string) => void;
 }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { user } = useAuth();
   const { appContact } = useAdmin();
   const { createNotePage, saveNotePage, notePagesIndex } = useStudy();
@@ -1201,11 +1203,11 @@ function SubjectNotesCompilerModal({
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <Library size={18} className="text-primary shrink-0" />
             <span className="font-semibold text-base text-foreground truncate">
-              {!inView ? 'সাবজেক্ট বাছাই করুন' : (selected?.title ?? 'Notes')}
+              {!inView ? t('selectSubjectPrompt') : (selected?.title ?? 'Notes')}
             </span>
             {inView && sections.length > 0 && (
               <span className="text-xs text-muted-foreground shrink-0">
-                ({sections.length}টি সেকশন)
+                ({sections.length}{lang === 'bn' ? `টি ${t('sectionUnit')}` : ` ${t('sectionUnit')}`})
               </span>
             )}
           </div>

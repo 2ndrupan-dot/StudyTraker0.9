@@ -30,7 +30,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   IndentIncrease, IndentDecrease,
   Library, X, FileDown, ChevronUp,
-  Copy, CheckCheck,
+  Copy, CheckCheck, Eye, Pencil, Search, Maximize2, Minimize2,
 } from 'lucide-react';
 
 // ─── NoteRef inline node (atomic chip — cursor cannot enter) ──────────────────
@@ -989,16 +989,16 @@ function SubjectNotesCompilerModal({
   const [step, setStep] = useState<'pick' | 'view'>('pick');
   const [selected, setSelected] = useState<Subject | null>(null);
   const [sections, setSections] = useState<NoteSection[]>([]);
+  const [editHtml, setEditHtml] = useState('');
+  const [editing, setEditing] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    if (!sections.length) return;
-    const plain = sections.map(({ label, title, html }) => {
-      const text = html.replace(/<[^>]+>/g, '').trim();
-      return `${label} : ${title}\n${text}`;
-    }).join('\n\n');
+    if (!editHtml) return;
+    const plain = editHtml.replace(/<[^>]+>/g, '').trim();
     navigator.clipboard.writeText(plain).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -1006,7 +1006,7 @@ function SubjectNotesCompilerModal({
   };
 
   const handleSelect = (subj: Subject) => {
-    // Restore savedId only when NOT inside an open note (standalone mode)
+    // Restore savedId only in standalone mode (not embedded inside an open note)
     if (!onSaveToCurrentNote) {
       const pageTitle = `${subj.title} — All Notes`;
       const existing = notePagesIndex.find(p => p.title === pageTitle);
@@ -1014,20 +1014,22 @@ function SubjectNotesCompilerModal({
     } else {
       setSavedId(null);
     }
+    const secs = collectNoteSections(subj);
     setSelected(subj);
-    setSections(collectNoteSections(subj));
+    setSections(secs);
+    setEditHtml(sectionsToSaveHtml(secs));
+    setEditing(true);
     setStep('view');
   };
 
-  // Save compiled notes:
+  // Save compiled notes (possibly edited by user):
   //  • If opened from inside an existing note → insert HTML into that note via onChange
   //  • Otherwise → create/update a standalone "[Subject] — All Notes" note page
   const handleSaveAsNote = async () => {
     if (!selected || saving) return;
 
     if (onSaveToCurrentNote) {
-      // Insert into the currently-open note and close
-      onSaveToCurrentNote(sectionsToSaveHtml(sections));
+      onSaveToCurrentNote(editHtml);
       onClose();
       return;
     }
@@ -1043,7 +1045,7 @@ function SubjectNotesCompilerModal({
         title: pageTitle,
         elements: [],
         pageCount: 1,
-        html: sectionsToSaveHtml(sections),
+        html: editHtml,
         createdAt: existing ? existing.createdAt : now,
         updatedAt: now,
       });
@@ -1078,16 +1080,8 @@ function SubjectNotesCompilerModal({
     else if (footerFieldCount >= 3 || footerTextLength > 80)  { footerFontSize = 10; footerGap = 16; }
     else if (footerTextLength > 55)                           { footerFontSize = 11; footerGap = 20; }
 
-    const sectionsHtml = sections.length
-      ? sections.map(({ label, title, html }) => {
-          const safeT = title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          return `
-          <div class="note-section">
-            <div class="section-heading">${label} : ${safeT}</div>
-            ${html ? `<div class="section-body">${html}</div>` : ''}
-          </div>`;
-        }).join('')
-      : '<p style="color:#9ca3af">No notes found in this subject.</p>';
+    // Use the (possibly edited) editHtml as the PDF body
+    const bodyContent = editHtml || '<p style="color:#9ca3af">No notes found in this subject.</p>';
 
     const pdfHtml = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><title>${safeTitle}</title>
@@ -1128,10 +1122,6 @@ function SubjectNotesCompilerModal({
   .pdf-content-cell th,.pdf-content-cell td { border:1px solid #d1d5db; padding:6px 10px; font-size:13px; }
   .pdf-content-cell th { background:#f9fafb; font-weight:bold; }
   mark { display:inline; border-radius:2px; padding:0 1px; }
-  .note-section { margin-bottom:32px; }
-  .section-heading { font-weight:bold; font-size:15px; text-align:center;
-    margin-bottom:10px; padding-bottom:5px; border-bottom:1px solid #e5e7eb; color:#1e1b4b; }
-  .section-body { font-size:14px; line-height:1.7; }
 </style></head><body>
 <table class="pdf-layout">
   <thead>
@@ -1151,7 +1141,7 @@ function SubjectNotesCompilerModal({
   <tbody>
     <tr><td class="pdf-content-cell">
       <h1>${safeTitle} — All Notes</h1>
-      ${sectionsHtml}
+      ${bodyContent}
     </td></tr>
   </tbody>
 </table>
@@ -1170,58 +1160,69 @@ function SubjectNotesCompilerModal({
     setTimeout(doPrint, 1500);
   };
 
+  const inView = step === 'view';
+  const hasContent = inView && !!editHtml;
+
   return ReactDOM.createPortal(
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-card border border-border/60 rounded-2xl shadow-2xl flex flex-col w-full max-w-2xl max-h-[90vh] overflow-hidden">
+      <div className={cn(
+        "bg-card border border-border/60 rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-all duration-200",
+        expanded ? "w-full h-full max-w-none rounded-none" : "w-full max-w-2xl max-h-[90vh]"
+      )}>
 
         {/* ── Header ── */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/50 flex-shrink-0">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <Library size={18} className="text-primary shrink-0" />
             <span className="font-semibold text-base text-foreground truncate">
-              {step === 'pick' ? 'সাবজেক্ট বাছাই করুন' : (selected?.title ?? 'Notes')}
+              {!inView ? 'সাবজেক্ট বাছাই করুন' : (selected?.title ?? 'Notes')}
             </span>
-            {step === 'view' && sections.length > 0 && (
+            {inView && sections.length > 0 && (
               <span className="text-xs text-muted-foreground shrink-0">
                 ({sections.length}টি সেকশন)
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {step === 'view' && sections.length > 0 && (
+          <div className="flex items-center gap-0.5 shrink-0">
+            {hasContent && (
               <>
                 {/* Copy */}
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className={cn(
-                    "p-2 rounded-full transition-colors",
-                    copied
-                      ? "text-green-600 bg-green-500/10"
-                      : "text-muted-foreground hover:bg-secondary"
-                  )}
-                  title={copied ? "কপি হয়েছে!" : "নোট কপি করুন"}
+                <button type="button" onClick={handleCopy}
+                  className={cn("p-2 rounded-full transition-colors",
+                    copied ? "text-green-600 bg-green-500/10" : "text-muted-foreground hover:bg-secondary")}
+                  title={copied ? "কপি হয়েছে!" : "কপি করুন"}
                 >
                   {copied ? <CheckCheck size={16} /> : <Copy size={16} />}
                 </button>
                 {/* PDF */}
-                <button
-                  type="button"
-                  onClick={handleDownloadPdf}
+                <button type="button" onClick={handleDownloadPdf}
                   className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
                   title="PDF ডাউনলোড"
                 >
                   <FileDown size={16} />
                 </button>
+                {/* Toggle edit / preview */}
+                <button type="button" onClick={() => setEditing(e => !e)}
+                  className={cn("p-2 rounded-full transition-colors",
+                    editing ? "text-primary bg-primary/10 hover:bg-primary/20" : "text-muted-foreground hover:bg-secondary")}
+                  title={editing ? "প্রিভিউ দেখুন" : "এডিট করুন"}
+                >
+                  {editing ? <Eye size={18} /> : <Pencil size={16} />}
+                </button>
+                {/* Expand / Minimize */}
+                <button type="button" onClick={() => setExpanded(v => !v)}
+                  className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
+                  title={expanded ? "ছোট করুন" : "বড় করুন"}
+                >
+                  {expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                </button>
               </>
             )}
             {/* Close */}
-            <button
-              type="button"
-              onClick={onClose}
+            <button type="button" onClick={onClose}
               className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
               title="বন্ধ করুন"
             >
@@ -1231,8 +1232,9 @@ function SubjectNotesCompilerModal({
         </div>
 
         {/* ── Body ── */}
-        <div className="flex-1 overflow-y-auto">
-          {step === 'pick' ? (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {!inView ? (
+            /* Subject picker */
             <div className="p-4">
               {subjects.length === 0 ? (
                 <p className="text-center text-muted-foreground text-sm py-8">
@@ -1257,41 +1259,35 @@ function SubjectNotesCompilerModal({
                 </div>
               )}
             </div>
+          ) : sections.length === 0 ? (
+            /* Empty state */
+            <p className="text-center text-muted-foreground text-sm py-8 px-5">
+              এই সাবজেক্টে এখনো কোনো নোট নেই।
+            </p>
+          ) : editing ? (
+            /* ── Edit mode: full RichTextEditor ── */
+            <RichTextEditor
+              value={editHtml}
+              onChange={setEditHtml}
+              placeholder="নোট লিখুন…"
+              minHeight="300px"
+              maxHeight={expanded ? undefined : '55vh'}
+              hideCompiler
+            />
           ) : (
+            /* ── Preview mode ── */
             <div className="p-5">
-              {sections.length === 0 ? (
-                <p className="text-center text-muted-foreground text-sm py-8">
-                  এই সাবজেক্টে এখনো কোনো নোট নেই।
-                </p>
-              ) : (
-                <div className="space-y-6">
-                  {sections.map((sec, i) => (
-                    <div key={i}>
-                      {/* Centered bold heading with level label */}
-                      <div className="font-bold text-center text-sm text-foreground mb-2 pb-2 border-b border-border/40">
-                        {sec.label} : {sec.title}
-                      </div>
-                      {/* Note body — only shown if there's actual content */}
-                      {sec.html && (
-                        <div
-                          className="rich-editor-content text-sm text-foreground leading-relaxed"
-                          dangerouslySetInnerHTML={{ __html: sec.html }}
-                        />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+              <RichTextPreview html={editHtml} className="text-sm leading-relaxed" />
             </div>
           )}
         </div>
 
-        {/* ── Footer: Clear / Save (only in view step with content) ── */}
-        {step === 'view' && sections.length > 0 && (
+        {/* ── Footer: Clear / Save ── */}
+        {inView && sections.length > 0 && (
           <div className="px-5 py-3 border-t border-border/50 flex gap-2 flex-shrink-0">
             <button
               type="button"
-              onClick={() => { setStep('pick'); setSavedId(null); }}
+              onClick={() => { setStep('pick'); setSavedId(null); setEditing(true); }}
               className="flex-1 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
             >
               ফিরে যান
@@ -1335,12 +1331,15 @@ interface RichTextEditorProps {
   minHeight?: string;
   maxHeight?: string;
   autoFocus?: boolean;
+  /** Hide the admin compiler toolbar button (used when embedded inside the compiler modal itself) */
+  hideCompiler?: boolean;
 }
 
 export function RichTextEditor({
   value, onChange,
   placeholder = 'Write something...',
   className, minHeight = '8rem', maxHeight, autoFocus = false,
+  hideCompiler = false,
 }: RichTextEditorProps) {
   const { t } = useLang();
   const { settings, subjects } = useStudy();
@@ -1634,7 +1633,7 @@ export function RichTextEditor({
         </ToolbarBtn>
 
         {/* Admin-only: compile all notes from a subject */}
-        {isAdmin && (
+        {isAdmin && !hideCompiler && (
           <>
             <div className="w-px h-4 bg-border/60 mx-1" />
             <ToolbarBtn

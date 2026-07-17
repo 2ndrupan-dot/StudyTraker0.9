@@ -284,7 +284,6 @@ function SideNav({ onSearch }: { onSearch: () => void }) {
           </div>
           <div>
             <h1 className="font-bold text-white text-base leading-tight tracking-tight">Learning Sathi</h1>
-            <p className="text-[10px] text-white/50 font-medium uppercase tracking-widest">Study Planner</p>
           </div>
         </div>
       </div>

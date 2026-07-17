@@ -730,7 +730,7 @@ export function Progress() {
 
         {/* Study Activity Chart */}
         <ScrollReveal className="mb-0">
-          <StudyActivityChart courseId={activeCourseId ?? ''} overallProg={overallProg} />
+          <StudyActivityChart uid={user?.id ?? ''} courseId={activeCourseId ?? ''} overallProg={overallProg} />
         </ScrollReveal>
 
         {/* Big Progress */}

@@ -547,7 +547,7 @@ export function Today() {
   const handleInstallShare = async () => {
     const url = window.location.origin;
     try {
-      if (navigator.share) { await navigator.share({ title: 'StudyTrack', url }); setShowInstallMenu(false); return; }
+      if (navigator.share) { await navigator.share({ title: 'Study Tracker', url }); setShowInstallMenu(false); return; }
       await navigator.clipboard.writeText(url);
       setInstallCopied(true);
       setTimeout(() => { setInstallCopied(false); setShowInstallMenu(false); }, 2000);

@@ -515,8 +515,8 @@ export const NoteEditorModal = ({
     // PDF footer for a shared note sometimes showed only "Created by : StudyTrack team".
     const isOfficial = pdfIsAdmin || pdfIsShared;
     const createdBySpan = isOfficial
-      ? `<span>📝 Created by : StudyTrack team</span>`
-      : `<span>📝 Created by : ${pdfUserEmail || 'StudyTrack team'}</span>`;
+      ? `<span>📝 Created by : Study Tracker team</span>`
+      : `<span>📝 Created by : ${pdfUserEmail || 'Study Tracker team'}</span>`;
     const printedBySpan = isOfficial && pdfUserEmail
       ? `<span>🖨️ Printed by : ${pdfUserEmail}</span>`
       : '';
@@ -530,7 +530,7 @@ export const NoteEditorModal = ({
       + whatsAppSpan
       + websiteSpan
       + printedBySpan;
-    if (!footerInner.trim()) footerInner = `<span>📝 Created by : StudyTrack team</span>`;
+    if (!footerInner.trim()) footerInner = `<span>📝 Created by : Study Tracker team</span>`;
     // Fit all footer items on a single line: previously each item could wrap
     // its own label+value onto two lines once 3-4 fields (Created by /
     // WhatsApp / Website / Printed by) didn't fit the printable width at the

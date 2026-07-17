@@ -126,8 +126,8 @@ export function Auth() {
         </div>
 
         <div className="text-center mb-5">
-          <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow">StudyTrack</h1>
-          <p className="text-white/85 mt-1.5 text-sm font-medium">Powered by : StudyTrack team</p>
+          <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow">Study Tracker</h1>
+          <p className="text-white/85 mt-1.5 text-sm font-medium">Powered by : Study Tracker team</p>
         </div>
 
         {/* Language toggle */}

@@ -50,7 +50,7 @@ export function BrandedLoadingScreen({ className = 'fixed inset-0 z-50' }: { cla
         transition={{ duration: 0.5, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
         className="text-3xl font-bold tracking-tight text-white drop-shadow mt-5 select-none"
       >
-        StudyTrack
+        Study Tracker
       </motion.h1>
 
       {/* Bottom spacer — separates title from spinner */}

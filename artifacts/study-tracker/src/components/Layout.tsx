@@ -177,7 +177,7 @@ function InstallSection() {
     const url = window.location.origin;
     try {
       if (navigator.share) {
-        await navigator.share({ title: 'StudyTrack', url });
+        await navigator.share({ title: 'Study Tracker', url });
       } else {
         await navigator.clipboard.writeText(url);
         setCopied(true);
@@ -283,7 +283,7 @@ function SideNav({ onSearch }: { onSearch: () => void }) {
             <GraduationCap size={22} className="text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-white text-base leading-tight tracking-tight">StudyTrack</h1>
+            <h1 className="font-bold text-white text-base leading-tight tracking-tight">Study Tracker</h1>
             <p className="text-[10px] text-white/50 font-medium uppercase tracking-widest">Study Planner</p>
           </div>
         </div>
@@ -312,7 +312,7 @@ function SideNav({ onSearch }: { onSearch: () => void }) {
       {/* Footer: install + share */}
       <div className="p-3 border-t border-white/10 space-y-2">
         <InstallSection />
-        <p className="text-[10px] text-white/30 text-center pt-1">StudyTrack v2.0</p>
+        <p className="text-[10px] text-white/30 text-center pt-1">Study Tracker v2.0</p>
       </div>
     </div>
   );
@@ -346,7 +346,7 @@ function MobileInstallButton() {
     const url = window.location.origin;
     try {
       if (navigator.share) {
-        await navigator.share({ title: 'StudyTrack', url });
+        await navigator.share({ title: 'Study Tracker', url });
         setShowMenu(false);
         return;
       }

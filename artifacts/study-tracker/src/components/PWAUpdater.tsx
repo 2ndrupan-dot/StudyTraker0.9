@@ -85,32 +85,7 @@ export function PWAUpdater() {
         </motion.button>
       )}
 
-      {!updateAvailable && canInstall && !installDismissed && !isAuthPage && (
-        <motion.div
-          key="install"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 30 }}
-          className="fixed bottom-[100px] left-3 right-3 md:left-auto md:right-4 md:bottom-4 md:max-w-sm z-[55] bg-card border border-border/60 shadow-xl rounded-2xl p-3 flex items-center gap-3"
-        >
-          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <Download size={16} className="text-primary" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-bold text-foreground">{t('installApp')}</div>
-            <div className="text-[10px] text-muted-foreground line-clamp-2">{t('installAppDesc')}</div>
-          </div>
-          <button
-            onClick={installApp}
-            className="px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold"
-          >
-            {t('installBtn')}
-          </button>
-          <button onClick={dismissInstall} className="text-muted-foreground p-1">
-            <X size={14} />
-          </button>
-        </motion.div>
-      )}
+      {/* Install popup banner intentionally disabled — install button is inside the app */}
     </AnimatePresence>
   );
 }

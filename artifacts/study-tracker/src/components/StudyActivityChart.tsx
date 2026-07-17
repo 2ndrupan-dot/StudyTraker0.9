@@ -80,6 +80,24 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
+// ── Custom Bar Label (percentage on top of bar) ────────────────────────────────
+function BarTopLabel({ x, y, width, value }: any) {
+  if (!value || value <= 0) return null;
+  return (
+    <text
+      x={x + width / 2}
+      y={y - 4}
+      textAnchor="middle"
+      dominantBaseline="auto"
+      fontSize={9}
+      fontWeight={700}
+      fill="hsl(var(--primary))"
+    >
+      {value}%
+    </text>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 interface Props {
   courseId: string;
@@ -210,7 +228,7 @@ export function StudyActivityChart({ courseId, overallProg }: Props) {
                 tickCount={4}
               />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--secondary))' }} />
-              <Bar dataKey="progress" radius={[6, 6, 3, 3]} maxBarSize={36}>
+              <Bar dataKey="progress" radius={[6, 6, 3, 3]} maxBarSize={36} label={<BarTopLabel />}>
                 {data.map((entry, idx) => (
                   <Cell
                     key={idx}

@@ -187,6 +187,11 @@ export const translations = {
     courseResetProceeed: "Yes, continue",
     courseResetAbsoluteSure: "Yes, I'm absolutely sure",
 
+    // Global note text size
+    globalNoteSize: "Default Note Text Size",
+    globalNoteSizeDesc: "Sets the base text size for all notes across this course. Text you have already sized individually will keep its size.",
+    globalNoteSizeSaved: "Text size updated",
+
     // Timezone
     timezone: "Timezone",
     timezoneLabel: "Your Timezone",
@@ -561,6 +566,11 @@ export const translations = {
     courseResetCountdown: "রিসেট নির্ধারিত",
     courseResetProceeed: "হ্যাঁ, এগিয়ে যান",
     courseResetAbsoluteSure: "হ্যাঁ, আমি সম্পূর্ণ নিশ্চিত",
+
+    // Global note text size
+    globalNoteSize: "ডিফল্ট নোট টেক্সট সাইজ",
+    globalNoteSizeDesc: "এই কোর্সের সব নোটে ডিফল্ট টেক্সট সাইজ পরিবর্তন করুন। আলাদাভাবে সাইজ করা টেক্সট পরিবর্তন হবে না।",
+    globalNoteSizeSaved: "টেক্সট সাইজ আপডেট হয়েছে",
 
     // Timezone
     timezone: "টাইম জোন",

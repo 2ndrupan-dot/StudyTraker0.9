@@ -618,19 +618,38 @@ export const NoteEditorModal = ({
       background: #f9fafb;
       border-top: 1px solid #e5e7eb;
       overflow: hidden;
+      padding: 0;
+    }
+    .pdf-footer-wrapper {
+      display: flex;
+      align-items: center;
+      height: 100%;
+      padding: 0 10px;
     }
     .pdf-footer-inner {
+      flex: 1;
       display: flex;
       flex-wrap: nowrap;
       align-items: center;
       justify-content: center;
       gap: ${footerGap}px;
-      height: 100%;
       white-space: nowrap;
-      padding: 0 10px;
+      overflow: hidden;
     }
     .pdf-footer-inner span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0; }
     .pdf-footer-inner a { white-space: nowrap; }
+    /* Page number — bottom-right corner of every page */
+    .pdf-page-num {
+      min-width: 52px;
+      text-align: right;
+      font-size: 10px;
+      color: #9ca3af;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .pdf-page-num::after {
+      content: counter(page) " / " counter(pages);
+    }
 
     /* ── Content cell ── */
     .pdf-content-cell { padding: 36px 48px 28px; }
@@ -680,8 +699,11 @@ export const NoteEditorModal = ({
   </thead>
   <tfoot>
     <tr><td class="pdf-footer-cell">
-      <div class="pdf-footer-inner">
-        ${footerInner}
+      <div class="pdf-footer-wrapper">
+        <div class="pdf-footer-inner">
+          ${footerInner}
+        </div>
+        <span class="pdf-page-num"></span>
       </div>
     </td></tr>
   </tfoot>

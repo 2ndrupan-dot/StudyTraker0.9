@@ -342,7 +342,7 @@ function OverallNotesCard() {
 
 export function Progress() {
   const { user, logout, updateProfile, updateProfilePhoto } = useAuth();
-  const { subjects, settings, setCourseStartDate, setTimezone } = useStudy();
+  const { subjects, settings, setCourseStartDate, setTimezone, setGlobalNoteSize } = useStudy();
   const { courses, deletedCourses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse, restoreCourse, permanentlyDeleteCourse, sharedCoursesMeta } = useCourse();
   const { t, lang, setLang } = useLang();
   const [, setLocation] = useLocation();
@@ -383,6 +383,9 @@ export function Progress() {
   const [showResetConfirm1, setShowResetConfirm1] = useState(false);
   const [showResetConfirm2, setShowResetConfirm2] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
+
+  // Global note size state
+  const [noteSizeSaved, setNoteSizeSaved] = useState(false);
 
   const granularProgress = computeGranularProgress(subjects);
   const overallProg = granularProgress.percent;
@@ -952,6 +955,54 @@ export function Progress() {
               </button>
             </div>
           )}
+
+          {/* Global Note Text Size */}
+          <div className="border-t border-border/40 pt-5">
+            <div className="flex items-center gap-2 mb-1">
+              <NotebookPen size={15} className="text-primary" />
+              <p className="text-sm font-semibold text-foreground">{t('globalNoteSize')}</p>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">{t('globalNoteSizeDesc')}</p>
+            <div className="flex gap-2 flex-wrap">
+              {[
+                { label: lang === 'bn' ? 'ছোট' : 'Small',    value: '11px' },
+                { label: lang === 'bn' ? 'সাধারণ' : 'Normal', value: '14px' },
+                { label: lang === 'bn' ? 'মাঝারি' : 'Medium', value: '17px' },
+                { label: lang === 'bn' ? 'বড়' : 'Large',     value: '21px' },
+                { label: lang === 'bn' ? 'অনেক বড়' : 'X-Large', value: '26px' },
+              ].map(opt => {
+                const active = (settings.globalNoteSize ?? '14px') === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => {
+                      setGlobalNoteSize(opt.value);
+                      setNoteSizeSaved(true);
+                      setTimeout(() => setNoteSizeSaved(false), 2000);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-semibold transition-all ${
+                      active
+                        ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                        : 'bg-secondary border-border/50 text-foreground hover:bg-secondary/80'
+                    }`}
+                    style={{ fontSize: opt.value }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            {noteSizeSaved && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-3 flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-200 rounded-xl"
+              >
+                <CheckCircle2 size={14} className="text-green-600 shrink-0" />
+                <p className="text-xs font-semibold text-green-700">{t('globalNoteSizeSaved')}</p>
+              </motion.div>
+            )}
+          </div>
 
           {/* Course Starting Date */}
           <div className="border-t border-border/40 pt-5">

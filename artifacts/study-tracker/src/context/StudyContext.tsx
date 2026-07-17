@@ -344,6 +344,7 @@ interface StudyContextType {
   setDailyStudyHours: (hours: number) => void;
   setCourseStartDate: (date: string) => void;
   setTimezone: (tz: string) => void;
+  setGlobalNoteSize: (size: string) => void;
   addSubject: (subject: Omit<Subject, 'id' | 'completed' | 'chapters'>) => void;
   updateSubjectDays: (subjectId: string, days: number) => void;
   deleteSubject: (subjectId: string) => void;
@@ -1253,6 +1254,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   const setTimezone = (tz: string) => {
     setSettings(prev => ({ ...prev, timezone: tz }));
+  };
+
+  const setGlobalNoteSize = (size: string) => {
+    setSettings(prev => ({ ...prev, globalNoteSize: size }));
   };
 
   const setCourseStartDate = (date: string) => {
@@ -2344,7 +2349,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     <StudyContext.Provider value={{
       subjects, settings, dataLoaded, syncStatus, syncError, online,
       setNote, toggleImportant, toggleWeak,
-      setCourseTotalDays, setDailyStudyHours, setCourseStartDate, setTimezone,
+      setCourseTotalDays, setDailyStudyHours, setCourseStartDate, setTimezone, setGlobalNoteSize,
       addSubject, updateSubjectDays, deleteSubject, updateSubjectMeta, resetSubjectProgress,
       reorderSubjects, reorderChapters, reorderTopics, reorderSubtopics, reorderConcepts, reorderPoints,
       addChapter, deleteChapter, toggleChapterComplete, updateChapterMeta,

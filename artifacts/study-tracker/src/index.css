@@ -231,7 +231,7 @@ html, body {
 
 /* ── Tiptap / Rich Text Editor ─────────────────────────────────────────────── */
 .rich-editor-content {
-  font-size: 14px;
+  font-size: var(--note-size, 14px);
   line-height: 1.65;
   word-break: break-word;
 }

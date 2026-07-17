@@ -928,6 +928,7 @@ export function RichTextEditor({
   className, minHeight = '8rem', maxHeight, autoFocus = false,
 }: RichTextEditorProps) {
   const { t } = useLang();
+  const { settings } = useStudy();
   const [, setTick] = useState(0);
 
   // Link popover
@@ -1069,7 +1070,10 @@ export function RichTextEditor({
   const activeHL    = getActiveHighlight(editor);
 
   return (
-    <div className={cn('flex flex-col rounded-xl border border-border/60 bg-background overflow-hidden', className)}>
+    <div
+      className={cn('flex flex-col rounded-xl border border-border/60 bg-background overflow-hidden', className)}
+      style={settings?.globalNoteSize ? { '--note-size': settings.globalNoteSize } as React.CSSProperties : undefined}
+    >
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border/50 bg-secondary/40">
 
@@ -1256,6 +1260,7 @@ export function RichTextPreview({
   className?: string;
   onNoteRef?: (noteId: string, noteTitle: string, noteHtml?: string, itemPath?: any) => void;
 }) {
+  const { settings } = useStudy();
   // Use a read-only TipTap editor so the preview renders identically to edit mode
   const editor = useEditor({
     extensions: [
@@ -1328,5 +1333,9 @@ export function RichTextPreview({
     return () => el.removeEventListener('click', handleClick);
   }, [editor, onNoteRef]);
 
-  return <EditorContent editor={editor} />;
+  return (
+    <div style={settings?.globalNoteSize ? { '--note-size': settings.globalNoteSize } as React.CSSProperties : undefined}>
+      <EditorContent editor={editor} />
+    </div>
+  );
 }

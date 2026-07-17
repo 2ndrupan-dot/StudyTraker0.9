@@ -82,6 +82,7 @@ export interface CourseSettings {
   courseStartDate?: string;
   resetScheduled?: boolean;
   timezone?: string;
+  globalNoteSize?: string;
 }
 
 // Minimum time limits per level (minutes)

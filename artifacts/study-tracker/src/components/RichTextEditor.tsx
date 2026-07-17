@@ -1031,14 +1031,7 @@ function SubjectNotesCompilerModal({
   };
 
   const handleSelect = (subj: Subject) => {
-    // Restore savedId only in standalone mode (not embedded inside an open note)
-    if (!onSaveToCurrentNote) {
-      const pageTitle = `${subj.title} — All Notes`;
-      const existing = notePagesIndex.find(p => p.title === pageTitle);
-      setSavedId(existing?.id ?? null);
-    } else {
-      setSavedId(null);
-    }
+    setSavedId(null);
     const secs = collectNoteSections(subj);
     setSelected(subj);
     setSections(secs);
@@ -1047,23 +1040,25 @@ function SubjectNotesCompilerModal({
     setStep('view');
   };
 
-  // Save compiled notes (possibly edited by user):
-  //  • If opened from inside an existing note → insert HTML into that note via onChange
-  //  • Otherwise → create/update a standalone "[Subject] — All Notes" note page
+  /** Find a unique note title by appending (1), (2), … when the base name is taken. */
+  const uniqueNoteTitle = (base: string): string => {
+    const existingTitles = new Set(notePagesIndex.map(p => p.title));
+    if (!existingTitles.has(base)) return base;
+    let n = 1;
+    while (existingTitles.has(`${base} (${n})`)) n++;
+    return `${base} (${n})`;
+  };
+
+  // Save compiled notes (possibly edited by user) → always creates a brand-new
+  // note page in the Notes section.  Never inserts into / overwrites an existing note.
+  // Title conflict → auto-increment suffix: "Subject", "Subject (1)", "Subject (2)", …
   const handleSaveAsNote = async () => {
     if (!selected || saving) return;
 
-    if (onSaveToCurrentNote) {
-      onSaveToCurrentNote(editHtml);
-      onClose();
-      return;
-    }
-
     setSaving(true);
     try {
-      const pageTitle = `${selected.title} — All Notes`;
-      const existing = notePagesIndex.find(p => p.title === pageTitle);
-      const id = existing ? existing.id : createNotePage(pageTitle);
+      const pageTitle = uniqueNoteTitle(selected.title);
+      const id = createNotePage(pageTitle);
       const now = Date.now();
       await saveNotePage({
         id,
@@ -1071,7 +1066,7 @@ function SubjectNotesCompilerModal({
         elements: [],
         pageCount: 1,
         html: editHtml,
-        createdAt: existing ? existing.createdAt : now,
+        createdAt: now,
         updatedAt: now,
       });
       setSavedId(id);
@@ -1323,7 +1318,7 @@ function SubjectNotesCompilerModal({
               disabled={saving}
               className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
-              {saving ? t('compilerSaving') : savedId ? t('compilerUpdated') : t('compilerOk')}
+              {saving ? t('compilerSaving') : savedId ? t('compilerSaved') : t('compilerOk')}
             </button>
           </div>
         )}

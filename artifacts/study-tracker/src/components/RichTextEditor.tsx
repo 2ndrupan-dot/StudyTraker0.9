@@ -30,6 +30,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   IndentIncrease, IndentDecrease,
   Library, X, FileDown, ChevronUp,
+  Copy, CheckCheck,
 } from 'lucide-react';
 
 // ─── NoteRef inline node (atomic chip — cursor cannot enter) ──────────────────
@@ -990,6 +991,19 @@ function SubjectNotesCompilerModal({
   const [sections, setSections] = useState<NoteSection[]>([]);
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (!sections.length) return;
+    const plain = sections.map(({ label, title, html }) => {
+      const text = html.replace(/<[^>]+>/g, '').trim();
+      return `${label} : ${title}\n${text}`;
+    }).join('\n\n');
+    navigator.clipboard.writeText(plain).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  };
 
   const handleSelect = (subj: Subject) => {
     // Restore savedId only when NOT inside an open note (standalone mode)
@@ -1165,63 +1179,53 @@ function SubjectNotesCompilerModal({
 
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <Library size={18} className="text-primary" />
-            <span className="font-semibold text-base text-foreground">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <Library size={18} className="text-primary shrink-0" />
+            <span className="font-semibold text-base text-foreground truncate">
               {step === 'pick' ? 'সাবজেক্ট বাছাই করুন' : (selected?.title ?? 'Notes')}
             </span>
             {step === 'view' && sections.length > 0 && (
-              <span className="text-xs text-muted-foreground ml-1">
+              <span className="text-xs text-muted-foreground shrink-0">
                 ({sections.length}টি সেকশন)
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 shrink-0">
             {step === 'view' && sections.length > 0 && (
               <>
-                {/* Save as note */}
-                {savedId ? (
-                  <span className="text-xs text-emerald-600 font-medium px-2">✓ সেভ হয়েছে</span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleSaveAsNote}
-                    disabled={saving}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-medium transition-colors disabled:opacity-50"
-                    title="নোট হিসেবে সেভ করুন এবং পরে খুলুন"
-                  >
-                    <StickyNote size={12} />
-                    {saving ? 'সেভ হচ্ছে…' : 'নোট হিসেবে সেভ'}
-                  </button>
-                )}
-                {/* Download PDF */}
+                {/* Copy */}
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className={cn(
+                    "p-2 rounded-full transition-colors",
+                    copied
+                      ? "text-green-600 bg-green-500/10"
+                      : "text-muted-foreground hover:bg-secondary"
+                  )}
+                  title={copied ? "কপি হয়েছে!" : "নোট কপি করুন"}
+                >
+                  {copied ? <CheckCheck size={16} /> : <Copy size={16} />}
+                </button>
+                {/* PDF */}
                 <button
                   type="button"
                   onClick={handleDownloadPdf}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium transition-colors"
+                  className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
                   title="PDF ডাউনলোড"
                 >
-                  <FileDown size={12} />
-                  PDF
-                </button>
-                {/* Back */}
-                <button
-                  type="button"
-                  onClick={() => { setStep('pick'); setSavedId(null); }}
-                  className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                  title="ফিরে যান"
-                >
-                  <ChevronUp size={15} />
+                  <FileDown size={16} />
                 </button>
               </>
             )}
+            {/* Close */}
             <button
               type="button"
               onClick={onClose}
-              className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+              className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"
               title="বন্ধ করুন"
             >
-              <X size={15} />
+              <X size={20} />
             </button>
           </div>
         </div>
@@ -1282,12 +1286,24 @@ function SubjectNotesCompilerModal({
           )}
         </div>
 
-        {/* ── Save success footer ── */}
-        {savedId && (
-          <div className="px-5 py-3 border-t border-border/50 bg-emerald-500/5 flex items-center justify-between flex-shrink-0">
-            <span className="text-xs text-emerald-700 dark:text-emerald-400">
-              ✓ নোট সেভ হয়েছে — Notes পেজ থেকে খুলতে পারবেন।
-            </span>
+        {/* ── Footer: Clear / Save (only in view step with content) ── */}
+        {step === 'view' && sections.length > 0 && (
+          <div className="px-5 py-3 border-t border-border/50 flex gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => { setStep('pick'); setSavedId(null); }}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
+            >
+              ফিরে যান
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveAsNote}
+              disabled={saving}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'সেভ হচ্ছে…' : savedId ? '✓ আপডেট হয়েছে' : 'সেভ করুন'}
+            </button>
           </div>
         )}
       </div>

@@ -196,28 +196,46 @@ export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
   const data = useMemo(() => {
     if (!uid || !courseId) return [];
 
+    // Returns the last cumulative value recorded BEFORE `dateStr`.
+    // This is the baseline we subtract to get "how much was done on that day".
+    const prevCumulative = (dateStr: string): number => {
+      const candidates = Object.keys(snaps)
+        .filter(d => d < dateStr && (snaps[d] ?? 0) > 0)
+        .sort();
+      return candidates.length > 0 ? (snaps[candidates[candidates.length - 1]] ?? 0) : 0;
+    };
+
+    // Daily increment: cumulative value for that day minus the last known value before it.
+    // Clamped to ≥ 0 so an undo that crosses midnight never shows a negative bar.
+    const dayIncrement = (dk: string): number => {
+      const val = snaps[dk] ?? 0;
+      if (val === 0) return 0;
+      const prev = prevCumulative(dk);
+      return Math.max(0, Math.round((val - prev) * 100) / 100);
+    };
+
     if (view === 'week') {
       return getWeekDates(today).map((d, i) => {
         const dk = fmt(d);
         const isFuture = d > today;
         return {
           label: dayLabels[i],
-          progress: isFuture ? 0 : Math.round((snaps[dk] ?? 0) * 100) / 100,
+          progress: isFuture ? 0 : dayIncrement(dk),
           isToday: dk === todayStr,
           isFuture,
         };
       });
     }
 
-    // Month view: 4 weekly averages
+    // Month view: 4 weekly totals (sum of daily increments for each week)
     return getMonthWeeks(today, 4).map((wk, wi) => {
-      const vals = wk.dates.map(d => snaps[fmt(d)] ?? 0).filter(v => v > 0);
-      const avg = vals.length
-        ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100
-        : 0;
+      const weekTotal = wk.dates.reduce(
+        (sum, d) => sum + dayIncrement(fmt(d)),
+        0,
+      );
       return {
         label: `${t('activityWeekLabel')} ${wi + 1}`,
-        progress: avg,
+        progress: Math.round(weekTotal * 100) / 100,
         isToday: wk.dates.some(d => fmt(d) === todayStr),
         isFuture: false,
       };

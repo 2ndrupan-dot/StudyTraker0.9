@@ -89,13 +89,33 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-// ── Custom Bar Label (% on top) ────────────────────────────────────────────────
-function BarTopLabel({ x, y, width, value }: any) {
+// ── Custom Bar Label (inside the bar) ─────────────────────────────────────────
+function BarTopLabel({ x, y, width, height, value }: any) {
   if (!value || value <= 0) return null;
+
+  // Determine if we have room to show the label inside the bar.
+  // Font size shrinks on narrow bars; hide entirely when bar is too short.
+  const fontSize = width < 32 ? 7 : 8;
+  const minHeight = fontSize + 4; // need at least font + 4px padding
+  if (height < minHeight) return null;
+
+  // Place text near the top-inside of the bar
+  const labelY = y + Math.min(height / 2, fontSize + 2);
+
+  // On narrow bars drop the % sign so the number fits
+  const label = width < 36 ? `${value}` : `${value}%`;
+
   return (
-    <text x={x + width / 2} y={y - 4} textAnchor="middle" dominantBaseline="auto"
-      fontSize={9} fontWeight={700} fill="hsl(var(--primary))">
-      {value}%
+    <text
+      x={x + width / 2}
+      y={labelY}
+      textAnchor="middle"
+      dominantBaseline="middle"
+      fontSize={fontSize}
+      fontWeight={700}
+      fill="white"
+    >
+      {label}
     </text>
   );
 }

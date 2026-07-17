@@ -1281,6 +1281,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         { plan: { date: '', tasks: [] }, pending: [], revisions: [] },
         { merge: false },
       ).catch(e => console.warn('[setCourseStartDate] Firestore todayData reset failed:', e));
+
+      // Also wipe activity snapshots so the chart starts fresh after reset
+      deleteDoc(doc(db, 'users', user.id, 'activitySnapshots', activeCourseId))
+        .catch(e => console.warn('[setCourseStartDate] activitySnapshots clear failed:', e));
+      try {
+        localStorage.removeItem(`@study_activity_snap_${user.id}_${activeCourseId}`);
+      } catch { /* ignore */ }
     }
   };
 

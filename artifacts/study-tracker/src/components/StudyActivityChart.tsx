@@ -118,14 +118,20 @@ export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
     uid && courseId ? lsLoad(uid, courseId) : {}
   );
 
-  // track whether we've already written today's value (avoid re-writing unchanged data)
+  // track last value written this session (-1 = nothing written yet)
   const lastWritten = useRef<number>(-1);
+  // once we've written locally, we own today's value — don't let Firestore overwrite it
+  const hasLocalWrite = useRef<boolean>(false);
 
   // ── Real-time Firestore listener ─────────────────────────────────────────────
   // onSnapshot fires immediately with current data, then again on every remote
   // change — giving true cross-device live sync without any polling.
   useEffect(() => {
     if (!uid || !courseId) return;
+
+    // Reset session flags when course/user changes
+    lastWritten.current = -1;
+    hasLocalWrite.current = false;
 
     // Show localStorage instantly while Firestore connects
     const local = lsLoad(uid, courseId);
@@ -136,10 +142,20 @@ export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
       (snap) => {
         const remote = (snap.exists() ? (snap.data()?.snaps ?? {}) : {}) as SnapMap;
         setSnaps(prev => {
-          // Merge: highest value wins for each date
           const merged: SnapMap = { ...prev };
           for (const [k, v] of Object.entries(remote)) {
-            merged[k] = Math.max(merged[k] ?? 0, v);
+            if (k === todayStr) {
+              // For today: only accept the remote value if we haven't written
+              // locally yet this session. Once the user has triggered a local
+              // write (complete / undo), we own today's value and ignore stale
+              // remote updates (which can lag behind the latest undo).
+              if (!hasLocalWrite.current) {
+                merged[k] = v;
+              }
+            } else {
+              // For past dates: highest value ever seen wins (preserve history)
+              merged[k] = Math.max(merged[k] ?? 0, v);
+            }
           }
           lsSave(uid, courseId, merged);
           return merged;
@@ -149,18 +165,21 @@ export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
     );
 
     return () => unsub(); // clean up listener on unmount / courseId change
-  }, [uid, courseId]);
+  }, [uid, courseId]); // intentionally exclude todayStr — it doesn't change within a session
 
   // ── Save today's snapshot whenever overallProg changes ──────────────────────
+  // Writes on every change — including decreases — so completing then
+  // undoing a chapter/topic is immediately reflected in the bar chart.
   useEffect(() => {
     if (!uid || !courseId) return;
     const rounded = Math.round(overallProg * 100) / 100;
-    const existing = snaps[todayStr] ?? 0;
 
-    // Only write if progress increased (and skip if same as last write)
-    if (rounded <= existing || rounded === lastWritten.current) return;
+    // Skip if nothing actually changed since last write
+    if (rounded === lastWritten.current) return;
 
     lastWritten.current = rounded;
+    hasLocalWrite.current = true;
+
     const updated = { ...snaps, [todayStr]: rounded };
     setSnaps(updated);
     lsSave(uid, courseId, updated);

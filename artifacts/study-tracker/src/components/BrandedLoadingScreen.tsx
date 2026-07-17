@@ -3,7 +3,7 @@ import { BookOpen } from 'lucide-react';
 
 /**
  * Shared branded loading/splash screen: logo slides up and fades in,
- * "StudyTrack" title fades in below it, spinner sits at the bottom of
+ * "Learning Sathi" title fades in below it, spinner sits at the bottom of
  * the screen (not inline with the logo/title).
  *
  * Layout:
@@ -11,7 +11,7 @@ import { BookOpen } from 'lucide-react';
  *   │                 │
  *   │   ┌──────────┐  │  ← flex-1 (top spacer)
  *   │   │  Logo    │  │
- *   │   │StudyTrack│  │  ← logo + title centered here
+ *   │   │Learning Sathi│  │  ← logo + title centered here
  *   │   └──────────┘  │
  *   │                 │  ← flex-1 (bottom spacer)
  *   │      ( ⟳ )      │  ← spinner, pb-16 from very bottom
@@ -43,14 +43,14 @@ export function BrandedLoadingScreen({ className = 'fixed inset-0 z-50' }: { cla
         </div>
       </motion.div>
 
-      {/* StudyTrack title — fades in after logo */}
+      {/* Learning Sathi title — fades in after logo */}
       <motion.h1
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
         className="text-3xl font-bold tracking-tight text-white drop-shadow mt-5 select-none"
       >
-        Study Tracker
+        Learning Sathi
       </motion.h1>
 
       {/* Bottom spacer — separates title from spinner */}

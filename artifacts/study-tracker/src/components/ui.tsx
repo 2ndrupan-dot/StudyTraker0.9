@@ -512,11 +512,11 @@ export const NoteEditorModal = ({
     // Printed by) — previously the admin branch silently dropped "Printed by"
     // and per-page callers that hadn't wired up `pdfIsShared` fell into the
     // "own note" branch which dropped WhatsApp + Printed by entirely, so the
-    // PDF footer for a shared note sometimes showed only "Created by : StudyTrack team".
+    // PDF footer for a shared note sometimes showed only "Created by : Learning Sathi team".
     const isOfficial = pdfIsAdmin || pdfIsShared;
     const createdBySpan = isOfficial
-      ? `<span>📝 Created by : Study Tracker team</span>`
-      : `<span>📝 Created by : ${pdfUserEmail || 'Study Tracker team'}</span>`;
+      ? `<span>📝 Created by : Learning Sathi team</span>`
+      : `<span>📝 Created by : ${pdfUserEmail || 'Learning Sathi team'}</span>`;
     const printedBySpan = isOfficial && pdfUserEmail
       ? `<span>🖨️ Printed by : ${pdfUserEmail}</span>`
       : '';
@@ -530,7 +530,7 @@ export const NoteEditorModal = ({
       + whatsAppSpan
       + websiteSpan
       + printedBySpan;
-    if (!footerInner.trim()) footerInner = `<span>📝 Created by : Study Tracker team</span>`;
+    if (!footerInner.trim()) footerInner = `<span>📝 Created by : Learning Sathi team</span>`;
     // Fit all footer items on a single line: previously each item could wrap
     // its own label+value onto two lines once 3-4 fields (Created by /
     // WhatsApp / Website / Printed by) didn't fit the printable width at the

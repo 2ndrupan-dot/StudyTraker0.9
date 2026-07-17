@@ -27,7 +27,7 @@ class RootErrorBoundary extends React.Component<{ children: React.ReactNode }, E
     return { error };
   }
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('[StudyTrack] Uncaught render error:', error, info.componentStack);
+    console.error('[Learning Sathi] Uncaught render error:', error, info.componentStack);
   }
   render() {
     if (!this.state.error) return this.props.children;

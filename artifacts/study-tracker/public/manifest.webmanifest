@@ -1,6 +1,6 @@
 {
-  "name": "Study Tracker — Study Planner",
-  "short_name": "Study Tracker",
+  "name": "Learning Sathi — Study Planner",
+  "short_name": "Learning Sathi",
   "description": "Smart study planner with hierarchical subjects, daily plan, revisions, marks and rich note pages.",
   "start_url": "/",
   "scope": "/",

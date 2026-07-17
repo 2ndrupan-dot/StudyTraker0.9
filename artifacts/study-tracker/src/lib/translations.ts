@@ -354,7 +354,7 @@ export const translations = {
 
     // PWA
     installApp: "Install app",
-    installAppDesc: "Install Study Tracker for offline use.",
+    installAppDesc: "Install Learning Sathi for offline use.",
     installBtn: "Install",
     updateAvailable: "Update available – tap to refresh",
     shareInstallLink: "Share install link",
@@ -745,7 +745,7 @@ export const translations = {
 
     // PWA
     installApp: "অ্যাপ ইনস্টল করুন",
-    installAppDesc: "অফলাইনে ব্যবহারের জন্য Study Tracker ইনস্টল করুন।",
+    installAppDesc: "অফলাইনে ব্যবহারের জন্য Learning Sathi ইনস্টল করুন।",
     installBtn: "ইনস্টল",
     updateAvailable: "আপডেট আছে – রিফ্রেশ করতে ট্যাপ করুন",
     shareInstallLink: "ইনস্টল লিংক শেয়ার করুন",

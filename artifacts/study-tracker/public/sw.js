@@ -1,4 +1,4 @@
-/* Study Tracker — minimal service worker for offline shell + asset caching.
+/* Learning Sathi — minimal service worker for offline shell + asset caching.
    Strategy:
    - App-shell precache (very small list).
    - Navigation requests: network-first, fallback to cached "/" for offline SPA shell.

@@ -1104,7 +1104,7 @@ function SubjectNotesCompilerModal({
       ? `<span>🖨️ Printed by : ${user.email}</span>` : '';
 
     const footerInner =
-      `<span>📝 Created by : Study Tracker team</span>${whatsAppSpan}${websiteSpan}${printedBySpan}`;
+      `<span>📝 Created by : Learning Sathi team</span>${whatsAppSpan}${websiteSpan}${printedBySpan}`;
     const footerFieldCount = (footerInner.match(/<span/g) || []).length;
     const footerTextLength = footerInner.replace(/<[^>]+>/g, '').length;
     let footerFontSize = 12, footerGap = 24;

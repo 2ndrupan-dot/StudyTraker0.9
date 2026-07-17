@@ -973,9 +973,13 @@ function sectionsToSaveHtml(sections: NoteSection[]): string {
 function SubjectNotesCompilerModal({
   subjects,
   onClose,
+  onSaveToCurrentNote,
 }: {
   subjects: Subject[];
   onClose: () => void;
+  /** When provided, "সেভ" inserts the compiled HTML into the currently-open note
+   *  via the editor's onChange rather than creating a separate note page. */
+  onSaveToCurrentNote?: (html: string) => void;
 }) {
   const { user } = useAuth();
   const { appContact } = useAdmin();
@@ -988,18 +992,32 @@ function SubjectNotesCompilerModal({
   const [savedId, setSavedId] = useState<string | null>(null);
 
   const handleSelect = (subj: Subject) => {
-    // Restore savedId if a compiled note for this subject already exists
-    const pageTitle = `${subj.title} — All Notes`;
-    const existing = notePagesIndex.find(p => p.title === pageTitle);
-    setSavedId(existing?.id ?? null);
+    // Restore savedId only when NOT inside an open note (standalone mode)
+    if (!onSaveToCurrentNote) {
+      const pageTitle = `${subj.title} — All Notes`;
+      const existing = notePagesIndex.find(p => p.title === pageTitle);
+      setSavedId(existing?.id ?? null);
+    } else {
+      setSavedId(null);
+    }
     setSelected(subj);
     setSections(collectNoteSections(subj));
     setStep('view');
   };
 
-  // Save compiled notes — reuse existing note if one already exists for this subject
+  // Save compiled notes:
+  //  • If opened from inside an existing note → insert HTML into that note via onChange
+  //  • Otherwise → create/update a standalone "[Subject] — All Notes" note page
   const handleSaveAsNote = async () => {
     if (!selected || saving) return;
+
+    if (onSaveToCurrentNote) {
+      // Insert into the currently-open note and close
+      onSaveToCurrentNote(sectionsToSaveHtml(sections));
+      onClose();
+      return;
+    }
+
     setSaving(true);
     try {
       const pageTitle = `${selected.title} — All Notes`;
@@ -1653,6 +1671,7 @@ export function RichTextEditor({
         <SubjectNotesCompilerModal
           subjects={subjects}
           onClose={() => setShowCompiler(false)}
+          onSaveToCurrentNote={onChange}
         />
       )}
     </div>

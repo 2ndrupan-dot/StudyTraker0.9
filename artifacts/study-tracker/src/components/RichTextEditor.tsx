@@ -961,13 +961,35 @@ function collectNoteSections(subject: Subject): NoteSection[] {
   return sections;
 }
 
+/** Colour assigned to each hierarchy level in the compiled note headings. */
+const SECTION_HEADING_COLORS: Record<string, string> = {
+  Subject:  '#1e40af', // blue-800
+  Chapter:  '#1d4ed8', // blue-700  — bold blue
+  Topic:    '#6d28d9', // violet-700
+  Subtopic: '#0369a1', // sky-700
+  Concept:  '#b45309', // amber-700
+  Point:    '#15803d', // green-700
+};
+
 /** Build a single Tiptap-compatible HTML string from compiled sections — used
- *  both for the "Save as Note" feature and as an alternative to dangerouslySetInnerHTML. */
+ *  both for the "Save as Note" feature and as an alternative to dangerouslySetInnerHTML.
+ *
+ *  Layout per section:
+ *    <blank line>          ← gap before heading (separates previous content)
+ *    <heading>             ← coloured, centred, bold
+ *    <blank line>          ← gap after heading (before content)
+ *    <content>             ← the rich-text note body (if any)
+ *    <blank line>          ← gap after content (before next heading)
+ */
 function sectionsToSaveHtml(sections: NoteSection[]): string {
+  const gap = '<p></p>';
   return sections.map(({ label, title, html }) => {
     const safeTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const heading = `<p style="text-align:center"><strong>${label} : ${safeTitle}</strong></p>`;
-    return html.trim() ? `${heading}${html}<p></p>` : `${heading}<p></p>`;
+    const color = SECTION_HEADING_COLORS[label] ?? '#1e293b';
+    const heading = `<p style="text-align:center"><strong><span style="color:${color}">${label} : ${safeTitle}</span></strong></p>`;
+    return html.trim()
+      ? `${gap}${heading}${gap}${html}${gap}`
+      : `${gap}${heading}${gap}`;
   }).join('');
 }
 

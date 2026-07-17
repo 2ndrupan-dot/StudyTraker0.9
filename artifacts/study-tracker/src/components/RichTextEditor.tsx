@@ -990,8 +990,8 @@ function sectionsToSaveHtml(sections: NoteSection[]): string {
     // Use <mark> so Tiptap's highlight extension recognises it; text colour is explicitly black.
     const heading = `<p style="text-align:center"><strong><mark data-color="${bg}" style="background-color:${bg};color:#000000;">${label} : ${safeTitle}</mark></strong></p>`;
     return html.trim()
-      ? `${gap}${heading}${gap}${html}${gap}`
-      : `${gap}${heading}${gap}`;
+      ? `${heading}${gap}${html}${gap}`
+      : `${heading}${gap}`;
   }).join('');
 }
 

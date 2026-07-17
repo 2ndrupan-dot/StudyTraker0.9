@@ -172,7 +172,7 @@ export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
   // undoing a chapter/topic is immediately reflected in the bar chart.
   useEffect(() => {
     if (!uid || !courseId) return;
-    const rounded = Math.round(overallProg * 100) / 100;
+    const rounded = Math.round(overallProg * 10000) / 10000; // keep 4 dp internally
 
     // Skip if nothing actually changed since last write
     if (rounded === lastWritten.current) return;
@@ -202,7 +202,7 @@ export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
         const isFuture = d > today;
         return {
           label: dayLabels[i],
-          progress: isFuture ? 0 : Math.round((snaps[dk] ?? 0) * 10) / 10,
+          progress: isFuture ? 0 : Math.round((snaps[dk] ?? 0) * 100) / 100,
           isToday: dk === todayStr,
           isFuture,
         };
@@ -213,7 +213,7 @@ export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
     return getMonthWeeks(today, 4).map((wk, wi) => {
       const vals = wk.dates.map(d => snaps[fmt(d)] ?? 0).filter(v => v > 0);
       const avg = vals.length
-        ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10
+        ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100
         : 0;
       return {
         label: `${t('activityWeekLabel')} ${wi + 1}`,

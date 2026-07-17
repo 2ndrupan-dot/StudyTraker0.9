@@ -903,28 +903,54 @@ function ToolbarBtn({
 
 // ─── Subject Notes Compiler (admin-only) ──────────────────────────────────────
 
-/** Recursively collect all nodes with notes, in DFS order */
-interface NoteSection { title: string; html: string; depth: number; }
+interface NoteSection {
+  label: string;   // e.g. "Subject", "Chapter", "Topic", "Subtopic", "Concept", "Point"
+  title: string;   // the item's own title
+  html: string;    // the item's note HTML (may be empty string if only a structural heading)
+  depth: number;
+}
 
+/** Returns true if this node or any of its descendants has a non-empty note */
+function nodeHasAnyNote(item: any): boolean {
+  if (typeof item.note === 'string' && item.note.trim()) return true;
+  const kids: any[] =
+    item.chapters ?? item.topics ?? item.subtopics ?? item.concepts ?? item.points ?? [];
+  return kids.some(nodeHasAnyNote);
+}
+
+/** DFS traversal — always emits a heading for a level if it or any descendant
+ *  has a note, so the hierarchy is never broken (e.g. Chapter A heading always
+ *  appears before its topics even when the chapter itself has no note text). */
 function collectNoteSections(subject: Subject): NoteSection[] {
   const sections: NoteSection[] = [];
 
-  const push = (title: string, note: string | undefined, depth: number) => {
-    if (note && note.trim()) sections.push({ title, html: note, depth });
+  const add = (label: string, title: string, note: string | undefined, depth: number) => {
+    sections.push({ label, title, html: (note ?? '').trim() ? note! : '', depth });
   };
 
-  push(subject.title, subject.note, 0);
+  // Subject
+  if (!nodeHasAnyNote(subject)) return sections;
+  add('Subject', subject.title, subject.note, 0);
 
   for (const ch of (subject.chapters ?? [])) {
-    push(ch.title, ch.note, 1);
+    if (!nodeHasAnyNote(ch)) continue;
+    add('Chapter', ch.title, ch.note, 1);
+
     for (const tp of (ch.topics ?? [])) {
-      push(tp.title, tp.note, 2);
+      if (!nodeHasAnyNote(tp)) continue;
+      add('Topic', tp.title, tp.note, 2);
+
       for (const st of (tp.subtopics ?? [])) {
-        push(st.title, st.note, 3);
+        if (!nodeHasAnyNote(st)) continue;
+        add('Subtopic', st.title, st.note, 3);
+
         for (const co of (st.concepts ?? [])) {
-          push(co.title, co.note, 4);
+          if (!nodeHasAnyNote(co)) continue;
+          add('Concept', co.title, co.note, 4);
+
           for (const pt of (co.points ?? [])) {
-            push(pt.title, pt.note, 5);
+            if (!pt.note?.trim()) continue;   // points have no children — skip if no note
+            add('Point', pt.title, pt.note, 5);
           }
         }
       }
@@ -934,13 +960,14 @@ function collectNoteSections(subject: Subject): NoteSection[] {
   return sections;
 }
 
-function buildCompiledHtml(sections: NoteSection[]): string {
-  return sections.map(({ title, html }) => `
-    <div class="note-section">
-      <div class="section-heading">${title.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-      <div class="section-body">${html}</div>
-    </div>
-  `).join('');
+/** Build a single Tiptap-compatible HTML string from compiled sections — used
+ *  both for the "Save as Note" feature and as an alternative to dangerouslySetInnerHTML. */
+function sectionsToSaveHtml(sections: NoteSection[]): string {
+  return sections.map(({ label, title, html }) => {
+    const safeTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const heading = `<p style="text-align:center"><strong>${label} : ${safeTitle}</strong></p>`;
+    return html.trim() ? `${heading}${html}<p></p>` : `${heading}<p></p>`;
+  }).join('');
 }
 
 function SubjectNotesCompilerModal({
@@ -951,22 +978,48 @@ function SubjectNotesCompilerModal({
   onClose: () => void;
 }) {
   const { user } = useAuth();
-  const { isAdmin, appContact } = useAdmin();
+  const { appContact } = useAdmin();
+  const { createNotePage, saveNotePage } = useStudy();
 
   const [step, setStep] = useState<'pick' | 'view'>('pick');
   const [selected, setSelected] = useState<Subject | null>(null);
   const [sections, setSections] = useState<NoteSection[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [savedId, setSavedId] = useState<string | null>(null);
 
   const handleSelect = (subj: Subject) => {
-    const found = collectNoteSections(subj);
+    setSavedId(null);
     setSelected(subj);
-    setSections(found);
+    setSections(collectNoteSections(subj));
     setStep('view');
+  };
+
+  // Save compiled notes as a new re-openable note page
+  const handleSaveAsNote = async () => {
+    if (!selected || saving) return;
+    setSaving(true);
+    try {
+      const pageTitle = `${selected.title} — All Notes`;
+      const id = createNotePage(pageTitle);
+      const now = Date.now();
+      await saveNotePage({
+        id,
+        title: pageTitle,
+        elements: [],
+        pageCount: 1,
+        html: sectionsToSaveHtml(sections),
+        createdAt: now,
+        updatedAt: now,
+      });
+      setSavedId(id);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDownloadPdf = () => {
     if (!selected) return;
-    const safeTitle = (selected.title).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeTitle = selected.title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const now = new Date();
     const safeDate =
       now.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
@@ -974,89 +1027,76 @@ function SubjectNotesCompilerModal({
 
     const safeWebsite = (appContact.website || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const websiteSpan = safeWebsite
-      ? `<span>🌐 Website : <a href="${safeWebsite}">${safeWebsite}</a></span>`
-      : '';
+      ? `<span>🌐 Website : <a href="${safeWebsite}">${safeWebsite}</a></span>` : '';
     const whatsAppSpan = appContact.whatsapp
-      ? `<span>💬 WhatsApp : ${appContact.whatsapp}</span>`
-      : '';
+      ? `<span>💬 WhatsApp : ${appContact.whatsapp}</span>` : '';
     const printedBySpan = user?.email
-      ? `<span>🖨️ Printed by : ${user.email}</span>`
-      : '';
+      ? `<span>🖨️ Printed by : ${user.email}</span>` : '';
 
-    const footerInner = `<span>📝 Created by : StudyTrack team</span>${whatsAppSpan}${websiteSpan}${printedBySpan}`;
+    const footerInner =
+      `<span>📝 Created by : StudyTrack team</span>${whatsAppSpan}${websiteSpan}${printedBySpan}`;
     const footerFieldCount = (footerInner.match(/<span/g) || []).length;
     const footerTextLength = footerInner.replace(/<[^>]+>/g, '').length;
-    let footerFontSize = 12;
-    let footerGap = 24;
-    if (footerFieldCount >= 4 || footerTextLength > 110) { footerFontSize = 9; footerGap = 12; }
-    else if (footerFieldCount >= 3 || footerTextLength > 80) { footerFontSize = 10; footerGap = 16; }
-    else if (footerTextLength > 55) { footerFontSize = 11; footerGap = 20; }
+    let footerFontSize = 12, footerGap = 24;
+    if (footerFieldCount >= 4 || footerTextLength > 110) { footerFontSize = 9;  footerGap = 12; }
+    else if (footerFieldCount >= 3 || footerTextLength > 80)  { footerFontSize = 10; footerGap = 16; }
+    else if (footerTextLength > 55)                           { footerFontSize = 11; footerGap = 20; }
 
     const sectionsHtml = sections.length
-      ? sections.map(({ title, html }) => `
+      ? sections.map(({ label, title, html }) => {
+          const safeT = title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          return `
           <div class="note-section">
-            <div class="section-heading">${title.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-            <div class="section-body">${html}</div>
-          </div>`).join('')
+            <div class="section-heading">${label} : ${safeT}</div>
+            ${html ? `<div class="section-body">${html}</div>` : ''}
+          </div>`;
+        }).join('')
       : '<p style="color:#9ca3af">No notes found in this subject.</p>';
 
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>${safeTitle}</title>
-  <style>
-    @page { size: A4; margin: 0 0 26px 0; }
-    @page { @bottom-right { content: counter(page) " / " counter(pages); font-size: 10px; color: #9ca3af;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 4px 10px 0 0; } }
-    * { box-sizing: border-box; margin: 0; padding: 0;
-        -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    html, body { width: 100%; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, Helvetica, sans-serif;
-      color: #111; text-rendering: geometricPrecision; }
-    *, p, span, li, td, th, h1, h2, h3, blockquote {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, Helvetica, sans-serif !important; }
-    table.pdf-layout { width: 100%; border-collapse: collapse; }
-    thead { display: table-header-group; } tfoot { display: table-footer-group; } tbody { display: table-row-group; }
-    .pdf-header-cell { height: 44px; vertical-align: middle; font-size: 12px; background: #f9fafb;
-      border-bottom: 1px solid #e5e7eb; padding: 0 48px; }
-    .pdf-header-spacer { height: 24px; background: #fff; }
-    .pdf-header-inner { display: flex; align-items: center; justify-content: space-between; height: 100%; }
-    .pdf-header-date { color: #6b7280; font-weight: 400; }
-    .pdf-header-title { color: #374151; font-weight: 600; text-align: right; }
-    .pdf-footer-cell { height: 44px; vertical-align: middle; font-size: ${footerFontSize}px;
-      color: #6b7280; background: #f9fafb; border-top: 1px solid #e5e7eb; overflow: hidden; }
-    .pdf-footer-inner { display: flex; flex-wrap: nowrap; align-items: center; justify-content: center;
-      gap: ${footerGap}px; height: 100%; white-space: nowrap; padding: 0 10px; }
-    .pdf-footer-inner span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0; }
-    .pdf-content-cell { padding: 36px 48px 28px; }
-    h1 { font-size: 22px; font-weight: bold; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }
-    p { margin-bottom: 10px; line-height: 1.7; font-size: 14px; }
-    strong { font-weight: bold; } em { font-style: italic; } u { text-decoration: underline; }
-    ul, ol { padding-left: 22px; margin-bottom: 10px; }
-    li { margin-bottom: 4px; font-size: 14px; line-height: 1.6; }
-    h2 { font-size: 18px; font-weight: bold; margin: 20px 0 10px; }
-    h3 { font-size: 16px; font-weight: bold; margin: 16px 0 8px; }
-    a { color: #2563eb; text-decoration: underline; }
-    .pdf-content-cell table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-    .pdf-content-cell th, .pdf-content-cell td { border: 1px solid #d1d5db; padding: 6px 10px; font-size: 13px; }
-    .pdf-content-cell th { background: #f9fafb; font-weight: bold; }
-    mark { display: inline; border-radius: 2px; padding: 0 1px; }
-    /* Compiled-notes specific styles */
-    .note-section { margin-bottom: 28px; }
-    .section-heading {
-      font-weight: bold;
-      font-size: 16px;
-      text-align: center;
-      margin-bottom: 8px;
-      padding-bottom: 4px;
-      border-bottom: 1px solid #e5e7eb;
-      color: #1e1b4b;
-    }
-    .section-body { font-size: 14px; line-height: 1.7; }
-  </style>
-</head>
-<body>
+    const pdfHtml = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>${safeTitle}</title>
+<style>
+  @page { size: A4; margin: 0 0 26px 0; }
+  @page { @bottom-right { content: counter(page) " / " counter(pages); font-size:10px; color:#9ca3af;
+    font-family:sans-serif; padding:4px 10px 0 0; } }
+  * { box-sizing:border-box; margin:0; padding:0;
+      -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+  html,body { width:100%; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;
+    color:#111; text-rendering:geometricPrecision; }
+  *,p,span,li,td,th,h1,h2,h3,blockquote {
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif !important; }
+  table.pdf-layout { width:100%; border-collapse:collapse; }
+  thead { display:table-header-group; } tfoot { display:table-footer-group; } tbody { display:table-row-group; }
+  .pdf-header-cell { height:44px; vertical-align:middle; font-size:12px; background:#f9fafb;
+    border-bottom:1px solid #e5e7eb; padding:0 48px; }
+  .pdf-header-spacer { height:24px; background:#fff; }
+  .pdf-header-inner { display:flex; align-items:center; justify-content:space-between; height:100%; }
+  .pdf-header-date { color:#6b7280; font-weight:400; }
+  .pdf-header-title { color:#374151; font-weight:600; text-align:right; }
+  .pdf-footer-cell { height:44px; vertical-align:middle; font-size:${footerFontSize}px;
+    color:#6b7280; background:#f9fafb; border-top:1px solid #e5e7eb; overflow:hidden; }
+  .pdf-footer-inner { display:flex; flex-wrap:nowrap; align-items:center; justify-content:center;
+    gap:${footerGap}px; height:100%; white-space:nowrap; padding:0 10px; }
+  .pdf-footer-inner span { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; flex-shrink:0; }
+  .pdf-content-cell { padding:36px 48px 28px; }
+  h1 { font-size:22px; font-weight:bold; margin-bottom:24px; padding-bottom:12px; border-bottom:2px solid #e5e7eb; }
+  p { margin-bottom:10px; line-height:1.7; font-size:14px; }
+  strong { font-weight:bold; } em { font-style:italic; } u { text-decoration:underline; }
+  ul,ol { padding-left:22px; margin-bottom:10px; }
+  li { margin-bottom:4px; font-size:14px; line-height:1.6; }
+  h2 { font-size:18px; font-weight:bold; margin:20px 0 10px; }
+  h3 { font-size:16px; font-weight:bold; margin:16px 0 8px; }
+  a { color:#2563eb; text-decoration:underline; }
+  .pdf-content-cell table { width:100%; border-collapse:collapse; margin-bottom:12px; }
+  .pdf-content-cell th,.pdf-content-cell td { border:1px solid #d1d5db; padding:6px 10px; font-size:13px; }
+  .pdf-content-cell th { background:#f9fafb; font-weight:bold; }
+  mark { display:inline; border-radius:2px; padding:0 1px; }
+  .note-section { margin-bottom:32px; }
+  .section-heading { font-weight:bold; font-size:15px; text-align:center;
+    margin-bottom:10px; padding-bottom:5px; border-bottom:1px solid #e5e7eb; color:#1e1b4b; }
+  .section-body { font-size:14px; line-height:1.7; }
+</style></head><body>
 <table class="pdf-layout">
   <thead>
     <tr><td class="pdf-header-cell">
@@ -1079,12 +1119,11 @@ function SubjectNotesCompilerModal({
     </td></tr>
   </tbody>
 </table>
-</body>
-</html>`;
+</body></html>`;
 
     const win = window.open('', '_blank');
     if (!win) return;
-    win.document.write(html);
+    win.document.write(pdfHtml);
     win.document.close();
     let printed = false;
     const doPrint = () => { if (printed) return; printed = true; win.focus(); win.print(); };
@@ -1101,36 +1140,54 @@ function SubjectNotesCompilerModal({
       onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-card border border-border/60 rounded-2xl shadow-2xl flex flex-col w-full max-w-2xl max-h-[90vh] overflow-hidden">
-        {/* Header */}
+
+        {/* ── Header ── */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Library size={18} className="text-primary" />
             <span className="font-semibold text-base text-foreground">
-              {step === 'pick' ? 'Select Subject' : (selected?.title ?? 'Notes')}
+              {step === 'pick' ? 'সাবজেক্ট বাছাই করুন' : (selected?.title ?? 'Notes')}
             </span>
-            {step === 'view' && (
+            {step === 'view' && sections.length > 0 && (
               <span className="text-xs text-muted-foreground ml-1">
-                ({sections.length} section{sections.length !== 1 ? 's' : ''} with notes)
+                ({sections.length}টি সেকশন)
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1">
-            {step === 'view' && (
+          <div className="flex items-center gap-1.5">
+            {step === 'view' && sections.length > 0 && (
               <>
+                {/* Save as note */}
+                {savedId ? (
+                  <span className="text-xs text-emerald-600 font-medium px-2">✓ সেভ হয়েছে</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSaveAsNote}
+                    disabled={saving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-medium transition-colors disabled:opacity-50"
+                    title="নোট হিসেবে সেভ করুন এবং পরে খুলুন"
+                  >
+                    <StickyNote size={12} />
+                    {saving ? 'সেভ হচ্ছে…' : 'নোট হিসেবে সেভ'}
+                  </button>
+                )}
+                {/* Download PDF */}
                 <button
                   type="button"
-                  title="Download as PDF"
                   onClick={handleDownloadPdf}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium transition-colors mr-2"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium transition-colors"
+                  title="PDF ডাউনলোড"
                 >
-                  <FileDown size={13} />
-                  Download PDF
+                  <FileDown size={12} />
+                  PDF
                 </button>
+                {/* Back */}
                 <button
                   type="button"
-                  title="Back to subject list"
-                  onClick={() => setStep('pick')}
+                  onClick={() => { setStep('pick'); setSavedId(null); }}
                   className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  title="ফিরে যান"
                 >
                   <ChevronUp size={15} />
                 </button>
@@ -1138,21 +1195,23 @@ function SubjectNotesCompilerModal({
             )}
             <button
               type="button"
-              title="Close"
               onClick={onClose}
               className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+              title="বন্ধ করুন"
             >
               <X size={15} />
             </button>
           </div>
         </div>
 
-        {/* Body */}
+        {/* ── Body ── */}
         <div className="flex-1 overflow-y-auto">
           {step === 'pick' ? (
             <div className="p-4">
               {subjects.length === 0 ? (
-                <p className="text-center text-muted-foreground text-sm py-8">No subjects found in this course.</p>
+                <p className="text-center text-muted-foreground text-sm py-8">
+                  এই কোর্সে কোনো সাবজেক্ট নেই।
+                </p>
               ) : (
                 <div className="space-y-2">
                   {subjects.map(subj => (
@@ -1176,23 +1235,23 @@ function SubjectNotesCompilerModal({
             <div className="p-5">
               {sections.length === 0 ? (
                 <p className="text-center text-muted-foreground text-sm py-8">
-                  No notes found in this subject yet.
+                  এই সাবজেক্টে এখনো কোনো নোট নেই।
                 </p>
               ) : (
                 <div className="space-y-6">
                   {sections.map((sec, i) => (
-                    <div key={i} className="note-compiled-section">
-                      {/* Centered bold heading */}
-                      <div
-                        className="font-bold text-center text-base text-foreground mb-2 pb-2 border-b border-border/40"
-                      >
-                        {sec.title}
+                    <div key={i}>
+                      {/* Centered bold heading with level label */}
+                      <div className="font-bold text-center text-sm text-foreground mb-2 pb-2 border-b border-border/40">
+                        {sec.label} : {sec.title}
                       </div>
-                      {/* Note body rendered as HTML */}
-                      <div
-                        className="rich-editor-content text-sm text-foreground leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: sec.html }}
-                      />
+                      {/* Note body — only shown if there's actual content */}
+                      {sec.html && (
+                        <div
+                          className="rich-editor-content text-sm text-foreground leading-relaxed"
+                          dangerouslySetInnerHTML={{ __html: sec.html }}
+                        />
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1200,6 +1259,15 @@ function SubjectNotesCompilerModal({
             </div>
           )}
         </div>
+
+        {/* ── Save success footer ── */}
+        {savedId && (
+          <div className="px-5 py-3 border-t border-border/50 bg-emerald-500/5 flex items-center justify-between flex-shrink-0">
+            <span className="text-xs text-emerald-700 dark:text-emerald-400">
+              ✓ নোট সেভ হয়েছে — Notes পেজ থেকে খুলতে পারবেন।
+            </span>
+          </div>
+        )}
       </div>
     </div>,
     document.body

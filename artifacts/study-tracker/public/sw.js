@@ -5,7 +5,7 @@
    - Same-origin static assets (JS/CSS/images/fonts): stale-while-revalidate.
    - Firestore/Firebase API calls: never intercepted (Firebase has its own offline persistence).
 */
-const VERSION = 'studytrack-v3';
+const VERSION = 'studytrack-v4';
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 const SHELL = ['/', '/index.html', '/favicon.svg', '/manifest.webmanifest'];

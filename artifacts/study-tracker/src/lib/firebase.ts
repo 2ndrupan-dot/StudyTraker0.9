@@ -1,7 +1,12 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
-import { initializeFirestore, memoryLocalCache } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  getFirestore,
+  memoryLocalCache,
+  enableNetwork,
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,7 +17,12 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const app = initializeApp(firebaseConfig);
+// HMR-safe singleton: during Vite hot-module-replacement the module is
+// re-executed, so Firebase would throw "App '[DEFAULT]' already exists" and
+// "initializeFirestore() has already been called" if we blindly re-initialize.
+// Check whether the app / Firestore already exist before creating new ones.
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
@@ -31,10 +41,30 @@ export const googleProvider = new GoogleAuthProvider();
 //   • No IndexedDB corruption or accumulation is possible.
 //   • Real-time onSnapshot still works normally for cross-device sync.
 //   • Offline reads fall back to localStorage (already implemented).
-const firestore = initializeFirestore(app, {
-  localCache: memoryLocalCache(),
-});
+let firestore;
+try {
+  // First call on this app instance — configure with memory cache.
+  firestore = initializeFirestore(app, { localCache: memoryLocalCache() });
+} catch {
+  // HMR re-execution: Firestore is already initialized, just reuse it.
+  firestore = getFirestore(app);
+}
 
 export const db = firestore;
 export const storage = getStorage(app);
 export default app;
+
+// ─── Firestore reconnection on tab visibility ────────────────────────────────
+// When the user navigates away (PDF window, another site, etc.) the browser
+// can suspend the Firestore WebSocket. On return, `enableNetwork` explicitly
+// wakes it back up so listeners and writes resume immediately without a page
+// reload.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      enableNetwork(firestore).catch(() => {
+        // Silently ignore — the SDK retries automatically.
+      });
+    }
+  });
+}

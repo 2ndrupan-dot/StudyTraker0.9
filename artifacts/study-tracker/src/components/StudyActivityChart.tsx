@@ -17,7 +17,7 @@ import {
 } from 'recharts';
 import { TrendingUp } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useLang } from '@/context/LangContext';
 
@@ -45,14 +45,6 @@ function lsSave(uid: string, courseId: string, snaps: SnapMap) {
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 function fsRef(uid: string, courseId: string) {
   return doc(db, 'users', uid, 'activitySnapshots', courseId);
-}
-async function fsLoad(uid: string, courseId: string): Promise<SnapMap> {
-  try {
-    const snap = await getDoc(fsRef(uid, courseId));
-    return (snap.exists() ? (snap.data()?.snaps ?? {}) : {}) as SnapMap;
-  } catch {
-    return {};
-  }
 }
 async function fsSave(uid: string, courseId: string, snaps: SnapMap) {
   try {
@@ -129,22 +121,34 @@ export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
   // track whether we've already written today's value (avoid re-writing unchanged data)
   const lastWritten = useRef<number>(-1);
 
-  // ── On mount: fetch Firestore and merge ──────────────────────────────────────
+  // ── Real-time Firestore listener ─────────────────────────────────────────────
+  // onSnapshot fires immediately with current data, then again on every remote
+  // change — giving true cross-device live sync without any polling.
   useEffect(() => {
     if (!uid || !courseId) return;
-    // Show localStorage immediately, then overlay Firestore data
+
+    // Show localStorage instantly while Firestore connects
     const local = lsLoad(uid, courseId);
     setSnaps(local);
 
-    fsLoad(uid, courseId).then(remote => {
-      // Merge: take the higher value for each date
-      const merged: SnapMap = { ...local };
-      for (const [k, v] of Object.entries(remote)) {
-        merged[k] = Math.max(merged[k] ?? 0, v);
-      }
-      setSnaps(merged);
-      lsSave(uid, courseId, merged); // update local cache with remote data
-    });
+    const unsub = onSnapshot(
+      fsRef(uid, courseId),
+      (snap) => {
+        const remote = (snap.exists() ? (snap.data()?.snaps ?? {}) : {}) as SnapMap;
+        setSnaps(prev => {
+          // Merge: highest value wins for each date
+          const merged: SnapMap = { ...prev };
+          for (const [k, v] of Object.entries(remote)) {
+            merged[k] = Math.max(merged[k] ?? 0, v);
+          }
+          lsSave(uid, courseId, merged);
+          return merged;
+        });
+      },
+      () => { /* offline — keep showing localStorage data */ }
+    );
+
+    return () => unsub(); // clean up listener on unmount / courseId change
   }, [uid, courseId]);
 
   // ── Save today's snapshot whenever overallProg changes ──────────────────────

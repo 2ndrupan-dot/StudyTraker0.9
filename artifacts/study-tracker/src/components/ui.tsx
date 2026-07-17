@@ -551,10 +551,23 @@ export const NoteEditorModal = ({
     /* Force all background colours and text colours to print — essential for
        highlights (Tiptap <mark style="background-color:…">) and coloured text
        (<span style="color:…">) to appear correctly in the saved PDF. */
-    /* margin:0 suppresses ALL browser-native headers/footers (date, URL, page#, title).
+    /* margin:0 on left/top/right suppresses browser-native headers/URL/title.
+       A small bottom margin carves out space for the @bottom-right page-number box.
        thead/tfoot table trick makes header+footer repeat natively on every printed page
        without content ever overlapping them. */
-    @page { size: A4; margin: 0; }
+    @page {
+      size: A4;
+      margin: 0 0 26px 0;
+    }
+    @page {
+      @bottom-right {
+        content: counter(page) " / " counter(pages);
+        font-size: 10px;
+        color: #9ca3af;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, Helvetica, sans-serif;
+        padding: 4px 10px 0 0;
+      }
+    }
     * { box-sizing: border-box; margin: 0; padding: 0;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important; }
@@ -618,38 +631,19 @@ export const NoteEditorModal = ({
       background: #f9fafb;
       border-top: 1px solid #e5e7eb;
       overflow: hidden;
-      padding: 0;
-    }
-    .pdf-footer-wrapper {
-      display: flex;
-      align-items: center;
-      height: 100%;
-      padding: 0 10px;
     }
     .pdf-footer-inner {
-      flex: 1;
       display: flex;
       flex-wrap: nowrap;
       align-items: center;
       justify-content: center;
       gap: ${footerGap}px;
+      height: 100%;
       white-space: nowrap;
-      overflow: hidden;
+      padding: 0 10px;
     }
     .pdf-footer-inner span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0; }
     .pdf-footer-inner a { white-space: nowrap; }
-    /* Page number — bottom-right corner of every page */
-    .pdf-page-num {
-      min-width: 52px;
-      text-align: right;
-      font-size: 10px;
-      color: #9ca3af;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .pdf-page-num::after {
-      content: counter(page) " / " counter(pages);
-    }
 
     /* ── Content cell ── */
     .pdf-content-cell { padding: 36px 48px 28px; }
@@ -699,11 +693,8 @@ export const NoteEditorModal = ({
   </thead>
   <tfoot>
     <tr><td class="pdf-footer-cell">
-      <div class="pdf-footer-wrapper">
-        <div class="pdf-footer-inner">
-          ${footerInner}
-        </div>
-        <span class="pdf-page-num"></span>
+      <div class="pdf-footer-inner">
+        ${footerInner}
       </div>
     </td></tr>
   </tfoot>

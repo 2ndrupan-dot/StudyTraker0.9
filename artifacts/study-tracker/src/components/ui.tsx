@@ -559,7 +559,20 @@ export const NoteEditorModal = ({
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important; }
     html, body { width: 100%; }
-    body { font-family: Georgia, 'Times New Roman', serif; color: #111; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, Helvetica, sans-serif;
+      color: #111;
+      text-rendering: geometricPrecision;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      font-synthesis: none;
+    }
+    /* Ensure all content uses the same system font so the browser
+       never has to fall back to a rasterised web-font path */
+    *, p, span, li, td, th, h1, h2, h3, blockquote {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, Helvetica, sans-serif !important;
+      text-rendering: geometricPrecision;
+    }
 
     /* ── Layout table ── */
     table.pdf-layout { width: 100%; border-collapse: collapse; }
@@ -689,12 +702,27 @@ export const NoteEditorModal = ({
     win.document.write(html);
     win.document.close();
 
-    win.addEventListener('load', () => {
+    // Wait for all fonts to be ready before printing — this ensures the
+    // browser's print engine renders text as crisp vector outlines instead
+    // of falling back to a rasterised bitmap path when fonts aren't settled.
+    let printed = false;
+    const doPrint = () => {
+      if (printed) return;
+      printed = true;
       win.focus();
-      setTimeout(() => win.print(), 150);
+      win.print();
+    };
+
+    win.addEventListener('load', () => {
+      const fonts = (win.document as any).fonts as FontFaceSet | undefined;
+      if (fonts) {
+        fonts.ready.then(doPrint);
+      } else {
+        setTimeout(doPrint, 200);
+      }
     });
-    // Safety fallback — some browsers fire load before resources settle.
-    setTimeout(() => { win.focus(); win.print(); }, 800);
+    // Safety fallback in case the load event never fires (some popup blockers).
+    setTimeout(doPrint, 1500);
   };
 
   const handleCopy = React.useCallback(async () => {

@@ -1641,6 +1641,7 @@ export function Subjects() {
         placeholder={t('notePlaceholder')}
         clearLabel={t('clearNote')}
         saveLabel={t('saveNote')}
+        hideCompiler
         editAllowed={!activeSharedMeta || activeSharedMeta.permissions.editNotes}
         downloadAllowed={!activeSharedMeta || activeSharedMeta.permissions.downloadNotes}
         copyAllowed={!activeSharedMeta || activeSharedMeta.permissions.copyNotes}

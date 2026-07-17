@@ -336,7 +336,7 @@ function SearchBar({
 export const NoteEditorModal = ({
   isOpen, onClose, value, onChange, onClear, onSave,
   title, placeholder, clearLabel, saveLabel, icon: Icon, breadcrumb, notePath, copyAllowed,
-  downloadAllowed, editAllowed,
+  downloadAllowed, editAllowed, hideCompiler,
   pdfUserEmail, pdfIsAdmin, pdfIsShared, pdfWhatsApp, pdfWebsite,
 }: {
   isOpen: boolean;
@@ -359,6 +359,8 @@ export const NoteEditorModal = ({
   downloadAllowed?: boolean;
   /** When false, the edit/pencil button is hidden (shared content permission enforcement) */
   editAllowed?: boolean;
+  /** When true, the subject-library compiler button inside the editor is hidden */
+  hideCompiler?: boolean;
   // PDF footer context — determines what appears at the bottom of downloaded PDFs
   pdfUserEmail?: string;
   pdfIsAdmin?: boolean;
@@ -911,6 +913,7 @@ export const NoteEditorModal = ({
                             placeholder={placeholder}
                             className="flex-1 min-h-0"
                             autoFocus
+                            hideCompiler={hideCompiler}
                           />
                           <div className="flex gap-2 shrink-0">
                             <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>
@@ -991,6 +994,7 @@ export const NoteEditorModal = ({
                           minHeight="7rem"
                           maxHeight="45vh"
                           autoFocus
+                          hideCompiler={hideCompiler}
                         />
                         <div className="flex gap-2 shrink-0">
                           <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>

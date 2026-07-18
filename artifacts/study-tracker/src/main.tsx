@@ -3,6 +3,21 @@ import React from "react";
 import App from "./App";
 import "./index.css";
 
+// ─── Dev-only: suppress Firestore HMR assertion errors ───────────────────────
+// During Vite HMR, context modules (AuthContext, StudyContext, …) get
+// re-executed while old Firestore listeners are still alive, triggering
+// "INTERNAL ASSERTION FAILED: Unexpected state (ID: da08)".
+// This is a development-only artefact — it never occurs in production builds.
+// We silence it here so the Vite error overlay doesn't block the screen.
+if (import.meta.env.DEV) {
+  window.addEventListener('unhandledrejection', (e) => {
+    const msg: string = e?.reason?.message ?? '';
+    if (msg.includes('FIRESTORE') && msg.includes('INTERNAL ASSERTION FAILED')) {
+      e.preventDefault(); // stops Vite runtime-error-plugin from catching it
+    }
+  });
+}
+
 // Browsers restore the previous scroll offset on refresh/back-forward nav
 // before layout (fonts, images, async data) has finished settling. Combined
 // with our sticky section headers, that stale offset makes the header appear

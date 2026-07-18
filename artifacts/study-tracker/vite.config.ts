@@ -12,11 +12,32 @@ const basePath = process.env.BASE_PATH || "/";
 const isReplit = process.env.REPL_ID !== undefined;
 const isDev = process.env.NODE_ENV !== "production";
 
+// ─── Dev-only: suppress Firestore HMR assertion errors in the overlay ────────
+// "da08" fires when HMR re-executes context modules while old Firestore
+// WebSocket listeners are still alive. It is harmless (the page self-recovers)
+// but the Replit runtime-error overlay intercepts `unhandledrejection` before
+// any app-level handler can call `e.preventDefault()`.
+// Injecting an inline <script> at the very top of <head> (order: 'pre') puts
+// our capture-phase handler ahead of every plugin or module script.
+const suppressFirestoreHmrError = {
+  name: 'suppress-firestore-hmr-error',
+  transformIndexHtml: {
+    order: 'pre' as const,
+    handler: () => isDev ? [{
+      tag: 'script',
+      attrs: { type: 'text/javascript' },
+      injectTo: 'head-prepend' as const,
+      children: `window.addEventListener('unhandledrejection',function(e){var m=e&&e.reason&&e.reason.message||'';if(m.indexOf('FIRESTORE')>-1&&m.indexOf('INTERNAL ASSERTION FAILED')>-1){e.preventDefault();e.stopImmediatePropagation();}},{capture:true});`,
+    }] : [],
+  },
+};
+
 export default defineConfig({
   base: basePath,
   plugins: [
     react(),
     tailwindcss(),
+    suppressFirestoreHmrError,
     // Replit-only dev plugins — never included in production builds
     ...(isDev && isReplit
       ? [

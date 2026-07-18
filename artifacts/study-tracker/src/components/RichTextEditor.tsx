@@ -1484,7 +1484,28 @@ export function RichTextEditor({
     },
     onTransaction: () => setTick(t => t + 1),
     autofocus: autoFocus,
-    editorProps: { attributes: { class: 'rich-editor-content outline-none', spellcheck: 'false' } },
+    editorProps: {
+      attributes: { class: 'rich-editor-content outline-none', spellcheck: 'false' },
+      // Strip font-size from every element when pasting from external sources
+      // (Word, Google Docs, websites, etc.) so the editor's own size settings
+      // are never overridden by whatever the source happened to use.
+      transformPastedHTML(html: string): string {
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        div.querySelectorAll<HTMLElement>('*').forEach(el => {
+          el.style.removeProperty('font-size');
+          // Also remove Word/Docs span wrappers that carry only a font-size
+          if (
+            el.tagName === 'SPAN' &&
+            !el.getAttribute('style') &&
+            !el.className
+          ) {
+            el.replaceWith(...Array.from(el.childNodes));
+          }
+        });
+        return div.innerHTML;
+      },
+    },
   });
 
   useEffect(() => {

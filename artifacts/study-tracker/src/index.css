@@ -309,7 +309,7 @@ mark.search-hl.search-hl-active { background-color: #f97316; color: #fff; }
   vertical-align: top;
   min-width: 60px;
   position: relative;
-  font-size: 0.875rem;
+  font-size: inherit;
 }
 .rich-editor-content th {
   background: hsl(var(--secondary));

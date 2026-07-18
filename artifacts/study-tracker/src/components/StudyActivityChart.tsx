@@ -1,7 +1,7 @@
 /**
  * StudyActivityChart
  *
- * Shows a Week (Sat→Fri) / Month (4-week average) bar chart of daily progress %.
+ * Shows a Week (Sun→Sat) / Month (4-week average) bar chart of daily progress %.
  *
  * Storage strategy (cross-device sync):
  *   • Primary:  Firestore  `users/{uid}/activitySnapshots/{courseId}`
@@ -57,21 +57,30 @@ function fmt(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// Week runs Saturday → Friday (JS getDay(): 0=Sun … 6=Sat)
-function daysSinceSat(d: Date): number { return (d.getDay() + 1) % 7; }
+// Week runs Sunday → Saturday (JS getDay(): 0=Sun … 6=Sat)
+function daysSinceSun(d: Date): number { return d.getDay(); }
 
 function getWeekDates(anchor: Date): Date[] {
-  const off = daysSinceSat(anchor);
+  const off = daysSinceSun(anchor);
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(anchor); d.setDate(d.getDate() - off + i); return d;
   });
 }
 
+// Returns `count` calendar weeks (each Sun–Sat) ending with the current week.
+// Weeks align to real calendar boundaries, not rolling 7-day windows.
 function getMonthWeeks(today: Date, count = 4): { label: string; dates: Date[] }[] {
   const groups: { label: string; dates: Date[] }[] = [];
+  // Find Sunday of the current week
+  const currentSunday = new Date(today);
+  currentSunday.setDate(today.getDate() - today.getDay());
+
   for (let w = count - 1; w >= 0; w--) {
-    const ref = new Date(today); ref.setDate(ref.getDate() - w * 7);
-    const dates = getWeekDates(ref).filter(d => d <= today);
+    const weekStart = new Date(currentSunday);
+    weekStart.setDate(currentSunday.getDate() - w * 7);
+    const dates = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(weekStart); d.setDate(weekStart.getDate() + i); return d;
+    }).filter(d => d <= today);
     if (dates.length) groups.push({ label: `W${count - w}`, dates });
   }
   return groups;
@@ -202,10 +211,10 @@ export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
     fsSave(uid, courseId, updated);
   }, [uid, courseId, overallProg, todayStr]); // intentionally exclude `snaps`
 
-  // ── Day labels (Sat-first) ───────────────────────────────────────────────────
+  // ── Day labels (Sun-first) ───────────────────────────────────────────────────
   const dayLabels = useMemo(() => [
-    t('activityDaySat'), t('activityDaySun'), t('activityDayMon'),
-    t('activityDayTue'), t('activityDayWed'), t('activityDayThu'), t('activityDayFri'),
+    t('activityDaySun'), t('activityDayMon'), t('activityDayTue'),
+    t('activityDayWed'), t('activityDayThu'), t('activityDayFri'), t('activityDaySat'),
   ], [lang]);
 
   // ── Build chart data ─────────────────────────────────────────────────────────

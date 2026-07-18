@@ -235,6 +235,20 @@ html, body {
   line-height: 1.65;
   word-break: break-word;
 }
+
+/*
+ * When the global note-size setting is active, it must win over any inline
+ * font-size styles stored inside the note HTML (e.g. from the toolbar's
+ * FontSizeSelect or from pasted content). The .note-size-locked class is added
+ * to the outer wrapper whenever settings.globalNoteSize is set, causing every
+ * element inside .rich-editor-content to render at the global size.
+ * Inline sizes are still stored in the HTML (so they survive if the user later
+ * clears the global setting), but they are visually suppressed while the
+ * global setting is active.
+ */
+.note-size-locked .rich-editor-content * {
+  font-size: var(--note-size) !important;
+}
 .rich-editor-content p { margin: 0 0 0.35em; }
 .rich-editor-content p:last-child { margin-bottom: 0; }
 .rich-editor-content strong { font-weight: 700; }

@@ -1555,7 +1555,7 @@ export function RichTextEditor({
 
   return (
     <div
-      className={cn('flex flex-col rounded-xl border border-border/60 bg-background overflow-hidden', className)}
+      className={cn('flex flex-col rounded-xl border border-border/60 bg-background overflow-hidden', className, settings?.globalNoteSize ? 'note-size-locked' : undefined)}
       style={settings?.globalNoteSize ? { '--note-size': settings.globalNoteSize } as React.CSSProperties : undefined}
     >
       {/* ── Toolbar ── */}
@@ -1845,7 +1845,10 @@ export function RichTextPreview({
   }, [editor, onNoteRef]);
 
   return (
-    <div style={settings?.globalNoteSize ? { '--note-size': settings.globalNoteSize } as React.CSSProperties : undefined}>
+    <div
+      className={settings?.globalNoteSize ? 'note-size-locked' : undefined}
+      style={settings?.globalNoteSize ? { '--note-size': settings.globalNoteSize } as React.CSSProperties : undefined}
+    >
       <EditorContent editor={editor} />
     </div>
   );

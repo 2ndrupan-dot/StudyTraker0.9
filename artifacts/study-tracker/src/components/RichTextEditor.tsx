@@ -1790,7 +1790,11 @@ export function RichTextPreview({
     editable: false,
     editorProps: {
       attributes: {
-        class: cn('rich-editor-content text-sm text-foreground outline-none', className),
+        // text-sm / text-base intentionally omitted: font-size is controlled
+        // exclusively via the --note-size CSS variable (set on the wrapper div
+        // from settings.globalNoteSize) so that the global note-size setting
+        // applies here. Fallback 14px is defined in .rich-editor-content rule.
+        class: cn('rich-editor-content text-foreground outline-none', className),
       },
     },
   });

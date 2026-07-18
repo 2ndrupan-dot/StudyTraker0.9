@@ -923,7 +923,7 @@ export const NoteEditorModal = ({
                       ) : (
                         <div className="flex-1 overflow-y-auto" ref={previewContainerRef}>
                           {value ? (
-                            <RichTextPreview html={value} className="text-base leading-relaxed" onNoteRef={handleNoteRef} />
+                            <RichTextPreview html={value} className="leading-relaxed" onNoteRef={handleNoteRef} />
                           ) : (
                             <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
                               <Pencil size={32} className="opacity-30" />
@@ -1004,7 +1004,7 @@ export const NoteEditorModal = ({
                     ) : (
                       <div className="min-h-[7rem]">
                         {value ? (
-                          <RichTextPreview html={value} className="text-sm leading-relaxed" onNoteRef={handleNoteRef} />
+                          <RichTextPreview html={value} className="leading-relaxed" onNoteRef={handleNoteRef} />
                         ) : (
                           <div className="flex flex-col items-center justify-center h-28 gap-2 text-muted-foreground">
                             <Pencil size={24} className="opacity-30" />

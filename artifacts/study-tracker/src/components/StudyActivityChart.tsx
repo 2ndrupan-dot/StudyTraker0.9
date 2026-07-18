@@ -67,22 +67,41 @@ function getWeekDates(anchor: Date): Date[] {
   });
 }
 
-// Returns `count` calendar weeks (each Sun–Sat) ending with the current week.
-// Weeks align to real calendar boundaries, not rolling 7-day windows.
-function getMonthWeeks(today: Date, count = 4): { label: string; dates: Date[] }[] {
-  const groups: { label: string; dates: Date[] }[] = [];
-  // Find Sunday of the current week
-  const currentSunday = new Date(today);
-  currentSunday.setDate(today.getDate() - today.getDay());
+// Returns all calendar weeks (each Sun–Sat) of the current month.
+// Each group carries the real week-of-month number (W1, W2, … W5).
+// Only dates within the current month are included; future weeks are kept
+// so the chart always shows the full month layout.
+function getMonthWeeks(today: Date): { weekNum: number; dates: Date[] }[] {
+  const year = today.getFullYear();
+  const month = today.getMonth();
 
-  for (let w = count - 1; w >= 0; w--) {
-    const weekStart = new Date(currentSunday);
-    weekStart.setDate(currentSunday.getDate() - w * 7);
-    const dates = Array.from({ length: 7 }, (_, i) => {
+  const firstOfMonth = new Date(year, month, 1);
+  // Walk back to the Sunday that opens the first calendar week containing this month
+  const firstSunday = new Date(firstOfMonth);
+  firstSunday.setDate(firstOfMonth.getDate() - firstOfMonth.getDay());
+
+  const lastOfMonth = new Date(year, month + 1, 0); // last day of month
+
+  const groups: { weekNum: number; dates: Date[] }[] = [];
+  let weekStart = new Date(firstSunday);
+  let weekNum = 1;
+
+  while (weekStart <= lastOfMonth) {
+    // Keep only dates that actually fall in the current month
+    const datesInMonth = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(weekStart); d.setDate(weekStart.getDate() + i); return d;
-    }).filter(d => d <= today);
-    if (dates.length) groups.push({ label: `W${count - w}`, dates });
+    }).filter(d => d.getMonth() === month);
+
+    if (datesInMonth.length) {
+      groups.push({ weekNum, dates: datesInMonth });
+      weekNum++;
+    }
+
+    const next = new Date(weekStart);
+    next.setDate(weekStart.getDate() + 7);
+    weekStart = next;
   }
+
   return groups;
 }
 
@@ -252,17 +271,19 @@ export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
       });
     }
 
-    // Month view: 4 weekly totals (sum of daily increments for each week)
-    return getMonthWeeks(today, 4).map((wk, wi) => {
+    // Month view: weekly totals for each calendar week of the current month.
+    // weekNum is the real week-of-month (W1…W5), future weeks show 0.
+    return getMonthWeeks(today).map((wk) => {
+      const allFuture = wk.dates.every(d => d > today);
       const weekTotal = wk.dates.reduce(
-        (sum, d) => sum + dayIncrement(fmt(d)),
+        (sum, d) => sum + (d <= today ? dayIncrement(fmt(d)) : 0),
         0,
       );
       return {
-        label: `${t('activityWeekLabel')} ${wi + 1}`,
+        label: `${t('activityWeekLabel')} ${wk.weekNum}`,
         progress: Math.round(weekTotal * 100) / 100,
         isToday: wk.dates.some(d => fmt(d) === todayStr),
-        isFuture: false,
+        isFuture: allFuture,
       };
     });
   }, [view, snaps, today, todayStr, dayLabels, uid, courseId, lang]);

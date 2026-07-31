@@ -475,6 +475,13 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
   const maxVal = Math.max(...data.map(d => d.progress), 5);
   const yMax = Math.ceil(maxVal / 10) * 10 || 10;
 
+  // Monthly total: sum of all weekly incremental progress for the selected month
+  const monthTotal = useMemo(() => {
+    if (view !== 'month') return 0;
+    const total = data.reduce((sum, d) => sum + d.progress, 0);
+    return Math.round(total * 100) / 100;
+  }, [view, data]);
+
   return (
     <div className="bg-card rounded-3xl p-5 shadow-md border border-border/50 mb-6">
       {/* Header */}
@@ -590,16 +597,36 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
         </div>
       </div>
 
-      {/* Month label when browsing history */}
-      {view === 'month' && !isCurrentMonth && (
-        <div className="flex items-center gap-1.5 mb-2">
-          <span className="text-xs text-muted-foreground font-medium">{selectedMonthLabel}</span>
-          <button
-            onClick={() => setSelectedMonth(new Date(today.getFullYear(), today.getMonth(), 1))}
-            className="text-xs text-primary font-semibold hover:underline"
-          >
-            ← {lang === 'bn' ? 'এই মাসে ফিরুন' : 'Back to current'}
-          </button>
+      {/* Month label + total when in month view */}
+      {view === 'month' && (
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5">
+            {!isCurrentMonth && (
+              <>
+                <span className="text-xs text-muted-foreground font-medium">{selectedMonthLabel}</span>
+                <button
+                  onClick={() => setSelectedMonth(new Date(today.getFullYear(), today.getMonth(), 1))}
+                  className="text-xs text-primary font-semibold hover:underline"
+                >
+                  ← {lang === 'bn' ? 'এই মাসে ফিরুন' : 'Back to current'}
+                </button>
+              </>
+            )}
+          </div>
+          {snapLoaded && dataLoaded && (
+            <div className="flex items-center gap-1.5 ml-auto">
+              <span className="text-xs text-muted-foreground font-medium">
+                {t('activityMonthTotal')}:
+              </span>
+              <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                monthTotal > 0
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-secondary text-muted-foreground'
+              }`}>
+                {monthTotal > 0 ? `${monthTotal}%` : '—'}
+              </span>
+            </div>
+          )}
         </div>
       )}
 

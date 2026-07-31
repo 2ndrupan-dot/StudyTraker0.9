@@ -410,6 +410,7 @@ export const translations = {
     activityMonthApr: "Apr", activityMonthMay: "May", activityMonthJun: "Jun",
     activityMonthJul: "Jul", activityMonthAug: "Aug", activityMonthSep: "Sep",
     activityMonthOct: "Oct", activityMonthNov: "Nov", activityMonthDec: "Dec",
+    activityMonthTotal: "Month Total",
   },
   bn: {
     // Auth
@@ -820,5 +821,6 @@ export const translations = {
     activityMonthApr: "এপ্রিল", activityMonthMay: "মে", activityMonthJun: "জুন",
     activityMonthJul: "জুলাই", activityMonthAug: "আগস্ট", activityMonthSep: "সেপ্টে",
     activityMonthOct: "অক্টো", activityMonthNov: "নভে", activityMonthDec: "ডিসে",
+    activityMonthTotal: "মাসিক মোট",
   }
 };

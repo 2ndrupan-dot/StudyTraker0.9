@@ -405,6 +405,11 @@ export const translations = {
     activityDayThu: "Thu",
     activityDayFri: "Fri",
     activityWeekLabel: "Wk",
+    activitySelectMonth: "Select Month",
+    activityMonthJan: "Jan", activityMonthFeb: "Feb", activityMonthMar: "Mar",
+    activityMonthApr: "Apr", activityMonthMay: "May", activityMonthJun: "Jun",
+    activityMonthJul: "Jul", activityMonthAug: "Aug", activityMonthSep: "Sep",
+    activityMonthOct: "Oct", activityMonthNov: "Nov", activityMonthDec: "Dec",
   },
   bn: {
     // Auth
@@ -810,5 +815,10 @@ export const translations = {
     activityDayThu: "বৃহঃ",
     activityDayFri: "শুক্র",
     activityWeekLabel: "সপ্তাহ",
+    activitySelectMonth: "মাস বেছে নিন",
+    activityMonthJan: "জানু", activityMonthFeb: "ফেব্রু", activityMonthMar: "মার্চ",
+    activityMonthApr: "এপ্রিল", activityMonthMay: "মে", activityMonthJun: "জুন",
+    activityMonthJul: "জুলাই", activityMonthAug: "আগস্ট", activityMonthSep: "সেপ্টে",
+    activityMonthOct: "অক্টো", activityMonthNov: "নভে", activityMonthDec: "ডিসে",
   }
 };

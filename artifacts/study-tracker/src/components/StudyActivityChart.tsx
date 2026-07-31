@@ -11,12 +11,12 @@
  *
  * On every Progress page open, today's highest-seen % is written to both stores.
  */
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
-import { TrendingUp } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { TrendingUp, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useLang } from '@/context/LangContext';
@@ -175,10 +175,47 @@ interface Props {
 
 export function StudyActivityChart({ uid, courseId, overallProg, startDate, dataLoaded = true }: Props) {
   const { t, lang } = useLang();
-  const [view, setView] = useState<'week' | 'month'>('week');
+  const [view, setView] = useState<'week' | 'month'>('month');
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
   const today = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => fmt(today), [today]);
+
+  // ── Month picker state ────────────────────────────────────────────────────────
+  const [selectedMonth, setSelectedMonth] = useState<Date>(
+    () => new Date(today.getFullYear(), today.getMonth(), 1)
+  );
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [pickerYear, setPickerYear] = useState(() => today.getFullYear());
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // Close picker on outside click
+  useEffect(() => {
+    if (!showMonthPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setShowMonthPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showMonthPicker]);
+
+  // Month abbreviation keys in order
+  const monthKeys = [
+    'activityMonthJan', 'activityMonthFeb', 'activityMonthMar',
+    'activityMonthApr', 'activityMonthMay', 'activityMonthJun',
+    'activityMonthJul', 'activityMonthAug', 'activityMonthSep',
+    'activityMonthOct', 'activityMonthNov', 'activityMonthDec',
+  ] as const;
+
+  const isCurrentMonth = selectedMonth.getFullYear() === today.getFullYear() &&
+    selectedMonth.getMonth() === today.getMonth();
+
+  const selectedMonthLabel = useMemo(() => {
+    const mo = selectedMonth.getMonth(); // 0-based
+    const yr = selectedMonth.getFullYear();
+    return `${t(monthKeys[mo])} ${yr}`;
+  }, [selectedMonth, lang]);
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 640);
@@ -410,9 +447,9 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
       });
     }
 
-    // Month view: weekly totals for each calendar week of the current month.
-    // weekNum is the real week-of-month (W1…W5), future weeks show 0.
-    return getMonthWeeks(today).map((wk) => {
+    // Month view: use selectedMonth as anchor so historical months can be browsed.
+    // Future dates are capped at today — bars after today always show 0.
+    return getMonthWeeks(selectedMonth).map((wk) => {
       const allFuture = wk.dates.every(d => d > today);
       const weekTotal = wk.dates.reduce(
         (sum, d) => sum + (d <= today ? dayIncrement(fmt(d)) : 0),
@@ -425,7 +462,7 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
         isFuture: allFuture,
       };
     });
-  }, [view, snaps, today, todayStr, dayLabels, uid, courseId, lang, startDate, dataLoaded]);
+  }, [view, snaps, today, todayStr, dayLabels, uid, courseId, lang, startDate, dataLoaded, selectedMonth]);
 
   const hasAnyData = data.some(d => d.progress > 0);
   const maxVal = Math.max(...data.map(d => d.progress), 5);
@@ -442,24 +479,121 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
           <h3 className="font-bold text-foreground text-sm">{t('studyActivity')}</h3>
         </div>
 
-        {/* Week / Month toggle */}
-        <div className="flex bg-secondary rounded-xl p-1 gap-1">
-          {(['week', 'month'] as const).map(v => (
-            <button key={v} onClick={() => setView(v)}
-              className={`relative px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                view === v ? 'text-foreground' : 'text-muted-foreground'}`}>
-              {view === v && (
-                <motion.div layoutId="activity-tab"
-                  className="absolute inset-0 bg-card rounded-lg shadow-sm"
-                  transition={{ type: 'spring', stiffness: 400, damping: 30 }} />
-              )}
-              <span className="relative z-10">
-                {v === 'week' ? t('activityWeek') : t('activityMonth')}
-              </span>
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          {/* Calendar icon — visible in month view to browse historical months */}
+          {view === 'month' && (
+            <div className="relative" ref={pickerRef}>
+              <button
+                onClick={() => { setShowMonthPicker(p => !p); setPickerYear(selectedMonth.getFullYear()); }}
+                title={t('activitySelectMonth')}
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-xs font-semibold transition-colors ${
+                  !isCurrentMonth
+                    ? 'bg-primary/10 border-primary/30 text-primary'
+                    : 'bg-secondary border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Calendar size={12} />
+                {!isCurrentMonth && <span>{selectedMonthLabel}</span>}
+              </button>
+
+              <AnimatePresence>
+                {showMonthPicker && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                    transition={{ duration: 0.12 }}
+                    className="absolute right-0 top-8 z-50 bg-card border border-border rounded-2xl shadow-xl p-3 w-52"
+                  >
+                    {/* Year navigation */}
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <button
+                        onClick={() => setPickerYear(y => y - 1)}
+                        className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors"
+                      >
+                        <ChevronLeft size={13} />
+                      </button>
+                      <span className="text-xs font-bold text-foreground">{pickerYear}</span>
+                      <button
+                        onClick={() => setPickerYear(y => Math.min(y + 1, today.getFullYear()))}
+                        disabled={pickerYear >= today.getFullYear()}
+                        className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <ChevronRight size={13} />
+                      </button>
+                    </div>
+
+                    {/* Month grid */}
+                    <div className="grid grid-cols-3 gap-1">
+                      {monthKeys.map((key, idx) => {
+                        const mDate = new Date(pickerYear, idx, 1);
+                        const isFutureMo = mDate > today;
+                        const isBeforeStart = startDate
+                          ? fmt(new Date(pickerYear, idx + 1, 0)) < startDate
+                          : false;
+                        const isSelected = selectedMonth.getFullYear() === pickerYear &&
+                          selectedMonth.getMonth() === idx;
+                        const disabled = isFutureMo || isBeforeStart;
+
+                        return (
+                          <button
+                            key={key}
+                            disabled={disabled}
+                            onClick={() => {
+                              setSelectedMonth(new Date(pickerYear, idx, 1));
+                              setShowMonthPicker(false);
+                            }}
+                            className={`py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                              disabled
+                                ? 'text-muted-foreground/30 cursor-not-allowed'
+                                : isSelected
+                                  ? 'bg-primary text-primary-foreground'
+                                  : 'hover:bg-secondary text-foreground'
+                            }`}
+                          >
+                            {t(key)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Week / Month toggle */}
+          <div className="flex bg-secondary rounded-xl p-1 gap-1">
+            {(['week', 'month'] as const).map(v => (
+              <button key={v} onClick={() => setView(v)}
+                className={`relative px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                  view === v ? 'text-foreground' : 'text-muted-foreground'}`}>
+                {view === v && (
+                  <motion.div layoutId="activity-tab"
+                    className="absolute inset-0 bg-card rounded-lg shadow-sm"
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }} />
+                )}
+                <span className="relative z-10">
+                  {v === 'week' ? t('activityWeek') : t('activityMonth')}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* Month label when browsing history */}
+      {view === 'month' && !isCurrentMonth && (
+        <div className="flex items-center gap-1.5 mb-2">
+          <span className="text-xs text-muted-foreground font-medium">{selectedMonthLabel}</span>
+          <button
+            onClick={() => setSelectedMonth(new Date(today.getFullYear(), today.getMonth(), 1))}
+            className="text-xs text-primary font-semibold hover:underline"
+          >
+            ← {lang === 'bn' ? 'এই মাসে ফিরুন' : 'Back to current'}
+          </button>
+        </div>
+      )}
 
       {/* Chart */}
       {!hasAnyData ? (

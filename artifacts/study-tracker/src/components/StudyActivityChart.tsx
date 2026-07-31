@@ -142,9 +142,11 @@ interface Props {
   uid: string;
   courseId: string;
   overallProg: number;
+  /** courseStartDate from settings — when this changes (date reset), wipe the chart */
+  startDate?: string;
 }
 
-export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
+export function StudyActivityChart({ uid, courseId, overallProg, startDate }: Props) {
   const { t, lang } = useLang();
   const [view, setView] = useState<'week' | 'month'>('week');
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
@@ -166,6 +168,23 @@ export function StudyActivityChart({ uid, courseId, overallProg }: Props) {
   const lastWritten = useRef<number>(-1);
   // once we've written locally, we own today's value — don't let Firestore overwrite it
   const hasLocalWrite = useRef<boolean>(false);
+
+  // ── Wipe in-memory snaps when startDate changes (course reset) ───────────────
+  // StudyContext already deletes the Firestore doc and localStorage cache on reset,
+  // but the component's in-memory `snaps` state needs an explicit clear so the
+  // chart goes blank immediately without waiting for the next Firestore snapshot.
+  const prevStartDate = useRef<string | undefined>(startDate);
+  useEffect(() => {
+    // Skip the very first render — only react to actual changes
+    if (prevStartDate.current === startDate) return;
+    prevStartDate.current = startDate;
+    setSnaps({});
+    lastWritten.current = -1;
+    hasLocalWrite.current = false;
+    if (uid && courseId) {
+      lsSave(uid, courseId, {});
+    }
+  }, [startDate, uid, courseId]);
 
   // ── Real-time Firestore listener ─────────────────────────────────────────────
   // onSnapshot fires immediately with current data, then again on every remote

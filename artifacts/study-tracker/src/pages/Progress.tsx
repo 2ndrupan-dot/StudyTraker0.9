@@ -904,7 +904,7 @@ export function Progress() {
                 >
                   {dailyTarget !== null ? `${formatProgressPercent(dailyTarget)}%` : '—'}
                 </motion.span>
-                <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight">
+                <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight whitespace-nowrap">
                   {lang === 'bn' ? 'প্রতিদিনের লক্ষ্য' : 'Daily Target'}
                 </span>
               </div>
@@ -948,7 +948,7 @@ export function Progress() {
                       ? `${formatProgressPercent(todayGain)}%`
                       : '0%'}
                 </motion.span>
-                <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight">
+                <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight whitespace-nowrap">
                   {lang === 'bn' ? 'আজকের অগ্রগতি' : "Today's Gain"}
                 </span>
               </div>

@@ -611,7 +611,7 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
       )}
 
       {/* Chart */}
-      {!snapLoaded ? (
+      {(!snapLoaded || !dataLoaded) ? (
         <div className="flex items-center justify-center h-[140px]">
           <span className="text-xs text-muted-foreground font-medium">
             {lang === 'bn' ? 'লোড হচ্ছে' : 'Loading'}

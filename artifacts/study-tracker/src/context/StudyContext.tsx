@@ -1282,9 +1282,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         { merge: false },
       ).catch(e => console.warn('[setCourseStartDate] Firestore todayData reset failed:', e));
 
-      // Also wipe activity snapshots so the chart starts fresh after reset
-      deleteDoc(doc(db, 'users', user.id, 'activitySnapshots', activeCourseId))
-        .catch(e => console.warn('[setCourseStartDate] activitySnapshots clear failed:', e));
+      // Wipe activity snapshots so the chart starts fresh after reset.
+      // Use setDoc({snaps:{}}) instead of deleteDoc — more reliable because it
+      // explicitly overwrites the snaps map to empty in one atomic write.
+      // deleteDoc can race with a subsequent fsSave (which used merge:true and
+      // would re-add old keys); an explicit empty-write wins regardless of order.
+      setDoc(
+        doc(db, 'users', user.id, 'activitySnapshots', activeCourseId),
+        { snaps: {} },
+      ).catch(e => console.warn('[setCourseStartDate] activitySnapshots clear failed:', e));
       try {
         localStorage.removeItem(`@study_activity_snap_${user.id}_${activeCourseId}`);
       } catch { /* ignore */ }

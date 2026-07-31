@@ -48,7 +48,11 @@ function fsRef(uid: string, courseId: string) {
 }
 async function fsSave(uid: string, courseId: string, snaps: SnapMap) {
   try {
-    await setDoc(fsRef(uid, courseId), { snaps }, { merge: true });
+    // Do NOT use { merge: true } — we always write the complete snaps map, so
+    // a full replace is both correct and necessary. Deep-merge would preserve
+    // old date keys even after a reset (e.g. deleteDoc fails or races), causing
+    // historical bars to reappear on reload.
+    await setDoc(fsRef(uid, courseId), { snaps });
   } catch { /* offline — will sync when back online */ }
 }
 

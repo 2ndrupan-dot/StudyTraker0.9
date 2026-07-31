@@ -19,7 +19,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { StudyActivityChart } from '@/components/StudyActivityChart';
 import { format, parseISO, isValid, differenceInCalendarDays, addDays } from 'date-fns';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = '—'): string {
@@ -394,35 +394,80 @@ export function Progress() {
   const overallProg = granularProgress.percent;
   const completedSubjects = subjects.filter(s => s.completed).length;
 
-  // ── Activity snaps (for today's gain calculation) ──────────────────────────
+  // ── Activity snaps + start-of-day baseline (for today's gain) ─────────────
+  // We store two maps in the activitySnapshots doc:
+  //   snaps      – max % seen per day  (written by StudyActivityChart)
+  //   startOfDay – % at the very first Progress page open each day (written here)
+  //
+  // today's gain = overallProg − startOfDay[today]
+  // This is always correct: for a brand-new course startOfDay is ~0;
+  // for an existing course with history it captures "where you were at the
+  // start of today's session", so gain only counts work done today.
   const [activitySnaps, setActivitySnaps] = useState<Record<string, number>>({});
+  const [startOfDaySnaps, setStartOfDaySnaps] = useState<Record<string, number>>({});
+  const [activitySnapsLoaded, setActivitySnapsLoaded] = useState(false);
+  // Ref prevents double-writes when overallProg updates while we're waiting
+  // for the Firestore onSnapshot to confirm our write.
+  const startOfDayWritten = useRef<{ date: string; value: number } | null>(null);
+
   useEffect(() => {
     const uid = user?.id;
     const courseId = activeCourseId;
-    if (!uid || !courseId) { setActivitySnaps({}); return; }
+    if (!uid || !courseId) {
+      setActivitySnaps({});
+      setStartOfDaySnaps({});
+      setActivitySnapsLoaded(false);
+      startOfDayWritten.current = null;
+      return;
+    }
     const ref = doc(db, 'users', uid, 'activitySnapshots', courseId);
     const unsub = onSnapshot(ref, snap => {
       if (snap.exists()) {
-        const data = snap.data() as { snaps?: Record<string, number> };
+        const data = snap.data() as { snaps?: Record<string, number>; startOfDay?: Record<string, number> };
         setActivitySnaps(data.snaps ?? {});
+        setStartOfDaySnaps(data.startOfDay ?? {});
       } else {
         setActivitySnaps({});
+        setStartOfDaySnaps({});
       }
+      setActivitySnapsLoaded(true);
     });
-    return () => unsub();
+    return () => { unsub(); startOfDayWritten.current = null; };
   }, [user?.id, activeCourseId]);
 
-  // ── Progress insight computations (live) ───────────────────────────────────
+  // Write startOfDay once per day, after both course data and snapshot doc load.
   const todayStr = format(new Date(), 'yyyy-MM-dd');
-  const yesterdayStr = format(addDays(new Date(), -1), 'yyyy-MM-dd');
+  useEffect(() => {
+    const uid = user?.id;
+    const courseId = activeCourseId;
+    if (!uid || !courseId || !activitySnapsLoaded || !dataLoaded) return;
+    // Already persisted to Firestore for today (confirmed via onSnapshot).
+    if (todayStr in startOfDaySnaps) return;
+    // Already written this session — avoid writing again if overallProg changes.
+    if (startOfDayWritten.current?.date === todayStr) return;
+    startOfDayWritten.current = { date: todayStr, value: overallProg };
+    const ref = doc(db, 'users', uid, 'activitySnapshots', courseId);
+    updateDoc(ref, { [`startOfDay.${todayStr}`]: overallProg }).catch(async (e: any) => {
+      if (e?.code === 'not-found') {
+        await setDoc(ref, { startOfDay: { [todayStr]: overallProg } }, { merge: true });
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, activeCourseId, activitySnapsLoaded, dataLoaded, todayStr, startOfDaySnaps]);
+  // Note: overallProg intentionally omitted – we only want the first-open value.
 
-  // Only treat yesterday's value as a valid baseline when the key actually
-  // exists in the snaps map.  Falling back to 0 would make historical progress
-  // appear as "gained today" for any course that has never opened the Progress
-  // page before (new or returning users whose snapshot map is empty).
-  const hasYesterdayBaseline = yesterdayStr in activitySnaps;
-  const yesterdaySnap = hasYesterdayBaseline ? activitySnaps[yesterdayStr] : null;
-  const todayGain = hasYesterdayBaseline ? Math.max(0, overallProg - yesterdaySnap!) : null;
+  // ── Progress insight computations (live) ───────────────────────────────────
+  // startOfDayValue: use the Firestore-confirmed baseline; fall back to the
+  // in-memory pending write while waiting for the snapshot to confirm it.
+  const startOfDayValue: number | null =
+    todayStr in startOfDaySnaps
+      ? startOfDaySnaps[todayStr]
+      : startOfDayWritten.current?.date === todayStr
+        ? startOfDayWritten.current.value
+        : null;
+
+  const hasBaselineReady = activitySnapsLoaded && dataLoaded && startOfDayValue !== null;
+  const todayGain = hasBaselineReady ? Math.max(0, overallProg - startOfDayValue!) : null;
 
   const remainingPercent = Math.max(0, 100 - overallProg);
 

@@ -300,7 +300,11 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
 
   // ── Build chart data ─────────────────────────────────────────────────────────
   const data = useMemo(() => {
-    if (!uid || !courseId) return [];
+    // While the new course's data hasn't loaded yet, show nothing.
+    // This prevents stale localStorage data (from the previous course or from
+    // old cross-course contamination) from briefly appearing as bars after a
+    // course switch.
+    if (!uid || !courseId || !dataLoaded) return [];
 
     // Returns the last cumulative value recorded BEFORE `dateStr`.
     // This is the baseline we subtract to get "how much was done on that day".

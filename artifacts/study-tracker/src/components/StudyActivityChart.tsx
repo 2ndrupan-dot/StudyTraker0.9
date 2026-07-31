@@ -235,6 +235,27 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
 
         const remote = (snap.data()?.snaps ?? {}) as SnapMap;
         setSnaps(prev => {
+          // ── Remote wipe: Firestore doc was explicitly cleared (snaps: {}) ──
+          // This happens after a course start-date reset. Do NOT spread `prev`
+          // (which still holds old bars) — that would silently undo the wipe by
+          // re-saving old past-date values back to localStorage and Firestore.
+          // Instead, build a fresh map that only keeps today's locally-written
+          // value (so an in-progress completion isn't lost), and discard all
+          // past-date bars immediately.
+          if (Object.keys(remote).length === 0) {
+            const wiped: SnapMap = {};
+            if (hasLocalWrite.current && prev[todayStr] !== undefined) {
+              wiped[todayStr] = prev[todayStr];
+            }
+            // Skip the setState + lsSave if nothing actually changed
+            const prevKeys = Object.keys(prev);
+            const wipedKeys = Object.keys(wiped);
+            if (prevKeys.length === wipedKeys.length &&
+                wipedKeys.every(k => prev[k] === wiped[k])) return prev;
+            lsSave(uid, courseId, wiped);
+            return wiped;
+          }
+
           const merged: SnapMap = { ...prev };
           for (const [k, v] of Object.entries(remote)) {
             if (k === todayStr) {

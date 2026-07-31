@@ -364,19 +364,34 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
     // course switch.
     if (!uid || !courseId || !dataLoaded) return [];
 
+    // ── Filter snaps by courseStartDate ────────────────────────────────────────
+    // After a course reset the Firestore wipe (setDoc {snaps:{}}) may arrive
+    // late or fail entirely (e.g. device was offline). On the next page load,
+    // the module-level _postResetCourses set is also empty, so the onSnapshot
+    // handler has no guard and would restore old bars from Firestore/localStorage.
+    //
+    // Filtering by startDate here is the robust fix: any snap key that predates
+    // the current course start cannot belong to this course session and must
+    // never render — regardless of what Firestore or localStorage contains.
+    // This also fixes the "wrong bar grows" symptom: without old bars in the
+    // dataset, prevCumulative() correctly returns 0 as today's baseline.
+    const activeSnaps: Record<string, number> = startDate
+      ? Object.fromEntries(Object.entries(snaps).filter(([k]) => k >= startDate))
+      : snaps;
+
     // Returns the last cumulative value recorded BEFORE `dateStr`.
     // This is the baseline we subtract to get "how much was done on that day".
     const prevCumulative = (dateStr: string): number => {
-      const candidates = Object.keys(snaps)
-        .filter(d => d < dateStr && (snaps[d] ?? 0) > 0)
+      const candidates = Object.keys(activeSnaps)
+        .filter(d => d < dateStr && (activeSnaps[d] ?? 0) > 0)
         .sort();
-      return candidates.length > 0 ? (snaps[candidates[candidates.length - 1]] ?? 0) : 0;
+      return candidates.length > 0 ? (activeSnaps[candidates[candidates.length - 1]] ?? 0) : 0;
     };
 
     // Daily increment: cumulative value for that day minus the last known value before it.
     // Clamped to ≥ 0 so an undo that crosses midnight never shows a negative bar.
     const dayIncrement = (dk: string): number => {
-      const val = snaps[dk] ?? 0;
+      const val = activeSnaps[dk] ?? 0;
       if (val === 0) return 0;
       const prev = prevCumulative(dk);
       return Math.max(0, Math.round((val - prev) * 100) / 100);
@@ -410,7 +425,7 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
         isFuture: allFuture,
       };
     });
-  }, [view, snaps, today, todayStr, dayLabels, uid, courseId, lang]);
+  }, [view, snaps, today, todayStr, dayLabels, uid, courseId, lang, startDate, dataLoaded]);
 
   const hasAnyData = data.some(d => d.progress > 0);
   const maxVal = Math.max(...data.map(d => d.progress), 5);

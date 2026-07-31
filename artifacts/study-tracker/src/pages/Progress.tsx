@@ -1023,7 +1023,7 @@ export function Progress() {
                     ? `Deadline passed ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) !== 1 ? 's' : ''} ago`
                     : daysRemaining === 0
                       ? 'Last day — give it everything!'
-                      : `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} until deadline · ${safeFormat(courseEndDate?.toISOString(), 'MMM d, yyyy')}`
+                      : `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} left until deadline : ${safeFormat(courseEndDate?.toISOString(), 'MMM d, yyyy')}`
                 }
               </motion.div>
             )}

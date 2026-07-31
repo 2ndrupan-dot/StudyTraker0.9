@@ -480,6 +480,24 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Week / Month toggle */}
+          <div className="flex bg-secondary rounded-xl p-1 gap-1">
+            {(['week', 'month'] as const).map(v => (
+              <button key={v} onClick={() => setView(v)}
+                className={`relative px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                  view === v ? 'text-foreground' : 'text-muted-foreground'}`}>
+                {view === v && (
+                  <motion.div layoutId="activity-tab"
+                    className="absolute inset-0 bg-card rounded-lg shadow-sm"
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }} />
+                )}
+                <span className="relative z-10">
+                  {v === 'week' ? t('activityWeek') : t('activityMonth')}
+                </span>
+              </button>
+            ))}
+          </div>
+
           {/* Calendar icon — visible in month view to browse historical months */}
           {view === 'month' && (
             <div className="relative" ref={pickerRef}>
@@ -562,23 +580,6 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
             </div>
           )}
 
-          {/* Week / Month toggle */}
-          <div className="flex bg-secondary rounded-xl p-1 gap-1">
-            {(['week', 'month'] as const).map(v => (
-              <button key={v} onClick={() => setView(v)}
-                className={`relative px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                  view === v ? 'text-foreground' : 'text-muted-foreground'}`}>
-                {view === v && (
-                  <motion.div layoutId="activity-tab"
-                    className="absolute inset-0 bg-card rounded-lg shadow-sm"
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }} />
-                )}
-                <span className="relative z-10">
-                  {v === 'week' ? t('activityWeek') : t('activityMonth')}
-                </span>
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 

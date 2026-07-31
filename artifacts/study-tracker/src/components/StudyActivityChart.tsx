@@ -17,7 +17,7 @@ import {
 } from 'recharts';
 import { TrendingUp } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useLang } from '@/context/LangContext';
 
@@ -46,15 +46,31 @@ function lsSave(uid: string, courseId: string, snaps: SnapMap) {
 function fsRef(uid: string, courseId: string) {
   return doc(db, 'users', uid, 'activitySnapshots', courseId);
 }
-async function fsSave(uid: string, courseId: string, snaps: SnapMap) {
+
+// Write ONLY today's field using dot-notation updateDoc.
+// This is intentional: we must never spread the full snaps map here because
+// a stale onSnapshot can restore old past-date bars to localStorage, and
+// spreading that into setDoc would write them back to Firestore — undoing a
+// course reset. updateDoc only touches the one field we own right now.
+// Fallback to setDoc when the doc doesn't exist yet (new course / first use).
+async function fsSaveToday(uid: string, courseId: string, todayStr: string, value: number) {
   try {
-    // Do NOT use { merge: true } — we always write the complete snaps map, so
-    // a full replace is both correct and necessary. Deep-merge would preserve
-    // old date keys even after a reset (e.g. deleteDoc fails or races), causing
-    // historical bars to reappear on reload.
-    await setDoc(fsRef(uid, courseId), { snaps });
-  } catch { /* offline — will sync when back online */ }
+    await updateDoc(fsRef(uid, courseId), { [`snaps.${todayStr}`]: value });
+  } catch (e: any) {
+    if (e?.code === 'not-found') {
+      // Document doesn't exist yet — create it with just today's entry.
+      await setDoc(fsRef(uid, courseId), { snaps: { [todayStr]: value } });
+    }
+    // Any other error (offline) — will sync when back online.
+  }
 }
+
+// ── Module-level post-reset guard ─────────────────────────────────────────────
+// Tracks courseIds that were recently reset (start date changed).
+// Survives component remounts within the same app session so the guard stays
+// active even when the user navigates away and back before the first post-reset
+// write happens.  Cleared by the write effect after the first clean local write.
+const _postResetCourses = new Set<string>();
 
 // ── Date utilities ─────────────────────────────────────────────────────────────
 function fmt(d: Date): string {
@@ -199,6 +215,10 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
     hasLocalWrite.current = false;
     if (uid && courseId) {
       lsSave(uid, courseId, {});
+      // Mark this course as post-reset so onSnapshot ignores stale remote past-date
+      // bars until the first clean local write confirms we're in a good state.
+      // Module-level set survives component remounts (navigate away and back).
+      _postResetCourses.add(courseId);
     }
   }, [startDate, uid, courseId]);
 
@@ -257,6 +277,12 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
           }
 
           const merged: SnapMap = { ...prev };
+          // Are we in a post-reset window? If so, skip ALL past-date remote bars.
+          // Stale Firestore snapshots (served from cache before the reset's setDoc
+          // propagates) can carry old bars from before the reset. Spreading them
+          // into `merged` would restore those bars to display and localStorage,
+          // where the next write effect would re-save them to Firestore.
+          const isPostReset = _postResetCourses.has(courseId);
           for (const [k, v] of Object.entries(remote)) {
             if (k === todayStr) {
               // For today: only accept the remote value if we haven't written
@@ -267,8 +293,11 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
                 merged[k] = v;
               }
             } else {
-              // For past dates: highest value ever seen wins (preserve history)
-              merged[k] = Math.max(merged[k] ?? 0, v);
+              // For past dates: skip entirely during post-reset window.
+              // Outside the window: highest value ever seen wins (cross-device sync).
+              if (!isPostReset) {
+                merged[k] = Math.max(merged[k] ?? 0, v);
+              }
             }
           }
           lsSave(uid, courseId, merged);
@@ -300,17 +329,25 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
     lastWritten.current = rounded;
     hasLocalWrite.current = true;
 
-    // Read fresh from localStorage instead of using the stale `snaps` closure.
-    // The startDate-reset effect runs before this effect (React runs effects in
-    // declaration order) and calls lsSave(uid, courseId, {}) to clear storage.
-    // If we used `snaps` here we'd spread the old in-memory data over the fresh
-    // empty store, undoing the reset. Reading localStorage gives us the correct
-    // post-reset baseline (either {} or whatever was set by startDate effect).
+    // Post-reset window is now over: we have a confirmed clean local write.
+    // Future onSnapshot snapshots may restore past-date bars normally (cross-device sync).
+    _postResetCourses.delete(courseId);
+
+    // Update in-memory state using functional update so we spread the CURRENT
+    // memory snapshot (which is kept clean by the post-reset guard above) rather
+    // than a stale closure value.
+    setSnaps(prev => ({ ...prev, [todayStr]: rounded }));
+
+    // Write ONLY today's field to Firestore via updateDoc (dot-notation).
+    // Never spread localStorage here — a stale onSnapshot can restore old bars
+    // to localStorage between a reset and this write, causing old bars to be
+    // re-saved to Firestore and re-appear after navigation.
+    fsSaveToday(uid, courseId, todayStr, rounded);
+
+    // Keep localStorage in sync — still spread prev from localStorage so the
+    // cache accurately reflects the full in-memory state for the next page load.
     const freshSnaps = lsLoad(uid, courseId);
-    const updated = { ...freshSnaps, [todayStr]: rounded };
-    setSnaps(updated);
-    lsSave(uid, courseId, updated);
-    fsSave(uid, courseId, updated);
+    lsSave(uid, courseId, { ...freshSnaps, [todayStr]: rounded });
   }, [uid, courseId, overallProg, todayStr, dataLoaded]); // intentionally exclude `snaps`
 
   // ── Day labels (Sun-first) ───────────────────────────────────────────────────

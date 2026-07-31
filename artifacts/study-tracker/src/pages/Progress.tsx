@@ -844,8 +844,8 @@ export function Progress() {
           </div>
           <h3 className="font-bold text-foreground mb-4 relative z-10">{t('overallProgress')}</h3>
 
-          {/* Percent + remaining row */}
-          <div className="flex items-end justify-between mb-3 relative z-10">
+          {/* Percent row */}
+          <div className="flex items-end justify-between mb-1 relative z-10">
             <motion.span
               key={overallProg}
               initial={{ scale: 0.8, opacity: 0 }}
@@ -854,22 +854,25 @@ export function Progress() {
             >
               {formatProgressPercent(overallProg)}%
             </motion.span>
-            {remainingPercent > 0 && (
-              <motion.div
-                key={remainingPercent}
-                initial={{ opacity: 0, x: 8 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex flex-col items-end gap-0.5 pb-1"
-              >
-                <span className="text-lg font-black text-red-400 leading-none">
-                  {formatProgressPercent(remainingPercent)}%
-                </span>
-                <span className="text-[10px] font-semibold text-muted-foreground">
-                  {lang === 'bn' ? 'বাকি আছে' : 'remaining'}
-                </span>
-              </motion.div>
-            )}
           </div>
+
+          {/* Remaining label — sits just above the progress bar */}
+          {remainingPercent > 0 && (
+            <motion.div
+              key={remainingPercent}
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-baseline justify-end gap-1 mb-1.5 relative z-10"
+            >
+              <span className="text-sm font-black text-red-400 leading-none">
+                {formatProgressPercent(remainingPercent)}%
+              </span>
+              <span className="text-[9px] font-semibold text-muted-foreground">
+                {lang === 'bn' ? 'বাকি আছে' : 'remaining'}
+              </span>
+            </motion.div>
+          )}
+          {remainingPercent === 0 && <div className="mb-3" />}
 
           {/* Progress bar (two-tone: done + remaining) */}
           <div className="h-4 w-full bg-secondary rounded-full overflow-hidden relative z-10 border border-border/50 shadow-inner">

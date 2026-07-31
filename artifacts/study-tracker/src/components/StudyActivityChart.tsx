@@ -232,13 +232,6 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
   // Prevents "No activity" from flashing before Firestore data arrives.
   const [snapLoaded, setSnapLoaded] = useState(false);
 
-  // Animated dots counter: 0-7, cycles every ~300 ms while loading
-  const [dotCount, setDotCount] = useState(0);
-  useEffect(() => {
-    if (snapLoaded) return;
-    const id = setInterval(() => setDotCount(n => (n + 1) % 8), 300);
-    return () => clearInterval(id);
-  }, [snapLoaded]);
 
   // track last value written this session (-1 = nothing written yet)
   const lastWritten = useRef<number>(-1);
@@ -614,10 +607,7 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
       {(!snapLoaded || !dataLoaded) ? (
         <div className="flex items-center justify-center h-[140px]">
           <span className="text-xs text-muted-foreground font-medium">
-            {lang === 'bn' ? 'লোড হচ্ছে' : 'Loading'}
-            <span className="inline-block w-[52px] text-left align-bottom">
-              {'.'.repeat(dotCount)}
-            </span>
+            {lang === 'bn' ? 'লোড হচ্ছে......' : 'Loading......'}
           </span>
         </div>
       ) : !hasAnyData ? (

@@ -995,7 +995,7 @@ export function Progress() {
                       ? '—'
                     : '—'}
                 </motion.span>
-                <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight">
+                <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight whitespace-nowrap">
                   {lang === 'bn' ? 'আজকের অবস্থা' : "Today's Status"}
                 </span>
               </div>

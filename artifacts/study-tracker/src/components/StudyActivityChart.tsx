@@ -173,11 +173,16 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate }: Pr
   // StudyContext already deletes the Firestore doc and localStorage cache on reset,
   // but the component's in-memory `snaps` state needs an explicit clear so the
   // chart goes blank immediately without waiting for the next Firestore snapshot.
+  //
+  // Guard: only wipe when BOTH the previous and new values are real strings AND
+  // they differ. This prevents triggering on initial hydration (undefined → "date")
+  // when settings load asynchronously after the first render.
   const prevStartDate = useRef<string | undefined>(startDate);
   useEffect(() => {
-    // Skip the very first render — only react to actual changes
-    if (prevStartDate.current === startDate) return;
+    const prev = prevStartDate.current;
     prevStartDate.current = startDate;
+    // Skip if: no prior real value (initial hydration), new value missing, or unchanged
+    if (!prev || !startDate || prev === startDate) return;
     setSnaps({});
     lastWritten.current = -1;
     hasLocalWrite.current = false;

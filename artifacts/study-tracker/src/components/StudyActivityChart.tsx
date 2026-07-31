@@ -613,10 +613,10 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
       {/* Chart */}
       {!snapLoaded ? (
         <div className="flex items-center justify-center h-[140px]">
-          <span className="text-xs text-muted-foreground font-medium tracking-wide">
+          <span className="text-xs text-muted-foreground font-medium">
             {lang === 'bn' ? 'লোড হচ্ছে' : 'Loading'}
-            <span className="inline-block w-[56px] text-left">
-              {'•'.repeat(dotCount)}
+            <span className="inline-block w-[52px] text-left align-bottom">
+              {'.'.repeat(dotCount)}
             </span>
           </span>
         </div>

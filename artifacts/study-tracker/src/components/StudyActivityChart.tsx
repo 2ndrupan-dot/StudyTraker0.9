@@ -208,7 +208,21 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate }: Pr
     const unsub = onSnapshot(
       fsRef(uid, courseId),
       (snap) => {
-        const remote = (snap.exists() ? (snap.data()?.snaps ?? {}) : {}) as SnapMap;
+        if (!snap.exists()) {
+          // Document was deleted (course reset) — wipe chart immediately.
+          // Do NOT merge with prev: the old in-memory data would survive and
+          // get saved back to localStorage, undoing the reset.
+          setSnaps(prev => {
+            if (Object.keys(prev).length === 0) return prev; // already empty, no re-render
+            lsSave(uid, courseId, {});
+            return {};
+          });
+          lastWritten.current = -1;
+          hasLocalWrite.current = false;
+          return;
+        }
+
+        const remote = (snap.data()?.snaps ?? {}) as SnapMap;
         setSnaps(prev => {
           const merged: SnapMap = { ...prev };
           for (const [k, v] of Object.entries(remote)) {

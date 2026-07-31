@@ -262,7 +262,14 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate }: Pr
     lastWritten.current = rounded;
     hasLocalWrite.current = true;
 
-    const updated = { ...snaps, [todayStr]: rounded };
+    // Read fresh from localStorage instead of using the stale `snaps` closure.
+    // The startDate-reset effect runs before this effect (React runs effects in
+    // declaration order) and calls lsSave(uid, courseId, {}) to clear storage.
+    // If we used `snaps` here we'd spread the old in-memory data over the fresh
+    // empty store, undoing the reset. Reading localStorage gives us the correct
+    // post-reset baseline (either {} or whatever was set by startDate effect).
+    const freshSnaps = lsLoad(uid, courseId);
+    const updated = { ...freshSnaps, [todayStr]: rounded };
     setSnaps(updated);
     lsSave(uid, courseId, updated);
     fsSave(uid, courseId, updated);

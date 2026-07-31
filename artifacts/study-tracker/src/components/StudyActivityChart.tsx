@@ -228,6 +228,18 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
     uid && courseId ? lsLoad(uid, courseId) : {}
   );
 
+  // True only after the first onSnapshot has fired for the current course.
+  // Prevents "No activity" from flashing before Firestore data arrives.
+  const [snapLoaded, setSnapLoaded] = useState(false);
+
+  // Animated dots counter: 0-7, cycles every ~300 ms while loading
+  const [dotCount, setDotCount] = useState(0);
+  useEffect(() => {
+    if (snapLoaded) return;
+    const id = setInterval(() => setDotCount(n => (n + 1) % 8), 300);
+    return () => clearInterval(id);
+  }, [snapLoaded]);
+
   // track last value written this session (-1 = nothing written yet)
   const lastWritten = useRef<number>(-1);
   // once we've written locally, we own today's value — don't let Firestore overwrite it
@@ -268,6 +280,7 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
     // Reset session flags when course/user changes
     lastWritten.current = -1;
     hasLocalWrite.current = false;
+    setSnapLoaded(false);
 
     // Show localStorage instantly while Firestore connects
     const local = lsLoad(uid, courseId);
@@ -276,6 +289,7 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
     const unsub = onSnapshot(
       fsRef(uid, courseId),
       (snap) => {
+        setSnapLoaded(true); // first snapshot received — loading done
         if (!snap.exists()) {
           // Document was deleted (course reset) — wipe chart immediately.
           // Do NOT merge with prev: the old in-memory data would survive and
@@ -341,7 +355,7 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
           return merged;
         });
       },
-      () => { /* offline — keep showing localStorage data */ }
+      () => { setSnapLoaded(true); /* offline — keep showing localStorage data */ }
     );
 
     return () => unsub(); // clean up listener on unmount / courseId change
@@ -597,7 +611,16 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
       )}
 
       {/* Chart */}
-      {!hasAnyData ? (
+      {!snapLoaded ? (
+        <div className="flex items-center justify-center h-[140px]">
+          <span className="text-xs text-muted-foreground font-medium tracking-wide">
+            {lang === 'bn' ? 'লোড হচ্ছে' : 'Loading'}
+            <span className="inline-block w-[56px] text-left">
+              {'•'.repeat(dotCount)}
+            </span>
+          </span>
+        </div>
+      ) : !hasAnyData ? (
         <div className="flex items-center justify-center h-[140px] text-xs text-muted-foreground text-center px-4">
           {t('activityNoData')}
         </div>

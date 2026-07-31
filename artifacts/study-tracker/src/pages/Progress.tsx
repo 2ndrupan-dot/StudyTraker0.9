@@ -861,7 +861,7 @@ export function Progress() {
                 animate={{ opacity: 1, x: 0 }}
                 className="flex flex-col items-end gap-0.5 pb-1"
               >
-                <span className="text-lg font-black text-amber-500 leading-none">
+                <span className="text-lg font-black text-red-400 leading-none">
                   {formatProgressPercent(remainingPercent)}%
                 </span>
                 <span className="text-[10px] font-semibold text-muted-foreground">
@@ -906,24 +906,24 @@ export function Progress() {
                 </span>
               </div>
 
-              {/* 2. Today's Gain — only shown when a genuine yesterday baseline exists */}
+              {/* 2. Today's Gain */}
               <div className={`flex flex-col items-center gap-1.5 rounded-2xl p-3 border ${
                 todayStatus === 'exceeded'    ? 'bg-emerald-500/8 border-emerald-500/20'
                 : todayStatus === 'done'      ? 'bg-green-500/8 border-green-500/20'
-                : todayStatus === 'behind'    ? 'bg-amber-500/8 border-amber-500/20'
+                : todayStatus === 'behind'    ? 'bg-red-500/8 border-red-500/20'
                 : todayStatus === 'overdue'   ? 'bg-red-500/8 border-red-500/20'
                 : 'bg-secondary/60 border-border/30'
               }`}>
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
                   todayStatus === 'exceeded'    ? 'bg-emerald-500/20'
                   : todayStatus === 'done'      ? 'bg-green-500/20'
-                  : todayStatus === 'behind'    ? 'bg-amber-500/20'
+                  : todayStatus === 'behind'    ? 'bg-red-500/20'
                   : todayStatus === 'overdue'   ? 'bg-red-500/20'
                   : 'bg-secondary'
                 }`}>
                   {todayStatus === 'exceeded'    ? <Flame size={13} className="text-emerald-500" />
                    : todayStatus === 'done'      ? <CheckCircle2 size={13} className="text-green-500" />
-                   : todayStatus === 'behind'    ? <TrendingDown size={13} className="text-amber-500" />
+                   : todayStatus === 'behind'    ? <TrendingDown size={13} className="text-red-400" />
                    : todayStatus === 'overdue'   ? <AlertTriangle size={13} className="text-red-400" />
                    : <Minus size={13} className="text-muted-foreground" />}
                 </div>
@@ -934,7 +934,7 @@ export function Progress() {
                   className={`text-sm font-black leading-none tabular-nums ${
                     todayStatus === 'exceeded'    ? 'text-emerald-500'
                     : todayStatus === 'done'      ? 'text-green-500'
-                    : todayStatus === 'behind'    ? 'text-amber-500'
+                    : todayStatus === 'behind'    ? 'text-red-400'
                     : todayStatus === 'overdue'   ? 'text-red-400'
                     : 'text-muted-foreground'
                   }`}
@@ -942,7 +942,7 @@ export function Progress() {
                   {todayGain === null
                     ? '—'
                     : todayGain > 0
-                      ? `+${formatProgressPercent(todayGain)}%`
+                      ? `${formatProgressPercent(todayGain)}%`
                       : '0%'}
                 </motion.span>
                 <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight">
@@ -950,52 +950,50 @@ export function Progress() {
                 </span>
               </div>
 
-              {/* 3. Status badge */}
+              {/* 3. Status badge — shows ±% gap vs daily target */}
               <div className={`flex flex-col items-center gap-1.5 rounded-2xl p-3 border ${
                 todayStatus === 'exceeded'    ? 'bg-emerald-500/8 border-emerald-500/20'
                 : todayStatus === 'done'      ? 'bg-green-500/8 border-green-500/20'
-                : todayStatus === 'behind'    ? 'bg-amber-500/8 border-amber-500/20'
+                : todayStatus === 'behind'    ? 'bg-red-500/8 border-red-500/20'
                 : todayStatus === 'overdue'   ? 'bg-red-500/8 border-red-500/20'
                 : 'bg-secondary/60 border-border/30'
               }`}>
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
                   todayStatus === 'exceeded'    ? 'bg-emerald-500/20'
                   : todayStatus === 'done'      ? 'bg-green-500/20'
-                  : todayStatus === 'behind'    ? 'bg-amber-500/20'
+                  : todayStatus === 'behind'    ? 'bg-red-500/20'
                   : todayStatus === 'overdue'   ? 'bg-red-500/20'
                   : 'bg-secondary'
                 }`}>
                   {todayStatus === 'exceeded'    ? <TrendingUp size={13} className="text-emerald-500" />
                    : todayStatus === 'done'      ? <CheckCircle2 size={13} className="text-green-500" />
-                   : todayStatus === 'behind'    ? <TrendingDown size={13} className="text-amber-500" />
+                   : todayStatus === 'behind'    ? <TrendingDown size={13} className="text-red-400" />
                    : todayStatus === 'overdue'   ? <AlertTriangle size={13} className="text-red-400" />
                    : <Minus size={13} className="text-muted-foreground" />}
                 </div>
                 <motion.span
-                  key={todayStatus}
+                  key={todayStatus + String(todayGain)}
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  className={`text-[10px] font-black leading-tight text-center ${
+                  className={`text-sm font-black leading-none tabular-nums text-center ${
                     todayStatus === 'exceeded'    ? 'text-emerald-500'
                     : todayStatus === 'done'      ? 'text-green-500'
-                    : todayStatus === 'behind'    ? 'text-amber-500'
+                    : todayStatus === 'behind'    ? 'text-red-400'
                     : todayStatus === 'overdue'   ? 'text-red-400'
                     : 'text-muted-foreground'
                   }`}
                 >
-                  {lang === 'bn'
-                    ? todayStatus === 'exceeded'    ? 'লক্ষ্যের বেশি!'
-                      : todayStatus === 'done'      ? 'লক্ষ্য পূরণ ✓'
-                      : todayStatus === 'behind'    ? 'লক্ষ্যের কম'
-                      : todayStatus === 'overdue'   ? 'সময় শেষ!'
-                      : todayStatus === 'no-baseline' ? 'কাল দেখা যাবে'
-                      : 'টার্গেট নেই'
-                    : todayStatus === 'exceeded'    ? 'Exceeded!'
-                      : todayStatus === 'done'      ? 'On Track ✓'
-                      : todayStatus === 'behind'    ? 'Behind'
-                      : todayStatus === 'overdue'   ? 'Overdue!'
-                      : todayStatus === 'no-baseline' ? 'Check tomorrow'
-                      : 'No Target'}
+                  {todayStatus === 'exceeded' && dailyTarget !== null && todayGain !== null
+                    ? `+${formatProgressPercent(todayGain - dailyTarget)}%`
+                    : todayStatus === 'done'
+                      ? '✓'
+                    : todayStatus === 'behind' && dailyTarget !== null && todayGain !== null
+                      ? `-${formatProgressPercent(dailyTarget - todayGain)}%`
+                    : todayStatus === 'overdue'
+                      ? (lang === 'bn' ? 'সময় শেষ!' : 'Overdue!')
+                    : todayStatus === 'no-baseline'
+                      ? '—'
+                    : '—'}
                 </motion.span>
                 <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight">
                   {lang === 'bn' ? 'আজকের অবস্থা' : "Today's Status"}

@@ -7,7 +7,7 @@ import { useCourse } from '@/context/CourseContext';
 import { computeGranularProgress, formatProgressPercent } from '@/lib/timeEngine';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
-import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock, Share2 } from 'lucide-react';
+import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock, Share2, TrendingUp, TrendingDown, Minus, Flame } from 'lucide-react';
 import { NotificationBell } from '@/components/NotificationBell';
 import { Countdown } from '@/components/Countdown';
 import { useAdmin } from '@/context/AdminContext';
@@ -18,7 +18,9 @@ import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { StudyActivityChart } from '@/components/StudyActivityChart';
-import { format, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, differenceInCalendarDays, addDays } from 'date-fns';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = '—'): string {
   if (!dateStr) return fallback;
@@ -392,6 +394,55 @@ export function Progress() {
   const overallProg = granularProgress.percent;
   const completedSubjects = subjects.filter(s => s.completed).length;
 
+  // ── Activity snaps (for today's gain calculation) ──────────────────────────
+  const [activitySnaps, setActivitySnaps] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const uid = user?.id;
+    const courseId = activeCourseId;
+    if (!uid || !courseId) { setActivitySnaps({}); return; }
+    const ref = doc(db, 'users', uid, 'activitySnapshots', courseId);
+    const unsub = onSnapshot(ref, snap => {
+      if (snap.exists()) {
+        const data = snap.data() as { snaps?: Record<string, number> };
+        setActivitySnaps(data.snaps ?? {});
+      } else {
+        setActivitySnaps({});
+      }
+    });
+    return () => unsub();
+  }, [user?.id, activeCourseId]);
+
+  // ── Progress insight computations (live) ───────────────────────────────────
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const yesterdayStr = format(addDays(new Date(), -1), 'yyyy-MM-dd');
+
+  // Only treat yesterday's value as a valid baseline when the key actually
+  // exists in the snaps map.  Falling back to 0 would make historical progress
+  // appear as "gained today" for any course that has never opened the Progress
+  // page before (new or returning users whose snapshot map is empty).
+  const hasYesterdayBaseline = yesterdayStr in activitySnaps;
+  const yesterdaySnap = hasYesterdayBaseline ? activitySnaps[yesterdayStr] : null;
+  const todayGain = hasYesterdayBaseline ? Math.max(0, overallProg - yesterdaySnap!) : null;
+
+  const remainingPercent = Math.max(0, 100 - overallProg);
+
+  const hasTarget = !!(settings?.courseStartDate && settings?.courseTotalDays && settings.courseTotalDays > 0);
+  const courseEndDate = hasTarget
+    ? addDays(parseISO(settings!.courseStartDate!), settings!.courseTotalDays!)
+    : null;
+  const daysRemaining = courseEndDate ? differenceInCalendarDays(courseEndDate, new Date()) : null;
+  const effectiveDays = daysRemaining !== null ? Math.max(daysRemaining, 1) : null;
+  const dailyTarget = effectiveDays !== null ? remainingPercent / effectiveDays : null;
+
+  type TodayStatus = 'exceeded' | 'done' | 'behind' | 'no-target' | 'overdue' | 'no-baseline';
+  const todayStatus: TodayStatus =
+    !hasTarget || dailyTarget === null ? 'no-target'
+    : daysRemaining !== null && daysRemaining < 0 ? 'overdue'
+    : todayGain === null ? 'no-baseline'
+    : todayGain >= dailyTarget * 1.01 ? 'exceeded'
+    : todayGain >= dailyTarget * 0.99 ? 'done'
+    : 'behind';
+
   const handleUpdateProfile = async () => {
     if (!profileForm.name) return;
     if (!profileForm.currentPass) {
@@ -747,7 +798,9 @@ export function Progress() {
             <Target size={120} />
           </div>
           <h3 className="font-bold text-foreground mb-4 relative z-10">{t('overallProgress')}</h3>
-          <div className="flex items-end gap-2 mb-3 relative z-10">
+
+          {/* Percent + remaining row */}
+          <div className="flex items-end justify-between mb-3 relative z-10">
             <motion.span
               key={overallProg}
               initial={{ scale: 0.8, opacity: 0 }}
@@ -756,7 +809,24 @@ export function Progress() {
             >
               {formatProgressPercent(overallProg)}%
             </motion.span>
+            {remainingPercent > 0 && (
+              <motion.div
+                key={remainingPercent}
+                initial={{ opacity: 0, x: 8 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex flex-col items-end gap-0.5 pb-1"
+              >
+                <span className="text-lg font-black text-amber-500 leading-none">
+                  {formatProgressPercent(remainingPercent)}%
+                </span>
+                <span className="text-[10px] font-semibold text-muted-foreground">
+                  {lang === 'bn' ? 'বাকি আছে' : 'remaining'}
+                </span>
+              </motion.div>
+            )}
           </div>
+
+          {/* Progress bar (two-tone: done + remaining) */}
           <div className="h-4 w-full bg-secondary rounded-full overflow-hidden relative z-10 border border-border/50 shadow-inner">
             <motion.div
               initial={{ width: 0 }}
@@ -765,9 +835,163 @@ export function Progress() {
               className="h-full bg-gradient-to-r from-primary to-primary/60 rounded-full"
             />
           </div>
-          <p className="text-xs font-medium text-muted-foreground mt-3 relative z-10">
+          <p className="text-xs font-medium text-muted-foreground mt-2.5 relative z-10">
             {granularProgress.completed} {t('completed')} / {granularProgress.total} {lang === 'bn' ? 'আইটেম' : 'Items'}
           </p>
+
+          {/* ── Progress Insights ─────────────────────────────────────────── */}
+          <div className="mt-4 pt-4 border-t border-border/40 relative z-10">
+            <div className="grid grid-cols-3 gap-2">
+
+              {/* 1. Daily Target */}
+              <div className="flex flex-col items-center gap-1.5 bg-blue-500/8 border border-blue-500/15 rounded-2xl p-3">
+                <div className="w-7 h-7 rounded-full bg-blue-500/15 flex items-center justify-center">
+                  <CalendarDays size={13} className="text-blue-500" />
+                </div>
+                <motion.span
+                  key={dailyTarget ?? 'none'}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="text-sm font-black text-blue-500 leading-none tabular-nums"
+                >
+                  {dailyTarget !== null ? `${formatProgressPercent(dailyTarget)}%` : '—'}
+                </motion.span>
+                <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight">
+                  {lang === 'bn' ? 'প্রতিদিনের লক্ষ্য' : 'Daily Target'}
+                </span>
+              </div>
+
+              {/* 2. Today's Gain — only shown when a genuine yesterday baseline exists */}
+              <div className={`flex flex-col items-center gap-1.5 rounded-2xl p-3 border ${
+                todayStatus === 'exceeded'    ? 'bg-emerald-500/8 border-emerald-500/20'
+                : todayStatus === 'done'      ? 'bg-green-500/8 border-green-500/20'
+                : todayStatus === 'behind'    ? 'bg-amber-500/8 border-amber-500/20'
+                : todayStatus === 'overdue'   ? 'bg-red-500/8 border-red-500/20'
+                : 'bg-secondary/60 border-border/30'
+              }`}>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                  todayStatus === 'exceeded'    ? 'bg-emerald-500/20'
+                  : todayStatus === 'done'      ? 'bg-green-500/20'
+                  : todayStatus === 'behind'    ? 'bg-amber-500/20'
+                  : todayStatus === 'overdue'   ? 'bg-red-500/20'
+                  : 'bg-secondary'
+                }`}>
+                  {todayStatus === 'exceeded'    ? <Flame size={13} className="text-emerald-500" />
+                   : todayStatus === 'done'      ? <CheckCircle2 size={13} className="text-green-500" />
+                   : todayStatus === 'behind'    ? <TrendingDown size={13} className="text-amber-500" />
+                   : todayStatus === 'overdue'   ? <AlertTriangle size={13} className="text-red-400" />
+                   : <Minus size={13} className="text-muted-foreground" />}
+                </div>
+                <motion.span
+                  key={todayGain ?? 'null'}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className={`text-sm font-black leading-none tabular-nums ${
+                    todayStatus === 'exceeded'    ? 'text-emerald-500'
+                    : todayStatus === 'done'      ? 'text-green-500'
+                    : todayStatus === 'behind'    ? 'text-amber-500'
+                    : todayStatus === 'overdue'   ? 'text-red-400'
+                    : 'text-muted-foreground'
+                  }`}
+                >
+                  {todayGain === null
+                    ? '—'
+                    : todayGain > 0
+                      ? `+${formatProgressPercent(todayGain)}%`
+                      : '0%'}
+                </motion.span>
+                <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight">
+                  {lang === 'bn' ? 'আজকের অগ্রগতি' : "Today's Gain"}
+                </span>
+              </div>
+
+              {/* 3. Status badge */}
+              <div className={`flex flex-col items-center gap-1.5 rounded-2xl p-3 border ${
+                todayStatus === 'exceeded'    ? 'bg-emerald-500/8 border-emerald-500/20'
+                : todayStatus === 'done'      ? 'bg-green-500/8 border-green-500/20'
+                : todayStatus === 'behind'    ? 'bg-amber-500/8 border-amber-500/20'
+                : todayStatus === 'overdue'   ? 'bg-red-500/8 border-red-500/20'
+                : 'bg-secondary/60 border-border/30'
+              }`}>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                  todayStatus === 'exceeded'    ? 'bg-emerald-500/20'
+                  : todayStatus === 'done'      ? 'bg-green-500/20'
+                  : todayStatus === 'behind'    ? 'bg-amber-500/20'
+                  : todayStatus === 'overdue'   ? 'bg-red-500/20'
+                  : 'bg-secondary'
+                }`}>
+                  {todayStatus === 'exceeded'    ? <TrendingUp size={13} className="text-emerald-500" />
+                   : todayStatus === 'done'      ? <CheckCircle2 size={13} className="text-green-500" />
+                   : todayStatus === 'behind'    ? <TrendingDown size={13} className="text-amber-500" />
+                   : todayStatus === 'overdue'   ? <AlertTriangle size={13} className="text-red-400" />
+                   : <Minus size={13} className="text-muted-foreground" />}
+                </div>
+                <motion.span
+                  key={todayStatus}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className={`text-[10px] font-black leading-tight text-center ${
+                    todayStatus === 'exceeded'    ? 'text-emerald-500'
+                    : todayStatus === 'done'      ? 'text-green-500'
+                    : todayStatus === 'behind'    ? 'text-amber-500'
+                    : todayStatus === 'overdue'   ? 'text-red-400'
+                    : 'text-muted-foreground'
+                  }`}
+                >
+                  {lang === 'bn'
+                    ? todayStatus === 'exceeded'    ? 'লক্ষ্যের বেশি!'
+                      : todayStatus === 'done'      ? 'লক্ষ্য পূরণ ✓'
+                      : todayStatus === 'behind'    ? 'লক্ষ্যের কম'
+                      : todayStatus === 'overdue'   ? 'সময় শেষ!'
+                      : todayStatus === 'no-baseline' ? 'কাল দেখা যাবে'
+                      : 'টার্গেট নেই'
+                    : todayStatus === 'exceeded'    ? 'Exceeded!'
+                      : todayStatus === 'done'      ? 'On Track ✓'
+                      : todayStatus === 'behind'    ? 'Behind'
+                      : todayStatus === 'overdue'   ? 'Overdue!'
+                      : todayStatus === 'no-baseline' ? 'Check tomorrow'
+                      : 'No Target'}
+                </motion.span>
+                <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight">
+                  {lang === 'bn' ? 'আজকের অবস্থা' : "Today's Status"}
+                </span>
+              </div>
+            </div>
+
+            {/* Deadline info row */}
+            {hasTarget && daysRemaining !== null && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`mt-3 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-semibold ${
+                  daysRemaining < 0 ? 'bg-red-500/10 text-red-500'
+                  : daysRemaining === 0 ? 'bg-amber-500/10 text-amber-600'
+                  : 'bg-secondary/70 text-muted-foreground'
+                }`}
+              >
+                <CalendarDays size={10} className="shrink-0" />
+                {lang === 'bn'
+                  ? daysRemaining < 0
+                    ? `টার্গেট তারিখ ${Math.abs(daysRemaining)} দিন আগে পেরিয়ে গেছে`
+                    : daysRemaining === 0
+                      ? 'আজই শেষ দিন — সর্বোচ্চ চেষ্টা করুন!'
+                      : `টার্গেট শেষ হতে আরও ${daysRemaining} দিন বাকি · ${safeFormat(courseEndDate?.toISOString(), 'MMM d, yyyy')}`
+                  : daysRemaining < 0
+                    ? `Deadline passed ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) !== 1 ? 's' : ''} ago`
+                    : daysRemaining === 0
+                      ? 'Last day — give it everything!'
+                      : `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} until deadline · ${safeFormat(courseEndDate?.toISOString(), 'MMM d, yyyy')}`
+                }
+              </motion.div>
+            )}
+            {!hasTarget && (
+              <p className="mt-2.5 text-center text-[10px] text-muted-foreground font-medium">
+                {lang === 'bn'
+                  ? '📅 কোর্স কমপ্লিশন টার্গেট সেট করলে প্রতিদিনের লক্ষ্য দেখাবে'
+                  : '📅 Set a course completion target to see your daily goal'}
+              </p>
+            )}
+          </div>
         </div>
         </ScrollReveal>
 

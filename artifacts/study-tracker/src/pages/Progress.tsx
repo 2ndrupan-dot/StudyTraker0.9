@@ -343,7 +343,7 @@ function OverallNotesCard() {
 
 export function Progress() {
   const { user, logout, updateProfile, updateProfilePhoto } = useAuth();
-  const { subjects, settings, setCourseStartDate, setTimezone, setGlobalNoteSize } = useStudy();
+  const { subjects, settings, setCourseStartDate, setTimezone, setGlobalNoteSize, dataLoaded } = useStudy();
   const { courses, deletedCourses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse, restoreCourse, permanentlyDeleteCourse, sharedCoursesMeta } = useCourse();
   const { t, lang, setLang } = useLang();
   const [, setLocation] = useLocation();
@@ -736,6 +736,7 @@ export function Progress() {
             courseId={activeCourseId ?? ''}
             overallProg={overallProg}
             startDate={settings?.courseStartDate}
+            dataLoaded={dataLoaded}
           />
         </ScrollReveal>
 

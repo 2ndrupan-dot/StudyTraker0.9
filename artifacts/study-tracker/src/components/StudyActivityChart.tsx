@@ -148,9 +148,16 @@ interface Props {
   overallProg: number;
   /** courseStartDate from settings — when this changes (date reset), wipe the chart */
   startDate?: string;
+  /**
+   * Pass the `dataLoaded` flag from StudyContext.
+   * Writes are gated on this being true so that stale `overallProg` from the
+   * *previous* course cannot contaminate this course's activitySnapshot during
+   * the brief window between a course switch and the new course's data loading.
+   */
+  dataLoaded?: boolean;
 }
 
-export function StudyActivityChart({ uid, courseId, overallProg, startDate }: Props) {
+export function StudyActivityChart({ uid, courseId, overallProg, startDate, dataLoaded = true }: Props) {
   const { t, lang } = useLang();
   const [view, setView] = useState<'week' | 'month'>('week');
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
@@ -256,8 +263,14 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate }: Pr
   // ── Save today's snapshot whenever overallProg changes ──────────────────────
   // Writes on every change — including decreases — so completing then
   // undoing a chapter/topic is immediately reflected in the bar chart.
+  //
+  // Guard: only write once the current course's data has fully loaded.
+  // Without this, a course switch briefly renders with the *previous* course's
+  // overallProg (StudyContext resets subjects asynchronously) while courseId has
+  // already changed, causing the old progress value to be written into the new
+  // course's activitySnapshot and producing identical charts across courses.
   useEffect(() => {
-    if (!uid || !courseId) return;
+    if (!uid || !courseId || !dataLoaded) return;
     const rounded = Math.round(overallProg * 10000) / 10000; // keep 4 dp internally
 
     // Skip if nothing actually changed since last write
@@ -277,7 +290,7 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate }: Pr
     setSnaps(updated);
     lsSave(uid, courseId, updated);
     fsSave(uid, courseId, updated);
-  }, [uid, courseId, overallProg, todayStr]); // intentionally exclude `snaps`
+  }, [uid, courseId, overallProg, todayStr, dataLoaded]); // intentionally exclude `snaps`
 
   // ── Day labels (Sun-first) ───────────────────────────────────────────────────
   const dayLabels = useMemo(() => [

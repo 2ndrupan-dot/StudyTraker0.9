@@ -457,17 +457,23 @@ export function Progress() {
   // Note: overallProg intentionally omitted – we only want the first-open value.
 
   // ── Progress insight computations (live) ───────────────────────────────────
-  // startOfDayValue: use the Firestore-confirmed baseline; fall back to the
-  // in-memory pending write while waiting for the snapshot to confirm it.
-  const startOfDayValue: number | null =
-    todayStr in startOfDaySnaps
-      ? startOfDaySnaps[todayStr]
-      : startOfDayWritten.current?.date === todayStr
-        ? startOfDayWritten.current.value
-        : null;
+  // todayGain baseline: the last cumulative snap recorded BEFORE today.
+  // This matches exactly what the Study Activity chart shows for today's bar,
+  // and is immune to the race where the user completes tasks before opening
+  // the Progress page (which caused startOfDay to capture the post-task value,
+  // yielding 0% gain even when real progress was made).
+  const filteredActivitySnaps: Record<string, number> = settings?.courseStartDate
+    ? Object.fromEntries(Object.entries(activitySnaps).filter(([k]) => k >= settings.courseStartDate!))
+    : activitySnaps;
+  const prevCumCandidates = Object.keys(filteredActivitySnaps)
+    .filter(d => d < todayStr && (filteredActivitySnaps[d] ?? 0) > 0)
+    .sort();
+  const prevCumBaseline = prevCumCandidates.length > 0
+    ? (filteredActivitySnaps[prevCumCandidates[prevCumCandidates.length - 1]] ?? 0)
+    : 0;
 
-  const hasBaselineReady = activitySnapsLoaded && dataLoaded && startOfDayValue !== null;
-  const todayGain = hasBaselineReady ? Math.max(0, overallProg - startOfDayValue!) : null;
+  const hasBaselineReady = activitySnapsLoaded && dataLoaded;
+  const todayGain = hasBaselineReady ? Math.max(0, overallProg - prevCumBaseline) : null;
 
   const remainingPercent = Math.max(0, 100 - overallProg);
 

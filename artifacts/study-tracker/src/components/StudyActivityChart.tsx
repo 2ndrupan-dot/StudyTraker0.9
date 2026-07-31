@@ -175,7 +175,7 @@ interface Props {
 
 export function StudyActivityChart({ uid, courseId, overallProg, startDate, dataLoaded = true }: Props) {
   const { t, lang } = useLang();
-  const [view, setView] = useState<'week' | 'month'>('month');
+  const [view, setView] = useState<'week' | 'month'>('week');
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
   const today = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => fmt(today), [today]);

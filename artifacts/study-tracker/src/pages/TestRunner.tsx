@@ -227,62 +227,47 @@ export function TestRunner() {
           {/* Wrong answers review */}
           {wrongQuestions.length > 0 && (
             <div>
-              {/* Section header */}
-              <div className="flex items-center gap-2.5 mb-4">
-                <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-red-100 dark:bg-red-900/30">
-                  <XCircle size={16} className="text-red-500 dark:text-red-400" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold text-foreground leading-tight">{t('testWrongReview')}</h2>
-                  <p className="text-[11px] text-muted-foreground">{wrongQuestions.length} {lang === 'bn' ? 'টি প্রশ্ন' : 'questions'}</p>
-                </div>
-              </div>
+              <h2 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+                <XCircle size={15} className="text-red-500" />
+                {t('testWrongReview')}
+                <span className="ml-auto text-[11px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{wrongQuestions.length}</span>
+              </h2>
               <div className="space-y-3">
                 {wrongQuestions.map(wq => {
                   const selected = userAnswers[wq.number];
                   const selectedOpt = selected !== undefined ? wq.options[selected] : null;
                   const correctOpt = wq.correctOptionIndex !== -1 ? wq.options[wq.correctOptionIndex] : null;
                   return (
-                    <div key={wq.number} className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-                      {/* Question */}
-                      <div className="px-4 pt-4 pb-3 flex items-start gap-2.5">
-                        <span className="mt-0.5 shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] font-bold">{wq.number}</span>
-                        <p className="text-sm font-semibold text-foreground leading-snug">{wq.questionText}</p>
+                    <div key={wq.number} className="rounded-2xl bg-card border border-border shadow-sm overflow-hidden">
+                      {/* Question row */}
+                      <div className="px-4 pt-3.5 pb-3">
+                        <p className="text-[13px] font-semibold text-foreground leading-snug">
+                          <span className="text-muted-foreground font-normal mr-1">{wq.number}.</span>
+                          {wq.questionText}
+                        </p>
                       </div>
-                      {/* Divider */}
-                      <div className="mx-4 border-t border-border/60" />
-                      {/* Answers */}
-                      <div className="px-4 py-3 flex flex-col gap-2">
+                      {/* Answer rows */}
+                      <div className="border-t border-border/50">
                         {selectedOpt && (
-                          <div className="flex items-center gap-2.5">
-                            <div className="shrink-0 w-5 h-5 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                              <XCircle size={11} className="text-red-500" />
-                            </div>
-                            <div className="min-w-0">
-                              <span className="text-[10px] text-muted-foreground font-medium block leading-none mb-0.5">
-                                {lang === 'bn' ? 'আপনার উত্তর' : 'Your answer'}
-                              </span>
-                              <span className="text-[13px] font-semibold text-red-600 dark:text-red-400 leading-tight">
-                                {selectedOpt.label ? `${selectedOpt.label}) ` : ''}{selectedOpt.text}
-                              </span>
-                            </div>
+                          <div className="flex items-baseline gap-2 px-4 py-2.5 border-b border-border/40 bg-red-50/60 dark:bg-red-950/20">
+                            <span className="shrink-0 text-[10px] font-bold tracking-wide text-red-500 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 rounded">
+                              {lang === 'bn' ? 'ভুল' : 'Wrong'}
+                            </span>
+                            <span className="text-[13px] font-medium text-foreground leading-snug">
+                              {selectedOpt.label ? `${selectedOpt.label}) ` : ''}{selectedOpt.text}
+                            </span>
                           </div>
                         )}
                         {(correctOpt || wq.correctAnswerText) && (
-                          <div className="flex items-center gap-2.5">
-                            <div className="shrink-0 w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                              <CheckCircle2 size={11} className="text-emerald-500" />
-                            </div>
-                            <div className="min-w-0">
-                              <span className="text-[10px] text-muted-foreground font-medium block leading-none mb-0.5">
-                                {lang === 'bn' ? 'সঠিক উত্তর' : 'Correct answer'}
-                              </span>
-                              <span className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-400 leading-tight">
-                                {correctOpt
-                                  ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
-                                  : wq.correctAnswerText}
-                              </span>
-                            </div>
+                          <div className="flex items-baseline gap-2 px-4 py-2.5 bg-emerald-50/60 dark:bg-emerald-950/20">
+                            <span className="shrink-0 text-[10px] font-bold tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded">
+                              {lang === 'bn' ? 'সঠিক' : 'Correct'}
+                            </span>
+                            <span className="text-[13px] font-medium text-foreground leading-snug">
+                              {correctOpt
+                                ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
+                                : wq.correctAnswerText}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -295,59 +280,47 @@ export function TestRunner() {
 
           {wrongQuestions.length === 0 && skippedQuestions.length === 0 && (
             <div className="flex flex-col items-center py-10 text-center">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-4">
-                <CheckCircle2 size={32} className="text-emerald-500" />
-              </div>
+              <CheckCircle2 size={40} className="text-emerald-500 mb-3" />
               <p className="font-bold text-foreground text-base">
                 {lang === 'bn' ? 'অসাধারণ! সব উত্তর সঠিক!' : 'Perfect score! All answers correct!'}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">{lang === 'bn' ? 'দারুণ পারফরম্যান্স!' : 'Great performance!'}</p>
             </div>
           )}
 
           {/* Skipped questions review */}
           {skippedQuestions.length > 0 && (
             <div>
-              {/* Section header */}
-              <div className="flex items-center gap-2.5 mb-4">
-                <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-900/30">
-                  <SkipForward size={16} className="text-amber-500 dark:text-amber-400" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold text-foreground leading-tight">{t('testSkippedReview')}</h2>
-                  <p className="text-[11px] text-muted-foreground">{skippedQuestions.length} {lang === 'bn' ? 'টি প্রশ্ন' : 'questions'}</p>
-                </div>
-              </div>
+              <h2 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+                <SkipForward size={15} className="text-amber-500" />
+                {t('testSkippedReview')}
+                <span className="ml-auto text-[11px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{skippedQuestions.length}</span>
+              </h2>
               <div className="space-y-3">
                 {skippedQuestions.map(sq => {
                   const correctOpt = sq.correctOptionIndex !== -1 ? sq.options[sq.correctOptionIndex] : null;
                   return (
-                    <div key={sq.number} className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-                      {/* Question */}
-                      <div className="px-4 pt-4 pb-3 flex items-start gap-2.5">
-                        <span className="mt-0.5 shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] font-bold">{sq.number}</span>
-                        <p className="text-sm font-semibold text-foreground leading-snug">{sq.questionText}</p>
+                    <div key={sq.number} className="rounded-2xl bg-card border border-border shadow-sm overflow-hidden">
+                      {/* Question row */}
+                      <div className="px-4 pt-3.5 pb-3">
+                        <p className="text-[13px] font-semibold text-foreground leading-snug">
+                          <span className="text-muted-foreground font-normal mr-1">{sq.number}.</span>
+                          {sq.questionText}
+                        </p>
                       </div>
-                      {/* Answer */}
+                      {/* Answer row */}
                       {(correctOpt || sq.correctAnswerText) && (
-                        <>
-                          <div className="mx-4 border-t border-border/60" />
-                          <div className="px-4 py-3 flex items-center gap-2.5">
-                            <div className="shrink-0 w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                              <CheckCircle2 size={11} className="text-emerald-500" />
-                            </div>
-                            <div className="min-w-0">
-                              <span className="text-[10px] text-muted-foreground font-medium block leading-none mb-0.5">
-                                {lang === 'bn' ? 'সঠিক উত্তর' : 'Correct answer'}
-                              </span>
-                              <span className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-400 leading-tight">
-                                {correctOpt
-                                  ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
-                                  : sq.correctAnswerText}
-                              </span>
-                            </div>
+                        <div className="border-t border-border/50">
+                          <div className="flex items-baseline gap-2 px-4 py-2.5 bg-emerald-50/60 dark:bg-emerald-950/20">
+                            <span className="shrink-0 text-[10px] font-bold tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded">
+                              {lang === 'bn' ? 'সঠিক' : 'Correct'}
+                            </span>
+                            <span className="text-[13px] font-medium text-foreground leading-snug">
+                              {correctOpt
+                                ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
+                                : sq.correctAnswerText}
+                            </span>
                           </div>
-                        </>
+                        </div>
                       )}
                     </div>
                   );

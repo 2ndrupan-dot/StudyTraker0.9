@@ -476,8 +476,8 @@ export function TestRunner() {
                   <div className={cn(
                     'inline-flex items-center gap-2 px-5 py-2 rounded-full font-bold text-sm shadow-lg',
                     isCorrectSelected
-                      ? 'bg-emerald-500 text-white shadow-emerald-200 dark:shadow-emerald-900/40'
-                      : 'bg-red-500 text-white shadow-red-200 dark:shadow-red-900/40',
+                      ? 'bg-emerald-400 text-white shadow-emerald-200 dark:shadow-emerald-900/40'
+                      : 'bg-red-400 text-white shadow-red-200 dark:shadow-red-900/40',
                   )}>
                     {isCorrectSelected
                       ? <CheckCircle2 size={15} className="shrink-0" />

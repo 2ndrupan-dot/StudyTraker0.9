@@ -658,7 +658,6 @@ function TestCardItem({
             )}
 
             {/* Drag handle */}
-            {!reorderMode || dragHandle}
             {reorderMode && dragHandle}
           </div>
 

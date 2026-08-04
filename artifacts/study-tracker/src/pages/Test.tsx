@@ -370,8 +370,8 @@ export function Test() {
 
             {/* Header right actions */}
             <div className="flex items-center gap-2">
-              {/* Reorder button - shown on subject list (if >1 subject) or always on deck view */}
-              {((!selectedSubjectId && subjects.length > 1) || (!!selectedSubjectId && deck.length > 0)) && !isAdding && !editingCardId && (
+              {/* Reorder button - shown only on deck view */}
+              {(!!selectedSubjectId && deck.length > 0) && !isAdding && !editingCardId && (
                 <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(313 80% 52%)' } as React.CSSProperties}>
                   <motion.button
                     whileTap={{ scale: 0.97 }}

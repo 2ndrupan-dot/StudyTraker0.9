@@ -226,27 +226,29 @@ export function TestRunner() {
 
           {/* Wrong answers review */}
           {wrongQuestions.length > 0 && (
-            <div>
-              <h2 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
-                <XCircle size={16} className="text-red-500" />
-                {t('testWrongReview')} ({wrongQuestions.length})
-              </h2>
-              <div className="space-y-3">
+            <div className="rounded-2xl overflow-hidden shadow-sm">
+              {/* Red header bar */}
+              <div className="flex items-center gap-2.5 px-4 py-3 bg-red-500 dark:bg-red-600">
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white/25 shrink-0">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3L11 11M11 3L3 11" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>
+                </span>
+                <span className="text-sm font-bold text-white">{t('testWrongReview')} ({wrongQuestions.length})</span>
+              </div>
+              {/* Cards */}
+              <div className="bg-white dark:bg-card divide-y divide-red-50 dark:divide-red-900/20">
                 {wrongQuestions.map(wq => {
                   const selected = userAnswers[wq.number];
                   const selectedOpt = selected !== undefined ? wq.options[selected] : null;
                   const correctOpt = wq.correctOptionIndex !== -1 ? wq.options[wq.correctOptionIndex] : null;
                   return (
-                    <div key={wq.number} className="rounded-2xl overflow-hidden shadow-sm border border-red-100 dark:border-red-900/40"
-                      style={{ background: 'linear-gradient(145deg, #fff5f5 0%, #fff 60%)' }}>
-                      <div className="px-4 pt-3.5 pb-3">
-                        <p className="text-sm font-semibold text-foreground leading-snug">
-                          <span className="text-muted-foreground text-[11px] mr-1.5">{wq.number}.</span>
-                          {wq.questionText}
-                        </p>
-                      </div>
-                      <div className="mx-4 border-t border-red-100 dark:border-red-900/30" />
-                      <div className="px-4 py-3 space-y-2">
+                    <div key={wq.number} className="flex gap-3 px-4 py-3.5">
+                      {/* Number badge */}
+                      <span className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 text-xs font-bold mt-0.5">
+                        {wq.number}
+                      </span>
+                      {/* Content */}
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <p className="text-sm font-semibold text-foreground leading-snug">{wq.questionText}</p>
                         {selectedOpt && (
                           <p className="text-[12px] text-red-600 dark:text-red-400 flex items-center gap-1.5">
                             <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-50 dark:bg-red-900/20"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M2 2L6 6M6 2L2 6" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/></svg></span>

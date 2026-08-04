@@ -287,20 +287,20 @@ export function TestRunner() {
           {skippedQuestions.length > 0 && (
             <div className="rounded-2xl overflow-hidden shadow-sm">
               {/* Amber header bar */}
-              <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-400 dark:bg-amber-500">
+              <div className="flex items-center gap-2.5 px-4 py-3 bg-violet-500 dark:bg-violet-600">
                 <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white/25 shrink-0">
                   <SkipForward size={14} className="text-white" />
                 </span>
                 <span className="text-sm font-bold text-white">{t('testSkippedReview')} ({skippedQuestions.length})</span>
               </div>
               {/* Cards */}
-              <div className="bg-white dark:bg-card divide-y divide-amber-50 dark:divide-amber-900/20">
+              <div className="bg-white dark:bg-card divide-y divide-violet-50 dark:divide-violet-900/20">
                 {skippedQuestions.map(sq => {
                   const correctOpt = sq.correctOptionIndex !== -1 ? sq.options[sq.correctOptionIndex] : null;
                   return (
                     <div key={sq.number} className="flex gap-3 px-4 py-3.5">
                       {/* Number badge */}
-                      <span className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-xs font-bold mt-0.5">
+                      <span className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-violet-500/15 text-violet-600 dark:text-violet-400 text-xs font-bold mt-0.5">
                         {sq.number}
                       </span>
                       {/* Content */}

@@ -508,7 +508,7 @@ export function TestRunner() {
           {!isAnswered && !isSkipped && hasOptions ? (
             <button
               onClick={handleSkip}
-              className="flex items-center gap-1 px-4 py-2.5 rounded-2xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-sm font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+              className="flex items-center gap-1 px-4 py-2.5 rounded-2xl border border-border bg-card text-sm font-semibold text-foreground hover:bg-secondary transition-colors"
             >
               <SkipForward size={14} />
               {t('testSkip')}

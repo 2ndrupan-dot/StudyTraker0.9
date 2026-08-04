@@ -258,12 +258,12 @@ export function TestRunner() {
                         {correctOpt ? (
                           <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                             <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3 5.5L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
-                            <span className="font-bold">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'}</span> {correctOpt.label ? `${correctOpt.label}) ` : ''}{correctOpt.text}
+                            <span className="font-bold">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'}</span> <span className="text-foreground">{correctOpt.label ? `${correctOpt.label}) ` : ''}{correctOpt.text}</span>
                           </p>
                         ) : wq.correctAnswerText ? (
                           <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                             <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3 5.5L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
-                            <span className="font-bold">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'}</span> {wq.correctAnswerText}
+                            <span className="font-bold">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'}</span> <span className="text-foreground">{wq.correctAnswerText}</span>
                           </p>
                         ) : null}
                       </div>
@@ -310,9 +310,9 @@ export function TestRunner() {
                           <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                             <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3 5.5L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
                             <span className="font-bold">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'}</span>{' '}
-                            {correctOpt
+                            <span className="text-foreground">{correctOpt
                               ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
-                              : sq.correctAnswerText}
+                              : sq.correctAnswerText}</span>
                           </p>
                         )}
                       </div>

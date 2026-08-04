@@ -228,7 +228,7 @@ export function TestRunner() {
           {wrongQuestions.length > 0 && (
             <div className="rounded-2xl overflow-hidden shadow-sm">
               {/* Red header bar */}
-              <div className="flex items-center gap-2.5 px-4 py-3 bg-red-500 dark:bg-red-600">
+              <div className="flex items-center gap-2.5 px-4 py-3 bg-red-400 dark:bg-red-500">
                 <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white/25 shrink-0">
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3L11 11M11 3L3 11" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>
                 </span>
@@ -287,7 +287,7 @@ export function TestRunner() {
           {skippedQuestions.length > 0 && (
             <div className="rounded-2xl overflow-hidden shadow-sm">
               {/* Amber header bar */}
-              <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-500 dark:bg-amber-600">
+              <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-400 dark:bg-amber-500">
                 <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white/25 shrink-0">
                   <SkipForward size={14} className="text-white" />
                 </span>

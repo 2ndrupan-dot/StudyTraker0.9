@@ -4,12 +4,15 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LangProvider } from "./context/LangContext";
 import { CourseProvider, useCourse } from "./context/CourseContext";
 import { StudyProvider } from "./context/StudyContext";
+import { TestProvider } from "./context/TestContext";
 import { Auth } from "./pages/Auth";
 import { Today } from "./pages/Today";
 import { Subjects } from "./pages/Subjects";
 import { Progress } from "./pages/Progress";
 import { NotesIndex } from "./pages/NotesIndex";
 import { NoteEditor } from "./pages/NoteEditor";
+import { Test } from "./pages/Test";
+import { TestRunner } from "./pages/TestRunner";
 import { CreateCoursePage } from "./pages/CreateCoursePage";
 import { AdminPanel } from "./pages/AdminPanel";
 import { PWAUpdater } from "./components/PWAUpdater";
@@ -59,7 +62,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
 // ── Route persistence: remember last visited page across PWA reloads ──────────
 const LAST_ROUTE_KEY = '@study_last_route';
-const RESTORABLE_ROUTES = ['/today', '/subjects', '/progress'];
+const RESTORABLE_ROUTES = ['/today', '/subjects', '/notes', '/test', '/progress'];
 
 function RouteTracker() {
   const { user } = useAuth();
@@ -124,6 +127,8 @@ function Router() {
         <Route path="/admin"><ProtectedRoute component={AdminPanel} /></Route>
         <Route path="/notes/:id"><ProtectedRoute component={NoteEditor} /></Route>
         <Route path="/notes"><ProtectedRoute component={NotesIndex} /></Route>
+        <Route path="/test/run"><ProtectedRoute component={TestRunner} /></Route>
+        <Route path="/test"><ProtectedRoute component={Test} /></Route>
         <Route path="/">
           <Redirect to={user ? (savedRoute ?? '/today') : '/auth'} />
         </Route>
@@ -147,11 +152,13 @@ function App() {
           <PWAInstallProvider>
             <CourseProvider>
               <StudyProvider>
-                <AdminProvider>
-                  <ContentProtectionGuard />
-                  <Router />
-                  <PWAUpdater />
-                </AdminProvider>
+                <TestProvider>
+                  <AdminProvider>
+                    <ContentProtectionGuard />
+                    <Router />
+                    <PWAUpdater />
+                  </AdminProvider>
+                </TestProvider>
               </StudyProvider>
             </CourseProvider>
           </PWAInstallProvider>

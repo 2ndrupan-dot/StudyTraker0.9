@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText, User as UserIcon, Headset } from 'lucide-react';
+import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText, User as UserIcon, Headset, ClipboardList } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
@@ -271,6 +271,7 @@ function SideNav({ onSearch }: { onSearch: () => void }) {
     { path: '/today', icon: CheckCircle2, label: t('today') },
     { path: '/subjects', icon: BookOpen, label: t('subjects') },
     { path: '/notes', icon: FileText, label: t('notesTab') },
+    { path: '/test', icon: ClipboardList, label: t('testTab') },
     { path: '/progress', icon: UserIcon, label: t('profileTab') },
   ];
 
@@ -417,10 +418,11 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
   const { t } = useLang();
   const { isInstalled } = usePWAInstall();
   const tabs = [
-    { path: '/today',    icon: CheckCircle2, label: t('today') },
-    { path: '/subjects', icon: BookOpen,     label: t('subjects') },
-    { path: '/notes',    icon: FileText,     label: t('notesTab') },
-    { path: '/progress', icon: UserIcon,     label: t('profileTab') },
+    { path: '/today',    icon: CheckCircle2,  label: t('today') },
+    { path: '/subjects', icon: BookOpen,      label: t('subjects') },
+    { path: '/notes',    icon: FileText,      label: t('notesTab') },
+    { path: '/test',     icon: ClipboardList, label: t('testTab') },
+    { path: '/progress', icon: UserIcon,      label: t('profileTab') },
   ];
 
   const handleTabClick = (path: string, isActive: boolean) => {
@@ -466,16 +468,6 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
               </button>
             );
           })}
-
-
-          {/* Search */}
-          <button
-            onClick={onSearchClick}
-            className="flex-1 flex flex-col items-center justify-center gap-1 h-full relative"
-          >
-            <Search size={22} className="text-muted-foreground transition-all duration-300" strokeWidth={2} />
-            <span className="text-[10px] font-semibold text-muted-foreground">{t('searchTitle')}</span>
-          </button>
         </div>
       </div>
     </>

@@ -285,41 +285,37 @@ export function TestRunner() {
 
           {/* Skipped questions review */}
           {skippedQuestions.length > 0 && (
-            <div>
-              <h2 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
-                <SkipForward size={16} className="text-amber-500" />
-                {t('testSkippedReview')} ({skippedQuestions.length})
-              </h2>
-              <div className="space-y-3">
+            <div className="rounded-2xl overflow-hidden shadow-sm">
+              {/* Amber header bar */}
+              <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-500 dark:bg-amber-600">
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white/25 shrink-0">
+                  <SkipForward size={14} className="text-white" />
+                </span>
+                <span className="text-sm font-bold text-white">{t('testSkippedReview')} ({skippedQuestions.length})</span>
+              </div>
+              {/* Cards */}
+              <div className="bg-white dark:bg-card divide-y divide-amber-50 dark:divide-amber-900/20">
                 {skippedQuestions.map(sq => {
                   const correctOpt = sq.correctOptionIndex !== -1 ? sq.options[sq.correctOptionIndex] : null;
                   return (
-                    <div key={sq.number} className="rounded-2xl overflow-hidden shadow-sm border border-emerald-100 dark:border-emerald-900/40"
-                      style={{ background: 'linear-gradient(145deg, #f0fdf4 0%, #fff 60%)' }}>
-                      <div className="px-4 pt-3.5 pb-3">
-                        <p className="text-sm font-semibold text-foreground leading-snug">
-                          <span className="text-muted-foreground text-[11px] mr-1.5">{sq.number}.</span>
-                          {sq.questionText}
-                        </p>
+                    <div key={sq.number} className="flex gap-3 px-4 py-3.5">
+                      {/* Number badge */}
+                      <span className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-bold mt-0.5">
+                        {sq.number}
+                      </span>
+                      {/* Content */}
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <p className="text-sm font-semibold text-foreground leading-snug">{sq.questionText}</p>
+                        {(correctOpt || sq.correctAnswerText) && (
+                          <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                            <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3 5.5L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
+                            <span className="font-bold">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'}</span>{' '}
+                            {correctOpt
+                              ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
+                              : sq.correctAnswerText}
+                          </p>
+                        )}
                       </div>
-                      {(correctOpt || sq.correctAnswerText) && (
-                        <>
-                          <div className="mx-4 border-t border-emerald-100 dark:border-emerald-900/30" />
-                          <div className="px-4 py-3">
-                            {correctOpt ? (
-                              <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
-                                <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3 5.5L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
-                                <span className="font-bold">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'}</span> {correctOpt.label ? `${correctOpt.label}) ` : ''}{correctOpt.text}
-                              </p>
-                            ) : (
-                              <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
-                                <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3 5.5L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
-                                <span className="font-bold">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'}</span> {sq.correctAnswerText}
-                              </p>
-                            )}
-                          </div>
-                        </>
-                      )}
                     </div>
                   );
                 })}

@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import { Layout } from '@/components/Layout';
 import { useStudy } from '@/context/StudyContext';
 import { useTest, type TestCard } from '@/context/TestContext';
+import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { ConfirmModal } from '@/components/ui';
@@ -224,6 +225,8 @@ function CardForm({ initialTitle = '', initialQuestion = '', initialAnswer = '',
 export function Test() {
   const { subjects, reorderSubjects } = useStudy();
   const { testDecks, testDecksLoaded, addTestCard, updateTestCard, deleteTestCard, reorderTestCards } = useTest();
+  const { activeCourseId, sharedCoursesMeta } = useCourse();
+  const isSharedCourse = !!(activeCourseId && sharedCoursesMeta[activeCourseId]);
   const { t, lang } = useLang();
   const [, navigate] = useLocation();
 
@@ -370,8 +373,8 @@ export function Test() {
 
             {/* Header right actions */}
             <div className="flex items-center gap-2">
-              {/* Reorder button - shown only on deck view */}
-              {(!!selectedSubjectId && deck.length > 0) && !isAdding && !editingCardId && (
+              {/* Reorder button - shown only on deck view; hidden for shared courses */}
+              {(!!selectedSubjectId && deck.length > 0) && !isAdding && !editingCardId && !isSharedCourse && (
                 <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(313 80% 52%)' } as React.CSSProperties}>
                   <motion.button
                     whileTap={{ scale: 0.97 }}
@@ -387,8 +390,8 @@ export function Test() {
                 </span>
               )}
 
-              {/* Add Test Card button — shown only on deck view */}
-              {selectedSubjectId && !isAdding && !editingCardId && (
+              {/* Add Test Card button — shown only on deck view; hidden for shared courses */}
+              {selectedSubjectId && !isAdding && !editingCardId && !isSharedCourse && (
                 <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(313 80% 52%)' } as React.CSSProperties}>
                   <motion.button
                     whileTap={{ scale: 0.97 }}
@@ -509,13 +512,15 @@ export function Test() {
                   <p className="text-muted-foreground text-sm mb-6 leading-relaxed">
                     {lang === 'bn' ? 'টেস্ট কার্ড যোগ করুন।' : 'Add a test card to get started.'}
                   </p>
-                  <motion.button
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setIsAdding(true)}
-                    className="flex items-center gap-2 py-3 px-6 rounded-2xl bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/25 hover:bg-primary/90 transition-colors"
-                  >
-                    <Plus size={18} /> {t('addTestCard')}
-                  </motion.button>
+                  {!isSharedCourse && (
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => setIsAdding(true)}
+                      className="flex items-center gap-2 py-3 px-6 rounded-2xl bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/25 hover:bg-primary/90 transition-colors"
+                    >
+                      <Plus size={18} /> {t('addTestCard')}
+                    </motion.button>
+                  )}
                 </motion.div>
               ) : (
                 <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
@@ -547,6 +552,7 @@ export function Test() {
                                   expanded={expandedCardId === card.id}
                                   reorderMode={reorderMode}
                                   dragHandle={handle}
+                                  isShared={isSharedCourse}
                                   onToggleExpand={() => {
                                     if (!reorderMode) setExpandedCardId(id => id === card.id ? null : card.id);
                                   }}
@@ -600,6 +606,7 @@ interface TestCardItemProps {
   expanded: boolean;
   reorderMode: boolean;
   dragHandle: React.ReactNode;
+  isShared?: boolean;
   onToggleExpand: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -609,7 +616,7 @@ interface TestCardItemProps {
 }
 
 function TestCardItem({
-  card, index, expanded, reorderMode, dragHandle,
+  card, index, expanded, reorderMode, dragHandle, isShared,
   onToggleExpand, onEdit, onDelete, onStartTest, t, lang,
 }: TestCardItemProps) {
   const accent = CARD_ACCENTS[index % CARD_ACCENTS.length];
@@ -635,8 +642,8 @@ function TestCardItem({
               {card.title}
             </button>
 
-            {/* Actions */}
-            {!reorderMode && (
+            {/* Actions — hidden for shared courses */}
+            {!reorderMode && !isShared && (
               <div className="flex items-center gap-0.5 shrink-0">
                 <motion.button
                   whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}

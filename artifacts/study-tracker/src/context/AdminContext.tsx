@@ -492,6 +492,12 @@ export function AdminProvider({ children }: { children: ReactNode }) {
                   )
                 );
                 await Promise.all(deckWritePromises);
+                // Dispatch instant UI update — same pattern as study-livesync but for
+                // test decks. TestContext listens for this to update state immediately
+                // without waiting for the Firestore onSnapshot round-trip.
+                window.dispatchEvent(new CustomEvent('test-livesync', {
+                  detail: { shareId, testDecksMap },
+                }));
               } catch { /* best-effort — test deck sync failure is non-fatal */ }
             }
 

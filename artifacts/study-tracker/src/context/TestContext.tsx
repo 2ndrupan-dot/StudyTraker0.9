@@ -49,6 +49,25 @@ export function TestProvider({ children }: { children: ReactNode }) {
   const activeCourseIdRef = useRef(activeCourseId);
   useEffect(() => { activeCourseIdRef.current = activeCourseId; }, [activeCourseId]);
 
+  // Listen for instant test-deck updates from AdminContext live-sync relay.
+  // This fires on the recipient's device after an admin edits cards in a shared
+  // course — eliminates the page-reload that the Firestore round-trip would require.
+  useEffect(() => {
+    const handleTestLiveSync = (e: Event) => {
+      const { shareId, testDecksMap } = (e as CustomEvent<{ shareId: string; testDecksMap: Record<string, unknown[]> }>).detail;
+      if (shareId !== activeCourseIdRef.current) return;
+      setTestDecks(prev => {
+        const next = { ...prev };
+        for (const [subjectId, cards] of Object.entries(testDecksMap)) {
+          next[subjectId] = [...(cards as TestCard[])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        }
+        return next;
+      });
+    };
+    window.addEventListener('test-livesync', handleTestLiveSync);
+    return () => window.removeEventListener('test-livesync', handleTestLiveSync);
+  }, []);
+
   // Subscribe to Firestore testDecks collection for the active course
   useEffect(() => {
     setTestDecksLoaded(false);

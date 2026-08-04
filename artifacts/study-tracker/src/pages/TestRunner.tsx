@@ -249,25 +249,35 @@ export function TestRunner() {
                       {/* Answer rows */}
                       <div className="border-t border-border/50">
                         {selectedOpt && (
-                          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/40">
-                            <span className="shrink-0 text-[10px] font-bold text-red-500 dark:text-red-400 border border-red-300 dark:border-red-700 px-1.5 py-0.5 rounded-md">
-                              {lang === 'bn' ? 'ভুল' : 'Wrong'}
-                            </span>
-                            <span className="text-[13px] font-medium text-foreground leading-snug">
-                              {selectedOpt.label ? `${selectedOpt.label}) ` : ''}{selectedOpt.text}
-                            </span>
+                          <div className="flex items-center gap-3 px-4 py-3 border-b border-rose-100 dark:border-rose-900/30 bg-rose-50 dark:bg-rose-950/30">
+                            <div className="shrink-0 w-7 h-7 rounded-full bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center">
+                              <XCircle size={14} className="text-rose-500 dark:text-rose-400" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-semibold text-rose-400 dark:text-rose-500 mb-0.5">
+                                {lang === 'bn' ? 'আপনার উত্তর' : 'Your answer'}
+                              </p>
+                              <p className="text-[13px] font-semibold text-rose-600 dark:text-rose-400 leading-snug">
+                                {selectedOpt.label ? `${selectedOpt.label}) ` : ''}{selectedOpt.text}
+                              </p>
+                            </div>
                           </div>
                         )}
                         {(correctOpt || wq.correctAnswerText) && (
-                          <div className="flex items-center gap-2 px-4 py-2.5">
-                            <span className="shrink-0 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700 px-1.5 py-0.5 rounded-md">
-                              {lang === 'bn' ? 'সঠিক' : 'Correct'}
-                            </span>
-                            <span className="text-[13px] font-medium text-foreground leading-snug">
-                              {correctOpt
-                                ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
-                                : wq.correctAnswerText}
-                            </span>
+                          <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30">
+                            <div className="shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
+                              <CheckCircle2 size={14} className="text-emerald-500 dark:text-emerald-400" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-semibold text-emerald-500 dark:text-emerald-500 mb-0.5">
+                                {lang === 'bn' ? 'সঠিক উত্তর' : 'Correct answer'}
+                              </p>
+                              <p className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-400 leading-snug">
+                                {correctOpt
+                                  ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
+                                  : wq.correctAnswerText}
+                              </p>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -310,15 +320,20 @@ export function TestRunner() {
                       {/* Answer row */}
                       {(correctOpt || sq.correctAnswerText) && (
                         <div className="border-t border-border/50">
-                          <div className="flex items-center gap-2 px-4 py-2.5">
-                            <span className="shrink-0 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700 px-1.5 py-0.5 rounded-md">
-                              {lang === 'bn' ? 'সঠিক' : 'Correct'}
-                            </span>
-                            <span className="text-[13px] font-medium text-foreground leading-snug">
-                              {correctOpt
-                                ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
-                                : sq.correctAnswerText}
-                            </span>
+                          <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30">
+                            <div className="shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
+                              <CheckCircle2 size={14} className="text-emerald-500 dark:text-emerald-400" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-semibold text-emerald-500 mb-0.5">
+                                {lang === 'bn' ? 'সঠিক উত্তর' : 'Correct answer'}
+                              </p>
+                              <p className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-400 leading-snug">
+                                {correctOpt
+                                  ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
+                                  : sq.correctAnswerText}
+                              </p>
+                            </div>
                           </div>
                         </div>
                       )}

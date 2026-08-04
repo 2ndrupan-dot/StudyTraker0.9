@@ -10,7 +10,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
-import { useAdmin, SharePermissions, ShareRequest } from '@/context/AdminContext';
+import { useAdmin, SharePermissions, ShareRequest, AdminRolePermissions, VisibleAdminEntry, DEFAULT_ADMIN_ROLE_PERMISSIONS } from '@/context/AdminContext';
 import { useCourse } from '@/context/CourseContext';
 import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
@@ -325,6 +325,62 @@ function NotePagesPicker({
   );
 }
 
+// ─── Admin Role Permissions Editor ────────────────────────────────────────────
+
+function AdminRolePermissionsEditor({
+  permissions, onChange, lang,
+}: { permissions: AdminRolePermissions; onChange: (p: AdminRolePermissions) => void; lang: string }) {
+  const items: { key: keyof AdminRolePermissions; label: string; sublabel: string; color: string }[] = [
+    {
+      key: 'canShareReceivedContent',
+      label: lang === 'bn' ? 'রিসিভড কন্টেন্ট শেয়ার করতে পারবে' : 'Can re-share received content',
+      sublabel: lang === 'bn' ? 'অন্য এডমিনের শেয়ার করা কোর্স/নোট পুনরায় শেয়ার করতে পারবে' : 'Can share courses/notes received from another admin',
+      color: 'text-teal-600',
+    },
+    {
+      key: 'canEditContacts',
+      label: lang === 'bn' ? 'কন্টাক্ট তথ্য এডিট করতে পারবে' : 'Can edit contact info',
+      sublabel: lang === 'bn' ? 'এডমিন প্যানেলে WhatsApp, ওয়েবসাইট ও সাপোর্ট লিঙ্ক পরিবর্তন করতে পারবে' : 'Can update WhatsApp, website & support link in admin panel',
+      color: 'text-blue-600',
+    },
+    {
+      key: 'canViewOtherAdmins',
+      label: lang === 'bn' ? 'অন্যান্য এডমিনের তালিকা দেখতে পারবে' : 'Can view other admins',
+      sublabel: lang === 'bn' ? 'নিজের ও সুপার এডমিনের বাইরে অন্যান্য এডমিনের ইমেইল দেখতে পারবে' : 'Can see other admins\' emails beyond own & super admin',
+      color: 'text-purple-600',
+    },
+    {
+      key: 'canAddAdmins',
+      label: lang === 'bn' ? 'নতুন এডমিন যোগ করতে পারবে' : 'Can add new admins',
+      sublabel: lang === 'bn' ? 'অন্য ইউজারকে এডমিন হিসেবে যোগ করতে এবং তাদের পারমিশন ম্যানেজ করতে পারবে' : 'Can add users as admins and manage their permissions',
+      color: 'text-orange-600',
+    },
+  ];
+
+  return (
+    <div className="space-y-2">
+      {items.map(({ key, label, sublabel, color }) => (
+        <button
+          key={key}
+          onClick={() => onChange({ ...permissions, [key]: !permissions[key] })}
+          className="w-full flex items-start gap-3 p-3 rounded-xl hover:bg-secondary/60 transition-colors text-left"
+        >
+          <div className={cn(
+            "w-5 h-5 rounded flex items-center justify-center border-2 shrink-0 transition-all mt-0.5",
+            permissions[key] ? "bg-primary border-primary" : "border-border bg-transparent"
+          )}>
+            {permissions[key] && <Check size={11} className="text-white" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className={cn("text-sm font-semibold block", color)}>{label}</span>
+            <span className="text-[11px] text-muted-foreground leading-tight">{sublabel}</span>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ─── Permissions Checkboxes ────────────────────────────────────────────────────
 
 function PermissionsEditor({
@@ -528,10 +584,11 @@ export function AdminPanel() {
   const { user } = useAuth();
   const { lang } = useLang();
   const { isAdmin, isSuperAdmin, adminEmails, loadingAdmins, addAdmin, removeAdmin,
+    visibleAdmins, currentAdminPermissions, updateAdminPermissions,
     sendShare, sentShares, trashedShares, loadingSentShares, updateSharePermissions,
     extendShare, getCourseSubjectsForShare, addSubjectsToShare,
     trashShare, restoreShare, permanentlyDeleteShare,
-    appContact, saveContactSettings } = useAdmin();
+    appContact, saveContactSettings, acceptedShares } = useAdmin();
   const { courses, activeCourse } = useCourse();
   const { subjects, notePagesIndex, loadNotePage } = useStudy();
 
@@ -550,9 +607,15 @@ export function AdminPanel() {
 
   // ── Admins tab state ──
   const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPermissions, setNewAdminPermissions] = useState<AdminRolePermissions>({ ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
+  const [showNewAdminPerms, setShowNewAdminPerms] = useState(false);
   const [addingAdmin, setAddingAdmin] = useState(false);
   const [adminError, setAdminError] = useState('');
   const [removingEmail, setRemovingEmail] = useState<string | null>(null);
+  // Edit permissions modal for an existing admin
+  const [editAdminPermEntry, setEditAdminPermEntry] = useState<VisibleAdminEntry | null>(null);
+  const [editAdminPermissions, setEditAdminPermissions] = useState<AdminRolePermissions>({ ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
+  const [savingAdminPerms, setSavingAdminPerms] = useState(false);
 
   // ── Share tab state ──
   const [shareStep, setShareStep] = useState(1); // 1=recipient, 2=content, 3=duration+perms
@@ -667,12 +730,30 @@ export function AdminPanel() {
     setAdminError('');
     setAddingAdmin(true);
     try {
-      await addAdmin(newAdminEmail.trim());
+      await addAdmin(newAdminEmail.trim(), newAdminPermissions);
       setNewAdminEmail('');
+      setNewAdminPermissions({ ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
+      setShowNewAdminPerms(false);
     } catch {
       setAdminError(lang === 'bn' ? 'যোগ করতে সমস্যা হয়েছে।' : 'Failed to add admin.');
     } finally {
       setAddingAdmin(false);
+    }
+  };
+
+  const handleOpenEditAdminPerms = (entry: VisibleAdminEntry) => {
+    setEditAdminPermEntry(entry);
+    setEditAdminPermissions({ ...entry.permissions });
+  };
+
+  const handleSaveAdminPerms = async () => {
+    if (!editAdminPermEntry) return;
+    setSavingAdminPerms(true);
+    try {
+      await updateAdminPermissions(editAdminPermEntry.email, editAdminPermissions);
+      setEditAdminPermEntry(null);
+    } finally {
+      setSavingAdminPerms(false);
     }
   };
 
@@ -934,8 +1015,8 @@ export function AdminPanel() {
         {/* ── Admins Tab ── */}
         {tab === 'admins' && (
           <div className="space-y-4 mt-2">
-            {/* Add admin */}
-            {isSuperAdmin && (
+            {/* Add admin — visible to super admin and to admins with canAddAdmins */}
+            {(isSuperAdmin || currentAdminPermissions?.canAddAdmins) && (
               <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-3">
                 <p className="text-sm font-bold text-foreground">
                   {lang === 'bn' ? 'নতুন এডমিন যোগ করুন' : 'Add New Admin'}
@@ -946,9 +1027,17 @@ export function AdminPanel() {
                     placeholder={lang === 'bn' ? 'ইমেইল আইডি' : 'Email address'}
                     value={newAdminEmail}
                     onChange={e => { setNewAdminEmail(e.target.value); setAdminError(''); }}
-                    onKeyDown={e => { if (e.key === 'Enter') handleAddAdmin(); }}
+                    onKeyDown={e => { if (e.key === 'Enter' && !showNewAdminPerms) handleAddAdmin(); }}
                     className="flex-1 h-10 text-sm"
                   />
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowNewAdminPerms(v => !v)}
+                    className="h-10 px-3 py-0 text-xs border-primary/30 text-primary"
+                    title={lang === 'bn' ? 'পারমিশন সেট করুন' : 'Set permissions'}
+                  >
+                    <ShieldCheck size={14} />
+                  </Button>
                   <Button
                     onClick={handleAddAdmin}
                     disabled={addingAdmin || !newAdminEmail.trim()}
@@ -957,6 +1046,30 @@ export function AdminPanel() {
                     {addingAdmin ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
                   </Button>
                 </div>
+
+                {/* Inline permissions picker */}
+                <AnimatePresence>
+                  {showNewAdminPerms && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="border-t border-border/40 pt-3 space-y-1">
+                        <p className="text-xs font-semibold text-muted-foreground mb-2">
+                          {lang === 'bn' ? 'এডমিন পারমিশন সেট করুন' : 'Set admin permissions'}
+                        </p>
+                        <AdminRolePermissionsEditor
+                          permissions={newAdminPermissions}
+                          onChange={setNewAdminPermissions}
+                          lang={lang}
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {adminError && <p className="text-xs text-destructive">{adminError}</p>}
               </div>
             )}
@@ -967,36 +1080,94 @@ export function AdminPanel() {
                 <div className="py-8 flex justify-center">
                   <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                 </div>
-              ) : adminEmails.length === 0 ? (
+              ) : visibleAdmins.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
                   {lang === 'bn' ? 'কোনো এডমিন নেই।' : 'No admins yet.'}
                 </p>
-              ) : adminEmails.map(email => {
-                const isSA = (import.meta.env.VITE_ADMIN_EMAILS || '').split(',').map((e: string) => e.trim().toLowerCase()).includes(email);
+              ) : visibleAdmins.map(entry => {
+                const canEditPerms = !entry.isSuperAdminMember && (
+                  isSuperAdmin ||
+                  (currentAdminPermissions?.canAddAdmins && entry.addedBy === user?.email?.toLowerCase())
+                );
+                const canRemove = !entry.isSuperAdminMember && (
+                  isSuperAdmin ||
+                  (currentAdminPermissions?.canAddAdmins && entry.addedBy === user?.email?.toLowerCase())
+                );
                 return (
-                  <div key={email} className="bg-card border border-border/50 rounded-2xl p-3.5 flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                      <UserCheck size={16} className="text-primary" />
+                  <div key={entry.email} className="bg-card border border-border/50 rounded-2xl p-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                        <UserCheck size={16} className="text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{entry.email}</p>
+                        <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                          {entry.isSuperAdminMember && (
+                            <span className="text-[10px] font-bold text-yellow-600 bg-yellow-500/10 px-1.5 py-0.5 rounded-full">
+                              {lang === 'bn' ? 'সুপার এডমিন' : 'Super Admin'}
+                            </span>
+                          )}
+                          {!entry.isSuperAdminMember && entry.addedBy && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {lang === 'bn' ? `যোগ করেছেন: ${entry.addedBy}` : `Added by: ${entry.addedBy}`}
+                            </span>
+                          )}
+                        </div>
+                        {/* Permission badges for non-super admins */}
+                        {!entry.isSuperAdminMember && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {entry.permissions.canShareReceivedContent && (
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-teal-500/10 text-teal-700">
+                                {lang === 'bn' ? 'শেয়ার' : 'Re-share'}
+                              </span>
+                            )}
+                            {entry.permissions.canEditContacts && (
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-700">
+                                {lang === 'bn' ? 'কন্টাক্ট' : 'Contacts'}
+                              </span>
+                            )}
+                            {entry.permissions.canViewOtherAdmins && (
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-700">
+                                {lang === 'bn' ? 'এডমিন দেখুন' : 'View admins'}
+                              </span>
+                            )}
+                            {entry.permissions.canAddAdmins && (
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-700">
+                                {lang === 'bn' ? 'এডমিন যোগ' : 'Add admins'}
+                              </span>
+                            )}
+                            {!entry.permissions.canShareReceivedContent && !entry.permissions.canEditContacts &&
+                              !entry.permissions.canViewOtherAdmins && !entry.permissions.canAddAdmins && (
+                              <span className="text-[9px] text-muted-foreground italic">
+                                {lang === 'bn' ? 'কোনো বিশেষ পারমিশন নেই' : 'No extra permissions'}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {canEditPerms && (
+                          <button
+                            onClick={() => handleOpenEditAdminPerms(entry)}
+                            className="p-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                            title={lang === 'bn' ? 'পারমিশন এডিট করুন' : 'Edit permissions'}
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                        )}
+                        {canRemove && (
+                          <button
+                            onClick={() => handleRemoveAdmin(entry.email)}
+                            disabled={removingEmail === entry.email}
+                            className="p-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                          >
+                            {removingEmail === entry.email
+                              ? <RefreshCw size={14} className="animate-spin" />
+                              : <UserMinus size={14} />}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate">{email}</p>
-                      {isSA && (
-                        <span className="text-[10px] font-bold text-yellow-600 bg-yellow-500/10 px-1.5 py-0.5 rounded-full">
-                          {lang === 'bn' ? 'সুপার এডমিন' : 'Super Admin'}
-                        </span>
-                      )}
-                    </div>
-                    {!isSA && isSuperAdmin && (
-                      <button
-                        onClick={() => handleRemoveAdmin(email)}
-                        disabled={removingEmail === email}
-                        className="p-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
-                      >
-                        {removingEmail === email
-                          ? <RefreshCw size={14} className="animate-spin" />
-                          : <UserMinus size={14} />}
-                      </button>
-                    )}
                   </div>
                 );
               })}
@@ -1298,10 +1469,31 @@ export function AdminPanel() {
                   </div>
                 )}
 
+                {/* Received-content re-share block */}
+                {(() => {
+                  const isReceived = shareForm.type === 'course' && shareForm.courseId &&
+                    acceptedShares.some(s => s.id === shareForm.courseId && s.type === 'course');
+                  const blocked = isReceived && !isSuperAdmin && !currentAdminPermissions?.canShareReceivedContent;
+                  if (!blocked) return null;
+                  return (
+                    <div className="bg-amber-500/10 border border-amber-300/50 rounded-xl p-3 flex items-start gap-2.5">
+                      <ShieldCheck size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-800 font-medium">
+                        {lang === 'bn'
+                          ? 'এই কোর্সটি অন্য একজন এডমিনের কাছ থেকে শেয়ার করা হয়েছে। রিসিভড কন্টেন্ট পুনরায় শেয়ার করার অনুমতি আপনার নেই।'
+                          : 'This course was shared with you by another admin. You do not have permission to re-share received content.'}
+                      </p>
+                    </div>
+                  );
+                })()}
+
                 <Button
                   className="w-full"
                   disabled={
-                    shareForm.type === 'course' ? (!shareForm.courseId || (courseSubjects.length > 0 && selectedSubjectIds.length === 0))
+                    shareForm.type === 'course'
+                      ? (!shareForm.courseId || (courseSubjects.length > 0 && selectedSubjectIds.length === 0) ||
+                          (!isSuperAdmin && !currentAdminPermissions?.canShareReceivedContent &&
+                            acceptedShares.some(s => s.id === shareForm.courseId && s.type === 'course')))
                       : shareForm.type === 'message' ? !shareForm.messageText.trim()
                       : notesPickedList.length === 0
                   }
@@ -1537,7 +1729,26 @@ export function AdminPanel() {
         {/* ── Contact Tab ── */}
         {tab === 'contact' && (
           <div className="space-y-4 mt-2">
-            <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-4">
+            {/* Permission gate: non-super-admin without canEditContacts sees read-only notice */}
+            {!isSuperAdmin && !currentAdminPermissions?.canEditContacts && (
+              <div className="bg-amber-500/10 border border-amber-300/50 rounded-2xl p-4 flex items-start gap-3">
+                <ShieldCheck size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">
+                    {lang === 'bn' ? 'কন্টাক্ট এডিট করার অনুমতি নেই' : 'No permission to edit contacts'}
+                  </p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    {lang === 'bn'
+                      ? 'সুপার এডমিন আপনাকে এই অনুমতি দিলে আপনি কন্টাক্ট তথ্য পরিবর্তন করতে পারবেন।'
+                      : 'Ask a super admin to grant you the "edit contacts" permission.'}
+                  </p>
+                </div>
+              </div>
+            )}
+            <div className={cn(
+              "bg-card border border-border/50 rounded-2xl p-4 space-y-4",
+              !isSuperAdmin && !currentAdminPermissions?.canEditContacts && "opacity-50 pointer-events-none select-none"
+            )}>
               <p className="text-sm font-bold text-foreground">
                 {lang === 'bn' ? 'কন্টাক্ট তথ্য সেট করুন' : 'Set Contact Information'}
               </p>
@@ -1861,6 +2072,40 @@ export function AdminPanel() {
               {deletingId === permDeleteConfirmShare?.id ? '...' : (lang === 'bn' ? 'মুছুন' : 'Delete')}
             </button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Edit Admin Permissions Modal */}
+      <Modal
+        isOpen={!!editAdminPermEntry}
+        onClose={() => setEditAdminPermEntry(null)}
+        title={lang === 'bn' ? 'এডমিন পারমিশন এডিট করুন' : 'Edit Admin Permissions'}
+        align="bottom"
+        icon={ShieldCheck}
+      >
+        <div className="space-y-4">
+          {editAdminPermEntry && (
+            <>
+              <p className="text-xs text-muted-foreground">
+                → {editAdminPermEntry.email}
+              </p>
+              <AdminRolePermissionsEditor
+                permissions={editAdminPermissions}
+                onChange={setEditAdminPermissions}
+                lang={lang}
+              />
+              <Button
+                className="w-full"
+                onClick={handleSaveAdminPerms}
+                disabled={savingAdminPerms}
+              >
+                {savingAdminPerms
+                  ? <RefreshCw size={14} className="animate-spin mr-2" />
+                  : <Save size={14} className="mr-2" />}
+                {lang === 'bn' ? 'সংরক্ষণ করুন' : 'Save Permissions'}
+              </Button>
+            </>
+          )}
         </div>
       </Modal>
     </div>

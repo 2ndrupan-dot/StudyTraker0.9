@@ -32,6 +32,31 @@ export interface SharePermissions {
   selectCopyText: boolean;  // can the user select & copy text on the page?
 }
 
+// ── Admin Role Permissions ────────────────────────────────────────────────────
+// Per-admin permission flags stored alongside each admin record in Firestore.
+// Super admins (from env) always have all permissions implicitly.
+
+export interface AdminRolePermissions {
+  canShareReceivedContent: boolean; // can re-share courses/notes received from another admin
+  canEditContacts: boolean;         // can edit contact info in the admin panel
+  canViewOtherAdmins: boolean;      // can see other admins' emails (beyond super admin + self)
+  canAddAdmins: boolean;            // can add (and manage) other admins
+}
+
+export const DEFAULT_ADMIN_ROLE_PERMISSIONS: AdminRolePermissions = {
+  canShareReceivedContent: false,
+  canEditContacts: false,
+  canViewOtherAdmins: false,
+  canAddAdmins: false,
+};
+
+export interface AdminRecord {
+  email: string;
+  addedBy: string;   // email of the admin who added this one ('' for migrated legacy entries)
+  addedAt: number;   // unix ms timestamp
+  permissions: AdminRolePermissions;
+}
+
 // Snapshot of a course's data embedded in the shareRequest at send-time so the
 // recipient can copy it to their own account when they accept.
 interface CourseSnapshot {
@@ -92,9 +117,13 @@ interface AdminContextType {
   isAdmin: boolean;
   isSuperAdmin: boolean;
   adminEmails: string[];
+  adminRecords: AdminRecord[];       // full records (Firestore admins only, not super admins)
+  visibleAdmins: VisibleAdminEntry[]; // what the current admin is allowed to see
+  currentAdminPermissions: AdminRolePermissions | null; // null = super admin (all perms)
   loadingAdmins: boolean;
-  addAdmin: (email: string) => Promise<void>;
+  addAdmin: (email: string, permissions: AdminRolePermissions) => Promise<void>;
   removeAdmin: (email: string) => Promise<void>;
+  updateAdminPermissions: (email: string, permissions: AdminRolePermissions) => Promise<void>;
   sendShare: (params: SendShareParams) => Promise<void>;
   sentShares: ShareRequest[];
   trashedShares: ShareRequest[];
@@ -125,6 +154,16 @@ export interface AppContact {
   whatsapp: string;
   website: string;
   supportLink: string;
+}
+
+// An entry in the visible admin list shown to the current admin.
+// Super admins appear with isSuperAdminMember:true and synthetic permissions.
+export interface VisibleAdminEntry {
+  email: string;
+  isSuperAdminMember: boolean; // true = comes from VITE_ADMIN_EMAILS env
+  addedBy: string;
+  addedAt: number;
+  permissions: AdminRolePermissions;
 }
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
@@ -224,8 +263,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const userEmail = user?.email?.toLowerCase() || '';
   const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(userEmail);
 
-  const [firestoreAdminEmails, setFirestoreAdminEmails] = useState<string[]>([]);
+  const [firestoreAdminRecords, setFirestoreAdminRecords] = useState<AdminRecord[]>([]);
   const [loadingAdmins, setLoadingAdmins] = useState(true);
+  const adminMigratedRef = useRef(false);
   const [allSentShares, setAllSentShares] = useState<ShareRequest[]>([]);
   const [loadingSentShares, setLoadingSentShares] = useState(false);
   const [allReceivedShares, setAllReceivedShares] = useState<ShareRequest[]>([]);
@@ -245,8 +285,57 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   // Key = shareId, Value = share type ('course' | 'note' | 'message').
   const acceptedSharesTrackingRef = useRef<Map<string, string>>(new Map());
 
-  const adminEmails = [...new Set([...SUPER_ADMIN_EMAILS, ...firestoreAdminEmails])];
+  const adminEmails = [...new Set([...SUPER_ADMIN_EMAILS, ...firestoreAdminRecords.map(r => r.email)])];
   const isAdmin = adminEmails.includes(userEmail);
+
+  // Permissions for the currently logged-in admin (null = super admin, has everything).
+  const currentAdminPermissions: AdminRolePermissions | null = isSuperAdmin
+    ? null
+    : (firestoreAdminRecords.find(r => r.email === userEmail)?.permissions ?? { ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
+
+  // All super admins as synthetic VisibleAdminEntry records.
+  const superAdminEntries: VisibleAdminEntry[] = SUPER_ADMIN_EMAILS.map(email => ({
+    email,
+    isSuperAdminMember: true,
+    addedBy: '',
+    addedAt: 0,
+    permissions: { canShareReceivedContent: true, canEditContacts: true, canViewOtherAdmins: true, canAddAdmins: true },
+  }));
+
+  // Which admins the current user is allowed to see in the admin list.
+  const visibleAdmins: VisibleAdminEntry[] = (() => {
+    const firestoreEntries: VisibleAdminEntry[] = firestoreAdminRecords.map(r => ({
+      ...r,
+      isSuperAdminMember: false,
+    }));
+
+    if (isSuperAdmin) {
+      // Super admin sees everyone.
+      return [...superAdminEntries, ...firestoreEntries];
+    }
+
+    const canViewOthers = currentAdminPermissions?.canViewOtherAdmins ?? false;
+    const canAddAdmins = currentAdminPermissions?.canAddAdmins ?? false;
+
+    if (canViewOthers) {
+      // Can see all admins.
+      return [...superAdminEntries, ...firestoreEntries];
+    }
+
+    // Always see: super admins + self.
+    const visible: VisibleAdminEntry[] = [
+      ...superAdminEntries,
+      ...firestoreEntries.filter(r => r.email === userEmail),
+    ];
+
+    if (canAddAdmins) {
+      // Also see admins they personally added.
+      const addedByMe = firestoreEntries.filter(r => r.addedBy === userEmail && r.email !== userEmail);
+      visible.push(...addedByMe);
+    }
+
+    return visible;
+  })();
 
   // Ticks once a minute purely to re-evaluate the expiry filters below (the
   // live per-row countdown UIs manage their own 1s tick independently — this
@@ -306,17 +395,42 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     return () => unsub();
   }, []);
 
-  // Load admin list from Firestore
+  // Load admin list from Firestore (with automatic migration from legacy email-only format)
   useEffect(() => {
     const ref = doc(db, 'adminConfig', 'adminList');
-    const unsub = onSnapshot(ref, snap => {
-      setFirestoreAdminEmails(
-        snap.exists() ? (snap.data().emails || []).map((e: string) => e.toLowerCase()) : []
-      );
+    const unsub = onSnapshot(ref, async snap => {
+      if (!snap.exists()) {
+        setFirestoreAdminRecords([]);
+        setLoadingAdmins(false);
+        return;
+      }
+      const data = snap.data();
+      // Migration: legacy format stored { emails: string[] } with no permissions.
+      // Auto-convert once to the new { admins: AdminRecord[] } format.
+      if (Array.isArray(data.emails) && !Array.isArray(data.admins) && !adminMigratedRef.current) {
+        adminMigratedRef.current = true;
+        const migrated: AdminRecord[] = (data.emails as string[]).map(em => ({
+          email: em.toLowerCase(),
+          addedBy: '',
+          addedAt: 0,
+          permissions: { ...DEFAULT_ADMIN_ROLE_PERMISSIONS },
+        }));
+        // Write back — will trigger another snapshot which takes the else branch
+        await setDoc(ref, { admins: migrated }, { merge: true });
+        setFirestoreAdminRecords(migrated);
+      } else {
+        const admins: AdminRecord[] = ((data.admins || []) as AdminRecord[]).map(r => ({
+          email: (r.email || '').toLowerCase(),
+          addedBy: r.addedBy || '',
+          addedAt: r.addedAt || 0,
+          permissions: { ...DEFAULT_ADMIN_ROLE_PERMISSIONS, ...(r.permissions || {}) },
+        }));
+        setFirestoreAdminRecords(admins);
+      }
       setLoadingAdmins(false);
     }, () => setLoadingAdmins(false));
     return () => unsub();
-  }, []);
+  }, []); // eslint-disable-line
 
   // Load sent shares (admin)
   useEffect(() => {
@@ -528,14 +642,25 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     return () => unsub();
   }, [user?.email, user?.id]); // eslint-disable-line
 
-  const addAdmin = async (email: string) => {
+  const addAdmin = async (email: string, permissions: AdminRolePermissions = { ...DEFAULT_ADMIN_ROLE_PERMISSIONS }) => {
     const e = email.trim().toLowerCase();
     const ref = doc(db, 'adminConfig', 'adminList');
     const snap = await getDoc(ref);
-    const existing: string[] = snap.exists() ? (snap.data().emails || []) : [];
-    if (!existing.includes(e)) {
-      await setDoc(ref, { emails: [...existing, e] }, { merge: true });
+    const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
+    if (!existing.find(r => r.email === e)) {
+      const newRecord: AdminRecord = { email: e, addedBy: userEmail, addedAt: Date.now(), permissions };
+      await setDoc(ref, { admins: [...existing, newRecord] }, { merge: true });
     }
+  };
+
+  const updateAdminPermissions = async (email: string, permissions: AdminRolePermissions) => {
+    const e = email.trim().toLowerCase();
+    if (SUPER_ADMIN_EMAILS.includes(e)) return; // super admin permissions are immutable
+    const ref = doc(db, 'adminConfig', 'adminList');
+    const snap = await getDoc(ref);
+    const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
+    const updated = existing.map(r => r.email === e ? { ...r, permissions } : r);
+    await setDoc(ref, { admins: updated }, { merge: true });
   };
 
   const saveContactSettings = async (c: Partial<AppContact>) => {
@@ -547,8 +672,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     if (SUPER_ADMIN_EMAILS.includes(e)) return;
     const ref = doc(db, 'adminConfig', 'adminList');
     const snap = await getDoc(ref);
-    const existing: string[] = snap.exists() ? (snap.data().emails || []) : [];
-    await setDoc(ref, { emails: existing.filter(x => x !== e) }, { merge: true });
+    const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
+    await setDoc(ref, { admins: existing.filter(r => r.email !== e) }, { merge: true });
   };
 
   const sendShare = async (params: SendShareParams) => {
@@ -910,8 +1035,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
   return (
     <AdminContext.Provider value={{
-      isAdmin, isSuperAdmin, adminEmails, loadingAdmins,
-      addAdmin, removeAdmin,
+      isAdmin, isSuperAdmin, adminEmails, adminRecords: firestoreAdminRecords,
+      visibleAdmins, currentAdminPermissions,
+      loadingAdmins,
+      addAdmin, removeAdmin, updateAdminPermissions,
       sendShare, sentShares, trashedShares, loadingSentShares,
       updateSharePermissions, cancelShare,
       pendingShares, acceptShare, declineShare,

@@ -243,7 +243,7 @@ export function TestRunner() {
                   return (
                     <div key={wq.number} className="flex gap-3 px-4 py-3.5">
                       {/* Number badge */}
-                      <span className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-500/10 text-red-500 dark:text-red-400 text-xs font-bold mt-0.5">
+                      <span className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-500/15 text-red-500 dark:text-red-400 text-xs font-bold mt-0.5">
                         {wq.number}
                       </span>
                       {/* Content */}
@@ -300,7 +300,7 @@ export function TestRunner() {
                   return (
                     <div key={sq.number} className="flex gap-3 px-4 py-3.5">
                       {/* Number badge */}
-                      <span className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-bold mt-0.5">
+                      <span className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-xs font-bold mt-0.5">
                         {sq.number}
                       </span>
                       {/* Content */}

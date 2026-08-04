@@ -249,7 +249,7 @@ export function TestRunner() {
                       <div className="px-4 py-3 space-y-2">
                         {selectedOpt && (
                           <p className="text-[12px] text-red-600 dark:text-red-400 flex items-center gap-1.5">
-                            <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 dark:bg-red-900/40"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M2 2L6 6M6 2L2 6" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/></svg></span>
+                            <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-50 dark:bg-red-900/20"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M2 2L6 6M6 2L2 6" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/></svg></span>
                             <span className="font-bold">{lang === 'bn' ? 'আপনার উত্তর:' : 'Your answer:'}</span> {selectedOpt.label ? `${selectedOpt.label}) ` : ''}{selectedOpt.text}
                           </p>
                         )}

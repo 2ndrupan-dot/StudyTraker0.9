@@ -1075,6 +1075,21 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           const syncStudyDataPayload = { ...mainPayload, subjects: syncSubjects, notePagesIndex: syncNotePagesIndex };
           const syncNotesDataPayload = { ...notesData, notes: syncNotes };
 
+          // Fetch test decks for this course so they are relayed to the recipient.
+          // Apply the same subject-level filter as subjects/notes above.
+          let testDecksMap: Record<string, unknown[]> = {};
+          try {
+            const decksColRef = collection(db, 'users', currentUser.id, 'courses', currentCourseId, 'testDecks');
+            const decksSnap = await getDocs(decksColRef);
+            decksSnap.forEach(d => {
+              const data = d.data();
+              const cards: unknown[] = Array.isArray(data.cards) ? data.cards : [];
+              if (!sharedSubjectIds || sharedSubjectIds.includes(d.id)) {
+                testDecksMap[d.id] = cards;
+              }
+            });
+          } catch { /* best-effort — missing decks are not fatal */ }
+
           // Overwrite courseSnapshot in-place (dot-notation → no extra fields added,
           // document size stays stable) and bump syncedAt as the change signal.
           // The recipient's AdminContext listener detects the new syncedAt via
@@ -1082,6 +1097,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           const syncPayload: Record<string, unknown> = {
             'courseSnapshot.studyData': syncStudyDataPayload,
             'courseSnapshot.notesJson': JSON.stringify(syncNotesDataPayload),
+            'courseSnapshot.testDecksJson': JSON.stringify(testDecksMap),
             syncedAt,
           };
           await updateDoc(doc(db, 'shareRequests', shareDoc.id), syncPayload);

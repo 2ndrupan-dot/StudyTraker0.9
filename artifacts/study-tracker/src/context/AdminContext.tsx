@@ -37,6 +37,7 @@ export interface SharePermissions {
 interface CourseSnapshot {
   studyData: Record<string, unknown>;
   notesJson: string; // JSON.stringify({ notes: Record<string,string>, overallNote: string })
+  testDecksJson?: string; // JSON.stringify(Record<subjectId, TestCard[]>)
 }
 
 export interface ShareRequest {
@@ -425,9 +426,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
         // Admin overwrites courseSnapshot in-place (dot-notation update),
         // so read the latest data from there.
-        const courseSnapshot = data.courseSnapshot as { studyData?: Record<string, unknown>; notesJson?: string } | undefined;
+        const courseSnapshot = data.courseSnapshot as { studyData?: Record<string, unknown>; notesJson?: string; testDecksJson?: string } | undefined;
         const syncStudyData = courseSnapshot?.studyData;
         const syncNotesJson = courseSnapshot?.notesJson;
+        const syncTestDecksJson = courseSnapshot?.testDecksJson;
         if (!syncStudyData) continue;
 
         // Run async in the background — do not block the snapshot handler
@@ -475,6 +477,22 @@ export function AdminProvider({ children }: { children: ReactNode }) {
                 liveSyncNotesMap = notesData.notes || {};
                 liveSyncOverallNote = notesData.overallNote || liveSyncOverallNote;
               } catch { /* malformed JSON — skip notes */ }
+            }
+
+            // Write test decks if provided — overwrite each deck doc so the user
+            // always sees the admin's latest cards. New decks are added, removed
+            // decks are left in place (harmless orphans) to avoid losing data.
+            if (syncTestDecksJson) {
+              try {
+                const testDecksMap = JSON.parse(syncTestDecksJson) as Record<string, unknown[]>;
+                const deckWritePromises = Object.entries(testDecksMap).map(([subjectId, cards]) =>
+                  setDoc(
+                    doc(db, 'users', uid, 'courses', shareId, 'testDecks', subjectId),
+                    { cards, updatedAt: Date.now() },
+                  )
+                );
+                await Promise.all(deckWritePromises);
+              } catch { /* best-effort — test deck sync failure is non-fatal */ }
             }
 
             // Also dispatch a synchronous window event so StudyContext can update
@@ -610,9 +628,25 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           };
         }
 
+        // Read test decks for the course (subcollection: courses/{courseId}/testDecks)
+        let testDecksMap: Record<string, unknown[]> = {};
+        try {
+          const decksColRef = collection(db, 'users', user.id, 'courses', params.courseId, 'testDecks');
+          const decksSnap = await getDocs(decksColRef);
+          decksSnap.forEach(d => {
+            const data = d.data();
+            const cards: unknown[] = Array.isArray(data.cards) ? data.cards : [];
+            // If subject-level filtering is active, only include decks for selected subjects
+            if (!params.sharedSubjectIds || params.sharedSubjectIds.includes(d.id)) {
+              testDecksMap[d.id] = cards;
+            }
+          });
+        } catch { /* best-effort — missing test decks are not fatal */ }
+
         const snapshot: CourseSnapshot = {
           studyData: studyDataForSnapshot,
           notesJson: JSON.stringify({ notes: notesMap, overallNote }),
+          testDecksJson: JSON.stringify(testDecksMap),
         };
         payload.courseSnapshot = snapshot;
       } catch {
@@ -818,7 +852,21 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           overallNote: parsedNotes.overallNote || '',
         });
 
-        // 4. Write shared-course metadata so permission checks can find it later
+        // 4. Write test decks (MCQ/quiz cards) so the Test section is available
+        if (snapshot.testDecksJson) {
+          try {
+            const testDecksMap = JSON.parse(snapshot.testDecksJson) as Record<string, unknown[]>;
+            const deckWritePromises = Object.entries(testDecksMap).map(([subjectId, cards]) =>
+              setDoc(
+                doc(db, 'users', user.id, 'courses', newCourseId, 'testDecks', subjectId),
+                { cards, updatedAt: ts },
+              )
+            );
+            await Promise.all(deckWritePromises);
+          } catch { /* best-effort — test decks not critical for course access */ }
+        }
+
+        // 5. Write shared-course metadata so permission checks can find it later
         await setDoc(doc(db, 'users', user.id, 'sharedCourses', newCourseId), {
           shareId,
           courseId: newCourseId,

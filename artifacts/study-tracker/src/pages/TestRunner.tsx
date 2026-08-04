@@ -243,37 +243,41 @@ export function TestRunner() {
                   const selectedOpt = selected !== undefined ? wq.options[selected] : null;
                   const correctOpt = wq.correctOptionIndex !== -1 ? wq.options[wq.correctOptionIndex] : null;
                   return (
-                    <div key={wq.number} className="rounded-2xl border border-red-100 dark:border-red-900/40 bg-white dark:bg-card shadow-sm overflow-hidden">
+                    <div key={wq.number} className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
                       {/* Question */}
-                      <div className="px-4 pt-4 pb-3">
-                        <p className="text-sm font-semibold text-foreground leading-snug">
-                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-[10px] font-bold mr-2 shrink-0 align-middle">{wq.number}</span>
-                          {wq.questionText}
-                        </p>
+                      <div className="px-4 pt-4 pb-3 flex items-start gap-2.5">
+                        <span className="mt-0.5 shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] font-bold">{wq.number}</span>
+                        <p className="text-sm font-semibold text-foreground leading-snug">{wq.questionText}</p>
                       </div>
-                      {/* Answer pills */}
-                      <div className="px-4 pb-4 flex flex-col gap-2">
+                      {/* Divider */}
+                      <div className="mx-4 border-t border-border/60" />
+                      {/* Answers */}
+                      <div className="px-4 py-3 flex flex-col gap-2">
                         {selectedOpt && (
-                          <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 rounded-xl px-3 py-2">
-                            <XCircle size={13} className="text-red-500 dark:text-red-400 shrink-0" />
+                          <div className="flex items-center gap-2.5">
+                            <div className="shrink-0 w-5 h-5 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                              <XCircle size={11} className="text-red-500" />
+                            </div>
                             <div className="min-w-0">
-                              <span className="text-[10px] font-semibold text-red-500 dark:text-red-400 uppercase tracking-wide block leading-none mb-0.5">
+                              <span className="text-[10px] text-muted-foreground font-medium block leading-none mb-0.5">
                                 {lang === 'bn' ? 'আপনার উত্তর' : 'Your answer'}
                               </span>
-                              <span className="text-[12px] font-medium text-red-700 dark:text-red-300 leading-tight block">
+                              <span className="text-[13px] font-semibold text-red-600 dark:text-red-400 leading-tight">
                                 {selectedOpt.label ? `${selectedOpt.label}) ` : ''}{selectedOpt.text}
                               </span>
                             </div>
                           </div>
                         )}
                         {(correctOpt || wq.correctAnswerText) && (
-                          <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 rounded-xl px-3 py-2">
-                            <CheckCircle2 size={13} className="text-emerald-500 dark:text-emerald-400 shrink-0" />
+                          <div className="flex items-center gap-2.5">
+                            <div className="shrink-0 w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                              <CheckCircle2 size={11} className="text-emerald-500" />
+                            </div>
                             <div className="min-w-0">
-                              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide block leading-none mb-0.5">
+                              <span className="text-[10px] text-muted-foreground font-medium block leading-none mb-0.5">
                                 {lang === 'bn' ? 'সঠিক উত্তর' : 'Correct answer'}
                               </span>
-                              <span className="text-[12px] font-medium text-emerald-800 dark:text-emerald-300 leading-tight block">
+                              <span className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-400 leading-tight">
                                 {correctOpt
                                   ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
                                   : wq.correctAnswerText}
@@ -318,31 +322,32 @@ export function TestRunner() {
                 {skippedQuestions.map(sq => {
                   const correctOpt = sq.correctOptionIndex !== -1 ? sq.options[sq.correctOptionIndex] : null;
                   return (
-                    <div key={sq.number} className="rounded-2xl border border-amber-100 dark:border-amber-900/40 bg-white dark:bg-card shadow-sm overflow-hidden">
+                    <div key={sq.number} className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
                       {/* Question */}
-                      <div className="px-4 pt-4 pb-3">
-                        <p className="text-sm font-semibold text-foreground leading-snug">
-                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[10px] font-bold mr-2 shrink-0 align-middle">{sq.number}</span>
-                          {sq.questionText}
-                        </p>
+                      <div className="px-4 pt-4 pb-3 flex items-start gap-2.5">
+                        <span className="mt-0.5 shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] font-bold">{sq.number}</span>
+                        <p className="text-sm font-semibold text-foreground leading-snug">{sq.questionText}</p>
                       </div>
-                      {/* Answer pill */}
+                      {/* Answer */}
                       {(correctOpt || sq.correctAnswerText) && (
-                        <div className="px-4 pb-4">
-                          <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 rounded-xl px-3 py-2">
-                            <CheckCircle2 size={13} className="text-emerald-500 dark:text-emerald-400 shrink-0" />
+                        <>
+                          <div className="mx-4 border-t border-border/60" />
+                          <div className="px-4 py-3 flex items-center gap-2.5">
+                            <div className="shrink-0 w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                              <CheckCircle2 size={11} className="text-emerald-500" />
+                            </div>
                             <div className="min-w-0">
-                              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide block leading-none mb-0.5">
+                              <span className="text-[10px] text-muted-foreground font-medium block leading-none mb-0.5">
                                 {lang === 'bn' ? 'সঠিক উত্তর' : 'Correct answer'}
                               </span>
-                              <span className="text-[12px] font-medium text-emerald-800 dark:text-emerald-300 leading-tight block">
+                              <span className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-400 leading-tight">
                                 {correctOpt
                                   ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
                                   : sq.correctAnswerText}
                               </span>
                             </div>
                           </div>
-                        </div>
+                        </>
                       )}
                     </div>
                   );

@@ -380,6 +380,10 @@ export const NoteEditorModal = ({
   const [searchQuery, setSearchQuery] = React.useState('');
   const [matchCount, setMatchCount] = React.useState(0);
   const [matchIdx, setMatchIdx] = React.useState(0);
+  // scrollTick increments on every highlight run so the scroll effect always
+  // fires even when matchCount and matchIdx haven't changed (e.g. user deletes
+  // one char then re-adds it — same 1/1 result but scroll must still fire).
+  const [scrollTick, setScrollTick] = React.useState(0);
   const previewContainerRef = React.useRef<HTMLDivElement>(null);
   const marksRef = React.useRef<HTMLElement[]>([]);
 
@@ -439,6 +443,9 @@ export const NoteEditorModal = ({
     marksRef.current = marks;
     setMatchCount(marks.length);
     setMatchIdx(0);
+    // Always bump the tick so the scroll effect fires even when matchCount and
+    // matchIdx haven't changed (same 1/1 result after a char delete + re-add).
+    if (marks.length > 0) setScrollTick(t => t + 1);
   }, [clearHighlights]);
 
   // Re-run search whenever the query changes or the preview becomes visible
@@ -448,12 +455,17 @@ export const NoteEditorModal = ({
     return () => window.clearTimeout(timer);
   }, [searchOpen, editing, searchQuery, value, expanded, runHighlight]);
 
-  // Highlight the active match and scroll it into view
+  // Highlight the active match and scroll it into view.
+  // scrollTick is included so this fires even when matchIdx and matchCount
+  // are unchanged (same number of results, same position, but user scrolled away).
   React.useEffect(() => {
     marksRef.current.forEach((mark, i) => mark.classList.toggle('search-hl-active', i === matchIdx));
     const current = marksRef.current[matchIdx];
-    if (current) current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [matchIdx, matchCount]);
+    // isConnected guards against scrolling to a detached DOM node (can happen
+    // if TipTap re-renders and resets the editor content between the highlight
+    // run and this effect firing).
+    if (current?.isConnected) current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [matchIdx, matchCount, scrollTick]);
 
   const closeSearch = () => {
     setSearchOpen(false);

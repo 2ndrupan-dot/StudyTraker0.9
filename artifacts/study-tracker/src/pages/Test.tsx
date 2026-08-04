@@ -361,7 +361,7 @@ export function Test() {
                 {selectedSubject && (
                   <p className="text-white/80 text-xs font-semibold mt-0.5">
                     {cardCount > 0
-                      ? `${cardCount} ${lang === 'bn' ? 'টি কার্ড' : `card${cardCount !== 1 ? 's' : ''}`}`
+                      ? `${cardCount} ${lang === 'bn' ? 'টি কার্ড উপলব্ধ' : `card${cardCount !== 1 ? 's' : ''} available`}`
                       : t('noTestCards')}
                   </p>
                 )}
@@ -471,7 +471,7 @@ export function Test() {
                                     <p className="text-sm font-bold text-foreground leading-snug mb-1 line-clamp-2">{subj.title}</p>
                                     <p className="text-[11px] text-muted-foreground font-medium">
                                       {count > 0
-                                        ? `${count} ${lang === 'bn' ? 'টি কার্ড' : `card${count !== 1 ? 's' : ''}`}`
+                                        ? `${count} ${lang === 'bn' ? 'টি কার্ড উপলব্ধ' : `card${count !== 1 ? 's' : ''} available`}`
                                         : t('noTestCards')}
                                     </p>
                                     {handle}

@@ -203,9 +203,9 @@ export function TestRunner() {
                   const selectedOpt = selected !== undefined ? wq.options[selected] : null;
                   const correctOpt = wq.correctOptionIndex !== -1 ? wq.options[wq.correctOptionIndex] : null;
                   return (
-                    <div key={wq.number} className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-2xl p-4">
+                    <div key={wq.number} className="bg-card border border-border/60 rounded-2xl p-4 shadow-sm">
                       <p className="text-sm font-semibold text-foreground mb-2">
-                        <span className="text-muted-foreground text-[11px] mr-1.5">Q{wq.number}.</span>
+                        <span className="text-muted-foreground text-[11px] mr-1.5">{wq.number}.</span>
                         {wq.questionText}
                       </p>
                       {selectedOpt && (
@@ -334,13 +334,13 @@ export function TestRunner() {
 
                   if (isAnswered) {
                     if (isCorrect) {
-                      ring = 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30';
-                      textClass = 'text-emerald-800 dark:text-emerald-200 font-semibold';
-                      labelClass = 'bg-emerald-500 text-white';
+                      ring = 'border-emerald-500 bg-emerald-500';
+                      textClass = 'text-white font-semibold';
+                      labelClass = 'bg-white/25 text-white';
                     } else if (isSelected && !isCorrect) {
-                      ring = 'border-red-400 bg-red-50 dark:bg-red-950/30';
-                      textClass = 'text-red-700 dark:text-red-300 font-semibold';
-                      labelClass = 'bg-red-500 text-white';
+                      ring = 'border-red-500 bg-red-500';
+                      textClass = 'text-white font-semibold';
+                      labelClass = 'bg-white/25 text-white';
                     }
                   } else if (isSelected) {
                     ring = 'border-primary/60 bg-primary/5';
@@ -365,8 +365,8 @@ export function TestRunner() {
                         </span>
                       )}
                       <span className={cn('text-sm flex-1 text-left leading-snug', textClass)}>{opt.text}</span>
-                      {isAnswered && isCorrect && <CheckCircle2 size={16} className="shrink-0 text-emerald-500" />}
-                      {isAnswered && isSelected && !isCorrect && <XCircle size={16} className="shrink-0 text-red-500" />}
+                      {isAnswered && isCorrect && <CheckCircle2 size={16} className="shrink-0 text-white" />}
+                      {isAnswered && isSelected && !isCorrect && <XCircle size={16} className="shrink-0 text-white" />}
                     </motion.button>
                   );
                 })}
@@ -389,10 +389,10 @@ export function TestRunner() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
                   className={cn(
-                    'flex items-center gap-2 px-4 py-3 rounded-2xl font-semibold text-sm',
+                    'flex items-center gap-2 px-4 py-3 rounded-2xl font-semibold text-sm border',
                     isCorrectSelected
-                      ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50'
-                      : 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/50',
+                      ? 'bg-emerald-500 text-white border-emerald-600'
+                      : 'bg-red-500 text-white border-red-600',
                   )}
                 >
                   {isCorrectSelected

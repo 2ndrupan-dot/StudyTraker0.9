@@ -385,20 +385,23 @@ export function TestRunner() {
             <AnimatePresence>
               {isAnswered && q.options.length > 0 && (
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className={cn(
-                    'flex items-center gap-2 px-4 py-3 rounded-2xl font-semibold text-sm border',
-                    isCorrectSelected
-                      ? 'bg-emerald-500 text-white border-emerald-600'
-                      : 'bg-red-500 text-white border-red-600',
-                  )}
+                  initial={{ opacity: 0, scale: 0.8, y: 6 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 26 }}
+                  className="flex justify-center"
                 >
-                  {isCorrectSelected
-                    ? <CheckCircle2 size={16} className="shrink-0 text-emerald-500" />
-                    : <XCircle size={16} className="shrink-0 text-red-500" />}
-                  {isCorrectSelected ? t('testCorrect') : t('testWrong')}
+                  <div className={cn(
+                    'inline-flex items-center gap-2 px-5 py-2 rounded-full font-bold text-sm shadow-lg',
+                    isCorrectSelected
+                      ? 'bg-emerald-500 text-white shadow-emerald-200 dark:shadow-emerald-900/40'
+                      : 'bg-red-500 text-white shadow-red-200 dark:shadow-red-900/40',
+                  )}>
+                    {isCorrectSelected
+                      ? <CheckCircle2 size={15} className="shrink-0" />
+                      : <XCircle size={15} className="shrink-0" />}
+                    {isCorrectSelected ? t('testCorrect') : t('testWrong')}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

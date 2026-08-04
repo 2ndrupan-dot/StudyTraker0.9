@@ -249,8 +249,8 @@ export function TestRunner() {
                       {/* Answer rows */}
                       <div className="border-t border-border/50">
                         {selectedOpt && (
-                          <div className="flex items-baseline gap-2 px-4 py-2.5 border-b border-border/40 bg-red-50/60 dark:bg-red-950/20">
-                            <span className="shrink-0 text-[10px] font-bold tracking-wide text-red-500 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 rounded">
+                          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/40">
+                            <span className="shrink-0 text-[10px] font-bold text-red-500 dark:text-red-400 border border-red-300 dark:border-red-700 px-1.5 py-0.5 rounded-md">
                               {lang === 'bn' ? 'ভুল' : 'Wrong'}
                             </span>
                             <span className="text-[13px] font-medium text-foreground leading-snug">
@@ -259,8 +259,8 @@ export function TestRunner() {
                           </div>
                         )}
                         {(correctOpt || wq.correctAnswerText) && (
-                          <div className="flex items-baseline gap-2 px-4 py-2.5 bg-emerald-50/60 dark:bg-emerald-950/20">
-                            <span className="shrink-0 text-[10px] font-bold tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded">
+                          <div className="flex items-center gap-2 px-4 py-2.5">
+                            <span className="shrink-0 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700 px-1.5 py-0.5 rounded-md">
                               {lang === 'bn' ? 'সঠিক' : 'Correct'}
                             </span>
                             <span className="text-[13px] font-medium text-foreground leading-snug">
@@ -310,8 +310,8 @@ export function TestRunner() {
                       {/* Answer row */}
                       {(correctOpt || sq.correctAnswerText) && (
                         <div className="border-t border-border/50">
-                          <div className="flex items-baseline gap-2 px-4 py-2.5 bg-emerald-50/60 dark:bg-emerald-950/20">
-                            <span className="shrink-0 text-[10px] font-bold tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded">
+                          <div className="flex items-center gap-2 px-4 py-2.5">
+                            <span className="shrink-0 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700 px-1.5 py-0.5 rounded-md">
                               {lang === 'bn' ? 'সঠিক' : 'Correct'}
                             </span>
                             <span className="text-[13px] font-medium text-foreground leading-snug">

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, X, Check, Trash2, BookOpen, StickyNote, MessageSquare, Clock, ChevronRight } from 'lucide-react';
+import { Bell, X, Check, Trash2, BookOpen, StickyNote, MessageSquare, Clock, ChevronRight, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAdmin, ShareRequest } from '@/context/AdminContext';
@@ -15,6 +15,155 @@ function formatDuration(value: number, unit: string, lang: string) {
     return `${value} ${unitMap[unit] || unit}`;
   }
   return `${value} ${unit}`;
+}
+
+// ─── Multi-note read-only viewer with live search + highlight ────────────────
+function MultiNoteModal({
+  isOpen, onClose, notes, selectCopyText,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  notes: Array<{ html: string; breadcrumb: string[] }>;
+  selectCopyText?: boolean;
+}) {
+  const { lang } = useLang();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [matchCount, setMatchCount] = useState(0);
+  const [matchIdx, setMatchIdx] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const marksRef = useRef<HTMLElement[]>([]);
+
+  const clearHighlights = useCallback(() => {
+    marksRef.current.forEach(mark => {
+      const parent = mark.parentNode;
+      if (!parent) return;
+      parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+      parent.normalize();
+    });
+    if (containerRef.current) {
+      containerRef.current.querySelectorAll('mark.search-hl').forEach(mark => {
+        const parent = mark.parentNode;
+        if (!parent) return;
+        parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+        parent.normalize();
+      });
+    }
+    marksRef.current = [];
+  }, []);
+
+  const runHighlight = useCallback((query: string) => {
+    clearHighlights();
+    const container = containerRef.current;
+    if (!container || !query.trim()) { setMatchCount(0); setMatchIdx(0); return; }
+    const q = query.toLowerCase();
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    const textNodes: Text[] = [];
+    let node: Node | null;
+    while ((node = walker.nextNode())) textNodes.push(node as Text);
+    const marks: HTMLElement[] = [];
+    textNodes.forEach(textNode => {
+      const text = textNode.textContent || '';
+      const lower = text.toLowerCase();
+      if (!lower.includes(q)) return;
+      const frag = document.createDocumentFragment();
+      let cursor = 0;
+      let pos = lower.indexOf(q);
+      while (pos !== -1) {
+        frag.appendChild(document.createTextNode(text.slice(cursor, pos)));
+        const mark = document.createElement('mark');
+        mark.className = 'search-hl';
+        mark.textContent = text.slice(pos, pos + q.length);
+        frag.appendChild(mark);
+        marks.push(mark);
+        cursor = pos + q.length;
+        pos = lower.indexOf(q, cursor);
+      }
+      frag.appendChild(document.createTextNode(text.slice(cursor)));
+      textNode.parentNode?.replaceChild(frag, textNode);
+    });
+    marksRef.current = marks;
+    setMatchCount(marks.length);
+    setMatchIdx(0);
+  }, [clearHighlights]);
+
+  // Re-run whenever query changes
+  useEffect(() => {
+    const timer = window.setTimeout(() => runHighlight(searchQuery), 30);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery, runHighlight]);
+
+  // Scroll to active match
+  useEffect(() => {
+    marksRef.current.forEach((mark, i) => mark.classList.toggle('search-hl-active', i === matchIdx));
+    marksRef.current[matchIdx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [matchIdx, matchCount]);
+
+  const goNext = () => setMatchIdx(i => matchCount === 0 ? 0 : (i + 1) % matchCount);
+  const goPrev = () => setMatchIdx(i => matchCount === 0 ? 0 : (i - 1 + matchCount) % matchCount);
+  const clearSearch = () => { setSearchQuery(''); clearHighlights(); setMatchCount(0); setMatchIdx(0); };
+
+  if (!isOpen) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={() => { clearSearch(); onClose(); }} title={`${notes.length} Notes`} icon={StickyNote}>
+      {/* Search bar */}
+      <div className="bg-secondary/40 rounded-xl px-3 py-2 flex items-center gap-2 mb-3">
+        <Search size={13} className="text-muted-foreground shrink-0" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') clearSearch();
+            if (e.key === 'Enter') { e.shiftKey ? goPrev() : goNext(); }
+          }}
+          placeholder={lang === 'bn' ? 'নোটে খুঁজুন...' : 'Search in notes...'}
+          className="flex-1 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground min-w-0"
+        />
+        {matchCount > 0 && (
+          <span className="text-xs text-muted-foreground whitespace-nowrap">{matchIdx + 1}/{matchCount}</span>
+        )}
+        {searchQuery.trim() && matchCount === 0 && (
+          <span className="text-xs text-rose-500 whitespace-nowrap">{lang === 'bn' ? 'পাওয়া যায়নি' : 'Not found'}</span>
+        )}
+        <button onClick={goPrev} disabled={matchCount === 0} className="p-1 rounded hover:bg-secondary text-muted-foreground disabled:opacity-40">
+          <ChevronUp size={13} />
+        </button>
+        <button onClick={goNext} disabled={matchCount === 0} className="p-1 rounded hover:bg-secondary text-muted-foreground disabled:opacity-40">
+          <ChevronDown size={13} />
+        </button>
+        {searchQuery && (
+          <button onClick={clearSearch} className="p-1 rounded hover:bg-secondary text-muted-foreground">
+            <X size={13} />
+          </button>
+        )}
+      </div>
+
+      {/* Notes list */}
+      <div className="space-y-3" ref={containerRef}>
+        {notes.map((note, i) => (
+          <div key={i} className="p-3 bg-secondary/40 rounded-xl space-y-2">
+            <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
+              {note.breadcrumb.map((c, ci) => (
+                <React.Fragment key={ci}>
+                  {ci > 0 && <ChevronRight size={9} />}
+                  <span className={ci === note.breadcrumb.length - 1 ? 'text-foreground font-semibold' : ''}>{c}</span>
+                </React.Fragment>
+              ))}
+            </p>
+            {note.html ? (
+              <div
+                className={cn('text-sm leading-relaxed rich-text-content', !selectCopyText && 'select-none')}
+                dangerouslySetInnerHTML={{ __html: note.html }}
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground italic">No content available.</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
 }
 
 // Shared notes open in the exact same note viewer used everywhere else in the
@@ -42,33 +191,12 @@ function SharedNoteModal({
   // unrelated notes at once, so this view focuses on reading/copying.
   if (notes && notes.length > 1) {
     return (
-      <Modal isOpen={isOpen} onClose={onClose} title={`${notes.length} Notes`} icon={StickyNote}>
-        <div className="space-y-3">
-          {notes.map((note, i) => (
-            <div key={i} className="p-3 bg-secondary/40 rounded-xl space-y-2">
-              <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                {note.breadcrumb.map((c, ci) => (
-                  <React.Fragment key={ci}>
-                    {ci > 0 && <ChevronRight size={9} />}
-                    <span className={ci === note.breadcrumb.length - 1 ? 'text-foreground font-semibold' : ''}>{c}</span>
-                  </React.Fragment>
-                ))}
-              </p>
-              {note.html ? (
-                <div
-                  className={cn(
-                    "text-sm leading-relaxed rich-text-content",
-                    !share.permissions.selectCopyText && "select-none"
-                  )}
-                  dangerouslySetInnerHTML={{ __html: note.html }}
-                />
-              ) : (
-                <p className="text-xs text-muted-foreground italic">No content available.</p>
-              )}
-            </div>
-          ))}
-        </div>
-      </Modal>
+      <MultiNoteModal
+        isOpen={isOpen}
+        onClose={onClose}
+        notes={notes}
+        selectCopyText={share.permissions.selectCopyText}
+      />
     );
   }
 

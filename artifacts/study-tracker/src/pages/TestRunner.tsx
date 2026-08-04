@@ -250,18 +250,18 @@ export function TestRunner() {
                         {selectedOpt && (
                           <p className="text-[12px] text-red-600 dark:text-red-400 flex items-center gap-1.5">
                             <XCircle size={12} className="shrink-0" />
-                            {lang === 'bn' ? 'আপনার উত্তর:' : 'Your answer:'} {selectedOpt.label ? `${selectedOpt.label}) ` : ''}{selectedOpt.text}
+                            <span className="font-bold">{lang === 'bn' ? 'আপনার উত্তর:' : 'Your answer:'}</span> {selectedOpt.label ? `${selectedOpt.label}) ` : ''}{selectedOpt.text}
                           </p>
                         )}
                         {correctOpt ? (
                           <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                             <CheckCircle2 size={12} className="shrink-0" />
-                            {lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'} {correctOpt.label ? `${correctOpt.label}) ` : ''}{correctOpt.text}
+                            <span className="font-bold">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'}</span> {correctOpt.label ? `${correctOpt.label}) ` : ''}{correctOpt.text}
                           </p>
                         ) : wq.correctAnswerText ? (
                           <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                             <CheckCircle2 size={12} className="shrink-0" />
-                            {lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'} {wq.correctAnswerText}
+                            <span className="font-bold">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'}</span> {wq.correctAnswerText}
                           </p>
                         ) : null}
                       </div>
@@ -307,12 +307,12 @@ export function TestRunner() {
                             {correctOpt ? (
                               <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                                 <CheckCircle2 size={12} className="shrink-0" />
-                                {lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'} {correctOpt.label ? `${correctOpt.label}) ` : ''}{correctOpt.text}
+                                <span className="font-bold">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'}</span> {correctOpt.label ? `${correctOpt.label}) ` : ''}{correctOpt.text}
                               </p>
                             ) : (
                               <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                                 <CheckCircle2 size={12} className="shrink-0" />
-                                {lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'} {sq.correctAnswerText}
+                                <span className="font-bold">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'}</span> {sq.correctAnswerText}
                               </p>
                             )}
                           </div>

@@ -458,6 +458,11 @@ export const translations = {
     testRetry: "Try Again",
     testProgress: "Progress",
     testQuestionLabel: "Question",
+    testSkip: "Skip",
+    testSkipped: "Skipped",
+    testAttended: "Attended",
+    testSkippedReview: "Skipped Questions",
+    testAnswerFirst: "Please answer or skip this question first.",
   },
   bn: {
     // Auth
@@ -916,5 +921,10 @@ export const translations = {
     testRetry: "আবার চেষ্টা",
     testProgress: "অগ্রগতি",
     testQuestionLabel: "প্রশ্ন",
+    testSkip: "স্কিপ",
+    testSkipped: "স্কিপ",
+    testAttended: "অংশগ্রহণ",
+    testSkippedReview: "স্কিপ করা প্রশ্ন",
+    testAnswerFirst: "উত্তর দিন অথবা স্কিপ করুন।",
   }
 };

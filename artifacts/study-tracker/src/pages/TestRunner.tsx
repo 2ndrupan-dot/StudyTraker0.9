@@ -7,7 +7,7 @@ import { ConfirmModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Square, Trophy, RotateCcw,
-  CheckCircle2, XCircle, AlertCircle,
+  CheckCircle2, XCircle, AlertCircle, SkipForward,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -62,7 +62,9 @@ export function TestRunner() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<number, number>>({}); // questionNumber → selectedOptionIdx
   const [revealed, setRevealed] = useState<Record<number, boolean>>({}); // questionNumber → answered
+  const [skipped, setSkipped] = useState<Record<number, boolean>>({}); // questionNumber → skipped
   const [finished, setFinished] = useState(false);
+  const [showAnswerFirst, setShowAnswerFirst] = useState(false);
 
   // Confirm dialogs
   const [confirmStop, setConfirmStop] = useState(false);
@@ -88,27 +90,54 @@ export function TestRunner() {
   const q = questions[currentIdx];
   const total = questions.length;
   const answeredCount = Object.keys(revealed).length;
+  const skippedCount = Object.keys(skipped).length;
   const selectedOpt = userAnswers[q.number];
   const isAnswered = revealed[q.number] === true;
+  const isSkipped = skipped[q.number] === true;
+  // Questions with no options can always be advanced (nothing to select)
+  const hasOptions = q.options.length > 0;
+  // Can advance if: answered, skipped, or has no options
+  const canAdvance = isAnswered || isSkipped || !hasOptions;
 
   // Compute results (when finished)
   const correctCount = questions.filter(q => {
     const selected = userAnswers[q.number];
     return selected !== undefined && selected === q.correctOptionIndex;
   }).length;
+  const attendedCount = answeredCount; // questions where user actually chose an answer
   const wrongQuestions = questions.filter(q => {
     const selected = userAnswers[q.number];
     return selected !== undefined && selected !== q.correctOptionIndex;
   });
-  const pct = total === 0 ? 0 : Math.round((correctCount / total) * 100);
+  const skippedQuestions = questions.filter(q => skipped[q.number] === true);
+  // Percentage: correct out of attended (not total)
+  const pct = attendedCount === 0 ? 0 : Math.round((correctCount / attendedCount) * 100);
 
   const handleSelectOption = (optIdx: number) => {
-    if (isAnswered || finished) return;
+    if (isAnswered || isSkipped || finished) return;
     setUserAnswers(prev => ({ ...prev, [q.number]: optIdx }));
     setRevealed(prev => ({ ...prev, [q.number]: true }));
+    setShowAnswerFirst(false);
   };
 
   const handleNext = () => {
+    if (!canAdvance) {
+      setShowAnswerFirst(true);
+      setTimeout(() => setShowAnswerFirst(false), 2000);
+      return;
+    }
+    setShowAnswerFirst(false);
+    if (currentIdx < total - 1) {
+      setCurrentIdx(i => i + 1);
+    } else {
+      setFinished(true);
+    }
+  };
+
+  const handleSkip = () => {
+    if (isAnswered || finished) return;
+    setSkipped(prev => ({ ...prev, [q.number]: true }));
+    setShowAnswerFirst(false);
     if (currentIdx < total - 1) {
       setCurrentIdx(i => i + 1);
     } else {
@@ -117,14 +146,16 @@ export function TestRunner() {
   };
 
   const handlePrev = () => {
-    if (currentIdx > 0) setCurrentIdx(i => i - 1);
+    if (currentIdx > 0) { setCurrentIdx(i => i - 1); setShowAnswerFirst(false); }
   };
 
   const handleRetry = () => {
     setCurrentIdx(0);
     setUserAnswers({});
     setRevealed({});
+    setSkipped({});
     setFinished(false);
+    setShowAnswerFirst(false);
   };
 
   // ── Progress bar ──────────────────────────────────────────────────────────
@@ -146,27 +177,30 @@ export function TestRunner() {
 
             {/* Circular score */}
             <div className="relative flex items-center justify-center mt-2">
-              <CircularScore correct={correctCount} total={total} size={100} />
+              <CircularScore correct={correctCount} total={Math.max(attendedCount, 1)} size={100} />
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-2xl font-bold text-white">{pct}%</span>
                 <span className="text-[10px] text-white/70">{t('testScoreLabel')}</span>
               </div>
             </div>
 
-            <div className="flex gap-6 mt-1">
+            <div className="flex gap-5 mt-1">
+              {/* Attended */}
               <div className="flex flex-col items-center gap-0.5">
-                <span className="text-lg font-bold text-emerald-300">{correctCount}</span>
+                <span className="text-lg font-bold text-sky-300">{attendedCount}/{total}</span>
+                <span className="text-[11px] text-white/70">{t('testAttended')}</span>
+              </div>
+              <div className="w-px bg-white/20" />
+              {/* Correct */}
+              <div className="flex flex-col items-center gap-0.5">
+                <span className="text-lg font-bold text-emerald-300">{correctCount}/{attendedCount}</span>
                 <span className="text-[11px] text-white/70">{t('testCorrectCount')}</span>
               </div>
               <div className="w-px bg-white/20" />
+              {/* Skipped */}
               <div className="flex flex-col items-center gap-0.5">
-                <span className="text-lg font-bold text-red-300">{total - correctCount}</span>
-                <span className="text-[11px] text-white/70">{t('testWrongCount')}</span>
-              </div>
-              <div className="w-px bg-white/20" />
-              <div className="flex flex-col items-center gap-0.5">
-                <span className="text-lg font-bold text-white">{total}</span>
-                <span className="text-[11px] text-white/70">{lang === 'bn' ? 'মোট' : 'Total'}</span>
+                <span className="text-lg font-bold text-amber-300">{skippedCount}/{total}</span>
+                <span className="text-[11px] text-white/70">{t('testSkipped')}</span>
               </div>
             </div>
           </div>
@@ -232,12 +266,46 @@ export function TestRunner() {
             </div>
           )}
 
-          {wrongQuestions.length === 0 && (
+          {wrongQuestions.length === 0 && skippedQuestions.length === 0 && (
             <div className="flex flex-col items-center py-8 text-center">
               <CheckCircle2 size={40} className="text-emerald-500 mb-3" />
               <p className="font-bold text-foreground">
                 {lang === 'bn' ? 'অসাধারণ! সব উত্তর সঠিক!' : 'Perfect score! All answers correct!'}
               </p>
+            </div>
+          )}
+
+          {/* Skipped questions review */}
+          {skippedQuestions.length > 0 && (
+            <div>
+              <h2 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+                <SkipForward size={16} className="text-amber-500" />
+                {t('testSkippedReview')} ({skippedQuestions.length})
+              </h2>
+              <div className="space-y-3">
+                {skippedQuestions.map(sq => {
+                  const correctOpt = sq.correctOptionIndex !== -1 ? sq.options[sq.correctOptionIndex] : null;
+                  return (
+                    <div key={sq.number} className="bg-card border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4 shadow-sm">
+                      <p className="text-sm font-semibold text-foreground mb-2">
+                        <span className="text-muted-foreground text-[11px] mr-1.5">{sq.number}.</span>
+                        {sq.questionText}
+                      </p>
+                      {correctOpt ? (
+                        <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                          <CheckCircle2 size={12} className="shrink-0" />
+                          {lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'} {correctOpt.label ? `${correctOpt.label}) ` : ''}{correctOpt.text}
+                        </p>
+                      ) : sq.correctAnswerText ? (
+                        <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                          <CheckCircle2 size={12} className="shrink-0" />
+                          {lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'} {sq.correctAnswerText}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -411,34 +479,60 @@ export function TestRunner() {
 
       {/* Bottom nav */}
       <div className="sticky bottom-0 bg-background/80 backdrop-blur-md border-t border-border/60 px-5 pb-safe-bottom">
-        <div className="max-w-xl mx-auto flex items-center justify-between gap-3 py-3">
+        {/* "Answer first" hint */}
+        <AnimatePresence>
+          {showAnswerFirst && (
+            <motion.p
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              className="text-center text-[11px] text-amber-600 dark:text-amber-400 font-semibold pt-2"
+            >
+              {t('testAnswerFirst')}
+            </motion.p>
+          )}
+        </AnimatePresence>
+
+        <div className="max-w-xl mx-auto flex items-center justify-between gap-2 py-3">
           {/* Previous */}
           <button
             onClick={handlePrev}
             disabled={currentIdx === 0}
-            className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl border border-border bg-card text-sm font-semibold text-foreground disabled:opacity-40 hover:bg-secondary transition-colors"
+            className="flex items-center gap-1 px-4 py-2.5 rounded-2xl border border-border bg-card text-sm font-semibold text-foreground disabled:opacity-40 hover:bg-secondary transition-colors"
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft size={15} />
             {t('testPrev')}
           </button>
 
-          {/* Progress badge */}
-          <span className="text-[12px] text-muted-foreground font-semibold tabular-nums">
-            {answeredCount} / {total}
-          </span>
+          {/* Skip — hidden if already answered or skipped, or no options */}
+          {!isAnswered && !isSkipped && hasOptions ? (
+            <button
+              onClick={handleSkip}
+              className="flex items-center gap-1 px-4 py-2.5 rounded-2xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-sm font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+            >
+              <SkipForward size={14} />
+              {t('testSkip')}
+            </button>
+          ) : (
+            <span className="text-[11px] text-muted-foreground font-semibold tabular-nums">
+              {answeredCount + skippedCount} / {total}
+            </span>
+          )}
 
           {/* Next / Finish */}
           <button
             onClick={handleNext}
             className={cn(
-              'flex items-center gap-1.5 px-5 py-2.5 rounded-2xl text-sm font-semibold transition-colors',
-              currentIdx === total - 1
-                ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                : 'bg-primary text-primary-foreground hover:bg-primary/90',
+              'flex items-center gap-1 px-4 py-2.5 rounded-2xl text-sm font-semibold transition-colors',
+              !canAdvance
+                ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                : currentIdx === total - 1
+                  ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                  : 'bg-primary text-primary-foreground hover:bg-primary/90',
             )}
           >
             {currentIdx === total - 1 ? t('testFinish') : t('testNext')}
-            {currentIdx < total - 1 && <ChevronRight size={16} />}
+            {currentIdx < total - 1 && <ChevronRight size={15} />}
           </button>
         </div>
       </div>

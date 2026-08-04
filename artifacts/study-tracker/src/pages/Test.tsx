@@ -10,7 +10,7 @@ import { ConfirmModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ClipboardList, Plus, ChevronLeft, Pencil, Trash2, Check, X,
-  ArrowUpDown, GripVertical, Info, Play, BookOpen,
+  ArrowUpDown, GripVertical, Info, Play, BookOpen, Search,
 } from 'lucide-react';
 import {
   DndContext, DragEndEvent, PointerSensor, TouchSensor, KeyboardSensor,
@@ -240,6 +240,9 @@ export function Test() {
   const [confirmDeleteCardId, setConfirmDeleteCardId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState('');
 
+  // Search
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Reorder
   const [reorderMode, setReorderMode] = useState(false);
 
@@ -254,6 +257,9 @@ export function Test() {
 
   const selectedSubject = subjects.find(s => s.id === selectedSubjectId);
   const deck = selectedSubjectId ? (testDecks[selectedSubjectId] ?? []) : [];
+  const filteredDeck = searchQuery.trim()
+    ? deck.filter(c => c.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : deck;
 
   const handleBack = () => {
     setSelectedSubjectId(null);
@@ -262,6 +268,7 @@ export function Test() {
     setExpandedCardId(null);
     setReorderMode(false);
     setSaveError('');
+    setSearchQuery('');
   };
 
   const handleSelectSubject = (id: string) => {
@@ -271,6 +278,7 @@ export function Test() {
     setExpandedCardId(null);
     setReorderMode(false);
     setSaveError('');
+    setSearchQuery('');
   };
 
   const handleSaveNew = async (title: string, question: string, answer: string) => {
@@ -327,7 +335,7 @@ export function Test() {
   // ── Sortable items list ───────────────────────────────────────────────────
 
   const sortableIds = selectedSubjectId
-    ? deck.map(c => c.id)
+    ? filteredDeck.map(c => c.id)
     : subjects.map(s => s.id);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -495,6 +503,28 @@ export function Test() {
           {/* ── Deck view (test cards for selected subject) ── */}
           {selectedSubjectId && (
             <>
+              {/* Search bar */}
+              {deck.length > 0 && !isAdding && !editingCardId && (
+                <div className="relative mb-3">
+                  <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => { setSearchQuery(e.target.value); setExpandedCardId(null); }}
+                    placeholder={lang === 'bn' ? 'কার্ড খুঁজুন...' : 'Search cards...'}
+                    className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
+
               {deck.length === 0 && !isAdding && !editingCardId ? (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -522,12 +552,28 @@ export function Test() {
                     </motion.button>
                   )}
                 </motion.div>
+              ) : filteredDeck.length === 0 && searchQuery.trim() ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex flex-col items-center justify-center py-12 text-center px-6"
+                >
+                  <div className="mb-3 w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+                    <Search size={24} className="text-primary/60" />
+                  </div>
+                  <p className="text-sm font-semibold text-foreground mb-1">
+                    {lang === 'bn' ? 'কোনো কার্ড পাওয়া যায়নি' : 'No cards found'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {lang === 'bn' ? `"${searchQuery}" এর সাথে কোনো কার্ড মিলছে না` : `No cards match "${searchQuery}"`}
+                  </p>
+                </motion.div>
               ) : (
                 <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
                   <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
                     <div className="space-y-2">
                       <AnimatePresence>
-                        {deck.map((card, idx) => (
+                        {filteredDeck.map((card, idx) => (
                           <SortableItem key={card.id} id={card.id} reorderMode={reorderMode}>
                             {handle => (
                               editingCardId === card.id ? (

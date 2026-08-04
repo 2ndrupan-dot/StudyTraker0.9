@@ -33,13 +33,13 @@ args = "artifacts/study-tracker: web"
 name = "artifacts/study-tracker: web"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/study-tracker run dev"
-waitForPort = 23521
-
-[workflows.workflow.metadata]
-outputType = "webview"
+waitForPort = 5000
 
     [agent]
     stack = "BEST_EFFORT_FALLBACK"

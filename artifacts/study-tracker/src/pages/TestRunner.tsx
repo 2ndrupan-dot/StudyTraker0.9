@@ -474,10 +474,10 @@ export function TestRunner() {
                   className="flex justify-center"
                 >
                   <div className={cn(
-                    'inline-flex items-center gap-2 px-5 py-2 rounded-full font-bold text-sm shadow-lg',
+                    'inline-flex items-center gap-2 px-5 py-2 rounded-full font-bold text-sm border',
                     isCorrectSelected
-                      ? 'bg-emerald-400 text-white shadow-emerald-200 dark:shadow-emerald-900/40'
-                      : 'bg-red-400 text-white shadow-red-200 dark:shadow-red-900/40',
+                      ? 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30 dark:text-emerald-400 dark:border-emerald-500/25'
+                      : 'bg-red-500/15 text-red-600 border-red-500/30 dark:text-red-400 dark:border-red-500/25',
                   )}>
                     {isCorrectSelected
                       ? <CheckCircle2 size={15} className="shrink-0" />

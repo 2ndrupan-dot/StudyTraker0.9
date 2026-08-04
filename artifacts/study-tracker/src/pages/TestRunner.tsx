@@ -228,9 +228,8 @@ export function TestRunner() {
           {wrongQuestions.length > 0 && (
             <div>
               <h2 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
-                <XCircle size={15} className="text-red-500" />
-                {t('testWrongReview')}
-                <span className="ml-auto text-[11px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{wrongQuestions.length}</span>
+                <XCircle size={16} className="text-red-500" />
+                {t('testWrongReview')} ({wrongQuestions.length})
               </h2>
               <div className="space-y-3">
                 {wrongQuestions.map(wq => {
@@ -238,49 +237,28 @@ export function TestRunner() {
                   const selectedOpt = selected !== undefined ? wq.options[selected] : null;
                   const correctOpt = wq.correctOptionIndex !== -1 ? wq.options[wq.correctOptionIndex] : null;
                   return (
-                    <div key={wq.number} className="rounded-2xl bg-card border border-border shadow-sm overflow-hidden">
-                      {/* Question row */}
-                      <div className="px-4 pt-3.5 pb-3">
-                        <p className="text-[13px] font-semibold text-foreground leading-snug">
-                          <span className="text-muted-foreground font-normal mr-1">{wq.number}.</span>
-                          {wq.questionText}
+                    <div key={wq.number} className="bg-card border border-border/60 rounded-2xl p-4 shadow-sm">
+                      <p className="text-sm font-semibold text-foreground mb-2">
+                        <span className="text-muted-foreground text-[11px] mr-1.5">{wq.number}.</span>
+                        {wq.questionText}
+                      </p>
+                      {selectedOpt && (
+                        <p className="text-[12px] text-red-600 dark:text-red-400 mb-1 flex items-center gap-1.5">
+                          <XCircle size={12} className="shrink-0" />
+                          {lang === 'bn' ? 'আপনার উত্তর:' : 'Your answer:'} {selectedOpt.label ? `${selectedOpt.label}) ` : ''}{selectedOpt.text}
                         </p>
-                      </div>
-                      {/* Answer rows */}
-                      <div className="border-t border-border/50">
-                        {selectedOpt && (
-                          <div className="flex items-center gap-3 px-4 py-3 border-b border-rose-100 dark:border-rose-900/30 bg-rose-50 dark:bg-rose-950/30">
-                            <div className="shrink-0 w-7 h-7 rounded-full bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center">
-                              <XCircle size={14} className="text-rose-500 dark:text-rose-400" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-[10px] font-semibold text-rose-400 dark:text-rose-500 mb-0.5">
-                                {lang === 'bn' ? 'আপনার উত্তর' : 'Your answer'}
-                              </p>
-                              <p className="text-[13px] font-semibold text-rose-600 dark:text-rose-400 leading-snug">
-                                {selectedOpt.label ? `${selectedOpt.label}) ` : ''}{selectedOpt.text}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                        {(correctOpt || wq.correctAnswerText) && (
-                          <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30">
-                            <div className="shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
-                              <CheckCircle2 size={14} className="text-emerald-500 dark:text-emerald-400" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-[10px] font-semibold text-emerald-500 dark:text-emerald-500 mb-0.5">
-                                {lang === 'bn' ? 'সঠিক উত্তর' : 'Correct answer'}
-                              </p>
-                              <p className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-400 leading-snug">
-                                {correctOpt
-                                  ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
-                                  : wq.correctAnswerText}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                      )}
+                      {correctOpt ? (
+                        <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                          <CheckCircle2 size={12} className="shrink-0" />
+                          {lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'} {correctOpt.label ? `${correctOpt.label}) ` : ''}{correctOpt.text}
+                        </p>
+                      ) : wq.correctAnswerText ? (
+                        <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                          <CheckCircle2 size={12} className="shrink-0" />
+                          {lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'} {wq.correctAnswerText}
+                        </p>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -289,9 +267,9 @@ export function TestRunner() {
           )}
 
           {wrongQuestions.length === 0 && skippedQuestions.length === 0 && (
-            <div className="flex flex-col items-center py-10 text-center">
+            <div className="flex flex-col items-center py-8 text-center">
               <CheckCircle2 size={40} className="text-emerald-500 mb-3" />
-              <p className="font-bold text-foreground text-base">
+              <p className="font-bold text-foreground">
                 {lang === 'bn' ? 'অসাধারণ! সব উত্তর সঠিক!' : 'Perfect score! All answers correct!'}
               </p>
             </div>
@@ -301,42 +279,29 @@ export function TestRunner() {
           {skippedQuestions.length > 0 && (
             <div>
               <h2 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
-                <SkipForward size={15} className="text-amber-500" />
-                {t('testSkippedReview')}
-                <span className="ml-auto text-[11px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{skippedQuestions.length}</span>
+                <SkipForward size={16} className="text-amber-500" />
+                {t('testSkippedReview')} ({skippedQuestions.length})
               </h2>
               <div className="space-y-3">
                 {skippedQuestions.map(sq => {
                   const correctOpt = sq.correctOptionIndex !== -1 ? sq.options[sq.correctOptionIndex] : null;
                   return (
-                    <div key={sq.number} className="rounded-2xl bg-card border border-border shadow-sm overflow-hidden">
-                      {/* Question row */}
-                      <div className="px-4 pt-3.5 pb-3">
-                        <p className="text-[13px] font-semibold text-foreground leading-snug">
-                          <span className="text-muted-foreground font-normal mr-1">{sq.number}.</span>
-                          {sq.questionText}
+                    <div key={sq.number} className="bg-card border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4 shadow-sm">
+                      <p className="text-sm font-semibold text-foreground mb-2">
+                        <span className="text-muted-foreground text-[11px] mr-1.5">{sq.number}.</span>
+                        {sq.questionText}
+                      </p>
+                      {correctOpt ? (
+                        <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                          <CheckCircle2 size={12} className="shrink-0" />
+                          {lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'} {correctOpt.label ? `${correctOpt.label}) ` : ''}{correctOpt.text}
                         </p>
-                      </div>
-                      {/* Answer row */}
-                      {(correctOpt || sq.correctAnswerText) && (
-                        <div className="border-t border-border/50">
-                          <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30">
-                            <div className="shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
-                              <CheckCircle2 size={14} className="text-emerald-500 dark:text-emerald-400" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-[10px] font-semibold text-emerald-500 mb-0.5">
-                                {lang === 'bn' ? 'সঠিক উত্তর' : 'Correct answer'}
-                              </p>
-                              <p className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-400 leading-snug">
-                                {correctOpt
-                                  ? `${correctOpt.label ? `${correctOpt.label}) ` : ''}${correctOpt.text}`
-                                  : sq.correctAnswerText}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                      ) : sq.correctAnswerText ? (
+                        <p className="text-[12px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                          <CheckCircle2 size={12} className="shrink-0" />
+                          {lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct answer:'} {sq.correctAnswerText}
+                        </p>
+                      ) : null}
                     </div>
                   );
                 })}

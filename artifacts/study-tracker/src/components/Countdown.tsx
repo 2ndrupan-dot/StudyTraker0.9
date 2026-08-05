@@ -70,6 +70,39 @@ export function Countdown({
 }
 
 /**
+ * Live-ticking "D:HH:MM:SS" count-UP timer. Shows how much time has passed
+ * since `startMs`. Ticks once per second on its own internal timer.
+ */
+export function CountUp({
+  startMs,
+  className,
+  lang = 'en',
+}: {
+  startMs: number;
+  className?: string;
+  lang?: string;
+}) {
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => forceTick(v => v + 1), 1000);
+    return () => clearInterval(id);
+  }, [startMs]);
+
+  const elapsed = Math.max(0, Date.now() - startMs);
+  const days    = Math.floor(elapsed / (1000 * 60 * 60 * 24));
+  const hours   = Math.floor((elapsed % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((elapsed % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((elapsed % (1000 * 60)) / 1000);
+
+  const text = days > 0
+    ? `${days}${lang === 'bn' ? 'দি' : 'd'} ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
+    : `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+
+  return <span className={className}>{text}</span>;
+}
+
+/**
  * Prominent months : days : hours : minutes countdown for an admin's own card.
  * Ticks every minute — no seconds shown.
  */

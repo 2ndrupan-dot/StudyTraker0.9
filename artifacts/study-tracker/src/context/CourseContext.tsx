@@ -405,6 +405,20 @@ export function CourseProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(`@study_${k}_${user.email}_${courseId}`);
       });
     } catch { /* ignore */ }
+
+    // If this was a shared course, move the shareRequest to the admin's Trash.
+    const sharedMeta = sharedCoursesMeta[courseId];
+    if (sharedMeta?.shareId) {
+      try {
+        await updateDoc(doc(db, 'shareRequests', sharedMeta.shareId), {
+          status: 'trashed',
+          trashedAt: Date.now(),
+          trashedFromStatus: 'accepted',
+        });
+        // Also clean up the sharedCourses tracking doc.
+        await deleteDoc(doc(db, 'users', user.id, 'sharedCourses', courseId));
+      } catch { /* offline or already deleted */ }
+    }
   };
 
   const activeCourse = courses.find(c => c.id === activeCourseId) ?? null;

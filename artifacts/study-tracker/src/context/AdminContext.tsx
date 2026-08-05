@@ -1351,7 +1351,12 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   };
 
   const declineShare = async (shareId: string) => {
-    await updateDoc(doc(db, 'shareRequests', shareId), { status: 'declined' });
+    const share = allReceivedShares.find(s => s.id === shareId);
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      status: 'trashed',
+      trashedAt: Date.now(),
+      trashedFromStatus: share?.status ?? 'pending',
+    });
   };
 
   const markSeen = async (shareId: string) => {

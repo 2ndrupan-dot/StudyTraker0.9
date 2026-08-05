@@ -16,7 +16,7 @@ import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
 import { Button, Input, Modal } from '@/components/ui';
 import { RichTextPreview } from '@/components/RichTextEditor';
-import { Countdown, AdminTermCountdown } from '@/components/Countdown';
+import { Countdown, AdminTermCountdown, CountUp } from '@/components/Countdown';
 import type { Subject } from '@/lib/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -625,7 +625,7 @@ function SentShareRow({
             </span>
             <span className="text-[10px] text-muted-foreground">{formatDate(share.sentAt)}</span>
           </div>
-          {(share.status === 'pending' || share.status === 'accepted') && countdownTarget && (
+          {(share.status === 'pending' || share.status === 'accepted') && countdownTarget && !share.recipientDeleted && (
             <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-primary/10">
               <Clock size={10} className="text-primary" />
               <span className="text-[11px] font-mono font-bold text-primary tabular-nums">
@@ -633,6 +633,17 @@ function SentShareRow({
               </span>
               <span className="text-[9px] text-primary/70">
                 {lang === 'bn' ? 'বাকি' : 'left'}
+              </span>
+            </div>
+          )}
+          {share.recipientDeleted && share.recipientDeletedAt && (
+            <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/10">
+              <Trash2 size={10} className="text-red-600" />
+              <span className="text-[11px] font-mono font-bold text-red-700 dark:text-red-400 tabular-nums">
+                <CountUp startMs={share.recipientDeletedAt} lang={lang} />
+              </span>
+              <span className="text-[9px] text-red-600/70">
+                {lang === 'bn' ? 'আগে ডিলিট করেছে' : 'ago deleted'}
               </span>
             </div>
           )}

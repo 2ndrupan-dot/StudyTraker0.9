@@ -1353,12 +1353,15 @@ export function AdminPanel() {
           return keys;
         })();
 
-  const tabs = [
+  const allTabs = [
     { id: 'admins', label: lang === 'bn' ? 'এডমিন' : 'Admins', Icon: Users },
     { id: 'share', label: lang === 'bn' ? 'শেয়ার' : 'Share', Icon: Send },
     { id: 'sent', label: lang === 'bn' ? 'পাঠানো' : 'Sent', Icon: List },
     { id: 'contact', label: lang === 'bn' ? 'কন্টাক্ট' : 'Contact', Icon: Phone },
   ] as const;
+  const tabs = allTabs.filter(t =>
+    t.id !== 'contact' || isSuperAdmin || !!currentAdminPermissions?.canEditContacts
+  );
 
   return (
     <div className="min-h-[100dvh] bg-background">

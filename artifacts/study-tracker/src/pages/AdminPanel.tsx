@@ -711,17 +711,39 @@ function TrashedShareRow({
             {shareTitle(share, lang)}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">→ {share.toEmail}</p>
-          {share.seenAt && (
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            {/* How did this card end up in Trash? */}
+            {share.recipientAction === 'declined' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 bg-red-500/15 text-red-700 dark:text-red-400">
+                <X size={9} />
+                {lang === 'bn' ? 'নোটিফিকেশন থেকে ডিলিট করেছে' : 'Rejected from notification'}
+              </span>
+            )}
+            {share.recipientAction === 'accepted_then_deleted' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 bg-orange-500/15 text-orange-700 dark:text-orange-400">
+                <CheckCheck size={9} />
+                {lang === 'bn' ? 'একসেপ্ট করে পরে ডিলিট করেছে' : 'Accepted then deleted'}
+              </span>
+            )}
+            {share.recipientAction === 'opened' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 bg-green-500/15 text-green-700 dark:text-green-400">
+                <Eye size={9} />
+                {lang === 'bn' ? 'খুলে দেখেছে (ডেলিভারি সম্পন্ন)' : 'Opened (delivered)'}
+              </span>
+            )}
+            {/* Seen timestamp */}
+            {share.seenAt && share.recipientAction !== 'opened' && (
               <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 bg-blue-500/10 text-blue-600">
                 <Eye size={10} />
                 {lang === 'bn' ? `দেখেছে · ${formatDate(share.seenAt)}` : `Seen · ${formatDate(share.seenAt)}`}
               </span>
-            </div>
-          )}
+            )}
+          </div>
           {share.trashedAt && (
             <p className="text-[10px] text-muted-foreground mt-1">
-              {lang === 'bn' ? 'সরানো হয়েছে' : 'Moved'} · {formatDate(share.trashedAt)}
+              {share.trashedByRecipient
+                ? (lang === 'bn' ? `ট্রাস্টে এসেছে · ${formatDate(share.trashedAt)}` : `Moved to trash · ${formatDate(share.trashedAt)}`)
+                : (lang === 'bn' ? `ডিলিট করা হয়েছে · ${formatDate(share.trashedAt)}` : `Deleted · ${formatDate(share.trashedAt)}`)}
             </p>
           )}
           {/* Show live countdown timer if share still has time remaining */}

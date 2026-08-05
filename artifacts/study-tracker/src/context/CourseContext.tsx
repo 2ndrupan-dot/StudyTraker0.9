@@ -414,6 +414,8 @@ export function CourseProvider({ children }: { children: ReactNode }) {
           status: 'trashed',
           trashedAt: Date.now(),
           trashedFromStatus: 'accepted',
+          trashedByRecipient: true,
+          recipientAction: 'accepted_then_deleted',
         });
         // Also clean up the sharedCourses tracking doc.
         await deleteDoc(doc(db, 'users', user.id, 'sharedCourses', courseId));

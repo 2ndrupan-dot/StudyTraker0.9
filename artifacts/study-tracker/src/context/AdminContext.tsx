@@ -124,6 +124,13 @@ export interface ShareRequest {
   // Set when the recipient deletes the accepted shared course from their side.
   recipientDeleted?: boolean;
   recipientDeletedAt?: number;
+  // Set when ANY recipient action causes the card to move to Trash (decline,
+  // note-opened, or accepted→then-deleted). Lets the admin distinguish
+  // recipient-driven trash from admin-manually-trashed cards.
+  trashedByRecipient?: boolean;
+  // How the recipient acted: 'declined' = rejected from notification,
+  // 'opened' = note/message opened (auto-delivered), 'accepted_then_deleted' = accepted + later deleted.
+  recipientAction?: 'declined' | 'opened' | 'accepted_then_deleted';
 }
 
 interface AdminContextType {
@@ -1356,6 +1363,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       status: 'trashed',
       trashedAt: Date.now(),
       trashedFromStatus: share?.status ?? 'pending',
+      trashedByRecipient: true,
+      recipientAction: 'declined',
     });
   };
 
@@ -1372,6 +1381,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         status: 'trashed',
         trashedAt: Date.now(),
         trashedFromStatus: share.status,
+        trashedByRecipient: true,
+        recipientAction: 'opened',
       });
     } else {
       await updateDoc(doc(db, 'shareRequests', shareId), { seenAt: Date.now() });

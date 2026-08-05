@@ -328,9 +328,17 @@ function NotePagesPicker({
 // ─── Admin Role Permissions Editor ────────────────────────────────────────────
 
 function AdminRolePermissionsEditor({
-  permissions, onChange, lang,
-}: { permissions: AdminRolePermissions; onChange: (p: AdminRolePermissions) => void; lang: string }) {
-  const items: { key: keyof AdminRolePermissions; label: string; sublabel: string; color: string }[] = [
+  permissions, onChange, lang, allowedKeys,
+}: {
+  permissions: AdminRolePermissions;
+  onChange: (p: AdminRolePermissions) => void;
+  lang: string;
+  /** If provided, only show items whose key is in this set (used when a
+   *  non-super admin is adding/editing another admin — they can't grant
+   *  permissions they don't have themselves). */
+  allowedKeys?: Set<keyof AdminRolePermissions>;
+}) {
+  const allItems: { key: keyof AdminRolePermissions; label: string; sublabel: string; color: string }[] = [
     {
       key: 'canShareReceivedContent',
       label: lang === 'bn' ? 'রিসিভড কন্টেন্ট শেয়ার করতে পারবে' : 'Can re-share received content',
@@ -356,6 +364,18 @@ function AdminRolePermissionsEditor({
       color: 'text-orange-600',
     },
   ];
+
+  const items = allowedKeys ? allItems.filter(i => allowedKeys.has(i.key)) : allItems;
+
+  if (items.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground italic text-center py-3 bg-secondary/40 rounded-xl px-3">
+        {lang === 'bn'
+          ? 'আপনার কাছে এমন কোনো পারমিশন নেই যা আপনি অন্যকে দিতে পারেন।'
+          : 'You have no permissions that you can grant to others.'}
+      </p>
+    );
+  }
 
   return (
     <div className="space-y-2">
@@ -384,15 +404,35 @@ function AdminRolePermissionsEditor({
 // ─── Permissions Checkboxes ────────────────────────────────────────────────────
 
 function PermissionsEditor({
-  permissions, onChange, lang,
-}: { permissions: SharePermissions; onChange: (p: SharePermissions) => void; lang: string }) {
-  const items: { key: keyof SharePermissions; label: string; color: string; divider?: boolean }[] = [
+  permissions, onChange, lang, allowedKeys,
+}: {
+  permissions: SharePermissions;
+  onChange: (p: SharePermissions) => void;
+  lang: string;
+  /** If provided, only show items whose key is in this set (used when the
+   *  content being shared was originally received from another admin — the
+   *  re-sharer can only grant permissions they themselves received). */
+  allowedKeys?: Set<keyof SharePermissions>;
+}) {
+  const allItems: { key: keyof SharePermissions; label: string; color: string; divider?: boolean }[] = [
     { key: 'downloadNotes', label: lang === 'bn' ? 'নোট ডাউনলোড করতে পারবে'  : 'Can download notes',       color: 'text-green-600' },
     { key: 'copyNotes',     label: lang === 'bn' ? 'নোট কপি করতে পারবে'       : 'Can copy notes',           color: 'text-purple-600', divider: true },
     { key: 'renameCourse',  label: lang === 'bn' ? 'কোর্সের নাম পরিবর্তন করতে পারবে' : 'Can rename course', color: 'text-orange-600', divider: true },
     { key: 'takeScreenshot', label: lang === 'bn' ? 'স্ক্রিনশট / স্ক্রিন রেকর্ড নিতে পারবে' : 'Can take screenshots',      color: 'text-rose-600' },
     { key: 'selectCopyText', label: lang === 'bn' ? 'টেক্সট সিলেক্ট করে কপি করতে পারবে'    : 'Can select & copy text',    color: 'text-cyan-600' },
   ];
+
+  const items = allowedKeys ? allItems.filter(i => allowedKeys.has(i.key)) : allItems;
+
+  if (items.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground italic text-center py-3 bg-secondary/40 rounded-xl px-3">
+        {lang === 'bn'
+          ? 'এই শেয়ার করা কন্টেন্টের জন্য আপনার কাছে কোনো পারমিশন দেওয়ার সুযোগ নেই।'
+          : 'You have no grantable permissions for this received content.'}
+      </p>
+    );
+  }
 
   return (
     <div className="space-y-2">
@@ -987,6 +1027,54 @@ export function AdminPanel() {
     }
   };
 
+  // ── Grantable admin-role permissions ─────────────────────────────────────
+  // A non-super admin can only grant permissions they themselves hold. Super
+  // admins have everything so no filtering is needed for them (undefined = show all).
+  const grantableAdminKeys: Set<keyof AdminRolePermissions> | undefined = isSuperAdmin
+    ? undefined
+    : (() => {
+        const p = currentAdminPermissions;
+        if (!p) return undefined;
+        const keys = new Set<keyof AdminRolePermissions>();
+        if (p.canShareReceivedContent) keys.add('canShareReceivedContent');
+        if (p.canEditContacts)         keys.add('canEditContacts');
+        if (p.canViewOtherAdmins)      keys.add('canViewOtherAdmins');
+        if (p.canAddAdmins)            keys.add('canAddAdmins');
+        return keys;
+      })();
+
+  // ── Grantable share permissions for received content ─────────────────────
+  // When the admin shares a course/note that was originally sent TO them by
+  // another admin, they can only grant permissions they themselves received.
+  // Own courses/notes (not received from another admin) have no restriction.
+  const receivedCourseSharePerms: SharePermissions | undefined = (() => {
+    if (shareForm.type !== 'course' || !shareForm.courseId) return undefined;
+    return acceptedShares.find(s => s.id === shareForm.courseId && s.type === 'course')?.permissions;
+  })();
+  const receivedNoteSharePerms: SharePermissions | undefined = (() => {
+    if (shareForm.type !== 'note') return undefined;
+    // Notes in the picker come from the active course's subjects. If the
+    // active course is a received share, limit by what the admin was granted.
+    return acceptedShares.find(s => s.type === 'course' && s.id === activeCourse?.id)?.permissions;
+  })();
+  const receivedSharePerms = receivedCourseSharePerms ?? receivedNoteSharePerms;
+
+  // Build the allowedKeys set for the share PermissionsEditor. Super admins
+  // and own-content shares have no restriction (undefined = show all).
+  const grantableShareKeys: Set<keyof SharePermissions> | undefined =
+    isSuperAdmin || !receivedSharePerms
+      ? undefined
+      : (() => {
+          const p = receivedSharePerms;
+          const keys = new Set<keyof SharePermissions>();
+          if (p.downloadNotes)   keys.add('downloadNotes');
+          if (p.copyNotes)       keys.add('copyNotes');
+          if (p.renameCourse)    keys.add('renameCourse');
+          if (p.takeScreenshot)  keys.add('takeScreenshot');
+          if (p.selectCopyText)  keys.add('selectCopyText');
+          return keys;
+        })();
+
   const tabs = [
     { id: 'admins', label: lang === 'bn' ? 'এডমিন' : 'Admins', Icon: Users },
     { id: 'share', label: lang === 'bn' ? 'শেয়ার' : 'Share', Icon: Send },
@@ -1120,6 +1208,7 @@ export function AdminPanel() {
                           permissions={newAdminPermissions}
                           onChange={setNewAdminPermissions}
                           lang={lang}
+                          allowedKeys={grantableAdminKeys}
                         />
                       </div>
                     </motion.div>
@@ -1736,7 +1825,16 @@ export function AdminPanel() {
                       permissions={shareForm.permissions}
                       onChange={p => setShareForm(f => ({ ...f, permissions: p }))}
                       lang={lang}
+                      allowedKeys={grantableShareKeys}
                     />
+                    {grantableShareKeys !== undefined && (
+                      <p className="text-[10px] text-amber-700 bg-amber-500/10 rounded-lg px-2.5 py-1.5 mt-1 flex items-center gap-1.5">
+                        <ShieldCheck size={11} className="shrink-0" />
+                        {lang === 'bn'
+                          ? 'এটি শেয়ার করা কন্টেন্ট — আপনি শুধুমাত্র সেই পারমিশনগুলো দিতে পারবেন যা আপনি নিজে পেয়েছেন।'
+                          : 'Received content — you can only grant permissions you were given.'}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -2383,6 +2481,7 @@ export function AdminPanel() {
                 permissions={editAdminPermissions}
                 onChange={setEditAdminPermissions}
                 lang={lang}
+                allowedKeys={grantableAdminKeys}
               />
               <Button
                 className="w-full"

@@ -5,7 +5,7 @@ import {
   BookOpen, StickyNote, ChevronRight, ChevronLeft, Clock, ArrowLeft,
   UserCheck, UserMinus, RefreshCw, Eye, EyeOff, Save, MessageSquare,
   TimerReset, ListPlus, Undo2, AlertTriangle, Archive, Search,
-  Phone, Globe, Link2, MessageCircle, Infinity, RotateCcw, OctagonX,
+  Phone, Globe, Link2, MessageCircle, Infinity, RotateCcw, OctagonX, CheckCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';

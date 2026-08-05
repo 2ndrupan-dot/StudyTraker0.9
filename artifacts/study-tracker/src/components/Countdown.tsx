@@ -68,3 +68,71 @@ export function Countdown({
 
   return <span className={className}>{text}</span>;
 }
+
+/**
+ * Prominent months : days : hours : minutes countdown for an admin's own card.
+ * Ticks every minute — no seconds shown.
+ */
+export function AdminTermCountdown({
+  targetMs,
+  lang = 'en',
+  className,
+}: {
+  targetMs: number;
+  lang?: string;
+  className?: string;
+}) {
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => forceTick(v => v + 1), 60_000);
+    return () => clearInterval(id);
+  }, [targetMs]);
+
+  const diff = targetMs - Date.now();
+  if (diff <= 0) return null;
+
+  const totalMins  = Math.floor(diff / 60_000);
+  const totalHours = Math.floor(totalMins / 60);
+  const totalDays  = Math.floor(totalHours / 24);
+  const months  = Math.floor(totalDays / 30);
+  const days    = totalDays % 30;
+  const hours   = totalHours % 24;
+  const minutes = totalMins % 60;
+
+  const units = lang === 'bn'
+    ? [
+        { value: months,  label: 'মাস' },
+        { value: days,    label: 'দিন' },
+        { value: hours,   label: 'ঘন্টা' },
+        { value: minutes, label: 'মিনিট' },
+      ]
+    : [
+        { value: months,  label: 'Months' },
+        { value: days,    label: 'Days' },
+        { value: hours,   label: 'Hours' },
+        { value: minutes, label: 'Mins' },
+      ];
+
+  return (
+    <div className={className}>
+      <div className="flex items-end justify-center gap-1">
+        {units.map((unit, i) => (
+          <React.Fragment key={unit.label}>
+            <div className="flex flex-col items-center">
+              <span className="text-lg font-bold tabular-nums leading-none text-primary">
+                {pad(unit.value)}
+              </span>
+              <span className="text-[9px] text-muted-foreground font-medium mt-0.5">
+                {unit.label}
+              </span>
+            </div>
+            {i < units.length - 1 && (
+              <span className="text-primary/70 font-bold text-base leading-none mb-[1.1rem]">:</span>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}

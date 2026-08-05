@@ -16,7 +16,7 @@ import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
 import { Button, Input, Modal } from '@/components/ui';
 import { RichTextPreview } from '@/components/RichTextEditor';
-import { Countdown } from '@/components/Countdown';
+import { Countdown, AdminTermCountdown } from '@/components/Countdown';
 import type { Subject } from '@/lib/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1264,6 +1264,16 @@ export function AdminPanel() {
                                 {lang === 'bn' ? 'কোনো বিশেষ পারমিশন নেই' : 'No extra permissions'}
                               </span>
                             )}
+                          </div>
+                        )}
+                        {/* Self-countdown: only visible on the current user's own card */}
+                        {!entry.isSuperAdminMember && !isExpired && entry.expiresAt &&
+                          entry.email === user?.email?.toLowerCase() && (
+                          <div className="mt-2.5 rounded-xl bg-primary/5 border border-primary/15 px-3 py-2 flex flex-col items-center gap-0.5">
+                            <span className="text-[9px] text-muted-foreground font-semibold uppercase tracking-wide">
+                              {lang === 'bn' ? 'আপনার এডমিন মেয়াদ' : 'Your admin term ends in'}
+                            </span>
+                            <AdminTermCountdown targetMs={entry.expiresAt} lang={lang} />
                           </div>
                         )}
                       </div>

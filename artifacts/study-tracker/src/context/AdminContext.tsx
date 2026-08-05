@@ -117,6 +117,10 @@ export interface ShareRequest {
   // re-added. The timer is frozen and a "Resend" button is shown.
   adminRevoked?: boolean;
   revokedAt?: number;
+  // When a revoked share is resent, this holds the milliseconds that were
+  // remaining on the clock at the moment of revocation. acceptShare uses it
+  // so the timer continues from the frozen point instead of restarting fresh.
+  resendRemainingMs?: number;
 }
 
 interface AdminContextType {
@@ -1173,12 +1177,26 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   // Resend a previously revoked share. Creates a new shareRequest with fresh
   // timestamps (reusing the original snapshot/content), then deletes the old
   // revoked doc so it no longer appears in the sent list.
+  // The timer continues from the frozen point: we calculate how many ms were
+  // left at revocation and store it as resendRemainingMs. acceptShare reads
+  // this field so actualExpiresAt = acceptedAt + frozenRemaining, not a fresh
+  // full duration. pendingExpiresAt also uses the same remaining window.
   const resendShare = async (shareId: string) => {
     const share = allSentShares.find(s => s.id === shareId);
     if (!share || !share.adminRevoked || !user) return;
 
     const ts = Date.now();
-    const pendingExpiresAt = ts + durationToMs(share.durationValue, share.durationUnit);
+
+    // Remaining time on the clock at the moment of revocation.
+    // Use actualExpiresAt for accepted shares, pendingExpiresAt for pending ones.
+    const countdownTarget = share.status === 'accepted'
+      ? share.actualExpiresAt
+      : share.pendingExpiresAt;
+    const frozenRemainingMs = (countdownTarget && share.revokedAt)
+      ? Math.max(0, countdownTarget - share.revokedAt)
+      : durationToMs(share.durationValue, share.durationUnit); // fallback to full duration
+
+    const pendingExpiresAt = ts + frozenRemainingMs;
 
     const payload: Record<string, unknown> = {
       fromAdminUid: user.id,
@@ -1192,6 +1210,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       status: 'pending',
       sentAt: ts,
       pendingExpiresAt,
+      resendRemainingMs: frozenRemainingMs,
     };
 
     if (share.type === 'course') {
@@ -1222,7 +1241,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const share = pendingShares.find(s => s.id === shareId);
     if (!share || !user) return;
     const ts = Date.now();
-    const actualExpiresAt = ts + durationToMs(share.durationValue, share.durationUnit);
+    // If this share was resent after a revocation, continue the timer from the
+    // frozen point rather than restarting the full original duration.
+    const actualExpiresAt = ts + (share.resendRemainingMs ?? durationToMs(share.durationValue, share.durationUnit));
 
     // For course shares with an embedded snapshot: copy the course data into the
     // user's own Firestore collections so it appears in their course list and they

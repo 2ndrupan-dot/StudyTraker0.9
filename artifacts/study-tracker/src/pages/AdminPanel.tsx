@@ -584,7 +584,7 @@ export function AdminPanel() {
   const { user } = useAuth();
   const { lang } = useLang();
   const { isAdmin, isSuperAdmin, adminEmails, loadingAdmins, addAdmin, removeAdmin,
-    visibleAdmins, currentAdminPermissions, updateAdminPermissions,
+    visibleAdmins, currentAdminPermissions, updateAdminPermissions, updateAdminDuration,
     sendShare, sentShares, trashedShares, loadingSentShares, updateSharePermissions,
     extendShare, getCourseSubjectsForShare, addSubjectsToShare,
     trashShare, restoreShare, permanentlyDeleteShare,
@@ -609,6 +609,10 @@ export function AdminPanel() {
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminPermissions, setNewAdminPermissions] = useState<AdminRolePermissions>({ ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
   const [showNewAdminPerms, setShowNewAdminPerms] = useState(false);
+  // Duration / expiry for new admin
+  const [newAdminHasExpiry, setNewAdminHasExpiry] = useState(false);
+  const [newAdminDurationValue, setNewAdminDurationValue] = useState(7);
+  const [newAdminDurationUnit, setNewAdminDurationUnit] = useState<'hours' | 'days' | 'months'>('days');
   const [addingAdmin, setAddingAdmin] = useState(false);
   const [adminError, setAdminError] = useState('');
   const [removingEmail, setRemovingEmail] = useState<string | null>(null);
@@ -616,6 +620,12 @@ export function AdminPanel() {
   const [editAdminPermEntry, setEditAdminPermEntry] = useState<VisibleAdminEntry | null>(null);
   const [editAdminPermissions, setEditAdminPermissions] = useState<AdminRolePermissions>({ ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
   const [savingAdminPerms, setSavingAdminPerms] = useState(false);
+  // Extend / reduce admin duration modal
+  const [extendAdminModal, setExtendAdminModal] = useState<VisibleAdminEntry | null>(null);
+  const [extendAdminValue, setExtendAdminValue] = useState(7);
+  const [extendAdminUnit, setExtendAdminUnit] = useState<'hours' | 'days' | 'months'>('days');
+  const [extendAdminDirection, setExtendAdminDirection] = useState<'add' | 'subtract'>('add');
+  const [extendingAdmin, setExtendingAdmin] = useState(false);
 
   // ── Share tab state ──
   const [shareStep, setShareStep] = useState(1); // 1=recipient, 2=content, 3=duration+perms
@@ -730,10 +740,18 @@ export function AdminPanel() {
     setAdminError('');
     setAddingAdmin(true);
     try {
-      await addAdmin(newAdminEmail.trim(), newAdminPermissions);
+      await addAdmin(
+        newAdminEmail.trim(),
+        newAdminPermissions,
+        newAdminHasExpiry ? newAdminDurationValue : undefined,
+        newAdminHasExpiry ? newAdminDurationUnit : undefined,
+      );
       setNewAdminEmail('');
       setNewAdminPermissions({ ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
       setShowNewAdminPerms(false);
+      setNewAdminHasExpiry(false);
+      setNewAdminDurationValue(7);
+      setNewAdminDurationUnit('days');
     } catch {
       setAdminError(lang === 'bn' ? 'যোগ করতে সমস্যা হয়েছে।' : 'Failed to add admin.');
     } finally {
@@ -754,6 +772,25 @@ export function AdminPanel() {
       setEditAdminPermEntry(null);
     } finally {
       setSavingAdminPerms(false);
+    }
+  };
+
+  const openExtendAdminModal = (entry: VisibleAdminEntry) => {
+    setExtendAdminModal(entry);
+    setExtendAdminValue(7);
+    setExtendAdminUnit('days');
+    setExtendAdminDirection('add');
+  };
+
+  const handleConfirmAdminExtend = async () => {
+    if (!extendAdminModal) return;
+    setExtendingAdmin(true);
+    try {
+      const signedValue = extendAdminDirection === 'subtract' ? -extendAdminValue : extendAdminValue;
+      await updateAdminDuration(extendAdminModal.email, signedValue, extendAdminUnit);
+      setExtendAdminModal(null);
+    } finally {
+      setExtendingAdmin(false);
     }
   };
 
@@ -1070,6 +1107,56 @@ export function AdminPanel() {
                   )}
                 </AnimatePresence>
 
+                {/* Duration / expiry picker */}
+                <div className="border-t border-border/40 pt-3 space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={newAdminHasExpiry}
+                      onChange={e => setNewAdminHasExpiry(e.target.checked)}
+                      className="w-4 h-4 rounded accent-primary"
+                    />
+                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Clock size={12} className="text-muted-foreground" />
+                      {lang === 'bn' ? 'মেয়াদ সীমিত করুন' : 'Set an expiry'}
+                    </span>
+                  </label>
+                  <AnimatePresence>
+                    {newAdminHasExpiry && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="flex gap-2 pt-1">
+                          <Input
+                            type="number"
+                            min={1}
+                            value={newAdminDurationValue}
+                            onChange={e => setNewAdminDurationValue(Math.max(1, Number(e.target.value) || 1))}
+                            className="flex-1 h-9 text-sm"
+                          />
+                          <select
+                            value={newAdminDurationUnit}
+                            onChange={e => setNewAdminDurationUnit(e.target.value as 'hours' | 'days' | 'months')}
+                            className="rounded-xl border border-border/60 bg-secondary px-3 text-sm text-foreground h-9"
+                          >
+                            <option value="hours">{lang === 'bn' ? 'ঘণ্টা' : 'Hours'}</option>
+                            <option value="days">{lang === 'bn' ? 'দিন' : 'Days'}</option>
+                            <option value="months">{lang === 'bn' ? 'মাস' : 'Months'}</option>
+                          </select>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-1.5">
+                          {lang === 'bn'
+                            ? 'এই সময় পার হলে এডমিন অ্যাক্সেস স্বয়ংক্রিয়ভাবে বন্ধ হয়ে যাবে।'
+                            : 'Admin access will automatically expire after this duration.'}
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 {adminError && <p className="text-xs text-destructive">{adminError}</p>}
               </div>
             )}
@@ -1093,11 +1180,22 @@ export function AdminPanel() {
                   isSuperAdmin ||
                   (currentAdminPermissions?.canAddAdmins && entry.addedBy === user?.email?.toLowerCase())
                 );
+                const isExpired = !entry.isSuperAdminMember && !!entry.expiresAt && entry.expiresAt <= Date.now();
+                const canExtendDuration = !entry.isSuperAdminMember && (
+                  isSuperAdmin ||
+                  (currentAdminPermissions?.canAddAdmins && entry.addedBy === user?.email?.toLowerCase())
+                );
                 return (
-                  <div key={entry.email} className="bg-card border border-border/50 rounded-2xl p-3.5">
+                  <div key={entry.email} className={cn(
+                    "bg-card border rounded-2xl p-3.5",
+                    isExpired ? "border-destructive/40 opacity-70" : "border-border/50"
+                  )}>
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                        <UserCheck size={16} className="text-primary" />
+                      <div className={cn(
+                        "w-9 h-9 rounded-xl flex items-center justify-center shrink-0",
+                        isExpired ? "bg-destructive/10" : "bg-primary/10"
+                      )}>
+                        <UserCheck size={16} className={isExpired ? "text-destructive" : "text-primary"} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-foreground truncate">{entry.email}</p>
@@ -1105,6 +1203,22 @@ export function AdminPanel() {
                           {entry.isSuperAdminMember && (
                             <span className="text-[10px] font-bold text-yellow-600 bg-yellow-500/10 px-1.5 py-0.5 rounded-full">
                               {lang === 'bn' ? 'সুপার এডমিন' : 'Super Admin'}
+                            </span>
+                          )}
+                          {isExpired && (
+                            <span className="text-[10px] font-bold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-full">
+                              {lang === 'bn' ? 'মেয়াদ শেষ' : 'Expired'}
+                            </span>
+                          )}
+                          {!entry.isSuperAdminMember && !isExpired && entry.expiresAt && (
+                            <span className="text-[10px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 font-semibold">
+                              <Clock size={9} />
+                              <Countdown expiresAt={entry.expiresAt} lang={lang} compact />
+                            </span>
+                          )}
+                          {!entry.isSuperAdminMember && !entry.expiresAt && (
+                            <span className="text-[10px] text-green-700 bg-green-500/10 px-1.5 py-0.5 rounded-full font-semibold">
+                              {lang === 'bn' ? 'স্থায়ী' : 'Permanent'}
                             </span>
                           )}
                           {!entry.isSuperAdminMember && entry.addedBy && (
@@ -1146,6 +1260,15 @@ export function AdminPanel() {
                         )}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
+                        {canExtendDuration && (
+                          <button
+                            onClick={() => openExtendAdminModal(entry)}
+                            className="p-2 rounded-xl bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 transition-colors"
+                            title={lang === 'bn' ? 'মেয়াদ পরিবর্তন করুন' : 'Adjust expiry'}
+                          >
+                            <TimerReset size={14} />
+                          </button>
+                        )}
                         {canEditPerms && (
                           <button
                             onClick={() => handleOpenEditAdminPerms(entry)}
@@ -2072,6 +2195,86 @@ export function AdminPanel() {
               {deletingId === permDeleteConfirmShare?.id ? '...' : (lang === 'bn' ? 'মুছুন' : 'Delete')}
             </button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Extend / Reduce Admin Duration Modal */}
+      <Modal
+        isOpen={!!extendAdminModal}
+        onClose={() => setExtendAdminModal(null)}
+        title={lang === 'bn' ? 'এডমিনের মেয়াদ পরিবর্তন করুন' : 'Adjust Admin Expiry'}
+        align="bottom"
+        icon={TimerReset}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">→ {extendAdminModal?.email}</p>
+          {extendAdminModal?.expiresAt && (
+            <p className="text-xs text-muted-foreground">
+              {lang === 'bn' ? 'বর্তমান মেয়াদ:' : 'Current expiry:'}{' '}
+              <span className="font-semibold text-foreground">
+                {new Date(extendAdminModal.expiresAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </p>
+          )}
+          {!extendAdminModal?.expiresAt && (
+            <p className="text-xs text-amber-700 bg-amber-500/10 rounded-lg px-3 py-2">
+              {lang === 'bn'
+                ? 'এই এডমিনের কোনো মেয়াদ সীমা নেই। সময় যোগ করলে এখন থেকে সেই সময় পর মেয়াদ শেষ হবে।'
+                : 'This admin has no expiry. Adding time will set an expiry from now.'}
+            </p>
+          )}
+          <div className="flex rounded-xl bg-secondary p-1 gap-1">
+            <button
+              onClick={() => setExtendAdminDirection('add')}
+              className={cn(
+                "flex-1 py-2 rounded-lg text-sm font-semibold transition-colors",
+                extendAdminDirection === 'add' ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              )}
+            >
+              {lang === 'bn' ? 'সময় বাড়ান' : 'Extend'}
+            </button>
+            <button
+              onClick={() => setExtendAdminDirection('subtract')}
+              className={cn(
+                "flex-1 py-2 rounded-lg text-sm font-semibold transition-colors",
+                extendAdminDirection === 'subtract' ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              )}
+            >
+              {lang === 'bn' ? 'সময় কমান' : 'Reduce'}
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              min={1}
+              value={extendAdminValue}
+              onChange={e => setExtendAdminValue(Math.max(1, Number(e.target.value) || 1))}
+              className="flex-1"
+            />
+            <select
+              value={extendAdminUnit}
+              onChange={e => setExtendAdminUnit(e.target.value as 'hours' | 'days' | 'months')}
+              className="rounded-xl border border-border/60 bg-secondary px-3 text-sm text-foreground"
+            >
+              <option value="hours">{lang === 'bn' ? 'ঘণ্টা' : 'Hours'}</option>
+              <option value="days">{lang === 'bn' ? 'দিন' : 'Days'}</option>
+              <option value="months">{lang === 'bn' ? 'মাস' : 'Months'}</option>
+            </select>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {extendAdminDirection === 'add'
+              ? (lang === 'bn'
+                ? 'বর্তমান মেয়াদ শেষ হওয়ার সময়ের সাথে এই সময় যোগ হবে।'
+                : 'This time will be added on top of the current expiry.')
+              : (lang === 'bn'
+                ? 'বর্তমান মেয়াদ শেষ হওয়ার সময় থেকে এই সময় কমে যাবে।'
+                : 'This time will be subtracted from the current expiry.')}
+          </p>
+          <Button className="w-full" onClick={handleConfirmAdminExtend} disabled={extendingAdmin}>
+            {extendingAdmin ? '...' : (extendAdminDirection === 'add'
+              ? (lang === 'bn' ? 'সময় বাড়ান' : 'Extend')
+              : (lang === 'bn' ? 'সময় কমান' : 'Reduce'))}
+          </Button>
         </div>
       </Modal>
 

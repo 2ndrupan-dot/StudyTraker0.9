@@ -55,6 +55,7 @@ export interface AdminRecord {
   addedBy: string;   // email of the admin who added this one ('' for migrated legacy entries)
   addedAt: number;   // unix ms timestamp
   permissions: AdminRolePermissions;
+  expiresAt?: number; // unix ms; undefined = never expires
 }
 
 // Snapshot of a course's data embedded in the shareRequest at send-time so the
@@ -121,9 +122,10 @@ interface AdminContextType {
   visibleAdmins: VisibleAdminEntry[]; // what the current admin is allowed to see
   currentAdminPermissions: AdminRolePermissions | null; // null = super admin (all perms)
   loadingAdmins: boolean;
-  addAdmin: (email: string, permissions: AdminRolePermissions) => Promise<void>;
+  addAdmin: (email: string, permissions?: AdminRolePermissions, durationValue?: number, durationUnit?: 'hours' | 'days' | 'months') => Promise<void>;
   removeAdmin: (email: string) => Promise<void>;
   updateAdminPermissions: (email: string, permissions: AdminRolePermissions) => Promise<void>;
+  updateAdminDuration: (email: string, addValue: number, addUnit: 'hours' | 'days' | 'months') => Promise<void>;
   sendShare: (params: SendShareParams) => Promise<void>;
   sentShares: ShareRequest[];
   trashedShares: ShareRequest[];
@@ -164,6 +166,7 @@ export interface VisibleAdminEntry {
   addedBy: string;
   addedAt: number;
   permissions: AdminRolePermissions;
+  expiresAt?: number; // unix ms; undefined = never expires
 }
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
@@ -285,13 +288,29 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   // Key = shareId, Value = share type ('course' | 'note' | 'message').
   const acceptedSharesTrackingRef = useRef<Map<string, string>>(new Map());
 
-  const adminEmails = [...new Set([...SUPER_ADMIN_EMAILS, ...firestoreAdminRecords.map(r => r.email)])];
+  // Ticks every 30 s — re-evaluates expiry filters (admin rows and share rows
+  // manage their own per-second countdown; this is just enough to drop expired
+  // items from lists without re-rendering everything every second).
+  const [expiryTick, setExpiryTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setExpiryTick(v => v + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Single "now" snapshot for this render — freshly evaluated every 30 s via expiryTick.
+  const now = Date.now();
+  void expiryTick; // keeps the linter happy about the expiryTick dependency
+
+  // ── Active (non-expired) admin records — used for access checks ──────────
+  const activeFirestoreAdmins = firestoreAdminRecords.filter(r => !r.expiresAt || r.expiresAt > now);
+
+  const adminEmails = [...new Set([...SUPER_ADMIN_EMAILS, ...activeFirestoreAdmins.map(r => r.email)])];
   const isAdmin = adminEmails.includes(userEmail);
 
   // Permissions for the currently logged-in admin (null = super admin, has everything).
   const currentAdminPermissions: AdminRolePermissions | null = isSuperAdmin
     ? null
-    : (firestoreAdminRecords.find(r => r.email === userEmail)?.permissions ?? { ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
+    : (activeFirestoreAdmins.find(r => r.email === userEmail)?.permissions ?? { ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
 
   // All super admins as synthetic VisibleAdminEntry records.
   const superAdminEntries: VisibleAdminEntry[] = SUPER_ADMIN_EMAILS.map(email => ({
@@ -303,6 +322,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }));
 
   // Which admins the current user is allowed to see in the admin list.
+  // Shows ALL Firestore records (including expired) to those with management rights
+  // so they can see and renew expired admins. Access is still gated by activeFirestoreAdmins.
   const visibleAdmins: VisibleAdminEntry[] = (() => {
     const firestoreEntries: VisibleAdminEntry[] = firestoreAdminRecords.map(r => ({
       ...r,
@@ -310,7 +331,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     }));
 
     if (isSuperAdmin) {
-      // Super admin sees everyone.
       return [...superAdminEntries, ...firestoreEntries];
     }
 
@@ -318,18 +338,15 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const canAddAdmins = currentAdminPermissions?.canAddAdmins ?? false;
 
     if (canViewOthers) {
-      // Can see all admins.
       return [...superAdminEntries, ...firestoreEntries];
     }
 
-    // Always see: super admins + self.
     const visible: VisibleAdminEntry[] = [
       ...superAdminEntries,
       ...firestoreEntries.filter(r => r.email === userEmail),
     ];
 
     if (canAddAdmins) {
-      // Also see admins they personally added.
       const addedByMe = firestoreEntries.filter(r => r.addedBy === userEmail && r.email !== userEmail);
       visible.push(...addedByMe);
     }
@@ -337,17 +354,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     return visible;
   })();
 
-  // Ticks once a minute purely to re-evaluate the expiry filters below (the
-  // live per-row countdown UIs manage their own 1s tick independently — this
-  // is just enough to make expired cards drop out of these lists reasonably
-  // promptly without re-rendering everything every second).
-  const [expiryTick, setExpiryTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setExpiryTick(v => v + 1), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  const now = Date.now();
+  // ── Share expiry lists ───────────────────────────────────────────────────
   const pendingShares = allReceivedShares
     .filter(s => s.status === 'pending' && s.pendingExpiresAt > now)
     .sort((a, b) => b.sentAt - a.sentAt); // newest first
@@ -356,7 +363,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   );
   const sentShares = allSentShares.filter(s => s.status !== 'trashed');
   const trashedShares = allSentShares.filter(s => s.status === 'trashed');
-  void expiryTick; // referenced only to satisfy the linter about the dependency
 
   // ── Auto-expiry purge ────────────────────────────────────────────────────
   // Automatic expiry is a hard delete (never goes to trash — that's reserved
@@ -382,6 +388,23 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       if (expired) deleteDoc(doc(db, 'shareRequests', s.id)).catch(() => {});
     }
   }, [allReceivedShares, expiryTick]);
+
+  // ── Auto-expiry purge for admin records ──────────────────────────────────
+  // Hard-delete expired admin records from Firestore. Any logged-in user can
+  // trigger this (it's idempotent — just filters the array). The access check
+  // above already excludes them; this is the cleanup so they don't accumulate.
+  useEffect(() => {
+    const nowMs = Date.now();
+    const hasExpired = firestoreAdminRecords.some(r => r.expiresAt && r.expiresAt <= nowMs);
+    if (!hasExpired) return;
+    const ref = doc(db, 'adminConfig', 'adminList');
+    getDoc(ref).then(snap => {
+      if (!snap.exists()) return;
+      const records: AdminRecord[] = snap.data().admins || [];
+      const filtered = records.filter(r => !r.expiresAt || r.expiresAt > nowMs);
+      setDoc(ref, { admins: filtered }, { merge: true }).catch(() => {});
+    }).catch(() => {});
+  }, [firestoreAdminRecords, expiryTick]); // eslint-disable-line
 
   // Load contact settings from Firestore (live, updates all users in real-time)
   useEffect(() => {
@@ -642,15 +665,49 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     return () => unsub();
   }, [user?.email, user?.id]); // eslint-disable-line
 
-  const addAdmin = async (email: string, permissions: AdminRolePermissions = { ...DEFAULT_ADMIN_ROLE_PERMISSIONS }) => {
+  const addAdmin = async (
+    email: string,
+    permissions: AdminRolePermissions = { ...DEFAULT_ADMIN_ROLE_PERMISSIONS },
+    durationValue?: number,
+    durationUnit?: 'hours' | 'days' | 'months',
+  ) => {
     const e = email.trim().toLowerCase();
     const ref = doc(db, 'adminConfig', 'adminList');
     const snap = await getDoc(ref);
     const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
     if (!existing.find(r => r.email === e)) {
-      const newRecord: AdminRecord = { email: e, addedBy: userEmail, addedAt: Date.now(), permissions };
+      const expiresAt = durationValue && durationUnit
+        ? Date.now() + durationToMs(durationValue, durationUnit)
+        : undefined;
+      const newRecord: AdminRecord = {
+        email: e, addedBy: userEmail, addedAt: Date.now(), permissions,
+        ...(expiresAt !== undefined ? { expiresAt } : {}),
+      };
       await setDoc(ref, { admins: [...existing, newRecord] }, { merge: true });
     }
+  };
+
+  // Extends or reduces the expiry of an admin. Positive addValue = extend,
+  // negative = reduce. Extension adds to the current expiresAt (or now if
+  // already expired). Reduction never sets expiresAt to earlier than 60 s
+  // from now so you can't accidentally immediately expire someone.
+  const updateAdminDuration = async (email: string, addValue: number, addUnit: 'hours' | 'days' | 'months') => {
+    const e = email.trim().toLowerCase();
+    if (SUPER_ADMIN_EMAILS.includes(e)) return; // super admins never expire
+    const ref = doc(db, 'adminConfig', 'adminList');
+    const snap = await getDoc(ref);
+    const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
+    const nowMs = Date.now();
+    const updated = existing.map(r => {
+      if (r.email !== e) return r;
+      const base = r.expiresAt && r.expiresAt > nowMs ? r.expiresAt : nowMs;
+      const delta = durationToMs(Math.abs(addValue), addUnit);
+      const newExpiresAt = addValue >= 0
+        ? base + delta
+        : Math.max(nowMs + 60_000, base - delta); // never push to the past
+      return { ...r, expiresAt: newExpiresAt };
+    });
+    await setDoc(ref, { admins: updated }, { merge: true });
   };
 
   const updateAdminPermissions = async (email: string, permissions: AdminRolePermissions) => {
@@ -1038,7 +1095,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       isAdmin, isSuperAdmin, adminEmails, adminRecords: firestoreAdminRecords,
       visibleAdmins, currentAdminPermissions,
       loadingAdmins,
-      addAdmin, removeAdmin, updateAdminPermissions,
+      addAdmin, removeAdmin, updateAdminPermissions, updateAdminDuration,
       sendShare, sentShares, trashedShares, loadingSentShares,
       updateSharePermissions, cancelShare,
       pendingShares, acceptShare, declineShare,

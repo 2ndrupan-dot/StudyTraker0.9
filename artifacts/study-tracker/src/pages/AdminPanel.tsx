@@ -519,7 +519,7 @@ function SentShareRow({
       : null;
 
     return (
-      <div className="bg-card border-2 border-amber-400/40 rounded-2xl p-4 space-y-3 opacity-90">
+      <div className="bg-card border-2 border-red-400/40 rounded-2xl p-4 space-y-3 opacity-90">
         <div className="flex items-start gap-3">
           <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0 opacity-60", typeColorClass(share.type))}>
             {typeIcon(share.type, 16)}
@@ -530,7 +530,7 @@ function SentShareRow({
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">→ {share.toEmail}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-400">
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-red-500/15 text-red-700 dark:text-red-400">
                 {lang === 'bn' ? 'বাতিল হয়েছে' : 'Revoked'}
               </span>
               <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
@@ -540,21 +540,21 @@ function SentShareRow({
               <span className="text-[10px] text-muted-foreground">{formatDate(share.sentAt)}</span>
             </div>
             {/* Frozen timer — shows the exact remaining time when the admin was removed */}
-            <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10">
-              <OctagonX size={10} className="text-amber-600" />
-              <span className="text-[11px] font-mono font-bold text-amber-700 dark:text-amber-400 tabular-nums">
+            <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/10">
+              <OctagonX size={10} className="text-red-600" />
+              <span className="text-[11px] font-mono font-bold text-red-700 dark:text-red-400 tabular-nums">
                 {frozenMs !== null
                   ? formatFrozenMs(frozenMs, lang)
                   : (lang === 'bn' ? 'থামানো' : 'Stopped')}
               </span>
               {frozenMs !== null && (
-                <span className="text-[9px] text-amber-600/70">
+                <span className="text-[9px] text-red-600/70">
                   {lang === 'bn' ? 'বাকি ছিল' : 'was left'}
                 </span>
               )}
             </div>
             {/* Revocation note */}
-            <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1.5 font-medium">
+            <p className="text-[10px] text-red-700 dark:text-red-400 mt-1.5 font-medium">
               {lang === 'bn'
                 ? 'থামানো হয়েছে কারণ আপনি অ্যাডমিন রাইটস হারিয়েছিলেন।'
                 : 'Stopped because you lost admin rights.'}
@@ -566,7 +566,7 @@ function SentShareRow({
           <button
             onClick={async () => { setResending(true); try { await onResend(share.id); } finally { setResending(false); } }}
             disabled={resending}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-teal-500/15 text-teal-700 dark:text-teal-300 hover:bg-teal-500/25 transition-colors text-xs font-semibold disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-teal-500/15 text-teal-800 dark:text-teal-200 hover:bg-teal-500/25 transition-colors text-xs font-semibold disabled:opacity-50"
           >
             <RotateCcw size={12} className={resending ? 'animate-spin' : ''} />
             {resending

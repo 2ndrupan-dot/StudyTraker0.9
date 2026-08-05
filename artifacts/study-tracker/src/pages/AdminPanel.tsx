@@ -530,7 +530,7 @@ function SentShareRow({
               onClick={e => { e.stopPropagation(); onToggleSelect(); }}
               className={cn(
                 "mt-1 w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
-                isSelected ? "bg-primary border-primary" : "border-border/60 bg-card hover:border-primary/50"
+                isSelected ? "bg-primary border-primary" : "border-border bg-card hover:border-primary"
               )}
             >
               {isSelected && <Check size={11} className="text-primary-foreground" />}
@@ -2233,7 +2233,7 @@ export function AdminPanel() {
                           ? "bg-primary border-primary"
                           : filteredSentShares.some(s => activeSelectedIds.has(s.id))
                             ? "border-primary bg-primary/20"
-                            : "border-border/60 bg-card hover:border-primary/50"
+                            : "border-border bg-card hover:border-primary"
                       )}
                     >
                       {filteredSentShares.every(s => activeSelectedIds.has(s.id))
@@ -2316,7 +2316,7 @@ export function AdminPanel() {
                           ? "bg-primary border-primary"
                           : filteredTrashedShares.some(s => trashSelectedIds.has(s.id))
                             ? "border-primary bg-primary/20"
-                            : "border-border/60 bg-card hover:border-primary/50"
+                            : "border-border bg-card hover:border-primary"
                       )}
                     >
                       {filteredTrashedShares.every(s => trashSelectedIds.has(s.id))

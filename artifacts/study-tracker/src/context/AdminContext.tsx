@@ -307,6 +307,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
   const adminEmails = [...new Set([...SUPER_ADMIN_EMAILS, ...activeFirestoreAdmins.map(r => r.email)])];
   const isAdmin = adminEmails.includes(userEmail);
+  // Stable string key for adminEmails — used as a useEffect dependency so the
+  // shared-course revocation effect only re-runs when the admin list actually changes.
+  const adminEmailsKey = adminEmails.slice().sort().join(',');
 
   // Permissions for the currently logged-in admin (null = super admin, has everything).
   const currentAdminPermissions: AdminRolePermissions | null = isSuperAdmin
@@ -721,6 +724,61 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
     return () => { cancelled = true; };
   }, [user?.id]); // eslint-disable-line
+
+  // Admin-list revocation: when the active admin list changes (an admin is removed
+  // or expires), check whether any of the current user's sharedCourses were shared
+  // by that admin. If so, delete the cloned data and reload the page.
+  //
+  // This is the PRIMARY revocation path. It works even when the removing admin
+  // cannot delete the original shareRequests doc (Firestore rules may prevent it).
+  // It fires in real-time for online users AND on next login for offline users,
+  // because adminEmailsKey re-evaluates every time firestoreAdminRecords updates.
+  //
+  // Only runs after the admin list has finished loading (loadingAdmins === false)
+  // to avoid false-positives when firestoreAdminRecords is still empty.
+  useEffect(() => {
+    if (loadingAdmins) return;
+    if (!user?.id) return;
+    const uid = user.id;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const sharedSnap = await getDocs(collection(db, 'users', uid, 'sharedCourses'));
+        if (cancelled || sharedSnap.empty) return;
+
+        // Build the set of currently active admin emails (lower-cased for comparison).
+        // adminEmailsKey already reflects only non-expired admins + super admins.
+        const activeSet = new Set(adminEmails.map(e => e.toLowerCase()));
+
+        const orphanedIds: string[] = [];
+        for (const sharedDoc of sharedSnap.docs) {
+          const data = sharedDoc.data();
+          const sharerEmail = ((data.fromAdminEmail as string) || '').toLowerCase();
+          // If the sharer is no longer an active admin, this share is revoked.
+          if (sharerEmail && !activeSet.has(sharerEmail)) {
+            orphanedIds.push(sharedDoc.id);
+          }
+        }
+
+        if (cancelled || orphanedIds.length === 0) return;
+
+        console.log('[AdminContext] Admin-list revocation: removing', orphanedIds.length, 'shared course(s) from removed admin');
+        await Promise.all(orphanedIds.flatMap(courseId => [
+          deleteDoc(doc(db, 'users', uid, 'courses', courseId)).catch(() => {}),
+          deleteDoc(doc(db, 'users', uid, 'studyData', courseId)).catch(() => {}),
+          deleteDoc(doc(db, 'users', uid, 'courseNotes', courseId)).catch(() => {}),
+          deleteDoc(doc(db, 'users', uid, 'sharedCourses', courseId)).catch(() => {}),
+        ]));
+
+        if (!cancelled) {
+          setTimeout(() => window.location.reload(), 800);
+        }
+      } catch { /* non-fatal */ }
+    })();
+
+    return () => { cancelled = true; };
+  }, [loadingAdmins, adminEmailsKey, user?.id]); // eslint-disable-line
 
   const addAdmin = async (
     email: string,

@@ -1266,9 +1266,10 @@ export function AdminPanel() {
                             )}
                           </div>
                         )}
-                        {/* Countdown: own card (any admin) OR super admin viewing all cards */}
+                        {/* Countdown: own card, OR super admin, OR the admin who added this entry */}
                         {!entry.isSuperAdminMember && !isExpired && entry.expiresAt &&
-                          (entry.email === user?.email?.toLowerCase() || isSuperAdmin) && (
+                          (entry.email === user?.email?.toLowerCase() || isSuperAdmin ||
+                            entry.addedBy === user?.email?.toLowerCase()) && (
                           <div className="mt-2.5 rounded-xl bg-primary/5 border border-primary/15 px-3 py-2 flex flex-col items-center gap-0.5">
                             <span className="text-[9px] text-muted-foreground font-semibold uppercase tracking-wide">
                               {entry.email === user?.email?.toLowerCase()

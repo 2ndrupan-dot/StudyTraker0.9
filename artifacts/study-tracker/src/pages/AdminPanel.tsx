@@ -1230,8 +1230,8 @@ export function AdminPanel() {
                             </span>
                           )}
                           {!entry.isSuperAdminMember && entry.addedBy && (
-                            <span className="text-[10px] text-muted-foreground">
-                              {lang === 'bn' ? `যোগ করেছেন: ${entry.addedBy}` : `Added by: ${entry.addedBy}`}
+                            <span className="text-[10px] font-medium text-foreground/60 bg-muted/60 px-1.5 py-0.5 rounded-full">
+                              {lang === 'bn' ? `➕ যোগ করেছেন: ${entry.addedBy}` : `➕ Added by: ${entry.addedBy}`}
                             </span>
                           )}
                         </div>
@@ -1266,12 +1266,14 @@ export function AdminPanel() {
                             )}
                           </div>
                         )}
-                        {/* Self-countdown: only visible on the current user's own card */}
+                        {/* Countdown: own card (any admin) OR super admin viewing all cards */}
                         {!entry.isSuperAdminMember && !isExpired && entry.expiresAt &&
-                          entry.email === user?.email?.toLowerCase() && (
+                          (entry.email === user?.email?.toLowerCase() || isSuperAdmin) && (
                           <div className="mt-2.5 rounded-xl bg-primary/5 border border-primary/15 px-3 py-2 flex flex-col items-center gap-0.5">
                             <span className="text-[9px] text-muted-foreground font-semibold uppercase tracking-wide">
-                              {lang === 'bn' ? 'আপনার এডমিন মেয়াদ' : 'Your admin term ends in'}
+                              {entry.email === user?.email?.toLowerCase()
+                                ? (lang === 'bn' ? 'আপনার এডমিন মেয়াদ' : 'Your admin term ends in')
+                                : (lang === 'bn' ? 'এডমিন মেয়াদ বাকি' : 'Admin term ends in')}
                             </span>
                             <AdminTermCountdown targetMs={entry.expiresAt} lang={lang} />
                           </div>

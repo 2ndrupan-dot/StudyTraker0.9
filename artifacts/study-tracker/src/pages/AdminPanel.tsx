@@ -2301,7 +2301,12 @@ export function AdminPanel() {
                       type="number"
                       min={1}
                       value={shareForm.durationValue}
-                      onChange={e => setShareForm(f => ({ ...f, durationValue: Math.max(1, parseInt(e.target.value) || 1) }))}
+                      onChange={e => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val)) setShareForm(f => ({ ...f, durationValue: val }));
+                        else if (e.target.value === '') setShareForm(f => ({ ...f, durationValue: 0 }));
+                      }}
+                      onBlur={() => setShareForm(f => ({ ...f, durationValue: Math.max(1, f.durationValue) }))}
                       className="w-24 h-10 rounded-xl border border-border/60 bg-secondary px-3 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
                     <div className="flex bg-secondary p-1 rounded-xl border border-border/50 flex-1">

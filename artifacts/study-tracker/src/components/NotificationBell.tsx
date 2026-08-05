@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, X, Check, Trash2, BookOpen, StickyNote, MessageSquare, Clock, ChevronRight, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import { useLocation } from 'wouter';
+import { Bell, X, Check, Trash2, BookOpen, StickyNote, MessageSquare, Clock, ChevronRight, Search, ChevronUp, ChevronDown, ClipboardList, Play } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAdmin, ShareRequest } from '@/context/AdminContext';
@@ -295,11 +296,13 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [decliningId, setDecliningId] = useState<string | null>(null);
+  const [startingTestId, setStartingTestId] = useState<string | null>(null);
   const [viewNote, setViewNote] = useState<ShareRequest | null>(null);
   const [viewMessage, setViewMessage] = useState<ShareRequest | null>(null);
   const btnWrapRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const pos = useAnchoredPosition(btnWrapRef, open);
+  const [, navigate] = useLocation();
 
   // Notifications are already sorted newest-first by the context; unread
   // count only counts the ones the user hasn't clicked into yet.
@@ -348,6 +351,24 @@ export function NotificationBell() {
     markSeen(share.id);
     setViewMessage(share);
     setOpen(false);
+  };
+
+  const handleStartTest = async (share: ShareRequest) => {
+    setStartingTestId(share.id);
+    try {
+      await markSeen(share.id);
+      // Store test card data in sessionStorage so TestRunner can read it
+      sessionStorage.setItem('@shared_test', JSON.stringify({
+        shareId: share.id,
+        title: share.testCardTitle || '',
+        question: share.testCardQuestion || '',
+        answer: share.testCardAnswer || '',
+      }));
+      setOpen(false);
+      navigate(`/test/run?shareId=${share.id}`);
+    } finally {
+      setStartingTestId(null);
+    }
   };
 
   const panel = open && pos && (
@@ -400,10 +421,12 @@ export function NotificationBell() {
                       "w-8 h-8 rounded-xl flex items-center justify-center shrink-0",
                       share.type === 'course' ? "bg-indigo-500/10 text-indigo-600"
                         : share.type === 'message' ? "bg-sky-500/10 text-sky-600"
+                        : share.type === 'testcard' ? "bg-violet-500/10 text-violet-600"
                         : "bg-amber-500/10 text-amber-600"
                     )}>
                       {share.type === 'course' ? <BookOpen size={15} />
                         : share.type === 'message' ? <MessageSquare size={15} />
+                        : share.type === 'testcard' ? <ClipboardList size={15} />
                         : <StickyNote size={15} />}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -412,11 +435,18 @@ export function NotificationBell() {
                           ? (share.courseName || (lang === 'bn' ? 'কোর্স শেয়ার' : 'Course Share'))
                           : share.type === 'message'
                             ? (lang === 'bn' ? 'নতুন মেসেজ' : 'New message')
-                            : share.notes && share.notes.length > 1
-                              ? (lang === 'bn' ? `${share.notes.length}টি নোট` : `${share.notes.length} notes`)
-                              : (share.notes?.[0]?.title || share.noteTitle || (lang === 'bn' ? 'নোট শেয়ার' : 'Note Share'))
+                            : share.type === 'testcard'
+                              ? (share.testCardTitle || (lang === 'bn' ? 'টেস্ট কার্ড' : 'Test Card'))
+                              : share.notes && share.notes.length > 1
+                                ? (lang === 'bn' ? `${share.notes.length}টি নোট` : `${share.notes.length} notes`)
+                                : (share.notes?.[0]?.title || share.noteTitle || (lang === 'bn' ? 'নোট শেয়ার' : 'Note Share'))
                         }
                       </p>
+                      {share.type === 'testcard' && share.testCardSubjectTitle && (
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {lang === 'bn' ? 'সাবজেক্ট:' : 'Subject:'} <span className="font-medium text-foreground">{share.testCardSubjectTitle}</span>
+                        </p>
+                      )}
                       {share.type === 'message' && (
                         <p className="text-xs text-foreground/80 mt-0.5 line-clamp-2">{share.messageText}</p>
                       )}
@@ -445,7 +475,26 @@ export function NotificationBell() {
                   </div>
 
                   {/* Actions */}
-                  {share.type === 'course' ? (
+                  {share.type === 'testcard' ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleStartTest(share)}
+                        disabled={startingTestId === share.id}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-violet-500/10 text-violet-700 hover:bg-violet-500/20 transition-colors text-xs font-semibold disabled:opacity-50"
+                      >
+                        <Play size={12} />
+                        {startingTestId === share.id ? '...' : (lang === 'bn' ? 'টেস্ট শুরু করুন' : 'Start Test')}
+                      </button>
+                      <button
+                        onClick={() => handleDecline(share.id)}
+                        disabled={decliningId === share.id}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold disabled:opacity-50"
+                      >
+                        <X size={12} />
+                        {decliningId === share.id ? '...' : (lang === 'bn' ? 'বাদ দিন' : 'Cancel')}
+                      </button>
+                    </div>
+                  ) : share.type === 'course' ? (
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleAccept(share)}

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useTest } from '@/context/TestContext';
 import { useLang } from '@/context/LangContext';
+import { useAdmin } from '@/context/AdminContext';
 import { parseTestContent, type ParsedQuestion } from '@/lib/testParser';
 import { ConfirmModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -42,16 +43,39 @@ export function TestRunner() {
   const [, navigate] = useLocation();
   const { testDecks } = useTest();
   const { t, lang } = useLang();
+  const { completeShareTest } = useAdmin();
 
   // Parse URL search params
   const params = new URLSearchParams(window.location.search);
   const subjectId = params.get('sid') ?? '';
   const cardId = params.get('cid') ?? '';
+  const shareId = params.get('shareId') ?? '';
 
   const card = useMemo(() => {
+    // Shared test card — load from sessionStorage
+    if (shareId) {
+      try {
+        const stored = sessionStorage.getItem('@shared_test');
+        if (stored) {
+          const data = JSON.parse(stored) as { shareId: string; title: string; question: string; answer: string };
+          if (data.shareId === shareId) {
+            return {
+              id: shareId,
+              title: data.title,
+              question: data.question,
+              answer: data.answer,
+              order: 0,
+              createdAt: 0,
+              updatedAt: 0,
+            };
+          }
+        }
+      } catch { /* ignore */ }
+      return null;
+    }
     const deck = testDecks[subjectId] ?? [];
     return deck.find(c => c.id === cardId) ?? null;
-  }, [testDecks, subjectId, cardId]);
+  }, [testDecks, subjectId, cardId, shareId]);
 
   const questions: ParsedQuestion[] = useMemo(() => {
     if (!card) return [];
@@ -70,8 +94,8 @@ export function TestRunner() {
   const [confirmStop, setConfirmStop] = useState(false);
   const [confirmBack, setConfirmBack] = useState(false);
 
-  const handleGoBack = () => navigate('/test');
-  const handleStop = () => navigate('/test');
+  const handleGoBack = () => navigate(shareId ? '/today' : '/test');
+  const handleStop = () => navigate(shareId ? '/today' : '/test');
 
   if (!card || questions.length === 0) {
     return (
@@ -217,7 +241,15 @@ export function TestRunner() {
               <RotateCcw size={16} /> {t('testRetry')}
             </button>
             <button
-              onClick={() => navigate('/test')}
+              onClick={async () => {
+                if (shareId) {
+                  await completeShareTest(shareId);
+                  sessionStorage.removeItem('@shared_test');
+                  navigate('/today');
+                } else {
+                  navigate('/test');
+                }
+              }}
               className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-secondary text-foreground font-semibold text-sm hover:bg-secondary/70"
             >
               <ChevronLeft size={16} /> {t('testBack')}

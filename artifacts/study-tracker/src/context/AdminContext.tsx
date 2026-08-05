@@ -72,7 +72,7 @@ export interface ShareRequest {
   fromAdminEmail: string;
   fromAdminName: string;
   toEmail: string;
-  type: 'course' | 'note' | 'message';
+  type: 'course' | 'note' | 'message' | 'testcard';
   // Course share
   courseId?: string;
   courseName?: string;
@@ -95,6 +95,13 @@ export interface ShareRequest {
   notes?: NoteShareItem[];
   // Plain admin -> user message
   messageText?: string;
+  // Test card share
+  testCardId?: string;
+  testCardTitle?: string;
+  testCardSubjectId?: string;
+  testCardSubjectTitle?: string;
+  testCardQuestion?: string;
+  testCardAnswer?: string;
   // Common
   permissions: SharePermissions;
   durationValue: number;
@@ -130,7 +137,7 @@ export interface ShareRequest {
   trashedByRecipient?: boolean;
   // How the recipient acted: 'declined' = rejected from notification,
   // 'opened' = note/message opened (auto-delivered), 'accepted_then_deleted' = accepted + later deleted.
-  recipientAction?: 'declined' | 'opened' | 'accepted_then_deleted';
+  recipientAction?: 'declined' | 'opened' | 'accepted_then_deleted' | 'completed';
 }
 
 interface AdminContextType {
@@ -164,13 +171,15 @@ interface AdminContextType {
   restoreShare: (shareId: string) => Promise<void>;
   permanentlyDeleteShare: (shareId: string) => Promise<void>;
   resendShare: (shareId: string) => Promise<void>;
+  completeShareTest: (shareId: string) => Promise<void>;
   appContact: AppContact;
   saveContactSettings: (c: Partial<AppContact>) => Promise<void>;
 }
 
 export type SendShareParams = Pick<ShareRequest,
   'toEmail' | 'type' | 'courseId' | 'courseName' | 'noteTitle' | 'noteHtml' | 'noteBreadcrumb' |
-  'notes' | 'messageText' | 'permissions' | 'durationValue' | 'durationUnit' | 'sharedSubjectIds'
+  'notes' | 'messageText' | 'permissions' | 'durationValue' | 'durationUnit' | 'sharedSubjectIds' |
+  'testCardId' | 'testCardTitle' | 'testCardSubjectId' | 'testCardSubjectTitle' | 'testCardQuestion' | 'testCardAnswer'
 >;
 
 export interface AppContact {
@@ -1243,6 +1252,13 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       if (share.noteBreadcrumb) payload.noteBreadcrumb = share.noteBreadcrumb;
     } else if (share.type === 'message') {
       if (share.messageText) payload.messageText = share.messageText;
+    } else if (share.type === 'testcard') {
+      if (share.testCardId) payload.testCardId = share.testCardId;
+      if (share.testCardTitle) payload.testCardTitle = share.testCardTitle;
+      if (share.testCardSubjectId) payload.testCardSubjectId = share.testCardSubjectId;
+      if (share.testCardSubjectTitle) payload.testCardSubjectTitle = share.testCardSubjectTitle;
+      if (share.testCardQuestion) payload.testCardQuestion = share.testCardQuestion;
+      if (share.testCardAnswer) payload.testCardAnswer = share.testCardAnswer;
     }
 
     // Strip undefined values (Firestore rejects them)
@@ -1368,6 +1384,17 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const completeShareTest = async (shareId: string) => {
+    const share = allReceivedShares.find(s => s.id === shareId);
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      status: 'trashed',
+      trashedAt: Date.now(),
+      trashedFromStatus: share?.status ?? 'pending',
+      trashedByRecipient: true,
+      recipientAction: 'completed',
+    });
+  };
+
   const markSeen = async (shareId: string) => {
     const share = allReceivedShares.find(s => s.id === shareId);
     if (!share || share.seenAt) return; // already seen, avoid redundant writes
@@ -1400,7 +1427,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       pendingShares, acceptShare, declineShare,
       acceptedShares, markSeen,
       extendShare, getCourseSubjectsForShare, addSubjectsToShare,
-      trashShare, restoreShare, permanentlyDeleteShare, resendShare,
+      trashShare, restoreShare, permanentlyDeleteShare, resendShare, completeShareTest,
       appContact, saveContactSettings,
     }}>
       {children}

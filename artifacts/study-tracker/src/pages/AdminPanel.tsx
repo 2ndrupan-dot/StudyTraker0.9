@@ -6,6 +6,7 @@ import {
   UserCheck, UserMinus, RefreshCw, Eye, EyeOff, Save, MessageSquare,
   TimerReset, ListPlus, Undo2, AlertTriangle, Archive, Search,
   Phone, Globe, Link2, MessageCircle, Infinity, RotateCcw, OctagonX, CheckCheck,
+  ClipboardList, Play, Trophy,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -18,6 +19,8 @@ import { Button, Input, Modal } from '@/components/ui';
 import { RichTextPreview } from '@/components/RichTextEditor';
 import { Countdown, AdminTermCountdown, CountUp } from '@/components/Countdown';
 import type { Subject } from '@/lib/types';
+import { useTest } from '@/context/TestContext';
+import type { TestCard } from '@/context/TestContext';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -42,12 +45,14 @@ function statusColor(status: string) {
 function typeIcon(type: ShareRequest['type'], size = 16) {
   if (type === 'course') return <BookOpen size={size} />;
   if (type === 'message') return <MessageSquare size={size} />;
+  if (type === 'testcard') return <ClipboardList size={size} />;
   return <StickyNote size={size} />;
 }
 
 function typeColorClass(type: ShareRequest['type']) {
   if (type === 'course') return 'bg-indigo-500/10 text-indigo-600';
   if (type === 'message') return 'bg-sky-500/10 text-sky-600';
+  if (type === 'testcard') return 'bg-violet-500/10 text-violet-600';
   return 'bg-amber-500/10 text-amber-600';
 }
 
@@ -55,6 +60,7 @@ function typeColorClass(type: ShareRequest['type']) {
 function shareTitle(share: ShareRequest, lang: string): string {
   if (share.type === 'course') return share.courseName || '—';
   if (share.type === 'message') return share.messageText || '—';
+  if (share.type === 'testcard') return share.testCardTitle || '—';
   if (share.notes && share.notes.length > 1) {
     return lang === 'bn' ? `${share.notes.length}টি নোট` : `${share.notes.length} notes`;
   }
@@ -511,7 +517,9 @@ function SentShareRow({
   // notification themselves rather than the admin cancelling a pending share.
   const declinedLabel = share.type === 'course'
     ? (lang === 'bn' ? 'প্রত্যাখ্যান করেছে' : 'Rejected')
-    : (lang === 'bn' ? 'ইউজার ডিলিট করেছে' : 'Deleted by user');
+    : share.type === 'testcard'
+      ? (lang === 'bn' ? 'ক্যান্সেল করেছে' : 'Cancelled by user')
+      : (lang === 'bn' ? 'ইউজার ডিলিট করেছে' : 'Deleted by user');
 
   const countdownTarget = share.status === 'accepted' ? share.actualExpiresAt : share.pendingExpiresAt;
 
@@ -677,7 +685,7 @@ function SentShareRow({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {(share.status === 'pending' || share.status === 'accepted') && share.type !== 'message' && (
+        {(share.status === 'pending' || share.status === 'accepted') && share.type !== 'message' && share.type !== 'testcard' && (
           <button
             onClick={() => onEditPermissions(share)}
             className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-secondary text-foreground hover:bg-secondary/70 transition-colors text-xs font-semibold"
@@ -770,6 +778,12 @@ function TrashedShareRow({
                 {lang === 'bn' ? 'খুলে দেখেছে (ডেলিভারি সম্পন্ন)' : 'Opened (delivered)'}
               </span>
             )}
+            {share.recipientAction === 'completed' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 bg-violet-500/15 text-violet-700 dark:text-violet-400">
+                <Trophy size={9} />
+                {lang === 'bn' ? 'টেস্ট সম্পন্ন করেছে' : 'Test completed'}
+              </span>
+            )}
             {/* Seen timestamp */}
             {share.seenAt && share.recipientAction !== 'opened' && (
               <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 bg-blue-500/10 text-blue-600">
@@ -840,6 +854,7 @@ export function AdminPanel() {
     appContact, saveContactSettings, acceptedShares } = useAdmin();
   const { courses, activeCourse } = useCourse();
   const { subjects, notePagesIndex, loadNotePage } = useStudy();
+  const { testDecks } = useTest();
 
   const [tab, setTab] = useState<'admins' | 'share' | 'sent' | 'contact'>('admins');
   const [sentSubTab, setSentSubTab] = useState<'active' | 'trash'>('active');
@@ -885,13 +900,14 @@ export function AdminPanel() {
     // single-recipient flow; multiple emails fan out into one separate
     // shareRequest card per recipient when sent.
     toEmails: [] as string[],
-    type: 'course' as 'course' | 'note' | 'message',
+    type: 'course' as 'course' | 'note' | 'message' | 'testcard',
     courseId: '',
     courseName: '',
     noteTitle: '',
     noteHtml: '',
     noteBreadcrumb: [] as string[],
     messageText: '',
+    testCardTitle: '',
     durationValue: 7,
     durationUnit: 'days' as 'hours' | 'days' | 'months',
     permissions: { ...DEFAULT_PERMISSIONS },
@@ -913,6 +929,11 @@ export function AdminPanel() {
   const [courseSubjects, setCourseSubjects] = useState<{ id: string; title: string }[]>([]);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [loadingCourseSubjects, setLoadingCourseSubjects] = useState(false);
+
+  // ── Test card picker state ──
+  const [selectedTestSubjectId, setSelectedTestSubjectId] = useState('');
+  const [selectedTestCardId, setSelectedTestCardId] = useState('');
+  const [selectedTestCard, setSelectedTestCard] = useState<TestCard | null>(null);
 
   useEffect(() => {
     if (shareForm.type !== 'course' || !shareForm.courseId) {
@@ -1142,10 +1163,16 @@ export function AdminPanel() {
             noteBreadcrumb: shareForm.type === 'note' ? noteBatch?.[0]?.breadcrumb : undefined,
             notes: noteBatch,
             messageText: shareForm.type === 'message' ? shareForm.messageText.trim() : undefined,
-            permissions: shareForm.type === 'message' ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false, renameCourse: false, addItems: false, takeScreenshot: false, selectCopyText: false } : shareForm.permissions,
+            permissions: (shareForm.type === 'message' || shareForm.type === 'testcard') ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false, renameCourse: false, addItems: false, takeScreenshot: false, selectCopyText: false } : shareForm.permissions,
             durationValue: shareForm.durationValue,
             durationUnit: shareForm.durationUnit,
             sharedSubjectIds: shareForm.type === 'course' && courseSubjects.length > 0 ? selectedSubjectIds : undefined,
+            testCardId: shareForm.type === 'testcard' ? selectedTestCard?.id : undefined,
+            testCardTitle: shareForm.type === 'testcard' ? selectedTestCard?.title : undefined,
+            testCardSubjectId: shareForm.type === 'testcard' ? selectedTestSubjectId : undefined,
+            testCardSubjectTitle: shareForm.type === 'testcard' ? subjects.find(s => s.id === selectedTestSubjectId)?.title : undefined,
+            testCardQuestion: shareForm.type === 'testcard' ? selectedTestCard?.question : undefined,
+            testCardAnswer: shareForm.type === 'testcard' ? selectedTestCard?.answer : undefined,
           });
         }
       }
@@ -1153,7 +1180,7 @@ export function AdminPanel() {
       setShareStep(1);
       setShareForm({
         toEmails: [], type: 'course', courseId: '', courseName: '', noteTitle: '', noteHtml: '',
-        noteBreadcrumb: [], messageText: '', durationValue: 7, durationUnit: 'days', permissions: { ...DEFAULT_PERMISSIONS },
+        noteBreadcrumb: [], messageText: '', testCardTitle: '', durationValue: 7, durationUnit: 'days', permissions: { ...DEFAULT_PERMISSIONS },
       });
       setEmailInput('');
       setEmailInputError('');
@@ -1161,6 +1188,9 @@ export function AdminPanel() {
       setNoteSource('inline');
       setCourseSubjects([]);
       setSelectedSubjectIds([]);
+      setSelectedTestSubjectId('');
+      setSelectedTestCardId('');
+      setSelectedTestCard(null);
       setTimeout(() => setSendSuccess(false), 3000);
     } catch (err) {
       setSendError(
@@ -1770,11 +1800,14 @@ export function AdminPanel() {
                   <p className="text-xs font-semibold text-muted-foreground mb-2">
                     {lang === 'bn' ? 'কী শেয়ার করবেন?' : 'What to share?'}
                   </p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['course', 'note', 'message'] as const).map(type => (
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['course', 'note', 'message', 'testcard'] as const).map(type => (
                       <button
                         key={type}
-                        onClick={() => setShareForm(f => ({ ...f, type }))}
+                        onClick={() => {
+                          setShareForm(f => ({ ...f, type }));
+                          if (type !== 'testcard') { setSelectedTestSubjectId(''); setSelectedTestCardId(''); setSelectedTestCard(null); }
+                        }}
                         className={cn(
                           "flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all",
                           shareForm.type === type
@@ -1784,13 +1817,16 @@ export function AdminPanel() {
                       >
                         {type === 'course' ? <BookOpen size={22} className="text-indigo-500" />
                           : type === 'note' ? <StickyNote size={22} className="text-amber-500" />
-                          : <MessageSquare size={22} className="text-sky-500" />}
+                          : type === 'message' ? <MessageSquare size={22} className="text-sky-500" />
+                          : <ClipboardList size={22} className="text-violet-500" />}
                         <span className="text-xs font-semibold text-foreground">
                           {type === 'course'
                             ? (lang === 'bn' ? 'কোর্স' : 'Course')
                             : type === 'note'
                               ? (lang === 'bn' ? 'নোট' : 'Note')
-                              : (lang === 'bn' ? 'মেসেজ' : 'Message')}
+                              : type === 'message'
+                                ? (lang === 'bn' ? 'মেসেজ' : 'Message')
+                                : (lang === 'bn' ? 'টেস্ট কার্ড' : 'Test Card')}
                         </span>
                       </button>
                     ))}
@@ -1818,7 +1854,9 @@ export function AdminPanel() {
                       ? (lang === 'bn' ? '২. কোর্স সিলেক্ট করুন' : '2. Select Course')
                       : shareForm.type === 'message'
                         ? (lang === 'bn' ? '২. মেসেজ লিখুন' : '2. Write Message')
-                        : (lang === 'bn' ? '২. নোট সিলেক্ট করুন' : '2. Select Note')}
+                        : shareForm.type === 'testcard'
+                          ? (lang === 'bn' ? '২. টেস্ট কার্ড সিলেক্ট করুন' : '2. Select Test Card')
+                          : (lang === 'bn' ? '২. নোট সিলেক্ট করুন' : '2. Select Note')}
                   </p>
                 </div>
 
@@ -1895,6 +1933,83 @@ export function AdminPanel() {
                     rows={6}
                     className="w-full rounded-xl border border-border/60 bg-secondary px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                   />
+                ) : shareForm.type === 'testcard' ? (
+                  <div className="space-y-3">
+                    {/* Subject list */}
+                    {subjects.length === 0 ? (
+                      <p className="text-xs text-muted-foreground text-center py-4">
+                        {lang === 'bn' ? 'এই কোর্সে কোনো সাবজেক্ট নেই।' : 'No subjects in this course.'}
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-semibold text-muted-foreground">
+                          {lang === 'bn' ? 'সাবজেক্ট সিলেক্ট করুন:' : 'Select a subject:'}
+                        </p>
+                        <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                          {subjects.map(s => (
+                            <button
+                              key={s.id}
+                              onClick={() => {
+                                setSelectedTestSubjectId(s.id);
+                                setSelectedTestCardId('');
+                                setSelectedTestCard(null);
+                                setShareForm(f => ({ ...f, testCardTitle: '' }));
+                              }}
+                              className={cn(
+                                "w-full flex items-center gap-2.5 p-2.5 rounded-xl border-2 text-left transition-all text-sm font-medium",
+                                selectedTestSubjectId === s.id
+                                  ? "border-violet-500 bg-violet-500/5 text-violet-700"
+                                  : "border-border/50 hover:bg-secondary/50 text-foreground"
+                              )}
+                            >
+                              <ClipboardList size={14} className="shrink-0 text-violet-500" />
+                              <span className="truncate">{s.title}</span>
+                              {selectedTestSubjectId === s.id && <Check size={13} className="shrink-0 text-violet-600 ml-auto" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Test cards for selected subject */}
+                    {selectedTestSubjectId && (
+                      <div className="space-y-1.5 border-t border-border/40 pt-3">
+                        <p className="text-xs font-semibold text-muted-foreground">
+                          {lang === 'bn' ? 'টেস্ট কার্ড সিলেক্ট করুন:' : 'Select a test card:'}
+                        </p>
+                        {(!testDecks[selectedTestSubjectId] || testDecks[selectedTestSubjectId].length === 0) ? (
+                          <p className="text-xs text-muted-foreground text-center py-3">
+                            {lang === 'bn' ? 'এই সাবজেক্টে কোনো টেস্ট কার্ড নেই।' : 'No test cards in this subject.'}
+                          </p>
+                        ) : (
+                          <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
+                            {testDecks[selectedTestSubjectId].map(card => (
+                              <button
+                                key={card.id}
+                                onClick={() => {
+                                  setSelectedTestCardId(card.id);
+                                  setSelectedTestCard(card);
+                                  setShareForm(f => ({ ...f, testCardTitle: card.title }));
+                                }}
+                                className={cn(
+                                  "w-full flex items-center gap-2.5 p-2.5 rounded-xl border-2 text-left transition-all",
+                                  selectedTestCardId === card.id
+                                    ? "border-violet-500 bg-violet-500/5"
+                                    : "border-border/50 hover:bg-secondary/50"
+                                )}
+                              >
+                                <Trophy size={13} className="shrink-0 text-violet-500" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold text-foreground truncate">{card.title}</p>
+                                </div>
+                                {selectedTestCardId === card.id && <Check size={13} className="shrink-0 text-violet-600" />}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     <p className="text-xs font-semibold text-muted-foreground">
@@ -2006,6 +2121,7 @@ export function AdminPanel() {
                           (!isSuperAdmin && !currentAdminPermissions?.canShareReceivedContent &&
                             acceptedShares.some(s => s.id === shareForm.courseId && s.type === 'course')))
                       : shareForm.type === 'message' ? !shareForm.messageText.trim()
+                      : shareForm.type === 'testcard' ? !selectedTestCard
                       : notesPickedList.length === 0
                   }
                   onClick={() => setShareStep(3)}
@@ -2060,7 +2176,7 @@ export function AdminPanel() {
                 </div>
 
                 {/* Permissions — not applicable to plain messages */}
-                {shareForm.type !== 'message' && (
+                {shareForm.type !== 'message' && shareForm.type !== 'testcard' && (
                   <div>
                     <p className="text-xs font-semibold text-muted-foreground mb-2">
                       {lang === 'bn' ? 'অনুমতি সেট করুন' : 'Set Permissions'}
@@ -2096,6 +2212,7 @@ export function AdminPanel() {
                     <span className="font-semibold">
                       {shareForm.type === 'course' ? shareForm.courseName
                         : shareForm.type === 'message' ? shareForm.messageText
+                        : shareForm.type === 'testcard' ? (shareForm.testCardTitle || '—')
                         : notesPickedList.length > 1
                           ? (lang === 'bn' ? `${notesPickedList.length}টি নোট` : `${notesPickedList.length} notes`)
                           : (notesPickedList[0]?.title || '—')}

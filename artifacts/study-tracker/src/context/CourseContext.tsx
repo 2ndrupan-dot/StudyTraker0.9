@@ -8,6 +8,7 @@ import {
   deleteDoc,
   getDoc,
   onSnapshot,
+  updateDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { SharePermissions } from './AdminContext';
@@ -352,6 +353,17 @@ export function CourseProvider({ children }: { children: ReactNode }) {
       await deleteDoc(doc(db, 'users', user.id, 'courses', courseId));
       await setDoc(doc(db, 'users', user.id, 'deletedCourses', courseId), deletedCourse);
     } catch { /* offline */ }
+
+    // If this was a shared course, notify the admin by marking recipientDeleted on the shareRequest.
+    const sharedMeta = sharedCoursesMeta[courseId];
+    if (sharedMeta?.shareId) {
+      try {
+        await updateDoc(doc(db, 'shareRequests', sharedMeta.shareId), {
+          recipientDeleted: true,
+          recipientDeletedAt: Date.now(),
+        });
+      } catch { /* offline or already deleted */ }
+    }
   };
 
   /** Restore a soft-deleted course back to active courses. */

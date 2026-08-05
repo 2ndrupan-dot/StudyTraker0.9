@@ -604,6 +604,12 @@ function SentShareRow({
                   ? (lang === 'bn' ? 'গৃহীত' : 'Accepted')
                   : declinedLabel}
             </span>
+            {share.recipientDeleted && share.status === 'accepted' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-red-500/15 text-red-700 dark:text-red-400 flex items-center gap-1">
+                <Trash2 size={9} />
+                {lang === 'bn' ? 'ইউজার ডিলিট করেছে' : 'Deleted by user'}
+              </span>
+            )}
             <span className={cn(
               "text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1",
               share.seenAt ? "bg-blue-500/10 text-blue-600" : "bg-secondary text-muted-foreground"

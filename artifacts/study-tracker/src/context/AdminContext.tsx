@@ -121,6 +121,9 @@ export interface ShareRequest {
   // remaining on the clock at the moment of revocation. acceptShare uses it
   // so the timer continues from the frozen point instead of restarting fresh.
   resendRemainingMs?: number;
+  // Set when the recipient deletes the accepted shared course from their side.
+  recipientDeleted?: boolean;
+  recipientDeletedAt?: number;
 }
 
 interface AdminContextType {

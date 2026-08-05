@@ -26,7 +26,7 @@ import type { TestCard } from '@/context/TestContext';
 
 function formatDuration(value: number, unit: string, lang: string) {
   if (lang === 'bn') {
-    const m: Record<string, string> = { hours: 'ঘণ্টা', days: 'দিন', months: 'মাস' };
+    const m: Record<string, string> = { minutes: 'মিনিট', hours: 'ঘণ্টা', days: 'দিন', months: 'মাস' };
     return `${value} ${m[unit] || unit}`;
   }
   return `${value} ${unit}`;
@@ -876,7 +876,7 @@ export function AdminPanel() {
   // Duration / expiry for new admin
   const [newAdminHasExpiry, setNewAdminHasExpiry] = useState(false);
   const [newAdminDurationValue, setNewAdminDurationValue] = useState(7);
-  const [newAdminDurationUnit, setNewAdminDurationUnit] = useState<'hours' | 'days' | 'months'>('days');
+  const [newAdminDurationUnit, setNewAdminDurationUnit] = useState<'minutes' | 'hours' | 'days' | 'months'>('days');
   const [addingAdmin, setAddingAdmin] = useState(false);
   const [adminError, setAdminError] = useState('');
   const [removingEmail, setRemovingEmail] = useState<string | null>(null);
@@ -888,7 +888,7 @@ export function AdminPanel() {
   // Extend / reduce admin duration modal
   const [extendAdminModal, setExtendAdminModal] = useState<VisibleAdminEntry | null>(null);
   const [extendAdminValue, setExtendAdminValue] = useState(7);
-  const [extendAdminUnit, setExtendAdminUnit] = useState<'hours' | 'days' | 'months'>('days');
+  const [extendAdminUnit, setExtendAdminUnit] = useState<'minutes' | 'hours' | 'days' | 'months'>('days');
   const [extendAdminDirection, setExtendAdminDirection] = useState<'add' | 'subtract'>('add');
   const [extendingAdmin, setExtendingAdmin] = useState(false);
   const [makingPermanentEmail, setMakingPermanentEmail] = useState<string | null>(null);
@@ -909,7 +909,7 @@ export function AdminPanel() {
     messageText: '',
     testCardTitle: '',
     durationValue: 7,
-    durationUnit: 'days' as 'hours' | 'days' | 'months',
+    durationUnit: 'days' as 'minutes' | 'hours' | 'days' | 'months',
     permissions: { ...DEFAULT_PERMISSIONS },
   });
   const [emailInput, setEmailInput] = useState('');
@@ -983,7 +983,7 @@ export function AdminPanel() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [extendModal, setExtendModal] = useState<ShareRequest | null>(null);
   const [extendValue, setExtendValue] = useState(1);
-  const [extendUnit, setExtendUnit] = useState<'hours' | 'days' | 'months'>('days');
+  const [extendUnit, setExtendUnit] = useState<'minutes' | 'hours' | 'days' | 'months'>('days');
   const [extendDirection, setExtendDirection] = useState<'add' | 'subtract'>('add');
   const [extending, setExtending] = useState(false);
   const [addSubjectsModal, setAddSubjectsModal] = useState<ShareRequest | null>(null);
@@ -1521,9 +1521,10 @@ export function AdminPanel() {
                           />
                           <select
                             value={newAdminDurationUnit}
-                            onChange={e => setNewAdminDurationUnit(e.target.value as 'hours' | 'days' | 'months')}
+                            onChange={e => setNewAdminDurationUnit(e.target.value as 'minutes' | 'hours' | 'days' | 'months')}
                             className="rounded-xl border border-border/60 bg-secondary px-3 text-sm text-foreground h-9"
                           >
+                            <option value="minutes">{lang === 'bn' ? 'মিনিট' : 'Minutes'}</option>
                             <option value="hours">{lang === 'bn' ? 'ঘণ্টা' : 'Hours'}</option>
                             <option value="days">{lang === 'bn' ? 'দিন' : 'Days'}</option>
                             <option value="months">{lang === 'bn' ? 'মাস' : 'Months'}</option>
@@ -2217,7 +2218,7 @@ export function AdminPanel() {
                       className="w-24 h-10 rounded-xl border border-border/60 bg-secondary px-3 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
                     <div className="flex bg-secondary p-1 rounded-xl border border-border/50 flex-1">
-                      {(['hours', 'days', 'months'] as const).map(unit => (
+                      {(['minutes', 'hours', 'days', 'months'] as const).map(unit => (
                         <button
                           key={unit}
                           onClick={() => setShareForm(f => ({ ...f, durationUnit: unit }))}
@@ -2227,8 +2228,8 @@ export function AdminPanel() {
                           )}
                         >
                           {lang === 'bn'
-                            ? { hours: 'ঘণ্টা', days: 'দিন', months: 'মাস' }[unit]
-                            : { hours: 'Hours', days: 'Days', months: 'Months' }[unit]}
+                            ? { minutes: 'মিনিট', hours: 'ঘণ্টা', days: 'দিন', months: 'মাস' }[unit]
+                            : { minutes: 'Mins', hours: 'Hours', days: 'Days', months: 'Months' }[unit]}
                         </button>
                       ))}
                     </div>
@@ -2744,9 +2745,10 @@ export function AdminPanel() {
             />
             <select
               value={extendUnit}
-              onChange={e => setExtendUnit(e.target.value as 'hours' | 'days' | 'months')}
+              onChange={e => setExtendUnit(e.target.value as 'minutes' | 'hours' | 'days' | 'months')}
               className="rounded-xl border border-border/60 bg-secondary px-3 text-sm text-foreground"
             >
+              <option value="minutes">{lang === 'bn' ? 'মিনিট' : 'Minutes'}</option>
               <option value="hours">{lang === 'bn' ? 'ঘণ্টা' : 'Hours'}</option>
               <option value="days">{lang === 'bn' ? 'দিন' : 'Days'}</option>
               <option value="months">{lang === 'bn' ? 'মাস' : 'Months'}</option>
@@ -3014,9 +3016,10 @@ export function AdminPanel() {
             />
             <select
               value={extendAdminUnit}
-              onChange={e => setExtendAdminUnit(e.target.value as 'hours' | 'days' | 'months')}
+              onChange={e => setExtendAdminUnit(e.target.value as 'minutes' | 'hours' | 'days' | 'months')}
               className="rounded-xl border border-border/60 bg-secondary px-3 text-sm text-foreground"
             >
+              <option value="minutes">{lang === 'bn' ? 'মিনিট' : 'Minutes'}</option>
               <option value="hours">{lang === 'bn' ? 'ঘণ্টা' : 'Hours'}</option>
               <option value="days">{lang === 'bn' ? 'দিন' : 'Days'}</option>
               <option value="months">{lang === 'bn' ? 'মাস' : 'Months'}</option>

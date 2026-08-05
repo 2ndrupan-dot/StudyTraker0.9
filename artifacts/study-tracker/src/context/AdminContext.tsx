@@ -105,7 +105,7 @@ export interface ShareRequest {
   // Common
   permissions: SharePermissions;
   durationValue: number;
-  durationUnit: 'hours' | 'days' | 'months';
+  durationUnit: 'minutes' | 'hours' | 'days' | 'months';
   status: 'pending' | 'accepted' | 'declined' | 'trashed';
   sentAt: number;
   pendingExpiresAt: number; // auto-expire the pending notification
@@ -148,10 +148,10 @@ interface AdminContextType {
   visibleAdmins: VisibleAdminEntry[]; // what the current admin is allowed to see
   currentAdminPermissions: AdminRolePermissions | null; // null = super admin (all perms)
   loadingAdmins: boolean;
-  addAdmin: (email: string, permissions?: AdminRolePermissions, durationValue?: number, durationUnit?: 'hours' | 'days' | 'months') => Promise<void>;
+  addAdmin: (email: string, permissions?: AdminRolePermissions, durationValue?: number, durationUnit?: 'minutes' | 'hours' | 'days' | 'months') => Promise<void>;
   removeAdmin: (email: string) => Promise<void>;
   updateAdminPermissions: (email: string, permissions: AdminRolePermissions) => Promise<void>;
-  updateAdminDuration: (email: string, addValue: number, addUnit: 'hours' | 'days' | 'months') => Promise<void>;
+  updateAdminDuration: (email: string, addValue: number, addUnit: 'minutes' | 'hours' | 'days' | 'months') => Promise<void>;
   makeAdminPermanent: (email: string) => Promise<void>;
   sendShare: (params: SendShareParams) => Promise<void>;
   sentShares: ShareRequest[];
@@ -164,7 +164,7 @@ interface AdminContextType {
   declineShare: (shareId: string) => Promise<void>;
   acceptedShares: ShareRequest[];
   markSeen: (shareId: string) => Promise<void>;
-  extendShare: (shareId: string, addValue: number, addUnit: 'hours' | 'days' | 'months') => Promise<void>;
+  extendShare: (shareId: string, addValue: number, addUnit: 'minutes' | 'hours' | 'days' | 'months') => Promise<void>;
   getCourseSubjectsForShare: (courseId: string) => Promise<{ id: string; title: string }[]>;
   addSubjectsToShare: (shareId: string, additionalSubjectIds: string[]) => Promise<void>;
   trashShare: (shareId: string) => Promise<void>;
@@ -201,7 +201,8 @@ export interface VisibleAdminEntry {
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
 
-function durationToMs(value: number, unit: 'hours' | 'days' | 'months'): number {
+function durationToMs(value: number, unit: 'minutes' | 'hours' | 'days' | 'months'): number {
+  if (unit === 'minutes') return value * 60 * 1000;
   if (unit === 'hours') return value * 60 * 60 * 1000;
   if (unit === 'days') return value * 24 * 60 * 60 * 1000;
   return value * 30 * 24 * 60 * 60 * 1000;
@@ -845,7 +846,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     email: string,
     permissions: AdminRolePermissions = { ...DEFAULT_ADMIN_ROLE_PERMISSIONS },
     durationValue?: number,
-    durationUnit?: 'hours' | 'days' | 'months',
+    durationUnit?: 'minutes' | 'hours' | 'days' | 'months',
   ) => {
     const e = email.trim().toLowerCase();
     const ref = doc(db, 'adminConfig', 'adminList');
@@ -867,7 +868,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   // negative = reduce. Extension adds to the current expiresAt (or now if
   // already expired). Reduction never sets expiresAt to earlier than 60 s
   // from now so you can't accidentally immediately expire someone.
-  const updateAdminDuration = async (email: string, addValue: number, addUnit: 'hours' | 'days' | 'months') => {
+  const updateAdminDuration = async (email: string, addValue: number, addUnit: 'minutes' | 'hours' | 'days' | 'months') => {
     const e = email.trim().toLowerCase();
     if (SUPER_ADMIN_EMAILS.includes(e)) return; // super admins never expire
     const ref = doc(db, 'adminConfig', 'adminList');
@@ -1086,7 +1087,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   // `deltaValue` may be negative to reduce the remaining time instead of
   // extending it. The result is clamped so it never drops below "now" —
   // reducing far enough simply expires the share immediately.
-  const extendShare = async (shareId: string, deltaValue: number, deltaUnit: 'hours' | 'days' | 'months') => {
+  const extendShare = async (shareId: string, deltaValue: number, deltaUnit: 'minutes' | 'hours' | 'days' | 'months') => {
     const share = allSentShares.find(s => s.id === shareId);
     if (!share) return;
     const deltaMs = durationToMs(Math.abs(deltaValue), deltaUnit) * (deltaValue < 0 ? -1 : 1);

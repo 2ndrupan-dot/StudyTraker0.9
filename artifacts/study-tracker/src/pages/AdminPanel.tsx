@@ -492,6 +492,8 @@ function SentShareRow({
   onExtend,
   onAddSubjects,
   onResend,
+  isSelected,
+  onToggleSelect,
 }: {
   share: ShareRequest;
   lang: string;
@@ -500,6 +502,8 @@ function SentShareRow({
   onExtend: (share: ShareRequest) => void;
   onAddSubjects: (share: ShareRequest) => void;
   onResend: (shareId: string) => void;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const [resending, setResending] = React.useState(false);
 
@@ -519,8 +523,19 @@ function SentShareRow({
       : null;
 
     return (
-      <div className="bg-card border-2 border-red-400/40 rounded-2xl p-4 space-y-3 opacity-90">
+      <div className={cn("bg-card border-2 rounded-2xl p-4 space-y-3 opacity-90", isSelected ? "border-primary/70" : "border-red-400/40")}>
         <div className="flex items-start gap-3">
+          {onToggleSelect && (
+            <button
+              onClick={e => { e.stopPropagation(); onToggleSelect(); }}
+              className={cn(
+                "mt-1 w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
+                isSelected ? "bg-primary border-primary" : "border-border/60 bg-card hover:border-primary/50"
+              )}
+            >
+              {isSelected && <Check size={11} className="text-primary-foreground" />}
+            </button>
+          )}
           <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0 opacity-60", typeColorClass(share.type))}>
             {typeIcon(share.type, 16)}
           </div>
@@ -586,8 +601,19 @@ function SentShareRow({
   }
 
   return (
-    <div className="bg-card border-2 border-border rounded-2xl p-4 space-y-3">
+    <div className={cn("bg-card border-2 rounded-2xl p-4 space-y-3", isSelected ? "border-primary/70" : "border-border")}>
       <div className="flex items-start gap-3">
+        {onToggleSelect && (
+          <button
+            onClick={e => { e.stopPropagation(); onToggleSelect(); }}
+            className={cn(
+              "mt-1 w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
+              isSelected ? "bg-primary border-primary" : "border-border/60 bg-card hover:border-primary/50"
+            )}
+          >
+            {isSelected && <Check size={11} className="text-primary-foreground" />}
+          </button>
+        )}
         <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", typeColorClass(share.type))}>
           {typeIcon(share.type, 16)}
         </div>
@@ -693,16 +719,29 @@ function SentShareRow({
 // ─── Trashed Share Row ─────────────────────────────────────────────────────
 
 function TrashedShareRow({
-  share, lang, onRestore, onPermanentDelete,
+  share, lang, onRestore, onPermanentDelete, isSelected, onToggleSelect,
 }: {
   share: ShareRequest;
   lang: string;
   onRestore: (shareId: string) => void;
   onPermanentDelete: (share: ShareRequest) => void;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   return (
-    <div className="bg-card border-2 border-border rounded-2xl p-4 space-y-3 opacity-90">
+    <div className={cn("bg-card border-2 rounded-2xl p-4 space-y-3 opacity-90", isSelected ? "border-primary/70" : "border-border")}>
       <div className="flex items-start gap-3">
+        {onToggleSelect && (
+          <button
+            onClick={e => { e.stopPropagation(); onToggleSelect(); }}
+            className={cn(
+              "mt-1 w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
+              isSelected ? "bg-primary border-primary" : "border-border/60 bg-card hover:border-primary/50"
+            )}
+          >
+            {isSelected && <Check size={11} className="text-primary-foreground" />}
+          </button>
+        )}
         <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", typeColorClass(share.type))}>
           {typeIcon(share.type, 16)}
         </div>
@@ -931,6 +970,20 @@ export function AdminPanel() {
   const [addSubjectsPicked, setAddSubjectsPicked] = useState<string[]>([]);
   const [addingSubjects, setAddingSubjects] = useState(false);
 
+  // ── Bulk selection state ──
+  const [activeSelectedIds, setActiveSelectedIds] = useState<Set<string>>(new Set());
+  const [trashSelectedIds, setTrashSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeletingActive, setBulkDeletingActive] = useState(false);
+  const [bulkDeletingTrash, setBulkDeletingTrash] = useState(false);
+  const [bulkActiveConfirm, setBulkActiveConfirm] = useState(false);
+  const [bulkTrashConfirm, setBulkTrashConfirm] = useState(false);
+
+  // Clear selections when switching between Active / Trash sub-tabs
+  useEffect(() => {
+    setActiveSelectedIds(new Set());
+    setTrashSelectedIds(new Set());
+  }, [sentSubTab]);
+
   if (!isAdmin) {
     return (
       <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-4 p-8 bg-background">
@@ -1154,6 +1207,28 @@ export function AdminPanel() {
       setPermDeleteConfirmShare(null);
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleBulkDeleteActive = async () => {
+    setBulkDeletingActive(true);
+    try {
+      await Promise.all([...activeSelectedIds].map(id => trashShare(id)));
+      setActiveSelectedIds(new Set());
+      setBulkActiveConfirm(false);
+    } finally {
+      setBulkDeletingActive(false);
+    }
+  };
+
+  const handleBulkDeleteTrash = async () => {
+    setBulkDeletingTrash(true);
+    try {
+      await Promise.all([...trashSelectedIds].map(id => permanentlyDeleteShare(id)));
+      setTrashSelectedIds(new Set());
+      setBulkTrashConfirm(false);
+    } finally {
+      setBulkDeletingTrash(false);
     }
   };
 
@@ -2137,18 +2212,79 @@ export function AdminPanel() {
                       : (lang === 'bn' ? 'এই ইমেইলে কিছু পাঠানো হয়নি।' : 'Nothing sent to this email.')}
                   </p>
                 </div>
-              ) : filteredSentShares.map(share => (
-                <SentShareRow
-                  key={share.id}
-                  share={share}
-                  lang={lang}
-                  onEditPermissions={s => { setEditPermissions({ ...s.permissions }); setEditPermModal(s); }}
-                  onDelete={s => setDeleteConfirmShare(s)}
-                  onExtend={s => openExtendModal(s)}
-                  onAddSubjects={s => openAddSubjectsModal(s)}
-                  onResend={shareId => resendShare(shareId)}
-                />
-              ))
+              ) : (
+                <>
+                  {/* Select All / bulk delete bar — active */}
+                  <div className="flex items-center gap-2 px-0.5">
+                    <button
+                      onClick={() => {
+                        const allVisible = filteredSentShares.map(s => s.id);
+                        const allSelected = allVisible.every(id => activeSelectedIds.has(id));
+                        setActiveSelectedIds(prev => {
+                          const next = new Set(prev);
+                          if (allSelected) { allVisible.forEach(id => next.delete(id)); }
+                          else { allVisible.forEach(id => next.add(id)); }
+                          return next;
+                        });
+                      }}
+                      className={cn(
+                        "w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
+                        filteredSentShares.every(s => activeSelectedIds.has(s.id))
+                          ? "bg-primary border-primary"
+                          : filteredSentShares.some(s => activeSelectedIds.has(s.id))
+                            ? "border-primary bg-primary/20"
+                            : "border-border/60 bg-card hover:border-primary/50"
+                      )}
+                    >
+                      {filteredSentShares.every(s => activeSelectedIds.has(s.id))
+                        ? <Check size={11} className="text-primary-foreground" />
+                        : filteredSentShares.some(s => activeSelectedIds.has(s.id))
+                          ? <div className="w-2 h-0.5 bg-primary rounded-full" />
+                          : null}
+                    </button>
+                    <span className="text-xs text-muted-foreground flex-1">
+                      {activeSelectedIds.size > 0
+                        ? (lang === 'bn' ? `${activeSelectedIds.size}টি সিলেক্ট হয়েছে` : `${activeSelectedIds.size} selected`)
+                        : (lang === 'bn' ? 'সব সিলেক্ট করুন' : 'Select all')}
+                    </span>
+                    {activeSelectedIds.size > 0 && (
+                      <>
+                        <button
+                          onClick={() => setBulkActiveConfirm(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 text-xs font-semibold transition-colors"
+                        >
+                          <Trash2 size={12} />
+                          {lang === 'bn' ? `ডিলিট (${activeSelectedIds.size})` : `Delete (${activeSelectedIds.size})`}
+                        </button>
+                        <button
+                          onClick={() => setActiveSelectedIds(new Set())}
+                          className="p-1 rounded-lg hover:bg-secondary text-muted-foreground transition-colors"
+                        >
+                          <X size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {filteredSentShares.map(share => (
+                    <SentShareRow
+                      key={share.id}
+                      share={share}
+                      lang={lang}
+                      isSelected={activeSelectedIds.has(share.id)}
+                      onToggleSelect={() => setActiveSelectedIds(prev => {
+                        const next = new Set(prev);
+                        if (next.has(share.id)) next.delete(share.id); else next.add(share.id);
+                        return next;
+                      })}
+                      onEditPermissions={s => { setEditPermissions({ ...s.permissions }); setEditPermModal(s); }}
+                      onDelete={s => setDeleteConfirmShare(s)}
+                      onExtend={s => openExtendModal(s)}
+                      onAddSubjects={s => openAddSubjectsModal(s)}
+                      onResend={shareId => resendShare(shareId)}
+                    />
+                  ))}
+                </>
+              )
             ) : (
               filteredTrashedShares.length === 0 ? (
                 <div className="py-12 text-center">
@@ -2159,15 +2295,76 @@ export function AdminPanel() {
                       : (lang === 'bn' ? 'এই ইমেইলে কিছু পাওয়া যায়নি।' : 'Nothing found for this email.')}
                   </p>
                 </div>
-              ) : filteredTrashedShares.map(share => (
-                <TrashedShareRow
-                  key={share.id}
-                  share={share}
-                  lang={lang}
-                  onRestore={handleRestore}
-                  onPermanentDelete={s => setPermDeleteConfirmShare(s)}
-                />
-              ))
+              ) : (
+                <>
+                  {/* Select All / bulk delete bar — trash */}
+                  <div className="flex items-center gap-2 px-0.5">
+                    <button
+                      onClick={() => {
+                        const allVisible = filteredTrashedShares.map(s => s.id);
+                        const allSelected = allVisible.every(id => trashSelectedIds.has(id));
+                        setTrashSelectedIds(prev => {
+                          const next = new Set(prev);
+                          if (allSelected) { allVisible.forEach(id => next.delete(id)); }
+                          else { allVisible.forEach(id => next.add(id)); }
+                          return next;
+                        });
+                      }}
+                      className={cn(
+                        "w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
+                        filteredTrashedShares.every(s => trashSelectedIds.has(s.id))
+                          ? "bg-primary border-primary"
+                          : filteredTrashedShares.some(s => trashSelectedIds.has(s.id))
+                            ? "border-primary bg-primary/20"
+                            : "border-border/60 bg-card hover:border-primary/50"
+                      )}
+                    >
+                      {filteredTrashedShares.every(s => trashSelectedIds.has(s.id))
+                        ? <Check size={11} className="text-primary-foreground" />
+                        : filteredTrashedShares.some(s => trashSelectedIds.has(s.id))
+                          ? <div className="w-2 h-0.5 bg-primary rounded-full" />
+                          : null}
+                    </button>
+                    <span className="text-xs text-muted-foreground flex-1">
+                      {trashSelectedIds.size > 0
+                        ? (lang === 'bn' ? `${trashSelectedIds.size}টি সিলেক্ট হয়েছে` : `${trashSelectedIds.size} selected`)
+                        : (lang === 'bn' ? 'সব সিলেক্ট করুন' : 'Select all')}
+                    </span>
+                    {trashSelectedIds.size > 0 && (
+                      <>
+                        <button
+                          onClick={() => setBulkTrashConfirm(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 text-xs font-semibold transition-colors"
+                        >
+                          <Trash2 size={12} />
+                          {lang === 'bn' ? `মুছুন (${trashSelectedIds.size})` : `Delete Forever (${trashSelectedIds.size})`}
+                        </button>
+                        <button
+                          onClick={() => setTrashSelectedIds(new Set())}
+                          className="p-1 rounded-lg hover:bg-secondary text-muted-foreground transition-colors"
+                        >
+                          <X size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {filteredTrashedShares.map(share => (
+                    <TrashedShareRow
+                      key={share.id}
+                      share={share}
+                      lang={lang}
+                      isSelected={trashSelectedIds.has(share.id)}
+                      onToggleSelect={() => setTrashSelectedIds(prev => {
+                        const next = new Set(prev);
+                        if (next.has(share.id)) next.delete(share.id); else next.add(share.id);
+                        return next;
+                      })}
+                      onRestore={handleRestore}
+                      onPermanentDelete={s => setPermDeleteConfirmShare(s)}
+                    />
+                  ))}
+                </>
+              )
             )}
           </div>
         )}
@@ -2516,6 +2713,70 @@ export function AdminPanel() {
               className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-50"
             >
               {deletingId === permDeleteConfirmShare?.id ? '...' : (lang === 'bn' ? 'মুছুন' : 'Delete')}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk delete confirmation — active list (moves to trash) */}
+      <Modal
+        isOpen={bulkActiveConfirm}
+        onClose={() => setBulkActiveConfirm(false)}
+        title={lang === 'bn' ? 'একসাথে ডিলিট করুন' : 'Bulk Delete'}
+        align="bottom"
+        icon={AlertTriangle}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
+            {lang === 'bn'
+              ? `${activeSelectedIds.size}টি কার্ড ট্র্যাশে সরানো হবে। পরে ট্র্যাশ থেকে পুনরুদ্ধার করতে পারবেন।`
+              : `${activeSelectedIds.size} card(s) will be moved to trash. You can restore them from trash later.`}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setBulkActiveConfirm(false)}
+              className="flex-1 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-semibold hover:bg-secondary/70 transition-colors"
+            >
+              {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleBulkDeleteActive}
+              disabled={bulkDeletingActive}
+              className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-50"
+            >
+              {bulkDeletingActive ? '...' : (lang === 'bn' ? 'ডিলিট করুন' : 'Delete')}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk permanent delete confirmation — trash list */}
+      <Modal
+        isOpen={bulkTrashConfirm}
+        onClose={() => setBulkTrashConfirm(false)}
+        title={lang === 'bn' ? 'স্থায়ীভাবে মুছুন' : 'Delete Forever'}
+        align="bottom"
+        icon={AlertTriangle}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
+            {lang === 'bn'
+              ? `${trashSelectedIds.size}টি কার্ড স্থায়ীভাবে মুছে যাবে এবং আর ফিরিয়ে আনা যাবে না।`
+              : `${trashSelectedIds.size} card(s) will be permanently deleted and cannot be recovered.`}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setBulkTrashConfirm(false)}
+              className="flex-1 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-semibold hover:bg-secondary/70 transition-colors"
+            >
+              {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleBulkDeleteTrash}
+              disabled={bulkDeletingTrash}
+              className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-50"
+            >
+              {bulkDeletingTrash ? '...' : (lang === 'bn' ? 'মুছুন' : 'Delete Forever')}
             </button>
           </div>
         </div>

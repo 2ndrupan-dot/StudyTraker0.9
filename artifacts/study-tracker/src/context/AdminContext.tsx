@@ -1189,6 +1189,12 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       status: share.trashedFromStatus || 'declined',
       trashedAt: null,
       trashedFromStatus: null,
+      // Clear recipient-side fields so the notification is truly fresh:
+      // markSeen guards on seenAt, so leaving it set would silently block
+      // the second open/start after a restore.
+      seenAt: null,
+      trashedByRecipient: null,
+      recipientAction: null,
     });
   };
 

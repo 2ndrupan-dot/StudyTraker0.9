@@ -616,6 +616,7 @@ export function AdminPanel() {
   const [addingAdmin, setAddingAdmin] = useState(false);
   const [adminError, setAdminError] = useState('');
   const [removingEmail, setRemovingEmail] = useState<string | null>(null);
+  const [confirmRemoveEmail, setConfirmRemoveEmail] = useState<string | null>(null);
   // Edit permissions modal for an existing admin
   const [editAdminPermEntry, setEditAdminPermEntry] = useState<VisibleAdminEntry | null>(null);
   const [editAdminPermissions, setEditAdminPermissions] = useState<AdminRolePermissions>({ ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
@@ -794,7 +795,14 @@ export function AdminPanel() {
     }
   };
 
-  const handleRemoveAdmin = async (email: string) => {
+  const handleRemoveAdmin = (email: string) => {
+    setConfirmRemoveEmail(email);
+  };
+
+  const handleConfirmRemoveAdmin = async () => {
+    if (!confirmRemoveEmail) return;
+    const email = confirmRemoveEmail;
+    setConfirmRemoveEmail(null);
     setRemovingEmail(email);
     try { await removeAdmin(email); } finally { setRemovingEmail(null); }
   };
@@ -2275,6 +2283,38 @@ export function AdminPanel() {
               ? (lang === 'bn' ? 'সময় বাড়ান' : 'Extend')
               : (lang === 'bn' ? 'সময় কমান' : 'Reduce'))}
           </Button>
+        </div>
+      </Modal>
+
+      {/* Remove Admin Confirmation Modal */}
+      <Modal
+        isOpen={!!confirmRemoveEmail}
+        onClose={() => setConfirmRemoveEmail(null)}
+        title={lang === 'bn' ? 'এডমিন রিমুভ করুন' : 'Remove Admin'}
+        align="bottom"
+        icon={AlertTriangle}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
+            {lang === 'bn'
+              ? `আপনি কি নিশ্চিত যে "${confirmRemoveEmail}" কে এডমিন থেকে রিমুভ করতে চান?`
+              : `Are you sure you want to remove "${confirmRemoveEmail}" as admin?`}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setConfirmRemoveEmail(null)}
+              className="flex-1 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-semibold hover:bg-secondary/70 transition-colors"
+            >
+              {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleConfirmRemoveAdmin}
+              disabled={!!removingEmail}
+              className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-50"
+            >
+              {removingEmail ? '...' : (lang === 'bn' ? 'রিমুভ করুন' : 'Remove')}
+            </button>
+          </div>
         </div>
       </Modal>
 

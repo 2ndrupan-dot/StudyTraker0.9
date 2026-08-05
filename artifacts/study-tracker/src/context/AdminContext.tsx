@@ -987,8 +987,16 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           });
         } catch { /* best-effort — missing test decks are not fatal */ }
 
+        // Deep-strip undefined values from studyData before embedding in the
+        // snapshot. Firestore rejects `undefined` anywhere in a nested object
+        // ("Property courseSnapshot contains an invalid nested entity"), even
+        // when top-level undefined keys are already removed. JSON round-trip
+        // silently drops undefined keys at every depth level, which is exactly
+        // what we need.
+        const cleanStudyData = JSON.parse(JSON.stringify(studyDataForSnapshot)) as Record<string, unknown>;
+
         const snapshot: CourseSnapshot = {
-          studyData: studyDataForSnapshot,
+          studyData: cleanStudyData,
           notesJson: JSON.stringify({ notes: notesMap, overallNote }),
           testDecksJson: JSON.stringify(testDecksMap),
         };

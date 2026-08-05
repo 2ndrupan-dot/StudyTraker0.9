@@ -711,11 +711,37 @@ function TrashedShareRow({
             {shareTitle(share, lang)}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">→ {share.toEmail}</p>
+          {share.seenAt && (
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 bg-blue-500/10 text-blue-600">
+                <Eye size={10} />
+                {lang === 'bn' ? `দেখেছে · ${formatDate(share.seenAt)}` : `Seen · ${formatDate(share.seenAt)}`}
+              </span>
+            </div>
+          )}
           {share.trashedAt && (
             <p className="text-[10px] text-muted-foreground mt-1">
-              {lang === 'bn' ? 'ডিলিট করা হয়েছে' : 'Deleted'} · {formatDate(share.trashedAt)}
+              {lang === 'bn' ? 'সরানো হয়েছে' : 'Moved'} · {formatDate(share.trashedAt)}
             </p>
           )}
+          {/* Show live countdown timer if share still has time remaining */}
+          {(() => {
+            const timerTarget = share.trashedFromStatus === 'accepted'
+              ? share.actualExpiresAt
+              : share.pendingExpiresAt;
+            if (!timerTarget || timerTarget <= Date.now()) return null;
+            return (
+              <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-primary/10">
+                <Clock size={10} className="text-primary" />
+                <span className="text-[11px] font-mono font-bold text-primary tabular-nums">
+                  <Countdown targetMs={timerTarget} lang={lang} />
+                </span>
+                <span className="text-[9px] text-primary/70">
+                  {lang === 'bn' ? 'বাকি' : 'left'}
+                </span>
+              </div>
+            );
+          })()}
         </div>
       </div>
       <div className="flex gap-2">

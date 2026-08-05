@@ -1362,7 +1362,20 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const markSeen = async (shareId: string) => {
     const share = allReceivedShares.find(s => s.id === shareId);
     if (!share || share.seenAt) return; // already seen, avoid redundant writes
-    await updateDoc(doc(db, 'shareRequests', shareId), { seenAt: Date.now() });
+
+    // For note/message shares there is no explicit accept step — opening the
+    // notification IS the delivery. Move the card to the admin's Trash so it
+    // clears out of the Active list automatically (timer remains visible there).
+    if (share.type === 'note' || share.type === 'message') {
+      await updateDoc(doc(db, 'shareRequests', shareId), {
+        seenAt: Date.now(),
+        status: 'trashed',
+        trashedAt: Date.now(),
+        trashedFromStatus: share.status,
+      });
+    } else {
+      await updateDoc(doc(db, 'shareRequests', shareId), { seenAt: Date.now() });
+    }
   };
 
   return (

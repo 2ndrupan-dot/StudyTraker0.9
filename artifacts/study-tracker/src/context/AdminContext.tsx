@@ -498,6 +498,32 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     return () => unsub();
   }, [user?.id, isAdmin]); // eslint-disable-line
 
+  // Self-revocation: when an admin is re-added after being removed, removeAdmin's
+  // batch-updateDoc may have been blocked by Firestore security rules (only the
+  // doc owner, fromAdminUid, can write their own shareRequests). This effect runs
+  // as the share owner and catches any share whose sentAt predates the admin's
+  // current addedAt — meaning it was sent during a previous admin stint and should
+  // be frozen with a Resend button. Super admins are excluded (addedAt: 0 synthetic
+  // entries). Runs whenever allSentShares or the admin list reloads; idempotent.
+  useEffect(() => {
+    if (!user?.id || isSuperAdmin || loadingAdmins || !isAdmin) return;
+    const ownRecord = activeFirestoreAdmins.find(r => r.email === userEmail);
+    if (!ownRecord?.addedAt) return; // no real addedAt — nothing to reconcile
+
+    const toRevoke = allSentShares.filter(
+      s => !s.adminRevoked && s.sentAt < ownRecord.addedAt
+    );
+    if (toRevoke.length === 0) return;
+
+    // revokedAt = addedAt (re-addition time) — closest timestamp to the removal
+    // we have. The frozen timer will show time-remaining as of re-addition.
+    const revokedAt = ownRecord.addedAt;
+    for (const s of toRevoke) {
+      updateDoc(doc(db, 'shareRequests', s.id), { adminRevoked: true, revokedAt })
+        .catch(() => {}); // best-effort; next reload will retry if it fails
+    }
+  }, [allSentShares, firestoreAdminRecords, isAdmin, loadingAdmins]); // eslint-disable-line
+
   // Load received shares (user as recipient) + apply live-sync updates from admin
   useEffect(() => {
     if (!user?.email || !user?.id) { setAllReceivedShares([]); return; }
@@ -815,24 +841,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         ...(expiresAt !== undefined ? { expiresAt } : {}),
       };
       await setDoc(ref, { admins: [...existing, newRecord] }, { merge: true });
-
-      // Reconciliation: if removeAdmin failed to set adminRevoked (e.g. due to a
-      // case-mismatch on fromAdminEmail or a transient network error), any existing
-      // shares from this admin will still appear as "running" with no Resend button
-      // after re-addition.  Mark them revoked here so the card correctly shows a
-      // frozen timer and the Resend button, letting the admin re-grant access
-      // deliberately rather than silently inheriting a stale running share.
-      try {
-        const sharesSnap = await getDocs(
-          query(collection(db, 'shareRequests'), where('fromAdminEmail', '==', e))
-        );
-        const revokedAt = Date.now();
-        await Promise.all(
-          sharesSnap.docs
-            .filter(d => !d.data().adminRevoked)
-            .map(d => updateDoc(d.ref, { adminRevoked: true, revokedAt }).catch(() => {}))
-        );
-      } catch { /* non-fatal — worst case the admin sees a running card; they can still Resend manually */ }
     }
   };
 

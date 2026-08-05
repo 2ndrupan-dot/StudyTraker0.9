@@ -912,6 +912,7 @@ export function AdminPanel() {
     durationUnit: 'days' as 'minutes' | 'hours' | 'days' | 'months',
     permissions: { ...DEFAULT_PERMISSIONS },
   });
+  const [durationRaw, setDurationRaw] = useState('7');
   const [emailInput, setEmailInput] = useState('');
   const [emailInputError, setEmailInputError] = useState('');
   // One or more notes picked together to be sent as a single share card.
@@ -1184,6 +1185,7 @@ export function AdminPanel() {
         toEmails: [], type: 'course', courseId: '', courseName: '', noteTitle: '', noteHtml: '',
         noteBreadcrumb: [], messageText: '', testCardTitle: '', durationValue: 7, durationUnit: 'days', permissions: { ...DEFAULT_PERMISSIONS },
       });
+      setDurationRaw('7');
       setEmailInput('');
       setEmailInputError('');
       setNotesPickedList([]);
@@ -2300,13 +2302,17 @@ export function AdminPanel() {
                     <input
                       type="number"
                       min={1}
-                      value={shareForm.durationValue}
+                      value={durationRaw}
                       onChange={e => {
+                        setDurationRaw(e.target.value);
                         const val = parseInt(e.target.value);
-                        if (!isNaN(val)) setShareForm(f => ({ ...f, durationValue: val }));
-                        else if (e.target.value === '') setShareForm(f => ({ ...f, durationValue: 0 }));
+                        if (!isNaN(val) && val > 0) setShareForm(f => ({ ...f, durationValue: val }));
                       }}
-                      onBlur={() => setShareForm(f => ({ ...f, durationValue: Math.max(1, f.durationValue) }))}
+                      onBlur={() => {
+                        const val = Math.max(1, parseInt(durationRaw) || 1);
+                        setDurationRaw(String(val));
+                        setShareForm(f => ({ ...f, durationValue: val }));
+                      }}
                       className="w-24 h-10 rounded-xl border border-border/60 bg-secondary px-3 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
                     <div className="flex bg-secondary p-1 rounded-xl border border-border/50 flex-1">

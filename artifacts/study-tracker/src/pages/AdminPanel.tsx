@@ -982,6 +982,7 @@ export function AdminPanel() {
   const [permDeleteConfirmShare, setPermDeleteConfirmShare] = useState<ShareRequest | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [testCardPickerOpen, setTestCardPickerOpen] = useState(false);
+  const [testCardSearchQuery, setTestCardSearchQuery] = useState('');
   const [extendModal, setExtendModal] = useState<ShareRequest | null>(null);
   const [extendValue, setExtendValue] = useState(1);
   const [extendUnit, setExtendUnit] = useState<'minutes' | 'hours' | 'days' | 'months'>('days');
@@ -1988,7 +1989,7 @@ export function AdminPanel() {
                     {/* Picker Modal */}
                     <Modal
                       isOpen={testCardPickerOpen}
-                      onClose={() => setTestCardPickerOpen(false)}
+                      onClose={() => { setTestCardPickerOpen(false); setTestCardSearchQuery(''); }}
                       title={lang === 'bn' ? 'টেস্ট কার্ড সিলেক্ট করুন' : 'Select Test Card'}
                       icon={Trophy}
                     >
@@ -2016,6 +2017,7 @@ export function AdminPanel() {
                                       setSelectedTestCardId('');
                                       setSelectedTestCard(null);
                                       setShareForm(f => ({ ...f, testCardTitle: '' }));
+                                      setTestCardSearchQuery('');
                                     }}
                                     style={isActive ? {
                                       background: `${color}18`,
@@ -2048,11 +2050,34 @@ export function AdminPanel() {
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -4 }}
                               transition={{ duration: 0.15 }}
-                              className="space-y-2"
+                              className="space-y-3"
                             >
                               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
                                 {lang === 'bn' ? 'টেস্ট কার্ড' : 'Test Card'}
                               </p>
+
+                              {/* Search box — only if there are cards */}
+                              {(testDecks[selectedTestSubjectId]?.length ?? 0) > 0 && (
+                                <div className="relative">
+                                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                                  <input
+                                    type="text"
+                                    value={testCardSearchQuery}
+                                    onChange={e => setTestCardSearchQuery(e.target.value)}
+                                    placeholder={lang === 'bn' ? 'কার্ড খুঁজুন...' : 'Search cards...'}
+                                    className="w-full pl-8 pr-8 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
+                                  />
+                                  {testCardSearchQuery && (
+                                    <button
+                                      onClick={() => setTestCardSearchQuery('')}
+                                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                    >
+                                      <X size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
                               {(!testDecks[selectedTestSubjectId] || testDecks[selectedTestSubjectId].length === 0) ? (
                                 <div className="flex flex-col items-center justify-center gap-1.5 py-6 rounded-2xl border border-dashed border-border/50 bg-secondary/30">
                                   <Trophy size={18} className="text-muted-foreground/30" />
@@ -2060,57 +2085,73 @@ export function AdminPanel() {
                                     {lang === 'bn' ? 'এই সাবজেক্টে কোনো টেস্ট কার্ড নেই।' : 'No test cards in this subject.'}
                                   </p>
                                 </div>
-                              ) : (
-                                <div className="space-y-1.5">
-                                  {testDecks[selectedTestSubjectId].map((card, idx) => {
-                                    const isSelected = selectedTestCardId === card.id;
-                                    const cardHues = ['#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899'];
-                                    const accent = cardHues[idx % cardHues.length];
-                                    return (
-                                      <button
-                                        key={card.id}
-                                        onClick={() => {
-                                          setSelectedTestCardId(card.id);
-                                          setSelectedTestCard(card);
-                                          setShareForm(f => ({ ...f, testCardTitle: card.title }));
-                                          setTestCardPickerOpen(false);
-                                        }}
-                                        style={isSelected ? {
-                                          borderColor: accent,
-                                          background: `${accent}10`,
-                                        } : {}}
-                                        className={cn(
-                                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-all duration-200",
-                                          isSelected
-                                            ? ""
-                                            : "border-border/40 bg-secondary/30 hover:bg-secondary/70 hover:border-border/60"
-                                        )}
-                                      >
-                                        <div
-                                          className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
-                                          style={{ background: `${accent}18` }}
+                              ) : (() => {
+                                const filtered = testDecks[selectedTestSubjectId].filter(c =>
+                                  c.title.toLowerCase().includes(testCardSearchQuery.toLowerCase())
+                                );
+                                if (filtered.length === 0) return (
+                                  <div className="flex flex-col items-center justify-center gap-1.5 py-6 rounded-2xl border border-dashed border-border/50 bg-secondary/30">
+                                    <Search size={18} className="text-muted-foreground/30" />
+                                    <p className="text-xs text-muted-foreground/60">
+                                      {lang === 'bn'
+                                        ? `"${testCardSearchQuery}" এর সাথে কোনো কার্ড মিলছে না`
+                                        : `No cards match "${testCardSearchQuery}"`}
+                                    </p>
+                                  </div>
+                                );
+                                return (
+                                  <div className="space-y-1.5">
+                                    {filtered.map((card, idx) => {
+                                      const isSelected = selectedTestCardId === card.id;
+                                      const cardHues = ['#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899'];
+                                      const accent = cardHues[testDecks[selectedTestSubjectId].indexOf(card) % cardHues.length];
+                                      return (
+                                        <button
+                                          key={card.id}
+                                          onClick={() => {
+                                            setSelectedTestCardId(card.id);
+                                            setSelectedTestCard(card);
+                                            setShareForm(f => ({ ...f, testCardTitle: card.title }));
+                                            setTestCardPickerOpen(false);
+                                            setTestCardSearchQuery('');
+                                          }}
+                                          style={isSelected ? {
+                                            borderColor: accent,
+                                            background: `${accent}10`,
+                                          } : {}}
+                                          className={cn(
+                                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-all duration-200",
+                                            isSelected
+                                              ? ""
+                                              : "border-border/40 bg-secondary/30 hover:bg-secondary/70 hover:border-border/60"
+                                          )}
                                         >
-                                          <Trophy size={13} style={{ color: accent }} />
-                                        </div>
-                                        <p
-                                          className="text-sm font-bold text-foreground truncate flex-1"
-                                          style={isSelected ? { color: accent } : {}}
-                                        >
-                                          {card.title}
-                                        </p>
-                                        {isSelected && (
-                                          <span
-                                            className="flex items-center justify-center w-5 h-5 rounded-full shrink-0"
-                                            style={{ background: accent }}
+                                          <div
+                                            className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
+                                            style={{ background: `${accent}18` }}
                                           >
-                                            <Check size={10} strokeWidth={3} className="text-white" />
-                                          </span>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
+                                            <Trophy size={13} style={{ color: accent }} />
+                                          </div>
+                                          <p
+                                            className="text-sm font-bold text-foreground truncate flex-1"
+                                            style={isSelected ? { color: accent } : {}}
+                                          >
+                                            {card.title}
+                                          </p>
+                                          {isSelected && (
+                                            <span
+                                              className="flex items-center justify-center w-5 h-5 rounded-full shrink-0"
+                                              style={{ background: accent }}
+                                            >
+                                              <Check size={10} strokeWidth={3} className="text-white" />
+                                            </span>
+                                          )}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })()}
                             </motion.div>
                           )}
                         </AnimatePresence>

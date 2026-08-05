@@ -459,6 +459,32 @@ function PermissionsEditor({
 
 // ─── Sent Shares List ─────────────────────────────────────────────────────────
 
+/** Format a millisecond duration into a compact human-readable string, e.g.
+ *  "3d 2h 15m" or "45m 30s". Returns "0s" when remainingMs ≤ 0. */
+function formatFrozenMs(remainingMs: number, lang: string): string {
+  if (remainingMs <= 0) return lang === 'bn' ? '০ সে' : '0s';
+  const totalSec = Math.floor(remainingMs / 1000);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+
+  if (lang === 'bn') {
+    const parts: string[] = [];
+    if (d > 0) parts.push(`${d}দি`);
+    if (h > 0) parts.push(`${h}ঘ`);
+    if (m > 0) parts.push(`${m}মি`);
+    if (s > 0 && d === 0) parts.push(`${s}সে`);
+    return parts.join(' ') || '০ সে';
+  }
+  const parts: string[] = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  if (s > 0 && d === 0) parts.push(`${s}s`);
+  return parts.join(' ') || '0s';
+}
+
 function SentShareRow({
   share, lang,
   onEditPermissions,
@@ -487,6 +513,11 @@ function SentShareRow({
 
   // ── Revoked state (admin was removed; card frozen) ────────────────────────
   if (share.adminRevoked) {
+    // Calculate how much time was left on the clock at the moment of revocation.
+    const frozenMs = countdownTarget && share.revokedAt
+      ? Math.max(0, countdownTarget - share.revokedAt)
+      : null;
+
     return (
       <div className="bg-card border-2 border-amber-400/40 rounded-2xl p-4 space-y-3 opacity-90">
         <div className="flex items-start gap-3">
@@ -508,12 +539,19 @@ function SentShareRow({
               </span>
               <span className="text-[10px] text-muted-foreground">{formatDate(share.sentAt)}</span>
             </div>
-            {/* Frozen timer */}
+            {/* Frozen timer — shows the exact remaining time when the admin was removed */}
             <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10">
               <OctagonX size={10} className="text-amber-600" />
               <span className="text-[11px] font-mono font-bold text-amber-700 dark:text-amber-400 tabular-nums">
-                {lang === 'bn' ? 'থামানো হয়েছে' : 'Stopped'}
+                {frozenMs !== null
+                  ? formatFrozenMs(frozenMs, lang)
+                  : (lang === 'bn' ? 'থামানো' : 'Stopped')}
               </span>
+              {frozenMs !== null && (
+                <span className="text-[9px] text-amber-600/70">
+                  {lang === 'bn' ? 'বাকি ছিল' : 'was left'}
+                </span>
+              )}
             </div>
             {/* Revocation note */}
             <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1.5 font-medium">

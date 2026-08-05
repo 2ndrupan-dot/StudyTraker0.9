@@ -112,6 +112,11 @@ export interface ShareRequest {
   // document outright.
   trashedAt?: number;
   trashedFromStatus?: 'pending' | 'accepted' | 'declined';
+  // Set when the sending admin is removed while the share is still active.
+  // The share doc is kept (not deleted) so it reappears when the admin is
+  // re-added. The timer is frozen and a "Resend" button is shown.
+  adminRevoked?: boolean;
+  revokedAt?: number;
 }
 
 interface AdminContextType {
@@ -144,6 +149,7 @@ interface AdminContextType {
   trashShare: (shareId: string) => Promise<void>;
   restoreShare: (shareId: string) => Promise<void>;
   permanentlyDeleteShare: (shareId: string) => Promise<void>;
+  resendShare: (shareId: string) => Promise<void>;
   appContact: AppContact;
   saveContactSettings: (c: Partial<AppContact>) => Promise<void>;
 }
@@ -360,10 +366,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
   // ── Share expiry lists ───────────────────────────────────────────────────
   const pendingShares = allReceivedShares
-    .filter(s => s.status === 'pending' && s.pendingExpiresAt > now)
+    .filter(s => s.status === 'pending' && s.pendingExpiresAt > now && !s.adminRevoked)
     .sort((a, b) => b.sentAt - a.sentAt); // newest first
   const acceptedShares = allReceivedShares.filter(
-    s => s.status === 'accepted' && (!s.actualExpiresAt || s.actualExpiresAt > now)
+    s => s.status === 'accepted' && (!s.actualExpiresAt || s.actualExpiresAt > now) && !s.adminRevoked
   );
   const sentShares = allSentShares.filter(s => s.status !== 'trashed');
   const trashedShares = allSentShares.filter(s => s.status === 'trashed');
@@ -377,6 +383,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const nowMs = Date.now();
     for (const s of allSentShares) {
       if (s.status === 'trashed') continue;
+      if (s.adminRevoked) continue; // frozen — timer stopped when admin was removed
       const expired = (s.status === 'pending' && s.pendingExpiresAt <= nowMs)
         || (s.status === 'accepted' && s.actualExpiresAt !== undefined && s.actualExpiresAt <= nowMs);
       if (expired) deleteDoc(doc(db, 'shareRequests', s.id)).catch(() => {});
@@ -387,6 +394,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const nowMs = Date.now();
     for (const s of allReceivedShares) {
       if (s.status === 'trashed') continue;
+      if (s.adminRevoked) continue; // hidden from recipient; skip expiry delete
       const expired = (s.status === 'pending' && s.pendingExpiresAt <= nowMs)
         || (s.status === 'accepted' && s.actualExpiresAt !== undefined && s.actualExpiresAt <= nowMs);
       if (expired) deleteDoc(doc(db, 'shareRequests', s.id)).catch(() => {});
@@ -409,11 +417,15 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       const records: AdminRecord[] = snap.data().admins || [];
       const filtered = records.filter(r => !r.expiresAt || r.expiresAt > nowMs);
       setDoc(ref, { admins: filtered }, { merge: true }).catch(() => {});
-      // Delete share requests for every admin whose term just expired.
+      // Mark share requests as revoked for every admin whose term just expired
+      // (same pattern as manual removeAdmin — keeps cards visible when re-added).
+      const revokedAt = Date.now();
       for (const expired of expiredRecords) {
         getDocs(query(collection(db, 'shareRequests'), where('fromAdminEmail', '==', expired.email)))
           .then(sharesSnap => {
-            sharesSnap.docs.forEach(d => deleteDoc(d.ref).catch(() => {}));
+            sharesSnap.docs
+              .filter(d => !d.data().adminRevoked)
+              .forEach(d => updateDoc(d.ref, { adminRevoked: true, revokedAt }).catch(() => {}));
           }).catch(() => {});
       }
     }).catch(() => {});
@@ -863,10 +875,18 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const snap = await getDoc(ref);
     const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
     await setDoc(ref, { admins: existing.filter(r => r.email !== e) }, { merge: true });
-    // Delete all share requests sent by this admin — the recipient's onSnapshot
-    // listener will cascade-delete the cloned course/note data automatically.
+    // Mark all share requests from this admin as revoked rather than deleting
+    // them. This keeps the cards visible in "Sent Shares" when the admin is
+    // re-added, with a frozen timer and a "Resend" button.
+    // Recipients' course data is cleaned up by the admin-list revocation effect
+    // (which fires because adminEmailsKey just changed) — no explicit delete needed.
     const sharesSnap = await getDocs(query(collection(db, 'shareRequests'), where('fromAdminEmail', '==', e)));
-    await Promise.all(sharesSnap.docs.map(d => deleteDoc(d.ref)));
+    const revokedAt = Date.now();
+    await Promise.all(
+      sharesSnap.docs
+        .filter(d => !d.data().adminRevoked) // skip already-revoked
+        .map(d => updateDoc(d.ref, { adminRevoked: true, revokedAt }))
+    );
   };
 
   const sendShare = async (params: SendShareParams) => {
@@ -1124,6 +1144,54 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     await deleteDoc(doc(db, 'shareRequests', shareId));
   };
 
+  // Resend a previously revoked share. Creates a new shareRequest with fresh
+  // timestamps (reusing the original snapshot/content), then deletes the old
+  // revoked doc so it no longer appears in the sent list.
+  const resendShare = async (shareId: string) => {
+    const share = allSentShares.find(s => s.id === shareId);
+    if (!share || !share.adminRevoked || !user) return;
+
+    const ts = Date.now();
+    const pendingExpiresAt = ts + durationToMs(share.durationValue, share.durationUnit);
+
+    const payload: Record<string, unknown> = {
+      fromAdminUid: user.id,
+      fromAdminEmail: user.email,
+      fromAdminName: user.name,
+      toEmail: share.toEmail,
+      type: share.type,
+      permissions: share.permissions,
+      durationValue: share.durationValue,
+      durationUnit: share.durationUnit,
+      status: 'pending',
+      sentAt: ts,
+      pendingExpiresAt,
+    };
+
+    if (share.type === 'course') {
+      if (share.courseId) payload.courseId = share.courseId;
+      if (share.courseName) payload.courseName = share.courseName;
+      if (share.courseSnapshot) payload.courseSnapshot = share.courseSnapshot;
+      if (share.sharedSubjectIds) payload.sharedSubjectIds = share.sharedSubjectIds;
+    } else if (share.type === 'note') {
+      if (share.notes) payload.notes = share.notes;
+      if (share.noteTitle) payload.noteTitle = share.noteTitle;
+      if (share.noteHtml) payload.noteHtml = share.noteHtml;
+      if (share.noteBreadcrumb) payload.noteBreadcrumb = share.noteBreadcrumb;
+    } else if (share.type === 'message') {
+      if (share.messageText) payload.messageText = share.messageText;
+    }
+
+    // Strip undefined values (Firestore rejects them)
+    for (const key of Object.keys(payload)) {
+      if (payload[key] === undefined) delete payload[key];
+    }
+
+    await addDoc(collection(db, 'shareRequests'), payload);
+    // Remove the old revoked record — the new one replaces it.
+    await deleteDoc(doc(db, 'shareRequests', shareId));
+  };
+
   const acceptShare = async (shareId: string) => {
     const share = pendingShares.find(s => s.id === shareId);
     if (!share || !user) return;
@@ -1237,7 +1305,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       pendingShares, acceptShare, declineShare,
       acceptedShares, markSeen,
       extendShare, getCourseSubjectsForShare, addSubjectsToShare,
-      trashShare, restoreShare, permanentlyDeleteShare,
+      trashShare, restoreShare, permanentlyDeleteShare, resendShare,
       appContact, saveContactSettings,
     }}>
       {children}

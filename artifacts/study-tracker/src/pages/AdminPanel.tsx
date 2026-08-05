@@ -5,7 +5,7 @@ import {
   BookOpen, StickyNote, ChevronRight, ChevronLeft, Clock, ArrowLeft,
   UserCheck, UserMinus, RefreshCw, Eye, EyeOff, Save, MessageSquare,
   TimerReset, ListPlus, Undo2, AlertTriangle, Archive, Search,
-  Phone, Globe, Link2, MessageCircle, Infinity,
+  Phone, Globe, Link2, MessageCircle, Infinity, RotateCcw, OctagonX,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -465,6 +465,7 @@ function SentShareRow({
   onDelete,
   onExtend,
   onAddSubjects,
+  onResend,
 }: {
   share: ShareRequest;
   lang: string;
@@ -472,7 +473,10 @@ function SentShareRow({
   onDelete: (share: ShareRequest) => void;
   onExtend: (share: ShareRequest) => void;
   onAddSubjects: (share: ShareRequest) => void;
+  onResend: (shareId: string) => void;
 }) {
+  const [resending, setResending] = React.useState(false);
+
   // For note/message shares, "declined" means the recipient deleted the
   // notification themselves rather than the admin cancelling a pending share.
   const declinedLabel = share.type === 'course'
@@ -480,6 +484,68 @@ function SentShareRow({
     : (lang === 'bn' ? 'ইউজার ডিলিট করেছে' : 'Deleted by user');
 
   const countdownTarget = share.status === 'accepted' ? share.actualExpiresAt : share.pendingExpiresAt;
+
+  // ── Revoked state (admin was removed; card frozen) ────────────────────────
+  if (share.adminRevoked) {
+    return (
+      <div className="bg-card border-2 border-amber-400/40 rounded-2xl p-4 space-y-3 opacity-90">
+        <div className="flex items-start gap-3">
+          <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0 opacity-60", typeColorClass(share.type))}>
+            {typeIcon(share.type, 16)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-foreground truncate">
+              {shareTitle(share, lang)}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">→ {share.toEmail}</p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                {lang === 'bn' ? 'বাতিল হয়েছে' : 'Revoked'}
+              </span>
+              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                <Clock size={9} />
+                {formatDuration(share.durationValue, share.durationUnit, lang)}
+              </span>
+              <span className="text-[10px] text-muted-foreground">{formatDate(share.sentAt)}</span>
+            </div>
+            {/* Frozen timer */}
+            <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10">
+              <OctagonX size={10} className="text-amber-600" />
+              <span className="text-[11px] font-mono font-bold text-amber-700 dark:text-amber-400 tabular-nums">
+                {lang === 'bn' ? 'থামানো হয়েছে' : 'Stopped'}
+              </span>
+            </div>
+            {/* Revocation note */}
+            <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1.5 font-medium">
+              {lang === 'bn'
+                ? 'থামানো হয়েছে কারণ আপনি অ্যাডমিন রাইটস হারিয়েছিলেন।'
+                : 'Stopped because you lost admin rights.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={async () => { setResending(true); try { await onResend(share.id); } finally { setResending(false); } }}
+            disabled={resending}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-green-500/10 text-green-700 dark:text-green-400 hover:bg-green-500/20 transition-colors text-xs font-semibold disabled:opacity-50"
+          >
+            <RotateCcw size={12} className={resending ? 'animate-spin' : ''} />
+            {resending
+              ? (lang === 'bn' ? 'পাঠানো হচ্ছে…' : 'Resending…')
+              : (lang === 'bn' ? 'রিসেন্ড করুন' : 'Resend')}
+          </button>
+          <button
+            onClick={() => onDelete(share)}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold"
+          >
+            <Trash2 size={12} />
+            {lang === 'bn' ? 'ডিলিট' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-card border-2 border-border rounded-2xl p-4 space-y-3">
@@ -628,7 +694,7 @@ export function AdminPanel() {
     makeAdminPermanent,
     sendShare, sentShares, trashedShares, loadingSentShares, updateSharePermissions,
     extendShare, getCourseSubjectsForShare, addSubjectsToShare,
-    trashShare, restoreShare, permanentlyDeleteShare,
+    trashShare, restoreShare, permanentlyDeleteShare, resendShare,
     appContact, saveContactSettings, acceptedShares } = useAdmin();
   const { courses, activeCourse } = useCourse();
   const { subjects, notePagesIndex, loadNotePage } = useStudy();
@@ -1977,6 +2043,7 @@ export function AdminPanel() {
                   onDelete={s => setDeleteConfirmShare(s)}
                   onExtend={s => openExtendModal(s)}
                   onAddSubjects={s => openAddSubjectsModal(s)}
+                  onResend={shareId => resendShare(shareId)}
                 />
               ))
             ) : (

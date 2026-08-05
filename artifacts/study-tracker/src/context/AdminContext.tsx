@@ -676,6 +676,52 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     return () => unsub();
   }, [user?.email, user?.id]); // eslint-disable-line
 
+  // Startup reconciliation: runs once per login session to catch orphaned shared
+  // courses. If Admin 3 is removed while the recipient's app is closed, the
+  // shareRequests doc is deleted but the recipient's onSnapshot tracking map is
+  // empty (new session), so the cascade cleanup never fires. This effect loads
+  // every sharedCourses entry and checks whether the corresponding shareRequests
+  // doc still exists. Any entry whose shareRequest is gone is cleaned up and the
+  // page is reloaded — same UX as the live cascade cleanup above.
+  useEffect(() => {
+    if (!user?.id) return;
+    const uid = user.id;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const sharedSnap = await getDocs(collection(db, 'users', uid, 'sharedCourses'));
+        if (cancelled || sharedSnap.empty) return;
+
+        const orphanedIds: string[] = [];
+        await Promise.all(sharedSnap.docs.map(async sharedDoc => {
+          // Document ID equals shareId (acceptShare sets newCourseId = shareId)
+          const shareId = sharedDoc.id;
+          const shareReqSnap = await getDoc(doc(db, 'shareRequests', shareId));
+          if (!shareReqSnap.exists()) {
+            orphanedIds.push(shareId);
+          }
+        }));
+
+        if (cancelled || orphanedIds.length === 0) return;
+
+        console.log('[AdminContext] Startup reconciliation: removing', orphanedIds.length, 'orphaned shared course(s)');
+        await Promise.all(orphanedIds.flatMap(courseId => [
+          deleteDoc(doc(db, 'users', uid, 'courses', courseId)).catch(() => {}),
+          deleteDoc(doc(db, 'users', uid, 'studyData', courseId)).catch(() => {}),
+          deleteDoc(doc(db, 'users', uid, 'courseNotes', courseId)).catch(() => {}),
+          deleteDoc(doc(db, 'users', uid, 'sharedCourses', courseId)).catch(() => {}),
+        ]));
+
+        if (!cancelled) {
+          setTimeout(() => window.location.reload(), 800);
+        }
+      } catch { /* non-fatal — worst case user sees stale data until next refresh */ }
+    })();
+
+    return () => { cancelled = true; };
+  }, [user?.id]); // eslint-disable-line
+
   const addAdmin = async (
     email: string,
     permissions: AdminRolePermissions = { ...DEFAULT_ADMIN_ROLE_PERMISSIONS },

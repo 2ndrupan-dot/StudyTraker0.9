@@ -811,6 +811,24 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         ...(expiresAt !== undefined ? { expiresAt } : {}),
       };
       await setDoc(ref, { admins: [...existing, newRecord] }, { merge: true });
+
+      // Reconciliation: if removeAdmin failed to set adminRevoked (e.g. due to a
+      // case-mismatch on fromAdminEmail or a transient network error), any existing
+      // shares from this admin will still appear as "running" with no Resend button
+      // after re-addition.  Mark them revoked here so the card correctly shows a
+      // frozen timer and the Resend button, letting the admin re-grant access
+      // deliberately rather than silently inheriting a stale running share.
+      try {
+        const sharesSnap = await getDocs(
+          query(collection(db, 'shareRequests'), where('fromAdminEmail', '==', e))
+        );
+        const revokedAt = Date.now();
+        await Promise.all(
+          sharesSnap.docs
+            .filter(d => !d.data().adminRevoked)
+            .map(d => updateDoc(d.ref, { adminRevoked: true, revokedAt }).catch(() => {}))
+        );
+      } catch { /* non-fatal — worst case the admin sees a running card; they can still Resend manually */ }
     }
   };
 
@@ -897,7 +915,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       ...params,
       toEmail: params.toEmail.toLowerCase(),
       fromAdminUid: user.id,
-      fromAdminEmail: user.email,
+      fromAdminEmail: user.email.toLowerCase(),
       fromAdminName: user.name,
       status: 'pending',
       sentAt: ts,
@@ -1164,7 +1182,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
     const payload: Record<string, unknown> = {
       fromAdminUid: user.id,
-      fromAdminEmail: user.email,
+      fromAdminEmail: user.email.toLowerCase(),
       fromAdminName: user.name,
       toEmail: share.toEmail,
       type: share.type,

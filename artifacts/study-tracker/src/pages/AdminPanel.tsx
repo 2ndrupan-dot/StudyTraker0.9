@@ -566,7 +566,7 @@ function SentShareRow({
           <button
             onClick={async () => { setResending(true); try { await onResend(share.id); } finally { setResending(false); } }}
             disabled={resending}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-green-500/10 text-green-700 dark:text-green-400 hover:bg-green-500/20 transition-colors text-xs font-semibold disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-teal-500/15 text-teal-700 dark:text-teal-300 hover:bg-teal-500/25 transition-colors text-xs font-semibold disabled:opacity-50"
           >
             <RotateCcw size={12} className={resending ? 'animate-spin' : ''} />
             {resending

@@ -1325,6 +1325,14 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           acceptedAt: ts,
           actualExpiresAt,
         });
+
+        // 6. Auto-select the newly accepted course. NotificationBell reloads the
+        //    page after acceptShare resolves; CourseContext reads the active course
+        //    id from this localStorage key on startup, so setting it here causes
+        //    the shared course to be selected automatically after the reload.
+        try {
+          localStorage.setItem(`@study_activeCourse_${user.email}`, newCourseId);
+        } catch { /* ignore storage errors */ }
       } catch {
         // If the course copy fails, still mark the share accepted — the user
         // at least acknowledges the notification. They can re-request if needed.

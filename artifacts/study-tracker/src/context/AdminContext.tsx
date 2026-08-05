@@ -393,16 +393,25 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   // Hard-delete expired admin records from Firestore. Any logged-in user can
   // trigger this (it's idempotent — just filters the array). The access check
   // above already excludes them; this is the cleanup so they don't accumulate.
+  // Also deletes all share requests sent by expired admins — the recipient's
+  // onSnapshot listener cascades the deletion to their cloned course/note data.
   useEffect(() => {
     const nowMs = Date.now();
-    const hasExpired = firestoreAdminRecords.some(r => r.expiresAt && r.expiresAt <= nowMs);
-    if (!hasExpired) return;
+    const expiredRecords = firestoreAdminRecords.filter(r => r.expiresAt && r.expiresAt <= nowMs);
+    if (expiredRecords.length === 0) return;
     const ref = doc(db, 'adminConfig', 'adminList');
-    getDoc(ref).then(snap => {
+    getDoc(ref).then(async snap => {
       if (!snap.exists()) return;
       const records: AdminRecord[] = snap.data().admins || [];
       const filtered = records.filter(r => !r.expiresAt || r.expiresAt > nowMs);
       setDoc(ref, { admins: filtered }, { merge: true }).catch(() => {});
+      // Delete share requests for every admin whose term just expired.
+      for (const expired of expiredRecords) {
+        getDocs(query(collection(db, 'shareRequests'), where('fromAdminEmail', '==', expired.email)))
+          .then(sharesSnap => {
+            sharesSnap.docs.forEach(d => deleteDoc(d.ref).catch(() => {}));
+          }).catch(() => {});
+      }
     }).catch(() => {});
   }, [firestoreAdminRecords, expiryTick]); // eslint-disable-line
 
@@ -731,6 +740,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const snap = await getDoc(ref);
     const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
     await setDoc(ref, { admins: existing.filter(r => r.email !== e) }, { merge: true });
+    // Delete all share requests sent by this admin — the recipient's onSnapshot
+    // listener will cascade-delete the cloned course/note data automatically.
+    const sharesSnap = await getDocs(query(collection(db, 'shareRequests'), where('fromAdminEmail', '==', e)));
+    await Promise.all(sharesSnap.docs.map(d => deleteDoc(d.ref)));
   };
 
   const sendShare = async (params: SendShareParams) => {

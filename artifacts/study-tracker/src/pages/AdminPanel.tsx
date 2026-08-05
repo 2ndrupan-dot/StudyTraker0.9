@@ -981,6 +981,7 @@ export function AdminPanel() {
   const [deleteConfirmShare, setDeleteConfirmShare] = useState<ShareRequest | null>(null);
   const [permDeleteConfirmShare, setPermDeleteConfirmShare] = useState<ShareRequest | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [testCardPickerOpen, setTestCardPickerOpen] = useState(false);
   const [extendModal, setExtendModal] = useState<ShareRequest | null>(null);
   const [extendValue, setExtendValue] = useState(1);
   const [extendUnit, setExtendUnit] = useState<'minutes' | 'hours' | 'days' | 'months'>('days');
@@ -1935,141 +1936,186 @@ export function AdminPanel() {
                     className="w-full rounded-xl border border-border/60 bg-secondary px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                   />
                 ) : shareForm.type === 'testcard' ? (
-                  <div className="space-y-4">
-                    {/* Subject chips */}
-                    {subjects.length === 0 ? (
-                      <p className="text-xs text-muted-foreground text-center py-4">
-                        {lang === 'bn' ? 'এই কোর্সে কোনো সাবজেক্ট নেই।' : 'No subjects in this course.'}
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">
-                          {lang === 'bn' ? 'সাবজেক্ট' : 'Subject'}
-                        </p>
-                        <div className="flex gap-2 flex-wrap">
-                          {subjects.map((s, i) => {
-                            const hues = ['#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#3b82f6','#84cc16'];
-                            const color = (s as any).color || hues[i % hues.length];
-                            const isActive = selectedTestSubjectId === s.id;
-                            return (
-                              <button
-                                key={s.id}
-                                onClick={() => {
-                                  setSelectedTestSubjectId(s.id);
-                                  setSelectedTestCardId('');
-                                  setSelectedTestCard(null);
-                                  setShareForm(f => ({ ...f, testCardTitle: '' }));
-                                }}
-                                style={isActive ? {
-                                  background: `linear-gradient(135deg, ${color}22 0%, ${color}11 100%)`,
-                                  borderColor: color,
-                                  color: color,
-                                  boxShadow: `0 0 0 1px ${color}40, 0 2px 8px ${color}20`,
-                                } : {}}
-                                className={cn(
-                                  "relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 border",
-                                  isActive
-                                    ? "border-current"
-                                    : "border-border/50 bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground hover:border-border"
-                                )}
-                              >
-                                <span
-                                  className="w-2 h-2 rounded-full shrink-0"
-                                  style={{ backgroundColor: color, opacity: isActive ? 1 : 0.5 }}
-                                />
-                                <span>{s.title}</span>
-                                {isActive && (
-                                  <span className="ml-0.5 flex items-center justify-center w-3.5 h-3.5 rounded-full bg-current/20">
-                                    <Check size={9} strokeWidth={3} className="text-current" />
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
+                  <div className="space-y-3">
+                    {/* Trigger button */}
+                    <button
+                      onClick={() => setTestCardPickerOpen(true)}
+                      className={cn(
+                        "w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all duration-200",
+                        selectedTestCard
+                          ? "border-primary/60 bg-primary/5"
+                          : "border-border/50 bg-secondary/40 hover:bg-secondary/70 hover:border-border"
+                      )}
+                    >
+                      <div className={cn(
+                        "flex items-center justify-center w-8 h-8 rounded-xl shrink-0",
+                        selectedTestCard ? "bg-primary/10" : "bg-secondary"
+                      )}>
+                        <Trophy size={15} className={selectedTestCard ? "text-primary" : "text-muted-foreground"} />
                       </div>
-                    )}
-
-                    {/* Test card grid */}
-                    <AnimatePresence mode="wait">
-                      {selectedTestSubjectId && (
-                        <motion.div
-                          key={selectedTestSubjectId}
-                          initial={{ opacity: 0, y: 6 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -4 }}
-                          transition={{ duration: 0.18 }}
-                          className="space-y-2"
-                        >
-                          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">
-                            {lang === 'bn' ? 'টেস্ট কার্ড' : 'Test Card'}
+                      <div className="flex-1 min-w-0">
+                        {selectedTestCard ? (
+                          <>
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary/70 mb-0.5">
+                              {subjects.find(s => s.id === selectedTestSubjectId)?.title || ''}
+                            </p>
+                            <p className="text-sm font-bold text-foreground truncate">{selectedTestCard.title}</p>
+                          </>
+                        ) : (
+                          <p className="text-sm font-semibold text-muted-foreground">
+                            {lang === 'bn' ? 'টেস্ট কার্ড সিলেক্ট করুন' : 'Select a test card'}
                           </p>
-                          {(!testDecks[selectedTestSubjectId] || testDecks[selectedTestSubjectId].length === 0) ? (
-                            <div className="flex flex-col items-center justify-center gap-1.5 py-6 rounded-2xl border border-dashed border-border/50 bg-secondary/30">
-                              <Trophy size={20} className="text-muted-foreground/30" />
-                              <p className="text-xs text-muted-foreground/60">
-                                {lang === 'bn' ? 'এই সাবজেক্টে কোনো টেস্ট কার্ড নেই।' : 'No test cards in this subject.'}
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-0.5">
-                              {testDecks[selectedTestSubjectId].map((card, idx) => {
-                                const isSelected = selectedTestCardId === card.id;
-                                const cardHues = ['#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899'];
-                                const accent = cardHues[idx % cardHues.length];
+                        )}
+                      </div>
+                      {selectedTestCard ? (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            setSelectedTestSubjectId('');
+                            setSelectedTestCardId('');
+                            setSelectedTestCard(null);
+                            setShareForm(f => ({ ...f, testCardTitle: '' }));
+                          }}
+                          className="p-1 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                        >
+                          <X size={14} />
+                        </button>
+                      ) : (
+                        <ChevronRight size={15} className="text-muted-foreground/50 shrink-0" />
+                      )}
+                    </button>
+
+                    {/* Picker Modal */}
+                    <Modal
+                      isOpen={testCardPickerOpen}
+                      onClose={() => setTestCardPickerOpen(false)}
+                      title={lang === 'bn' ? 'টেস্ট কার্ড সিলেক্ট করুন' : 'Select Test Card'}
+                      icon={Trophy}
+                    >
+                      <div className="space-y-5">
+                        {/* Subject chips */}
+                        {subjects.length === 0 ? (
+                          <p className="text-xs text-muted-foreground text-center py-4">
+                            {lang === 'bn' ? 'এই কোর্সে কোনো সাবজেক্ট নেই।' : 'No subjects in this course.'}
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                              {lang === 'bn' ? 'সাবজেক্ট' : 'Subject'}
+                            </p>
+                            <div className="flex gap-2 flex-wrap">
+                              {subjects.map((s, i) => {
+                                const hues = ['#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#3b82f6','#84cc16'];
+                                const color = (s as any).color || hues[i % hues.length];
+                                const isActive = selectedTestSubjectId === s.id;
                                 return (
                                   <button
-                                    key={card.id}
+                                    key={s.id}
                                     onClick={() => {
-                                      setSelectedTestCardId(card.id);
-                                      setSelectedTestCard(card);
-                                      setShareForm(f => ({ ...f, testCardTitle: card.title }));
+                                      setSelectedTestSubjectId(s.id);
+                                      setSelectedTestCardId('');
+                                      setSelectedTestCard(null);
+                                      setShareForm(f => ({ ...f, testCardTitle: '' }));
                                     }}
-                                    style={isSelected ? {
-                                      borderColor: accent,
-                                      boxShadow: `0 0 0 1px ${accent}30, 0 4px 12px ${accent}18`,
+                                    style={isActive ? {
+                                      background: `${color}18`,
+                                      borderColor: color,
+                                      color: color,
                                     } : {}}
                                     className={cn(
-                                      "relative flex flex-col text-left rounded-2xl border-2 overflow-hidden transition-all duration-200 group",
-                                      isSelected
-                                        ? "border-current bg-white dark:bg-zinc-900"
-                                        : "border-border/40 bg-secondary/40 hover:bg-secondary/80 hover:border-border/70"
+                                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200 border",
+                                      isActive
+                                        ? ""
+                                        : "border-border/50 bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground hover:border-border"
                                     )}
                                   >
-                                    {/* Accent top bar */}
-                                    <div
-                                      className="h-1 w-full shrink-0"
-                                      style={{ background: `linear-gradient(90deg, ${accent}, ${accent}88)` }}
-                                    />
-                                    <div className="flex flex-col gap-1 p-2.5 flex-1">
-                                      <div className="flex items-start justify-between gap-1">
-                                        <div
-                                          className="flex items-center justify-center w-6 h-6 rounded-lg shrink-0"
-                                          style={{ background: `${accent}18` }}
-                                        >
-                                          <Trophy size={12} style={{ color: accent }} />
-                                        </div>
-                                        {isSelected && (
-                                          <span
-                                            className="flex items-center justify-center w-4 h-4 rounded-full shrink-0"
-                                            style={{ background: accent }}
-                                          >
-                                            <Check size={9} strokeWidth={3} className="text-white" />
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-[12px] font-semibold text-foreground leading-tight line-clamp-2 mt-0.5">
-                                        {card.title}
-                                      </p>
-                                    </div>
+                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                                    <span>{s.title}</span>
+                                    {isActive && <Check size={10} strokeWidth={3} />}
                                   </button>
                                 );
                               })}
                             </div>
+                          </div>
+                        )}
+
+                        {/* Test card list */}
+                        <AnimatePresence mode="wait">
+                          {selectedTestSubjectId && (
+                            <motion.div
+                              key={selectedTestSubjectId}
+                              initial={{ opacity: 0, y: 6 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -4 }}
+                              transition={{ duration: 0.15 }}
+                              className="space-y-2"
+                            >
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                                {lang === 'bn' ? 'টেস্ট কার্ড' : 'Test Card'}
+                              </p>
+                              {(!testDecks[selectedTestSubjectId] || testDecks[selectedTestSubjectId].length === 0) ? (
+                                <div className="flex flex-col items-center justify-center gap-1.5 py-6 rounded-2xl border border-dashed border-border/50 bg-secondary/30">
+                                  <Trophy size={18} className="text-muted-foreground/30" />
+                                  <p className="text-xs text-muted-foreground/60">
+                                    {lang === 'bn' ? 'এই সাবজেক্টে কোনো টেস্ট কার্ড নেই।' : 'No test cards in this subject.'}
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {testDecks[selectedTestSubjectId].map((card, idx) => {
+                                    const isSelected = selectedTestCardId === card.id;
+                                    const cardHues = ['#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899'];
+                                    const accent = cardHues[idx % cardHues.length];
+                                    return (
+                                      <button
+                                        key={card.id}
+                                        onClick={() => {
+                                          setSelectedTestCardId(card.id);
+                                          setSelectedTestCard(card);
+                                          setShareForm(f => ({ ...f, testCardTitle: card.title }));
+                                          setTestCardPickerOpen(false);
+                                        }}
+                                        style={isSelected ? {
+                                          borderColor: accent,
+                                          background: `${accent}10`,
+                                        } : {}}
+                                        className={cn(
+                                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-all duration-200",
+                                          isSelected
+                                            ? ""
+                                            : "border-border/40 bg-secondary/30 hover:bg-secondary/70 hover:border-border/60"
+                                        )}
+                                      >
+                                        <div
+                                          className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
+                                          style={{ background: `${accent}18` }}
+                                        >
+                                          <Trophy size={13} style={{ color: accent }} />
+                                        </div>
+                                        <p
+                                          className="text-sm font-bold text-foreground truncate flex-1"
+                                          style={isSelected ? { color: accent } : {}}
+                                        >
+                                          {card.title}
+                                        </p>
+                                        {isSelected && (
+                                          <span
+                                            className="flex items-center justify-center w-5 h-5 rounded-full shrink-0"
+                                            style={{ background: accent }}
+                                          >
+                                            <Check size={10} strokeWidth={3} className="text-white" />
+                                          </span>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </motion.div>
                           )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                        </AnimatePresence>
+                      </div>
+                    </Modal>
                   </div>
                 ) : (
                   <div className="space-y-3">

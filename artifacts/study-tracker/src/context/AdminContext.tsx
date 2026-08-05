@@ -126,6 +126,7 @@ interface AdminContextType {
   removeAdmin: (email: string) => Promise<void>;
   updateAdminPermissions: (email: string, permissions: AdminRolePermissions) => Promise<void>;
   updateAdminDuration: (email: string, addValue: number, addUnit: 'hours' | 'days' | 'months') => Promise<void>;
+  makeAdminPermanent: (email: string) => Promise<void>;
   sendShare: (params: SendShareParams) => Promise<void>;
   sentShares: ShareRequest[];
   trashedShares: ShareRequest[];
@@ -456,6 +457,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           addedBy: r.addedBy || '',
           addedAt: r.addedAt || 0,
           permissions: { ...DEFAULT_ADMIN_ROLE_PERMISSIONS, ...(r.permissions || {}) },
+          ...(r.expiresAt !== undefined ? { expiresAt: r.expiresAt } : {}),
         }));
         setFirestoreAdminRecords(admins);
       }
@@ -726,6 +728,23 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const snap = await getDoc(ref);
     const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
     const updated = existing.map(r => r.email === e ? { ...r, permissions } : r);
+    await setDoc(ref, { admins: updated }, { merge: true });
+  };
+
+  // Removes the expiresAt field from an admin record, making them permanent.
+  const makeAdminPermanent = async (email: string) => {
+    const e = email.trim().toLowerCase();
+    if (SUPER_ADMIN_EMAILS.includes(e)) return; // super admins are always permanent
+    const ref = doc(db, 'adminConfig', 'adminList');
+    const snap = await getDoc(ref);
+    const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
+    const updated = existing.map(r => {
+      if (r.email !== e) return r;
+      // Omit expiresAt to make permanent
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { expiresAt: _removed, ...rest } = r;
+      return rest as AdminRecord;
+    });
     await setDoc(ref, { admins: updated }, { merge: true });
   };
 
@@ -1108,7 +1127,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       isAdmin, isSuperAdmin, adminEmails, adminRecords: firestoreAdminRecords,
       visibleAdmins, currentAdminPermissions,
       loadingAdmins,
-      addAdmin, removeAdmin, updateAdminPermissions, updateAdminDuration,
+      addAdmin, removeAdmin, updateAdminPermissions, updateAdminDuration, makeAdminPermanent,
       sendShare, sentShares, trashedShares, loadingSentShares,
       updateSharePermissions, cancelShare,
       pendingShares, acceptShare, declineShare,

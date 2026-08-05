@@ -5,7 +5,7 @@ import {
   BookOpen, StickyNote, ChevronRight, ChevronLeft, Clock, ArrowLeft,
   UserCheck, UserMinus, RefreshCw, Eye, EyeOff, Save, MessageSquare,
   TimerReset, ListPlus, Undo2, AlertTriangle, Archive, Search,
-  Phone, Globe, Link2, MessageCircle,
+  Phone, Globe, Link2, MessageCircle, Infinity,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -585,6 +585,7 @@ export function AdminPanel() {
   const { lang } = useLang();
   const { isAdmin, isSuperAdmin, adminEmails, loadingAdmins, addAdmin, removeAdmin,
     visibleAdmins, currentAdminPermissions, updateAdminPermissions, updateAdminDuration,
+    makeAdminPermanent,
     sendShare, sentShares, trashedShares, loadingSentShares, updateSharePermissions,
     extendShare, getCourseSubjectsForShare, addSubjectsToShare,
     trashShare, restoreShare, permanentlyDeleteShare,
@@ -627,6 +628,7 @@ export function AdminPanel() {
   const [extendAdminUnit, setExtendAdminUnit] = useState<'hours' | 'days' | 'months'>('days');
   const [extendAdminDirection, setExtendAdminDirection] = useState<'add' | 'subtract'>('add');
   const [extendingAdmin, setExtendingAdmin] = useState(false);
+  const [makingPermanentEmail, setMakingPermanentEmail] = useState<string | null>(null);
 
   // ── Share tab state ──
   const [shareStep, setShareStep] = useState(1); // 1=recipient, 2=content, 3=duration+perms
@@ -792,6 +794,15 @@ export function AdminPanel() {
       setExtendAdminModal(null);
     } finally {
       setExtendingAdmin(false);
+    }
+  };
+
+  const handleMakePermanent = async (email: string) => {
+    setMakingPermanentEmail(email);
+    try {
+      await makeAdminPermanent(email);
+    } finally {
+      setMakingPermanentEmail(null);
     }
   };
 
@@ -1193,6 +1204,10 @@ export function AdminPanel() {
                   isSuperAdmin ||
                   (currentAdminPermissions?.canAddAdmins && entry.addedBy === user?.email?.toLowerCase())
                 );
+                // Whether the compact countdown + make-permanent row should show
+                const showTimerRow = !entry.isSuperAdminMember && !isExpired && !!entry.expiresAt &&
+                  (entry.email === user?.email?.toLowerCase() || canExtendDuration);
+
                 return (
                   <div key={entry.email} className={cn(
                     "bg-card border rounded-2xl p-3.5",
@@ -1218,15 +1233,18 @@ export function AdminPanel() {
                               {lang === 'bn' ? 'মেয়াদ শেষ' : 'Expired'}
                             </span>
                           )}
+                          {/* Temporary Admin badge */}
                           {!entry.isSuperAdminMember && !isExpired && entry.expiresAt && (
-                            <span className="text-[10px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 font-semibold">
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-500/10 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
                               <Clock size={9} />
-                              <Countdown expiresAt={entry.expiresAt} lang={lang} compact />
+                              {lang === 'bn' ? 'অস্থায়ী এডমিন' : 'Temporary Admin'}
                             </span>
                           )}
-                          {!entry.isSuperAdminMember && !entry.expiresAt && (
-                            <span className="text-[10px] text-green-700 bg-green-500/10 px-1.5 py-0.5 rounded-full font-semibold">
-                              {lang === 'bn' ? 'স্থায়ী' : 'Permanent'}
+                          {/* Permanent Admin badge */}
+                          {!entry.isSuperAdminMember && !isExpired && !entry.expiresAt && (
+                            <span className="text-[10px] font-bold text-green-700 bg-green-500/10 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                              <Infinity size={9} />
+                              {lang === 'bn' ? 'স্থায়ী এডমিন' : 'Permanent Admin'}
                             </span>
                           )}
                           {!entry.isSuperAdminMember && entry.addedBy && (
@@ -1266,19 +1284,6 @@ export function AdminPanel() {
                             )}
                           </div>
                         )}
-                        {/* Countdown: own card, OR super admin, OR the admin who added this entry */}
-                        {!entry.isSuperAdminMember && !isExpired && entry.expiresAt &&
-                          (entry.email === user?.email?.toLowerCase() || isSuperAdmin ||
-                            entry.addedBy === user?.email?.toLowerCase()) && (
-                          <div className="mt-2.5 rounded-xl bg-primary/5 border border-primary/15 px-3 py-2 flex flex-col items-center gap-0.5">
-                            <span className="text-[9px] text-muted-foreground font-semibold uppercase tracking-wide">
-                              {entry.email === user?.email?.toLowerCase()
-                                ? (lang === 'bn' ? 'আপনার এডমিন মেয়াদ' : 'Your admin term ends in')
-                                : (lang === 'bn' ? 'এডমিন মেয়াদ বাকি' : 'Admin term ends in')}
-                            </span>
-                            <AdminTermCountdown targetMs={entry.expiresAt} lang={lang} />
-                          </div>
-                        )}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {canExtendDuration && (
@@ -1312,6 +1317,35 @@ export function AdminPanel() {
                         )}
                       </div>
                     </div>
+
+                    {/* Countdown + Make Permanent row — shown above buttons */}
+                    {showTimerRow && (
+                      <div className="mt-2.5 pt-2.5 border-t border-border/30 flex items-center justify-between gap-2 flex-wrap">
+                        {/* Compact live countdown */}
+                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-300/30">
+                          <Clock size={11} className="text-amber-600 shrink-0" />
+                          <span className="text-[11px] font-mono font-bold text-amber-700 tabular-nums">
+                            <Countdown targetMs={entry.expiresAt!} lang={lang} />
+                          </span>
+                          <span className="text-[9px] text-amber-600/70 font-medium">
+                            {lang === 'bn' ? 'বাকি' : 'left'}
+                          </span>
+                        </div>
+                        {/* Make Permanent button (only for those who can manage this admin) */}
+                        {canExtendDuration && (
+                          <button
+                            onClick={() => handleMakePermanent(entry.email)}
+                            disabled={makingPermanentEmail === entry.email}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-green-500/10 text-green-700 hover:bg-green-500/20 transition-colors text-xs font-semibold disabled:opacity-50 border border-green-300/30"
+                          >
+                            {makingPermanentEmail === entry.email
+                              ? <RefreshCw size={11} className="animate-spin" />
+                              : <Infinity size={11} />}
+                            {lang === 'bn' ? 'স্থায়ী করুন' : 'Make Permanent'}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

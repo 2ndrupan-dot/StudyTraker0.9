@@ -412,6 +412,8 @@ export function Subjects() {
   const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
   // Can the user add subjects/chapters/topics/subtopics/concepts/points?
   const canAddItems = !activeSharedMeta || activeSharedMeta.permissions.addItems !== false;
+  // Can the user edit/delete/reorder items? Never allowed for shared courses.
+  const canEditItems = !activeSharedMeta;
 
   const [reorderMode, setReorderMode] = useState(false);
   const registerTrunkRoot = useTreeTrunk();
@@ -665,22 +667,24 @@ export function Subjects() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <motion.div whileTap={{ scale: 0.95 }}>
-              <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
-                <button
-                  type="button"
-                  onClick={() => setReorderMode(v => !v)}
-                  className={`spin-border-inner h-7 w-7 flex items-center justify-center transition-all ${
-                    reorderMode
-                      ? 'bg-white text-indigo-600 shadow-md'
-                      : 'bg-white/15 text-white hover:bg-white/25'
-                  }`}
-                  title={reorderMode ? 'Reorder Mode বন্ধ করুন' : 'Reorder Mode চালু করুন'}
-                >
-                  <ArrowUpDown size={13} />
-                </button>
-              </span>
-            </motion.div>
+            {canEditItems && (
+              <motion.div whileTap={{ scale: 0.95 }}>
+                <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
+                  <button
+                    type="button"
+                    onClick={() => setReorderMode(v => !v)}
+                    className={`spin-border-inner h-7 w-7 flex items-center justify-center transition-all ${
+                      reorderMode
+                        ? 'bg-white text-indigo-600 shadow-md'
+                        : 'bg-white/15 text-white hover:bg-white/25'
+                    }`}
+                    title={reorderMode ? 'Reorder Mode বন্ধ করুন' : 'Reorder Mode চালু করুন'}
+                  >
+                    <ArrowUpDown size={13} />
+                  </button>
+                </span>
+              </motion.div>
+            )}
             {canAddItems && (
               <motion.div whileTap={{ scale: 0.95 }}>
                 <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
@@ -1024,18 +1028,20 @@ export function Subjects() {
                         >
                           <RotateCcw size={11} />
                         </button>
-                        <button
-                          onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
-                          className="p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors"
-                        >
-                          <Pencil size={11} />
-                        </button>
-                        <button
-                          onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }); }}
-                          className="p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-full transition-colors"
-                        >
-                          <Trash2 size={11} />
-                        </button>
+                        {canEditItems && <>
+                          <button
+                            onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
+                            className="p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors"
+                          >
+                            <Pencil size={11} />
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }); }}
+                            className="p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-full transition-colors"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </>}
                         <motion.div
                           animate={{ rotate: isExpanded ? 90 : 0 }}
                           transition={{ duration: 0.2 }}
@@ -1113,18 +1119,20 @@ export function Subjects() {
                                         onOpenNote={openNote}
                                         size="sm"
                                       />
-                                      <button
-                                        onClick={e => { e.stopPropagation(); openEdit('chapter', { subjId: subj.id, chapterId: chapter.id }, chapter.title, chapter.estimatedMinutes, undefined, chapter.difficulty); }}
-                                        className="p-1.5 text-muted-foreground hover:text-primary rounded-lg transition-colors"
-                                      >
-                                        <Pencil size={12} />
-                                      </button>
-                                      <button
-                                        onClick={e => { e.stopPropagation(); openDelete('chapter', { subjId: subj.id, chapterId: chapter.id }); }}
-                                        className="p-1.5 text-muted-foreground hover:text-destructive transition-colors rounded-lg"
-                                      >
-                                        <Trash2 size={13} />
-                                      </button>
+                                      {canEditItems && <>
+                                        <button
+                                          onClick={e => { e.stopPropagation(); openEdit('chapter', { subjId: subj.id, chapterId: chapter.id }, chapter.title, chapter.estimatedMinutes, undefined, chapter.difficulty); }}
+                                          className="p-1.5 text-muted-foreground hover:text-primary rounded-lg transition-colors"
+                                        >
+                                          <Pencil size={12} />
+                                        </button>
+                                        <button
+                                          onClick={e => { e.stopPropagation(); openDelete('chapter', { subjId: subj.id, chapterId: chapter.id }); }}
+                                          className="p-1.5 text-muted-foreground hover:text-destructive transition-colors rounded-lg"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </>}
                                       <motion.div animate={{ rotate: chExpanded ? 90 : 0 }} transition={{ duration: 0.18 }}>
                                         <ChevronRight size={15} className="text-muted-foreground" />
                                       </motion.div>
@@ -1199,18 +1207,20 @@ export function Subjects() {
                                                       onOpenNote={openNote}
                                                       size="sm"
                                                     />
-                                                    <button
-                                                      onClick={e => { e.stopPropagation(); openEdit('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }, topic.title, topic.estimatedMinutes, undefined, topic.difficulty); }}
-                                                      className="p-1 text-muted-foreground hover:text-primary"
-                                                    >
-                                                      <Pencil size={10} />
-                                                    </button>
-                                                    <button
-                                                      onClick={e => { e.stopPropagation(); openDelete('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }); }}
-                                                      className="p-1 text-muted-foreground hover:text-destructive"
-                                                    >
-                                                      <Trash2 size={11} />
-                                                    </button>
+                                                    {canEditItems && <>
+                                                      <button
+                                                        onClick={e => { e.stopPropagation(); openEdit('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }, topic.title, topic.estimatedMinutes, undefined, topic.difficulty); }}
+                                                        className="p-1 text-muted-foreground hover:text-primary"
+                                                      >
+                                                        <Pencil size={10} />
+                                                      </button>
+                                                      <button
+                                                        onClick={e => { e.stopPropagation(); openDelete('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }); }}
+                                                        className="p-1 text-muted-foreground hover:text-destructive"
+                                                      >
+                                                        <Trash2 size={11} />
+                                                      </button>
+                                                    </>}
                                                     <motion.div animate={{ rotate: tExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
                                                       <ChevronRight size={13} className="text-muted-foreground" />
                                                     </motion.div>
@@ -1280,12 +1290,14 @@ export function Subjects() {
                                                                     onOpenNote={openNote}
                                                                     size="sm"
                                                                   />
-                                                                  <button onClick={e => { e.stopPropagation(); openEdit('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title, sub.estimatedMinutes, undefined, sub.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
-                                                                    <Pencil size={9} />
-                                                                  </button>
-                                                                  <button onClick={e => { e.stopPropagation(); openDelete('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
-                                                                    <Trash2 size={10} />
-                                                                  </button>
+                                                                  {canEditItems && <>
+                                                                    <button onClick={e => { e.stopPropagation(); openEdit('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title, sub.estimatedMinutes, undefined, sub.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
+                                                                      <Pencil size={9} />
+                                                                    </button>
+                                                                    <button onClick={e => { e.stopPropagation(); openDelete('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
+                                                                      <Trash2 size={10} />
+                                                                    </button>
+                                                                  </>}
                                                                   <motion.div animate={{ rotate: subExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
                                                                     <ChevronRight size={11} className="text-muted-foreground" />
                                                                   </motion.div>
@@ -1347,12 +1359,14 @@ export function Subjects() {
                                                                                   onOpenNote={openNote}
                                                                                   size="sm"
                                                                                 />
-                                                                                <button onClick={e => { e.stopPropagation(); openEdit('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title, concept.estimatedMinutes, undefined, concept.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
-                                                                                  <Pencil size={8} />
-                                                                                </button>
-                                                                                <button onClick={e => { e.stopPropagation(); openDelete('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
-                                                                                  <Trash2 size={9} />
-                                                                                </button>
+                                                                                {canEditItems && <>
+                                                                                  <button onClick={e => { e.stopPropagation(); openEdit('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title, concept.estimatedMinutes, undefined, concept.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
+                                                                                    <Pencil size={8} />
+                                                                                  </button>
+                                                                                  <button onClick={e => { e.stopPropagation(); openDelete('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
+                                                                                    <Trash2 size={9} />
+                                                                                  </button>
+                                                                                </>}
                                                                                 <motion.div animate={{ rotate: cExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
                                                                                   <ChevronRight size={10} className="text-muted-foreground" />
                                                                                 </motion.div>
@@ -1409,14 +1423,16 @@ export function Subjects() {
                                                                                             onOpenNote={openNote}
                                                                                             size="sm"
                                                                                           />
-                                                                                          <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-all shrink-0">
-                                                                                            <button onClick={() => openEdit('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title, undefined, undefined, point.difficulty)} className="p-0.5 text-muted-foreground hover:text-primary">
-                                                                                              <Pencil size={8} />
-                                                                                            </button>
-                                                                                            <button onClick={() => openDelete('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id })} className="p-0.5 text-muted-foreground hover:text-destructive">
-                                                                                              <Trash2 size={9} />
-                                                                                            </button>
-                                                                                          </div>
+                                                                                          {canEditItems && (
+                                                                                            <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-all shrink-0">
+                                                                                              <button onClick={() => openEdit('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title, undefined, undefined, point.difficulty)} className="p-0.5 text-muted-foreground hover:text-primary">
+                                                                                                <Pencil size={8} />
+                                                                                              </button>
+                                                                                              <button onClick={() => openDelete('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id })} className="p-0.5 text-muted-foreground hover:text-destructive">
+                                                                                                <Trash2 size={9} />
+                                                                                              </button>
+                                                                                            </div>
+                                                                                          )}
                                                                                           {ptHandle}
                                                                                         </div>
                                                                                       </div>

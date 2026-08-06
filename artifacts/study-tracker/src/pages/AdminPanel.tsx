@@ -709,7 +709,7 @@ function SentShareRow({
             className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-teal-500/10 text-teal-600 hover:bg-teal-500/20 transition-colors text-xs font-semibold"
           >
             <ListPlus size={12} />
-            {lang === 'bn' ? 'সাবজেক্ট যোগ করুন' : 'Add Subjects'}
+            {lang === 'bn' ? 'সাবজেক্ট ম্যানেজ করুন' : 'Manage Subjects'}
           </button>
         )}
         <button
@@ -2978,10 +2978,11 @@ export function AdminPanel() {
                 )}
 
                 <Button
-                  className="w-full"
+                  className="w-full rounded-xl py-3 text-sm font-semibold shadow-sm mt-1"
                   onClick={handleConfirmAddSubjects}
                   disabled={addingSubjects || noChanges || (removeSubjectsPicked.length > 0 && keepCount === 0)}
                   variant={removeSubjectsPicked.length > 0 && addSubjectsPicked.length === 0 ? 'destructive' : 'default'}
+                  size="lg"
                 >
                   {addingSubjects
                     ? '...'

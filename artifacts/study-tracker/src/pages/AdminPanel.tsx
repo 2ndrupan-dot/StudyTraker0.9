@@ -2977,12 +2977,14 @@ export function AdminPanel() {
                   </p>
                 )}
 
-                <Button
-                  className="w-full rounded-xl py-3 text-sm font-semibold shadow-sm mt-1"
+                <button
                   onClick={handleConfirmAddSubjects}
                   disabled={addingSubjects || noChanges || (removeSubjectsPicked.length > 0 && keepCount === 0)}
-                  variant={removeSubjectsPicked.length > 0 && addSubjectsPicked.length === 0 ? 'destructive' : 'default'}
-                  size="lg"
+                  className={`w-full mt-2 py-3 rounded-xl text-sm font-semibold transition-all shadow-md active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
+                    removeSubjectsPicked.length > 0 && addSubjectsPicked.length === 0
+                      ? 'bg-red-500 hover:bg-red-600 text-white'
+                      : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  }`}
                 >
                   {addingSubjects
                     ? '...'
@@ -2991,7 +2993,7 @@ export function AdminPanel() {
                       : removeSubjectsPicked.length > 0
                         ? (lang === 'bn' ? 'পরিবর্তন সেভ করুন' : 'Save changes')
                         : (lang === 'bn' ? `${addSubjectsPicked.length}টি যোগ করুন` : `Add ${addSubjectsPicked.length} subject(s)`)}
-                </Button>
+                </button>
               </>
             );
           })()}

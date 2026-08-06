@@ -940,6 +940,41 @@ export function Today() {
     closeNoteModal();
   };
 
+  // Build a MarkPath from a RevisionEntry's taskKey (format: subjectId|chapterId[|topicId[|subtopicId[|conceptId[|pointId]]]])
+  const revisionToMarkPath = (rev: RevisionEntry): MarkPath | null => {
+    const parts = rev.taskKey.split('|');
+    if (parts.length < 2) return null;
+    const [subjectId, chapterId, topicId, subtopicId, conceptId, pointId] = parts;
+    let level: MarkLevel = 'chapter';
+    if (pointId) level = 'point';
+    else if (conceptId) level = 'concept';
+    else if (subtopicId) level = 'subtopic';
+    else if (topicId) level = 'topic';
+    return { level, subjectId, chapterId, topicId, subtopicId, conceptId, pointId };
+  };
+
+  // Look up the note for a RevisionEntry
+  const getRevisionNote = (rev: RevisionEntry): string => {
+    const parts = rev.taskKey.split('|');
+    if (parts.length < 2) return '';
+    const [subjectId, chapterId, topicId, subtopicId, conceptId, pointId] = parts;
+    const subj = subjects.find(s => s.id === subjectId);
+    if (!subj) return '';
+    const ch = subj.chapters.find(c => c.id === chapterId);
+    if (!ch) return '';
+    if (!topicId) return ch.note ?? '';
+    const top = ch.topics.find(t => t.id === topicId);
+    if (!top) return '';
+    if (!subtopicId) return top.note ?? '';
+    const sub = top.subtopics.find(s => s.id === subtopicId);
+    if (!sub) return '';
+    if (!conceptId) return sub.note ?? '';
+    const con = sub.concepts.find(c => c.id === conceptId);
+    if (!con) return '';
+    if (!pointId) return con.note ?? '';
+    return con.points.find(p => p.id === pointId)?.note ?? '';
+  };
+
   // Look up note/important/weak for a task by walking subjects tree
   const getTaskMarks = (task: PlanTask): { note?: string; important?: boolean; weak?: boolean } => {
     const subj = subjects.find(s => s.id === task.subjectId);
@@ -2362,6 +2397,11 @@ export function Today() {
                                             </span>
                                           )}
                                           <RevisionCountdown isBn={isBn} />
+                                          {(() => { const rNote = getRevisionNote(rev); const rPath = revisionToMarkPath(rev); return rNote && rPath ? (
+                                            <button onClick={e => { e.stopPropagation(); openNoteModal(rPath, rNote); }} className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-200 hover:bg-blue-500/20 transition-colors">
+                                              <StickyNote size={9} /> {isBn ? 'নোট' : 'Note'}
+                                            </button>
+                                          ) : null; })()}
                                         </div>
                                         <div className="flex gap-2">
                                           <button
@@ -2442,9 +2482,16 @@ export function Today() {
                                             ))}
                                           </div>
                                           <p className="font-bold text-sm text-foreground leading-snug mb-1">{item.task.mainTitle}</p>
-                                          <p className="text-[10px] text-orange-500 font-semibold mb-2.5">
-                                            {isBn ? `${dLeft} দিন বাকি` : `${dLeft} day${dLeft !== 1 ? 's' : ''} left`}
-                                          </p>
+                                          <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                                            <span className="text-[10px] text-orange-500 font-semibold">
+                                              {isBn ? `${dLeft} দিন বাকি` : `${dLeft} day${dLeft !== 1 ? 's' : ''} left`}
+                                            </span>
+                                            {(() => { const pMarks = getTaskMarks(item.task); return pMarks.note ? (
+                                              <button onClick={e => { e.stopPropagation(); openNoteModal(taskToMarkPath(item.task), pMarks.note ?? ''); }} className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-200 hover:bg-blue-500/20 transition-colors">
+                                                <StickyNote size={9} /> {isBn ? 'নোট' : 'Note'}
+                                              </button>
+                                            ) : null; })()}
+                                          </div>
                                           <div className="flex gap-2">
                                             <button
                                               onClick={() => confirmCompletePending(item)}
@@ -2552,11 +2599,16 @@ export function Today() {
                             ))}
                           </div>
                           <p className="font-bold text-sm text-foreground leading-snug mb-1">{item.task.mainTitle}</p>
-                          <div className="flex items-center gap-2 mb-3">
+                          <div className="flex items-center gap-2 flex-wrap mb-3">
                             <PendingCountdown item={item} isBn={isBn} />
                             <span className="text-[10px] text-muted-foreground">
                               {item.plannedDate}
                             </span>
+                            {(() => { const pMarks = getTaskMarks(item.task); return pMarks.note ? (
+                              <button onClick={e => { e.stopPropagation(); openNoteModal(taskToMarkPath(item.task), pMarks.note ?? ''); }} className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-200 hover:bg-blue-500/20 transition-colors">
+                                <StickyNote size={9} /> {isBn ? 'নোট' : 'Note'}
+                              </button>
+                            ) : null; })()}
                           </div>
                           <div className="flex gap-2">
                             <motion.button
@@ -2747,6 +2799,11 @@ export function Today() {
                             </span>
                           )}
                           <RevisionCountdown isBn={isBn} />
+                          {(() => { const rNote = getRevisionNote(rev); const rPath = revisionToMarkPath(rev); return rNote && rPath ? (
+                            <button onClick={e => { e.stopPropagation(); openNoteModal(rPath, rNote); }} className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-200 hover:bg-blue-500/20 transition-colors">
+                              <StickyNote size={9} /> {isBn ? 'নোট' : 'Note'}
+                            </button>
+                          ) : null; })()}
                         </div>
                         <div className="flex gap-2">
                           <motion.button

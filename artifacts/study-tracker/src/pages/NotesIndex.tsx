@@ -581,37 +581,37 @@ export function NotesIndex() {
           <div className="relative px-3 pb-3 flex gap-1">
             <button
               onClick={() => setActiveTab('course')}
-              className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all truncate ${
+              className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl font-bold transition-all ${isSuperAdmin ? 'text-[10px]' : 'text-xs'} ${
                 activeTab === 'course'
                   ? 'bg-white text-purple-700 shadow-md'
                   : 'bg-white/15 text-white/80 hover:bg-white/25'
               }`}
             >
-              <BookOpen size={11} className="shrink-0" />
-              <span className="truncate">{lang === 'bn' ? 'কোর্স নোটস' : 'Course Notes'}</span>
+              <BookOpen size={10} className="shrink-0" />
+              <span className="whitespace-nowrap">{lang === 'bn' ? 'কোর্স নোটস' : 'Course Notes'}</span>
             </button>
             <button
               onClick={() => setActiveTab('personal')}
-              className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all truncate ${
+              className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl font-bold transition-all ${isSuperAdmin ? 'text-[10px]' : 'text-xs'} ${
                 activeTab === 'personal'
                   ? 'bg-white text-purple-700 shadow-md'
                   : 'bg-white/15 text-white/80 hover:bg-white/25'
               }`}
             >
-              <User size={11} className="shrink-0" />
-              <span className="truncate">{lang === 'bn' ? 'ব্যক্তিগত নোটস' : 'Personal Notes'}</span>
+              <User size={10} className="shrink-0" />
+              <span className="whitespace-nowrap">{lang === 'bn' ? 'ব্যক্তিগত নোটস' : 'Personal Notes'}</span>
             </button>
             {isSuperAdmin && (
               <button
                 onClick={() => setActiveTab('prompts')}
-                className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all truncate ${
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-[10px] font-bold transition-all ${
                   activeTab === 'prompts'
                     ? 'bg-white text-purple-700 shadow-md'
                     : 'bg-white/15 text-white/80 hover:bg-white/25'
                 }`}
               >
-                <Sparkles size={11} className="shrink-0" />
-                <span className="truncate">{lang === 'bn' ? 'প্রম্পটস' : 'Prompts'}</span>
+                <Sparkles size={10} className="shrink-0" />
+                <span className="whitespace-nowrap">{lang === 'bn' ? 'প্রম্পটস' : 'Prompts'}</span>
               </button>
             )}
           </div>

@@ -151,6 +151,40 @@ function PendingCountdown({ item, isBn }: { item: PendingItem; isBn: boolean }) 
   );
 }
 
+// Counts down to midnight tonight — all "due today" revisions expire then
+function RevisionCountdown({ isBn }: { isBn: boolean }) {
+  const getMsUntilMidnight = () => {
+    const now = new Date();
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
+    return Math.max(0, midnight.getTime() - now.getTime());
+  };
+
+  const [ms, setMs] = useState<number>(() => getMsUntilMidnight());
+
+  useEffect(() => {
+    const id = setInterval(() => setMs(getMsUntilMidnight()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const totalSec = Math.floor(ms / 1000);
+  const s  = totalSec % 60;
+  const totalMin = Math.floor(totalSec / 60);
+  const m  = totalMin % 60;
+  const h  = Math.floor(totalMin / 60);
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  const label = isBn
+    ? `${pad(h)}ঘ : ${pad(m)}মি : ${pad(s)}স`
+    : `${pad(h)}h : ${pad(m)}m : ${pad(s)}s`;
+
+  return (
+    <span className="text-[10px] text-purple-500 font-bold bg-purple-500/10 px-2 py-0.5 rounded-full tabular-nums">
+      ⏱ {label}
+    </span>
+  );
+}
+
 function doesTaskExist(subjects: Subject[], task: PlanTask): boolean {
   const subj = subjects.find(s => s.id === task.subjectId);
   if (!subj) return false;
@@ -2286,10 +2320,11 @@ export function Today() {
                                           ))}
                                         </div>
                                         <p className="font-bold text-sm text-foreground leading-snug mb-2">{rev.mainTitle}</p>
-                                        <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                                           <span className="text-muted-foreground text-[11px] font-semibold bg-secondary px-2 py-1 rounded-lg flex items-center gap-1">
                                             <Clock size={10} /> {formatMins(rev.revisionMins, t('hour'), t('mins'))}
                                           </span>
+                                          <RevisionCountdown isBn={isBn} />
                                         </div>
                                         <div className="flex gap-2">
                                           <button
@@ -2649,10 +2684,11 @@ export function Today() {
                         <h3 className="font-bold text-sm text-foreground leading-snug mb-2.5">
                           {rev.mainTitle}
                         </h3>
-                        <div className="mb-3">
+                        <div className="flex items-center gap-2 mb-3 flex-wrap">
                           <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-semibold bg-secondary px-2.5 py-1 rounded-lg w-fit">
                             <Clock size={10} /> ~{formatMins(rev.revisionMins, t('hour'), t('mins'))}
                           </span>
+                          <RevisionCountdown isBn={isBn} />
                         </div>
                         <div className="flex gap-2">
                           <motion.button

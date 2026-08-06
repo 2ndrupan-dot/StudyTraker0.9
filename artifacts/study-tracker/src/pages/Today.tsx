@@ -85,6 +85,13 @@ function formatMins(mins: number, h: string, m: string) {
   return mm > 0 ? `${hh} ${h} ${mm} ${m}` : `${hh} ${h}`;
 }
 
+function getRevisionStageLabel(stage: number, isBn: boolean): string {
+  const ordinalsBn = ['১ম', '২য়', '৩য়', '৪র্থ', '৫ম'];
+  const ordinalsEn = ['1st', '2nd', '3rd', '4th', '5th'];
+  const idx = Math.min(stage ?? 0, ordinalsBn.length - 1);
+  return isBn ? `${ordinalsBn[idx]} রিভিশন` : `${ordinalsEn[idx]} Revision`;
+}
+
 function getAllItemIds(subjects: Subject[]): Set<string> {
   const ids = new Set<string>();
   for (const s of subjects) {
@@ -2324,8 +2331,11 @@ export function Today() {
                                           ))}
                                         </div>
                                         <p className="font-bold text-sm text-foreground leading-snug mb-1.5">{rev.mainTitle}</p>
-                                        {/* Origin badge + first-completed date */}
+                                        {/* Origin badge + stage + first-completed date */}
                                         <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-700">
+                                            🔁 {getRevisionStageLabel(rev.stage, isBn)}
+                                          </span>
                                           {rev.origin === 'snoozed' && (
                                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600">
                                               ⏩ {isBn ? 'আগে লেটার দেওয়া হয়েছিল' : 'Snoozed last time'}
@@ -2711,8 +2721,11 @@ export function Today() {
                         <h3 className="font-bold text-sm text-foreground leading-snug mb-1.5">
                           {rev.mainTitle}
                         </h3>
-                        {/* Origin badge + first-completed date */}
+                        {/* Origin badge + stage + first-completed date */}
                         <div className="flex items-center gap-1.5 flex-wrap mb-2.5">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-700">
+                            🔁 {getRevisionStageLabel(rev.stage, isBn)}
+                          </span>
                           {rev.origin === 'snoozed' && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600">
                               ⏩ {isBn ? 'আগে লেটার দেওয়া হয়েছিল' : 'Snoozed last time'}

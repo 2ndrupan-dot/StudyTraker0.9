@@ -7,7 +7,7 @@ import { useCourse } from '@/context/CourseContext';
 import { Layout } from '@/components/Layout';
 import {
   Plus, FileText, Trash2, Pencil, Check, X, StickyNote, Loader2,
-  ArrowUpDown, GripVertical, Search, BookOpen, User, ChevronLeft,
+  ArrowUpDown, GripVertical, Search, BookOpen, User, ChevronLeft, Sparkles,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollReveal } from '@/components/ScrollReveal';
@@ -68,7 +68,7 @@ function SortableNoteCard({ id, reorderMode, children }: {
   return <div ref={setNodeRef} style={style}>{children(handle)}</div>;
 }
 
-type ActiveTab = 'course' | 'personal';
+type ActiveTab = 'course' | 'personal' | 'prompts';
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export function NotesIndex() {
@@ -76,10 +76,11 @@ export function NotesIndex() {
     subjects,
     notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage, reorderNotePages,
     personalNotePagesIndex, createPersonalNotePage, renamePersonalNotePage, deletePersonalNotePage, loadPersonalNotePage, savePersonalNotePage, reorderPersonalNotePages,
+    promptNotePagesIndex, createPromptNotePage, renamePromptNotePage, deletePromptNotePage, loadPromptNotePage, savePromptNotePage, reorderPromptNotePages,
   } = useStudy();
   const { t, lang } = useLang();
   const { user } = useAuth();
-  const { isAdmin, appContact } = useAdmin();
+  const { isAdmin, isSuperAdmin, appContact } = useAdmin();
   const { activeCourseId, sharedCoursesMeta } = useCourse();
   const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
   const isCourseNotesReadOnly = !!activeSharedMeta;
@@ -120,6 +121,22 @@ export function NotesIndex() {
   const [personalSearchQuery, setPersonalSearchQuery] = useState('');
   const [personalReorderMode, setPersonalReorderMode] = useState(false);
 
+  // ── Prompt Notes state (super-admin only) ──
+  const [isCreatingPrompt, setIsCreatingPrompt] = useState(false);
+  const [newPromptTitle, setNewPromptTitle] = useState('');
+  const newPromptTitleRef = useRef<HTMLInputElement>(null);
+  const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
+  const [draftPromptTitle, setDraftPromptTitle] = useState('');
+  const [confirmDeletePrompt, setConfirmDeletePrompt] = useState<string | null>(null);
+  const [promptModalId, setPromptModalId] = useState<string | null>(null);
+  const [promptDraft, setPromptDraft] = useState('');
+  const [currentPromptPage, setCurrentPromptPage] = useState<NotePage | null>(null);
+  const [promptLoading, setPromptLoading] = useState(false);
+  const [loadingPromptId, setLoadingPromptId] = useState<string | null>(null);
+  const [promptHtmlCache, setPromptHtmlCache] = useState<Record<string, string>>({});
+  const [promptSearchQuery, setPromptSearchQuery] = useState('');
+  const [promptReorderMode, setPromptReorderMode] = useState(false);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
@@ -141,6 +158,12 @@ export function NotesIndex() {
   const filteredPersonalNotes = personalSearchQuery.trim()
     ? subjectPersonalNotes.filter(n => n.title.toLowerCase().includes(personalSearchQuery.trim().toLowerCase()))
     : subjectPersonalNotes;
+
+  // Prompt notes are course-agnostic — no subject filtering
+  const filteredPromptNotes = promptSearchQuery.trim()
+    ? promptNotePagesIndex.filter(n => n.title.toLowerCase().includes(promptSearchQuery.trim().toLowerCase()))
+    : promptNotePagesIndex;
+  const promptNoteCount = promptNotePagesIndex.length;
 
   // ── Count notes per subject ──
   const courseNoteCountForSubject = (sid: string) =>
@@ -167,6 +190,14 @@ export function NotesIndex() {
     if (fromIdx !== -1 && toIdx !== -1) reorderPersonalNotePages(fromIdx, toIdx);
   };
 
+  const handlePromptDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const fromIdx = promptNotePagesIndex.findIndex(n => n.id === active.id);
+    const toIdx   = promptNotePagesIndex.findIndex(n => n.id === over.id);
+    if (fromIdx !== -1 && toIdx !== -1) reorderPromptNotePages(fromIdx, toIdx);
+  };
+
   useEffect(() => {
     if (isCreating) newTitleRef.current?.focus();
   }, [isCreating]);
@@ -175,14 +206,19 @@ export function NotesIndex() {
     if (isCreatingPersonal) newPersonalTitleRef.current?.focus();
   }, [isCreatingPersonal]);
 
+  useEffect(() => {
+    if (isCreatingPrompt) newPromptTitleRef.current?.focus();
+  }, [isCreatingPrompt]);
+
   // Reset state when switching tabs or going back
   const handleBack = () => {
     setSelectedSubjectId(null);
     setIsCreating(false); setNewTitle('');
     setIsCreatingPersonal(false); setNewPersonalTitle('');
-    setReorderMode(false); setPersonalReorderMode(false);
-    setSearchQuery(''); setPersonalSearchQuery('');
-    setEditingId(null); setEditingPersonalId(null);
+    setIsCreatingPrompt(false); setNewPromptTitle('');
+    setReorderMode(false); setPersonalReorderMode(false); setPromptReorderMode(false);
+    setSearchQuery(''); setPersonalSearchQuery(''); setPromptSearchQuery('');
+    setEditingId(null); setEditingPersonalId(null); setEditingPromptId(null);
   };
 
   const handleSelectSubject = (sid: string) => {
@@ -198,8 +234,9 @@ export function NotesIndex() {
     setSelectedSubjectId(null);
     setIsCreating(false); setNewTitle('');
     setIsCreatingPersonal(false); setNewPersonalTitle('');
-    setReorderMode(false); setPersonalReorderMode(false);
-    setSearchQuery(''); setPersonalSearchQuery('');
+    setIsCreatingPrompt(false); setNewPromptTitle('');
+    setReorderMode(false); setPersonalReorderMode(false); setPromptReorderMode(false);
+    setSearchQuery(''); setPersonalSearchQuery(''); setPromptSearchQuery('');
   }, [activeTab]);
 
   // ── Course Notes: create ──
@@ -218,6 +255,15 @@ export function NotesIndex() {
     createPersonalNotePage(title, selectedSubjectId ?? undefined);
     setNewPersonalTitle('');
     setIsCreatingPersonal(false);
+  };
+
+  // ── Prompt Notes: create ──
+  const handleCreatePrompt = () => {
+    const title = newPromptTitle.trim();
+    if (!title) return;
+    createPromptNotePage(title);
+    setNewPromptTitle('');
+    setIsCreatingPrompt(false);
   };
 
   // ── Course Notes: open ──
@@ -291,8 +337,44 @@ export function NotesIndex() {
 
   const closePersonalNote = () => { setPersonalModalId(null); setPersonalDraft(''); setCurrentPersonalPage(null); };
 
+  // ── Prompt Notes: open / save / close ──
+  const promptOpenRequestRef = useRef<string | null>(null);
+  const openPromptNote = async (meta: NoteItem) => {
+    if (promptLoading) return;
+    promptOpenRequestRef.current = meta.id;
+    setPromptLoading(true);
+    setLoadingPromptId(meta.id);
+    try {
+      const page = await loadPromptNotePage(meta.id);
+      if (promptOpenRequestRef.current !== meta.id) return;
+      const resolved: NotePage = page ?? {
+        id: meta.id, title: meta.title, elements: [], pageCount: 1, html: '',
+        createdAt: meta.createdAt, updatedAt: meta.updatedAt,
+      };
+      setCurrentPromptPage(resolved);
+      const html = resolved.html ?? '';
+      setPromptDraft(html);
+      setPromptHtmlCache(prev => ({ ...prev, [meta.id]: html }));
+      setPromptModalId(meta.id);
+    } finally {
+      setPromptLoading(false);
+      setLoadingPromptId(null);
+    }
+  };
+
+  const savePromptNote = async () => {
+    if (!promptModalId || !currentPromptPage) return;
+    const updated: NotePage = { ...currentPromptPage, html: promptDraft };
+    await savePromptNotePage(updated);
+    setPromptHtmlCache(prev => ({ ...prev, [promptModalId]: promptDraft }));
+    setPromptModalId(null); setPromptDraft(''); setCurrentPromptPage(null);
+  };
+
+  const closePromptNote = () => { setPromptModalId(null); setPromptDraft(''); setCurrentPromptPage(null); };
+
   const noteModalItem = notePagesIndex.find(n => n.id === noteModalId);
   const personalModalItem = personalNotePagesIndex.find(n => n.id === personalModalId);
+  const promptModalItem = promptNotePagesIndex.find(n => n.id === promptModalId);
 
   const courseNoteCount = subjectCourseNotes.length;
   const personalNoteCount = subjectPersonalNotes.length;
@@ -368,11 +450,14 @@ export function NotesIndex() {
     ? selectedSubject.title
     : activeTab === 'course'
       ? (lang === 'bn' ? 'কোর্স নোটস' : 'Course Notes')
-      : (lang === 'bn' ? 'ব্যক্তিগত নোটস' : 'Personal Notes');
+      : activeTab === 'personal'
+        ? (lang === 'bn' ? 'ব্যক্তিগত নোটস' : 'Personal Notes')
+        : (lang === 'bn' ? 'প্রম্পটস' : 'Prompts');
 
   // ── Show add button ──
   const showCourseAdd = activeTab === 'course' && selectedSubjectId && !isCourseNotesReadOnly && !isCreating;
   const showPersonalAdd = activeTab === 'personal' && selectedSubjectId && !isCreatingPersonal;
+  const showPromptAdd = activeTab === 'prompts' && !isCreatingPrompt;
 
   return (
     <>
@@ -465,10 +550,35 @@ export function NotesIndex() {
                 </span>
               </div>
             )}
+
+            {showPromptAdd && (
+              <div className="flex items-center gap-2">
+                {promptNoteCount > 1 && (
+                  <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(326 80% 58%)' } as React.CSSProperties}>
+                    <motion.button
+                      whileTap={{ scale: 0.97 }} type="button"
+                      onClick={() => setPromptReorderMode(v => !v)}
+                      className={`spin-border-inner h-7 w-7 flex items-center justify-center transition-colors ${promptReorderMode ? 'bg-white text-purple-600 shadow-md' : 'bg-white/15 text-white hover:bg-white/25'}`}
+                    >
+                      <ArrowUpDown size={13} />
+                    </motion.button>
+                  </span>
+                )}
+                <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(326 80% 58%)' } as React.CSSProperties}>
+                  <motion.button
+                    whileTap={{ scale: 0.97 }} type="button"
+                    onClick={() => setIsCreatingPrompt(true)}
+                    className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
+                  >
+                    <Plus size={12} />{lang === 'bn' ? 'প্রম্পট যোগ করুন' : 'Add Prompt'}
+                  </motion.button>
+                </span>
+              </div>
+            )}
           </div>
 
           {/* ── Tab switcher ── */}
-          <div className="relative px-5 pb-3 flex gap-1">
+          <div className="relative px-5 pb-3 flex gap-1 flex-wrap">
             <button
               onClick={() => setActiveTab('course')}
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
@@ -491,6 +601,19 @@ export function NotesIndex() {
               <User size={12} />
               {lang === 'bn' ? 'ব্যক্তিগত নোটস' : 'Personal Notes'}
             </button>
+            {isSuperAdmin && (
+              <button
+                onClick={() => setActiveTab('prompts')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  activeTab === 'prompts'
+                    ? 'bg-white text-purple-700 shadow-md'
+                    : 'bg-white/15 text-white/80 hover:bg-white/25'
+                }`}
+              >
+                <Sparkles size={12} />
+                {lang === 'bn' ? 'প্রম্পটস' : 'Prompts'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -846,6 +969,172 @@ export function NotesIndex() {
               </motion.div>
             )}
 
+            {/* ══════════════════ PROMPTS TAB (super-admin only) ══════════════════ */}
+            {activeTab === 'prompts' && isSuperAdmin && (
+              <motion.div
+                key="prompts"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.18 }}
+              >
+                {/* Create input */}
+                <AnimatePresence>
+                  {isCreatingPrompt && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: 'auto' }}
+                      exit={{ opacity: 0, y: -8, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="mb-4"
+                    >
+                      <div className="bg-card border border-border/70 rounded-2xl p-4 shadow-sm">
+                        <p className="text-[11px] font-medium text-muted-foreground mb-2">
+                          {lang === 'bn' ? 'নতুন প্রম্পটের শিরোনাম' : 'New prompt title'}
+                        </p>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <input
+                            ref={newPromptTitleRef}
+                            type="text"
+                            value={newPromptTitle}
+                            onChange={e => setNewPromptTitle(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleCreatePrompt();
+                              if (e.key === 'Escape') { setIsCreatingPrompt(false); setNewPromptTitle(''); }
+                            }}
+                            placeholder={lang === 'bn' ? 'শিরোনাম লিখুন…' : 'Enter title…'}
+                            className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                          />
+                          <button
+                            onClick={handleCreatePrompt}
+                            disabled={!newPromptTitle.trim()}
+                            className="shrink-0 p-2.5 rounded-xl bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
+                          >
+                            <Check size={15} />
+                          </button>
+                          <button
+                            onClick={() => { setIsCreatingPrompt(false); setNewPromptTitle(''); }}
+                            className="shrink-0 p-2.5 rounded-xl bg-secondary text-muted-foreground hover:bg-secondary/70 transition-colors"
+                          >
+                            <X size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Search */}
+                {promptNoteCount > 0 && !isCreatingPrompt && (
+                  <div className="relative mb-3">
+                    <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                    <input
+                      type="text"
+                      value={promptSearchQuery}
+                      onChange={e => setPromptSearchQuery(e.target.value)}
+                      placeholder={lang === 'bn' ? 'প্রম্পট খুঁজুন...' : 'Search prompts...'}
+                      className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
+                    />
+                    {promptSearchQuery && (
+                      <button
+                        onClick={() => setPromptSearchQuery('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {promptNoteCount === 0 && !isCreatingPrompt && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15 }}
+                    className="flex flex-col items-center justify-center py-12 text-center px-6"
+                  >
+                    <motion.div
+                      animate={{ y: [0, -10, 0] }}
+                      transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                      className="mb-4 w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center"
+                    >
+                      <Sparkles size={28} className="text-amber-500" />
+                    </motion.div>
+                    <h3 className="text-lg font-bold text-foreground mb-1.5">
+                      {lang === 'bn' ? 'কোনো প্রম্পট নেই' : 'No prompts yet'}
+                    </h3>
+                    <p className="text-muted-foreground text-sm mb-6 leading-relaxed">
+                      {lang === 'bn' ? 'প্রম্পট যোগ করুন — সব কোর্সে একই থাকবে।' : 'Add prompts — they sync across all courses.'}
+                    </p>
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => { setIsCreatingPrompt(true); setTimeout(() => newPromptTitleRef.current?.focus(), 50); }}
+                      className="flex items-center gap-2 py-3 px-6 rounded-2xl bg-amber-500 text-white text-sm font-semibold shadow-lg shadow-amber-500/25 hover:bg-amber-400 transition-colors"
+                    >
+                      <Plus size={18} />{lang === 'bn' ? 'প্রম্পট যোগ করুন' : 'Add Prompt'}
+                    </motion.button>
+                  </motion.div>
+                )}
+
+                {/* No search results */}
+                {promptNoteCount > 0 && filteredPromptNotes.length === 0 && promptSearchQuery.trim() && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-col items-center justify-center py-12 text-center px-6"
+                  >
+                    <div className="mb-3 w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+                      <Search size={24} className="text-primary/60" />
+                    </div>
+                    <p className="text-sm font-semibold text-foreground mb-1">
+                      {lang === 'bn' ? 'কোনো প্রম্পট পাওয়া যায়নি' : 'No prompts found'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {lang === 'bn'
+                        ? `"${promptSearchQuery}" এর সাথে কোনো প্রম্পট মিলছে না`
+                        : `No prompts match "${promptSearchQuery}"`}
+                    </p>
+                  </motion.div>
+                )}
+
+                {/* Prompt note list */}
+                {promptNoteCount > 0 && filteredPromptNotes.length > 0 && (
+                  <DndContext sensors={sensors} onDragEnd={handlePromptDragEnd}>
+                    <SortableContext items={filteredPromptNotes.map(n => n.id)} strategy={verticalListSortingStrategy}>
+                      <ul className="space-y-2">
+                        <AnimatePresence>
+                          {filteredPromptNotes.map((note, idx) => (
+                            <SortableNoteCard key={note.id} id={note.id} reorderMode={promptReorderMode}>
+                              {handle => (
+                                <NoteCard
+                                  note={note} index={idx}
+                                  isEditing={editingPromptId === note.id}
+                                  editDraft={draftPromptTitle}
+                                  isLoadingThis={loadingPromptId === note.id}
+                                  hasContent={!!(promptHtmlCache[note.id]?.trim())}
+                                  reorderMode={promptReorderMode}
+                                  dragHandle={handle}
+                                  showActions={true}
+                                  accentVariant="prompt"
+                                  onEditDraftChange={setDraftPromptTitle}
+                                  onOpenNote={() => openPromptNote(note)}
+                                  onStartRename={() => { setEditingPromptId(note.id); setDraftPromptTitle(note.title); }}
+                                  onSaveRename={() => { renamePromptNotePage(note.id, draftPromptTitle); setEditingPromptId(null); }}
+                                  onCancelRename={() => setEditingPromptId(null)}
+                                  onDelete={() => setConfirmDeletePrompt(note.id)}
+                                />
+                              )}
+                            </SortableNoteCard>
+                          ))}
+                        </AnimatePresence>
+                      </ul>
+                    </SortableContext>
+                  </DndContext>
+                )}
+              </motion.div>
+            )}
+
           </AnimatePresence>
         </div>
       </Layout>
@@ -896,6 +1185,29 @@ export function NotesIndex() {
         pdfWebsite={appContact.website}
       />
 
+      {/* ── Prompt Note editor modal ── */}
+      <NoteEditorModal
+        isOpen={!!promptModalId}
+        onClose={closePromptNote}
+        title={promptModalItem?.title ?? (lang === 'bn' ? 'প্রম্পট' : 'Prompt')}
+        icon={Sparkles}
+        value={promptDraft}
+        onChange={setPromptDraft}
+        onClear={() => setPromptDraft('')}
+        onSave={savePromptNote}
+        placeholder={t('notePlaceholder')}
+        clearLabel={t('clearNote')}
+        saveLabel={t('saveNote')}
+        editAllowed={true}
+        downloadAllowed={true}
+        copyAllowed={true}
+        pdfUserEmail={user?.email ?? ''}
+        pdfIsAdmin={isAdmin}
+        pdfIsShared={false}
+        pdfWhatsApp={appContact.whatsapp}
+        pdfWebsite={appContact.website}
+      />
+
       {/* ── Course note delete confirm ── */}
       <ConfirmModal
         isOpen={!!confirmDelete}
@@ -931,6 +1243,24 @@ export function NotesIndex() {
         cancelText={t('cancel')}
         isDanger
       />
+
+      {/* ── Prompt note delete confirm ── */}
+      <ConfirmModal
+        isOpen={!!confirmDeletePrompt}
+        onClose={() => setConfirmDeletePrompt(null)}
+        onConfirm={async () => {
+          if (confirmDeletePrompt) {
+            await deletePromptNotePage(confirmDeletePrompt);
+            setPromptHtmlCache(prev => { const n = { ...prev }; delete n[confirmDeletePrompt]; return n; });
+          }
+          setConfirmDeletePrompt(null);
+        }}
+        title={t('deletePage')}
+        message={t('deletePageConfirm')}
+        confirmText={t('delete')}
+        cancelText={t('cancel')}
+        isDanger
+      />
     </>
   );
 }
@@ -946,7 +1276,7 @@ interface NoteCardProps {
   reorderMode: boolean;
   dragHandle: React.ReactNode;
   showActions: boolean;
-  accentVariant?: 'course' | 'personal';
+  accentVariant?: 'course' | 'personal' | 'prompt';
   onEditDraftChange: (v: string) => void;
   onOpenNote: () => void;
   onStartRename: () => void;
@@ -973,6 +1303,15 @@ const PERSONAL_CARD_ACCENTS = [
   'from-sky-500/20 to-sky-400/5 border-sky-200/60 dark:border-sky-800/40',
 ];
 
+const PROMPT_CARD_ACCENTS = [
+  'from-amber-500/20 to-amber-400/5 border-amber-200/60 dark:border-amber-800/40',
+  'from-orange-500/20 to-orange-400/5 border-orange-200/60 dark:border-orange-800/40',
+  'from-yellow-500/20 to-yellow-400/5 border-yellow-200/60 dark:border-yellow-800/40',
+  'from-amber-400/20 to-amber-300/5 border-amber-200/60 dark:border-amber-800/40',
+  'from-orange-400/20 to-orange-300/5 border-orange-200/60 dark:border-orange-800/40',
+  'from-yellow-400/20 to-yellow-300/5 border-yellow-200/60 dark:border-yellow-800/40',
+];
+
 const ICON_COLORS = [
   'text-blue-500', 'text-violet-500', 'text-emerald-500',
   'text-amber-500', 'text-rose-500', 'text-cyan-500',
@@ -983,13 +1322,18 @@ const PERSONAL_ICON_COLORS = [
   'text-lime-600', 'text-cyan-500', 'text-sky-500',
 ];
 
+const PROMPT_ICON_COLORS = [
+  'text-amber-500', 'text-orange-500', 'text-yellow-500',
+  'text-amber-400', 'text-orange-400', 'text-yellow-400',
+];
+
 function NoteCard({
   note, index, isEditing, editDraft, isLoadingThis, hasContent,
   reorderMode, dragHandle, showActions, accentVariant = 'course',
   onEditDraftChange, onOpenNote, onStartRename, onSaveRename, onCancelRename, onDelete,
 }: NoteCardProps) {
-  const accents = accentVariant === 'personal' ? PERSONAL_CARD_ACCENTS : CARD_ACCENTS;
-  const iconColors = accentVariant === 'personal' ? PERSONAL_ICON_COLORS : ICON_COLORS;
+  const accents = accentVariant === 'personal' ? PERSONAL_CARD_ACCENTS : accentVariant === 'prompt' ? PROMPT_CARD_ACCENTS : CARD_ACCENTS;
+  const iconColors = accentVariant === 'personal' ? PERSONAL_ICON_COLORS : accentVariant === 'prompt' ? PROMPT_ICON_COLORS : ICON_COLORS;
   const accent = accents[index % accents.length];
   const iconColor = iconColors[index % iconColors.length];
 

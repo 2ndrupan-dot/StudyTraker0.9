@@ -414,6 +414,15 @@ interface StudyContextType {
   loadPersonalNotePage: (id: string) => Promise<NotePage | null>;
   savePersonalNotePage: (page: NotePage) => Promise<void>;
   reorderPersonalNotePages: (fromIdx: number, toIdx: number) => void;
+
+  // Prompt Note pages (super-admin only — course-agnostic, never synced to any shared course)
+  promptNotePagesIndex: NotePageMeta[];
+  createPromptNotePage: (title?: string) => string;
+  renamePromptNotePage: (id: string, title: string) => void;
+  deletePromptNotePage: (id: string) => Promise<void>;
+  loadPromptNotePage: (id: string) => Promise<NotePage | null>;
+  savePromptNotePage: (page: NotePage) => Promise<void>;
+  reorderPromptNotePages: (fromIdx: number, toIdx: number) => void;
 }
 
 const StudyContext = createContext<StudyContextType | undefined>(undefined);
@@ -495,6 +504,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const [overallNote, setOverallNoteState] = useState<string>('');
   const [notePagesIndex, setNotePagesIndex] = useState<NotePageMeta[]>([]);
   const [personalNotePagesIndex, setPersonalNotePagesIndex] = useState<NotePageMeta[]>([]);
+  const [promptNotePagesIndex, setPromptNotePagesIndex] = useState<NotePageMeta[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'failed'>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -924,6 +934,49 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       unsubscribe();
     };
   }, [user, activeCourseId]);
+
+  // ─── Prompt Notes: course-agnostic, super-admin only ──────────────────
+  // Index stored at users/{uid}/promptData/index (NOT inside studyData/{courseId})
+  // so the same notes appear regardless of which course is active.
+  const promptInitialLoadDoneRef = useRef(false);
+  const promptIndexSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      setPromptNotePagesIndex([]);
+      promptInitialLoadDoneRef.current = false;
+      return;
+    }
+    promptInitialLoadDoneRef.current = false;
+    const lk = `@study_promptindex_${user.email}`;
+    try {
+      const raw = localStorage.getItem(lk);
+      if (raw) setPromptNotePagesIndex(JSON.parse(raw) as NotePageMeta[]);
+    } catch { /* ignore */ }
+    getDoc(doc(db, 'users', user.id, 'promptData', 'index')).then(snap => {
+      if (snap.exists()) {
+        const idx = (snap.data().promptNotePagesIndex || []) as NotePageMeta[];
+        setPromptNotePagesIndex(idx);
+        localStorage.setItem(lk, JSON.stringify(idx));
+      }
+      promptInitialLoadDoneRef.current = true;
+    }).catch(() => { promptInitialLoadDoneRef.current = true; });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user || !promptInitialLoadDoneRef.current) return;
+    const lk = `@study_promptindex_${user.email}`;
+    localStorage.setItem(lk, JSON.stringify(promptNotePagesIndex));
+    if (promptIndexSaveTimerRef.current) clearTimeout(promptIndexSaveTimerRef.current);
+    const uid_ = user.id;
+    const snapshot = promptNotePagesIndex;
+    promptIndexSaveTimerRef.current = setTimeout(() => {
+      setDoc(doc(db, 'users', uid_, 'promptData', 'index'), { promptNotePagesIndex: snapshot }, { merge: false })
+        .catch(() => {});
+    }, 1500);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [promptNotePagesIndex]);
 
   // Save data (debounced for Firestore, immediate for localStorage)
   const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; overallNote: string; notePagesIndex: NotePageMeta[]; personalNotePagesIndex: NotePageMeta[] } | null>(null);
@@ -1732,6 +1785,167 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   const reorderPersonalNotePages = (fromIdx: number, toIdx: number) => {
     setPersonalNotePagesIndex(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  };
+
+  // ─── Prompt Note Pages (super-admin only — course-agnostic, never synced) ─
+  // Pages stored in users/{uid}/promptNotes/{id}
+  // Index stored separately in users/{uid}/promptData/index (see useEffect above)
+  const promptNoteWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const promptNoteWritePendingRef = useRef<Map<string, NotePage>>(new Map());
+  const deletedPromptNotePageIds = useRef<Set<string>>(new Set());
+
+  const promptNotePageDocRef = (id: string) =>
+    user ? doc(db, 'users', user.id, 'promptNotes', id) : null;
+
+  const localPromptPageKey = (id: string) =>
+    user ? `@study_promptpage_${user.email}_${id}` : null;
+
+  const createPromptNotePage = (title?: string): string => {
+    const id = uid();
+    const now = Date.now();
+    const meta: NotePageMeta = {
+      id,
+      title: title?.trim() || 'Untitled prompt',
+      pageCount: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setPromptNotePagesIndex(prev => [meta, ...prev]);
+    const emptyPage: NotePage = { ...meta, elements: [] };
+    const lk = localPromptPageKey(id);
+    if (lk) localStorage.setItem(lk, JSON.stringify(emptyPage));
+    const ref = promptNotePageDocRef(id);
+    if (ref) setDoc(ref, emptyPage).catch(() => {});
+    return id;
+  };
+
+  const renamePromptNotePage = (id: string, title: string) => {
+    const trimmed = title.trim() || 'Untitled prompt';
+    setPromptNotePagesIndex(prev => prev.map(p =>
+      p.id === id ? { ...p, title: trimmed, updatedAt: Date.now() } : p
+    ));
+    const lk = localPromptPageKey(id);
+    if (lk) {
+      try {
+        const cur = JSON.parse(localStorage.getItem(lk) || 'null') as NotePage | null;
+        if (cur) localStorage.setItem(lk, JSON.stringify({ ...cur, title: trimmed, updatedAt: Date.now() }));
+      } catch {}
+    }
+    const ref = promptNotePageDocRef(id);
+    if (ref) setDoc(ref, { title: trimmed, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+  };
+
+  const deletePromptNotePage = async (id: string): Promise<void> => {
+    deletedPromptNotePageIds.current.add(id);
+    setPromptNotePagesIndex(prev => prev.filter(p => p.id !== id));
+    const lk = localPromptPageKey(id);
+    if (lk) localStorage.removeItem(lk);
+    promptNoteWriteQueueRef.current = promptNoteWriteQueueRef.current.then(async () => {
+      const ref = promptNotePageDocRef(id);
+      if (ref) {
+        try { await deleteDoc(ref); } catch { /* ignore offline */ }
+      }
+      deletedPromptNotePageIds.current.delete(id);
+    });
+  };
+
+  const loadPromptNotePage = async (id: string): Promise<NotePage | null> => {
+    const lk = localPromptPageKey(id);
+    let local: NotePage | null = null;
+    if (lk) {
+      try { local = JSON.parse(localStorage.getItem(lk) || 'null'); } catch { local = null; }
+    }
+    const ref = promptNotePageDocRef(id);
+    if (!ref) return local;
+    try {
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const d = snap.data() as NotePage;
+        let elements = d.elements || [];
+        if (d.chunked) {
+          elements = await readElementChunks(collection(ref, 'chunks'));
+        }
+        const remote: NotePage = {
+          id: d.id ?? id,
+          title: d.title ?? 'Untitled prompt',
+          elements,
+          pageCount: d.pageCount ?? 1,
+          html: d.html,
+          chunked: d.chunked,
+          chunkCount: d.chunkCount,
+          createdAt: d.createdAt ?? Date.now(),
+          updatedAt: d.updatedAt ?? Date.now(),
+        };
+        if (!local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0)) {
+          if (lk) localStorage.setItem(lk, JSON.stringify(remote));
+          return remote;
+        }
+        return local;
+      }
+    } catch { /* offline */ }
+    return local;
+  };
+
+  const savePromptNotePage = async (page: NotePage): Promise<void> => {
+    const updated: NotePage = { ...page, updatedAt: Date.now() };
+    const pageId = page.id;
+
+    const lk = localPromptPageKey(pageId);
+    if (lk) localStorage.setItem(lk, JSON.stringify(updated));
+
+    setPromptNotePagesIndex(prev => prev.map(p =>
+      p.id === pageId
+        ? { ...p, title: updated.title, pageCount: updated.pageCount, updatedAt: updated.updatedAt }
+        : p
+    ));
+
+    const ref = promptNotePageDocRef(pageId);
+    if (!ref) return;
+
+    const alreadyPending = promptNoteWritePendingRef.current.has(pageId);
+    promptNoteWritePendingRef.current.set(pageId, updated);
+
+    if (!alreadyPending) {
+      promptNoteWriteQueueRef.current = promptNoteWriteQueueRef.current.then(async () => {
+        const latestData = promptNoteWritePendingRef.current.get(pageId);
+        promptNoteWritePendingRef.current.delete(pageId);
+        if (!latestData) return;
+        if (deletedPromptNotePageIds.current.has(pageId)) return;
+
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const cleaned = sanitizeForFirestore(latestData);
+            const serialised = JSON.stringify(cleaned);
+            const serialisedSize = byteSize(serialised);
+            const pageChunksRef = collection(ref, 'chunks');
+            let firestorePayload: NotePage;
+            if (serialisedSize > FIRESTORE_NOTE_LIMIT && user) {
+              const chunks = packElements(cleaned.elements || [], FIRESTORE_NOTE_LIMIT);
+              await writeElementChunks(pageChunksRef, chunks);
+              firestorePayload = sanitizeForFirestore({ ...cleaned, chunked: true, chunkCount: chunks.length, elements: [] });
+            } else {
+              await clearChunks(pageChunksRef);
+              firestorePayload = { ...cleaned, chunked: false };
+            }
+            await setDoc(ref, firestorePayload);
+            return;
+          } catch {
+            if (attempt < 3) {
+              await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt - 1)));
+            }
+          }
+        }
+      });
+    }
+  };
+
+  const reorderPromptNotePages = (fromIdx: number, toIdx: number) => {
+    setPromptNotePagesIndex(prev => {
       const next = [...prev];
       const [moved] = next.splice(fromIdx, 1);
       next.splice(toIdx, 0, moved);
@@ -2592,6 +2806,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       overallNote, setOverallNote,
       notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage, reorderNotePages,
       personalNotePagesIndex, createPersonalNotePage, renamePersonalNotePage, deletePersonalNotePage, loadPersonalNotePage, savePersonalNotePage, reorderPersonalNotePages,
+      promptNotePagesIndex, createPromptNotePage, renamePromptNotePage, deletePromptNotePage, loadPromptNotePage, savePromptNotePage, reorderPromptNotePages,
     }}>
       {children}
     </StudyContext.Provider>

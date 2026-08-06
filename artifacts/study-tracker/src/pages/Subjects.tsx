@@ -813,21 +813,7 @@ export function Subjects() {
         {/* ─── Grouped marked-items view (when Important/Weak filter is on) ─── */}
         {(importantOnly || weakOnly) && subjects.length > 0 && (() => {
           const flagged = gatherFlaggedItems(subjects, { important: importantOnly, weak: weakOnly });
-          if (flagged.length === 0) return (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center justify-center py-16 text-center px-6"
-            >
-              {importantOnly
-                ? <Star size={32} className="text-yellow-400 mb-3" />
-                : <AlertTriangle size={32} className="text-rose-400 mb-3" />}
-              <p className="text-sm font-bold text-foreground mb-1">
-                {importantOnly ? t('importantOnly') : t('weakOnly')}
-              </p>
-              <p className="text-xs text-muted-foreground">{t('noResultsForFilter')}</p>
-            </motion.div>
-          );
+          if (flagged.length === 0) return null;
 
           // Group items by subject, preserving subject order
           // Also apply status filter (AND logic with mark filter)

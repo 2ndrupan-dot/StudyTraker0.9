@@ -319,6 +319,8 @@ interface NotePageMeta {
   pageCount: number;
   /** When true this note was created via the subject-library compiler and is never synced to shared courses */
   privateNote?: boolean;
+  /** Subject this note belongs to (optional — notes without subjectId are unscoped) */
+  subjectId?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -397,7 +399,7 @@ interface StudyContextType {
 
   // A4 Note pages (Course Notes — synced in shared courses)
   notePagesIndex: NotePageMeta[];
-  createNotePage: (title?: string, privateNote?: boolean) => string;
+  createNotePage: (title?: string, privateNote?: boolean, subjectId?: string) => string;
   renameNotePage: (id: string, title: string) => void;
   deleteNotePage: (id: string) => Promise<void>;
   loadNotePage: (id: string) => Promise<NotePage | null>;
@@ -406,7 +408,7 @@ interface StudyContextType {
 
   // Personal Note pages (private per user — never synced to shared courses)
   personalNotePagesIndex: NotePageMeta[];
-  createPersonalNotePage: (title?: string) => string;
+  createPersonalNotePage: (title?: string, subjectId?: string) => string;
   renamePersonalNotePage: (id: string, title: string) => void;
   deletePersonalNotePage: (id: string) => Promise<void>;
   loadPersonalNotePage: (id: string) => Promise<NotePage | null>;
@@ -1588,13 +1590,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const localPersonalPageKey = (id: string) =>
     user ? `@study_personalpage_${user.email}_${id}` : null;
 
-  const createPersonalNotePage = (title?: string): string => {
+  const createPersonalNotePage = (title?: string, subjectId?: string): string => {
     const id = uid();
     const now = Date.now();
     const meta: NotePageMeta = {
       id,
       title: title?.trim() || 'Untitled page',
       pageCount: 1,
+      ...(subjectId ? { subjectId } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -2391,7 +2394,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const localPageKey = (id: string) =>
     user ? `@study_notepage_${user.email}_${id}` : null;
 
-  const createNotePage = (title?: string, privateNote?: boolean): string => {
+  const createNotePage = (title?: string, privateNote?: boolean, subjectId?: string): string => {
     const id = uid();
     const now = Date.now();
     const meta: NotePageMeta = {
@@ -2399,6 +2402,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       title: title?.trim() || 'Untitled page',
       pageCount: 1,
       ...(privateNote ? { privateNote: true } : {}),
+      ...(subjectId ? { subjectId } : {}),
       createdAt: now,
       updatedAt: now,
     };

@@ -43,3 +43,4 @@ artifacts/mockup-sandbox/  # Design/mockup sandbox
 
 - Maintain the existing project structure and Firebase stack.
 - Use pnpm for package management.
+- Always reply to the user in Bengali (বাংলা).

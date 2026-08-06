@@ -329,6 +329,8 @@ interface StudyData {
   tempNotes?: TempNoteItem[];
   overallNote?: string;
   notePagesIndex?: NotePageMeta[];
+  /** Personal notes index — private to each user, never synced to shared courses */
+  personalNotePagesIndex?: NotePageMeta[];
   savedAt?: number;
 }
 
@@ -393,7 +395,7 @@ interface StudyContextType {
   overallNote: string;
   setOverallNote: (note: string) => void;
 
-  // A4 Note pages
+  // A4 Note pages (Course Notes — synced in shared courses)
   notePagesIndex: NotePageMeta[];
   createNotePage: (title?: string, privateNote?: boolean) => string;
   renameNotePage: (id: string, title: string) => void;
@@ -401,6 +403,15 @@ interface StudyContextType {
   loadNotePage: (id: string) => Promise<NotePage | null>;
   saveNotePage: (page: NotePage) => Promise<void>;
   reorderNotePages: (fromIdx: number, toIdx: number) => void;
+
+  // Personal Note pages (private per user — never synced to shared courses)
+  personalNotePagesIndex: NotePageMeta[];
+  createPersonalNotePage: (title?: string) => string;
+  renamePersonalNotePage: (id: string, title: string) => void;
+  deletePersonalNotePage: (id: string) => Promise<void>;
+  loadPersonalNotePage: (id: string) => Promise<NotePage | null>;
+  savePersonalNotePage: (page: NotePage) => Promise<void>;
+  reorderPersonalNotePages: (fromIdx: number, toIdx: number) => void;
 }
 
 const StudyContext = createContext<StudyContextType | undefined>(undefined);
@@ -481,6 +492,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const [tempNotes, setTempNotes] = useState<TempNoteItem[]>([]);
   const [overallNote, setOverallNoteState] = useState<string>('');
   const [notePagesIndex, setNotePagesIndex] = useState<NotePageMeta[]>([]);
+  const [personalNotePagesIndex, setPersonalNotePagesIndex] = useState<NotePageMeta[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'failed'>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -568,6 +580,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       setTempNotes([]);
       setOverallNoteState('');
       setNotePagesIndex([]);
+      setPersonalNotePagesIndex([]);
       setDataLoaded(false);
       isInitialLoad.current = true;
       notesGuardArmedRef.current = true;
@@ -581,6 +594,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setTempNotes([]);
     setOverallNoteState('');
     setNotePagesIndex([]);
+    setPersonalNotePagesIndex([]);
     setDataLoaded(false);
     notesGuardArmedRef.current = true;
     subjectsGuardArmedRef.current = true;
@@ -727,6 +741,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
                 tempNotes: snapData.tempNotes || [],
                 overallNote: snapData.overallNote || '',
                 notePagesIndex: snapData.notePagesIndex || [],
+                personalNotePagesIndex: snapData.personalNotePagesIndex || [],
                 savedAt: snapData.savedAt,
                 hasNotesDoc: snapData.hasNotesDoc || false,
               }
@@ -817,6 +832,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
               setTempNotes(best.tempNotes || []);
               setOverallNoteState(best.overallNote || '');
               setNotePagesIndex(best.notePagesIndex || []);
+              setPersonalNotePagesIndex(best.personalNotePagesIndex || []);
             } else if (legacySubjects) {
               const migrated = legacySubjects.map((s: any) => ({
                 ...s,
@@ -875,6 +891,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             setTempNotes(fsData.tempNotes || []);
             setOverallNoteState(fsData.overallNote || '');
             setNotePagesIndex(fsData.notePagesIndex || []);
+            setPersonalNotePagesIndex(fsData.personalNotePagesIndex || []);
           })();
         }
       },
@@ -892,6 +909,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           setTempNotes(localData.tempNotes || []);
           setOverallNoteState(localData.overallNote || '');
           setNotePagesIndex(localData.notePagesIndex || []);
+          setPersonalNotePagesIndex(localData.personalNotePagesIndex || []);
         }
         setDataLoaded(true);
         setTimeout(() => { isInitialLoad.current = false; }, 200);
@@ -906,7 +924,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   }, [user, activeCourseId]);
 
   // Save data (debounced for Firestore, immediate for localStorage)
-  const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; overallNote: string; notePagesIndex: NotePageMeta[] } | null>(null);
+  const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; overallNote: string; notePagesIndex: NotePageMeta[]; personalNotePagesIndex: NotePageMeta[] } | null>(null);
 
   // NOTE: this used to also gate a "skip the write" safety net for the very
   // first flushSave of a course session (see studytrack-clear-note-first-save
@@ -934,6 +952,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     tempNotesToSave: TempNoteItem[],
     overallNoteToSave: string,
     notePagesIndexToSave: NotePageMeta[],
+    personalNotePagesIndexToSave: NotePageMeta[],
   ) => {
     // Use refs so this always has the latest user/courseId regardless of closure age
     const currentUser = userRef.current;
@@ -960,6 +979,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       tempNotes: tempNotesToSave,
       overallNote: overallNoteToSave,
       notePagesIndex: notePagesIndexToSave,
+      personalNotePagesIndex: personalNotePagesIndexToSave,
       savedAt,
     };
     // localStorage always gets the full payload (no size limit)
@@ -977,6 +997,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         tempNotes: strippedTempNotes,
         overallNote: '',          // moved to the notes doc
         notePagesIndex: notePagesIndexToSave,
+        // personalNotePagesIndex is stored locally only — it is stripped from all
+        // sync relay payloads so it never reaches shared-course recipients.
+        personalNotePagesIndex: personalNotePagesIndexToSave,
         savedAt,
         hasNotesDoc: true,        // tells the loader to fetch the companion doc
       }));
@@ -1072,9 +1095,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           // and must never appear in a shared course copy.
           const syncNotePagesIndex = (mainPayload.notePagesIndex as NotePageMeta[] | undefined)
             ?.filter(p => !p.privateNote) ?? [];
-          // Strip tempNotes so the admin's temp notes never overwrite the recipient's
-          // personal temp notes.  Each user's tempNotes are private to their own account.
-          const { tempNotes: _stripAdminTempNotes, ...syncStudyDataPayload } = {
+          // Strip tempNotes and personalNotePagesIndex — both are private to each user
+          // and must never reach shared-course recipients.
+          const { tempNotes: _stripAdminTempNotes, personalNotePagesIndex: _stripPersonalIdx, ...syncStudyDataPayload } = {
             ...mainPayload,
             subjects: syncSubjects,
             notePagesIndex: syncNotePagesIndex,
@@ -1155,7 +1178,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       const lsKey = localKey('data');
       // Use lastSavedAt.current (= the remote savedAt, set in onSnapshot) so the
       // localStorage entry keeps the original timestamp — not a fresh Date.now().
-      const remotePayload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, savedAt: lastSavedAt.current };
+      const remotePayload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex, savedAt: lastSavedAt.current };
       if (lsKey) localStorage.setItem(lsKey, JSON.stringify(remotePayload));
       return;
     }
@@ -1163,7 +1186,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     // User-initiated change — save to localStorage immediately, then debounce
     // the Firestore write.  Push lastSavedAt forward right now so any stale
     // server snapshot arriving during the 400 ms debounce window is ignored.
-    const payload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, savedAt: Date.now() };
+    const payload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex, savedAt: Date.now() };
     const lsKey = localKey('data');
     if (lsKey) {
       localStorage.setItem(lsKey, JSON.stringify(payload));
@@ -1179,20 +1202,20 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSyncStatus('syncing');
-    pendingSaveRef.current = { subjects, settings, tempNotes, overallNote, notePagesIndex };
+    pendingSaveRef.current = { subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex };
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
       const pending = pendingSaveRef.current;
-      if (pending) flushSave(pending.subjects, pending.settings, pending.tempNotes, pending.overallNote, pending.notePagesIndex);
+      if (pending) flushSave(pending.subjects, pending.settings, pending.tempNotes, pending.overallNote, pending.notePagesIndex, pending.personalNotePagesIndex);
     }, 400);
-  }, [subjects, settings, tempNotes, overallNote, notePagesIndex, user, dataLoaded, activeCourseId]);
+  }, [subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex, user, dataLoaded, activeCourseId]);
 
   // Flush save immediately before page unload
   useEffect(() => {
     const handleUnload = () => {
       if (pendingSaveRef.current && user && activeCourseId) {
-        const { subjects: s, settings: st, tempNotes: tn, overallNote: on, notePagesIndex: np } = pendingSaveRef.current;
-        const payload: StudyData = { subjects: s, settings: st, tempNotes: tn, overallNote: on, notePagesIndex: np, savedAt: Date.now() };
+        const { subjects: s, settings: st, tempNotes: tn, overallNote: on, notePagesIndex: np, personalNotePagesIndex: pnp } = pendingSaveRef.current;
+        const payload: StudyData = { subjects: s, settings: st, tempNotes: tn, overallNote: on, notePagesIndex: np, personalNotePagesIndex: pnp, savedAt: Date.now() };
         const lsKey = `@study_data_${activeCourseId}_${user.email}`;
         localStorage.setItem(lsKey, JSON.stringify(payload));
       }
@@ -1544,6 +1567,168 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   const reorderNotePages = (fromIdx: number, toIdx: number) => {
     setNotePagesIndex(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  };
+
+  // ─── Personal Note Pages (private per user — never synced) ─────────────
+  // Stored in users/{uid}/personalNotePages/{id}. The index lives in
+  // studyData.personalNotePagesIndex but is always stripped from shared-
+  // course sync payloads so other users never see these notes.
+  const personalNoteWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const personalNoteWritePendingRef = useRef<Map<string, NotePage>>(new Map());
+  const deletedPersonalNotePageIds = useRef<Set<string>>(new Set());
+
+  const personalNotePageDocRef = (id: string) =>
+    user ? doc(db, 'users', user.id, 'personalNotePages', id) : null;
+
+  const localPersonalPageKey = (id: string) =>
+    user ? `@study_personalpage_${user.email}_${id}` : null;
+
+  const createPersonalNotePage = (title?: string): string => {
+    const id = uid();
+    const now = Date.now();
+    const meta: NotePageMeta = {
+      id,
+      title: title?.trim() || 'Untitled page',
+      pageCount: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setPersonalNotePagesIndex(prev => [meta, ...prev]);
+    const emptyPage: NotePage = { ...meta, elements: [] };
+    const lk = localPersonalPageKey(id);
+    if (lk) localStorage.setItem(lk, JSON.stringify(emptyPage));
+    const ref = personalNotePageDocRef(id);
+    if (ref) setDoc(ref, emptyPage).catch(() => {});
+    return id;
+  };
+
+  const renamePersonalNotePage = (id: string, title: string) => {
+    const trimmed = title.trim() || 'Untitled page';
+    setPersonalNotePagesIndex(prev => prev.map(p =>
+      p.id === id ? { ...p, title: trimmed, updatedAt: Date.now() } : p
+    ));
+    const lk = localPersonalPageKey(id);
+    if (lk) {
+      try {
+        const cur = JSON.parse(localStorage.getItem(lk) || 'null') as NotePage | null;
+        if (cur) localStorage.setItem(lk, JSON.stringify({ ...cur, title: trimmed, updatedAt: Date.now() }));
+      } catch {}
+    }
+    const ref = personalNotePageDocRef(id);
+    if (ref) setDoc(ref, { title: trimmed, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+  };
+
+  const deletePersonalNotePage = async (id: string): Promise<void> => {
+    deletedPersonalNotePageIds.current.add(id);
+    setPersonalNotePagesIndex(prev => prev.filter(p => p.id !== id));
+    const lk = localPersonalPageKey(id);
+    if (lk) localStorage.removeItem(lk);
+    personalNoteWriteQueueRef.current = personalNoteWriteQueueRef.current.then(async () => {
+      const ref = personalNotePageDocRef(id);
+      if (ref) {
+        try { await deleteDoc(ref); } catch { /* ignore offline */ }
+      }
+      deletedPersonalNotePageIds.current.delete(id);
+    });
+  };
+
+  const loadPersonalNotePage = async (id: string): Promise<NotePage | null> => {
+    const lk = localPersonalPageKey(id);
+    let local: NotePage | null = null;
+    if (lk) {
+      try { local = JSON.parse(localStorage.getItem(lk) || 'null'); } catch { local = null; }
+    }
+    const ref = personalNotePageDocRef(id);
+    if (!ref) return local;
+    try {
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const d = snap.data() as NotePage;
+        let elements = d.elements || [];
+        if (d.chunked) {
+          elements = await readElementChunks(collection(ref, 'chunks'));
+        }
+        const remote: NotePage = {
+          id: d.id ?? id,
+          title: d.title ?? 'Untitled page',
+          elements,
+          pageCount: d.pageCount ?? 1,
+          html: d.html,
+          chunked: d.chunked,
+          chunkCount: d.chunkCount,
+          createdAt: d.createdAt ?? Date.now(),
+          updatedAt: d.updatedAt ?? Date.now(),
+        };
+        if (!local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0)) {
+          if (lk) localStorage.setItem(lk, JSON.stringify(remote));
+          return remote;
+        }
+        return local;
+      }
+    } catch { /* offline */ }
+    return local;
+  };
+
+  const savePersonalNotePage = async (page: NotePage): Promise<void> => {
+    const updated: NotePage = { ...page, updatedAt: Date.now() };
+    const pageId = page.id;
+
+    const lk = localPersonalPageKey(pageId);
+    if (lk) localStorage.setItem(lk, JSON.stringify(updated));
+
+    setPersonalNotePagesIndex(prev => prev.map(p =>
+      p.id === pageId
+        ? { ...p, title: updated.title, pageCount: updated.pageCount, updatedAt: updated.updatedAt }
+        : p
+    ));
+
+    const ref = personalNotePageDocRef(pageId);
+    if (!ref) return;
+
+    const alreadyPending = personalNoteWritePendingRef.current.has(pageId);
+    personalNoteWritePendingRef.current.set(pageId, updated);
+
+    if (!alreadyPending) {
+      personalNoteWriteQueueRef.current = personalNoteWriteQueueRef.current.then(async () => {
+        const latestData = personalNoteWritePendingRef.current.get(pageId);
+        personalNoteWritePendingRef.current.delete(pageId);
+        if (!latestData) return;
+        if (deletedPersonalNotePageIds.current.has(pageId)) return;
+
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const cleaned = sanitizeForFirestore(latestData);
+            const serialised = JSON.stringify(cleaned);
+            const serialisedSize = byteSize(serialised);
+            const pageChunksRef = collection(ref, 'chunks');
+            let firestorePayload: NotePage;
+            if (serialisedSize > FIRESTORE_NOTE_LIMIT && user) {
+              const chunks = packElements(cleaned.elements || [], FIRESTORE_NOTE_LIMIT);
+              await writeElementChunks(pageChunksRef, chunks);
+              firestorePayload = sanitizeForFirestore({ ...cleaned, chunked: true, chunkCount: chunks.length, elements: [] });
+            } else {
+              await clearChunks(pageChunksRef);
+              firestorePayload = { ...cleaned, chunked: false };
+            }
+            await setDoc(ref, firestorePayload);
+            return;
+          } catch {
+            if (attempt < 3) {
+              await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt - 1)));
+            }
+          }
+        }
+      });
+    }
+  };
+
+  const reorderPersonalNotePages = (fromIdx: number, toIdx: number) => {
+    setPersonalNotePagesIndex(prev => {
       const next = [...prev];
       const [moved] = next.splice(fromIdx, 1);
       next.splice(toIdx, 0, moved);
@@ -2402,6 +2587,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       tempNotes, addTempNote, updateTempNote, updateTempNoteContent, toggleTempNoteDone, deleteTempNote,
       overallNote, setOverallNote,
       notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage, reorderNotePages,
+      personalNotePagesIndex, createPersonalNotePage, renamePersonalNotePage, deletePersonalNotePage, loadPersonalNotePage, savePersonalNotePage, reorderPersonalNotePages,
     }}>
       {children}
     </StudyContext.Provider>

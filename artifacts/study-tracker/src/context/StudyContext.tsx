@@ -1072,7 +1072,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           // and must never appear in a shared course copy.
           const syncNotePagesIndex = (mainPayload.notePagesIndex as NotePageMeta[] | undefined)
             ?.filter(p => !p.privateNote) ?? [];
-          const syncStudyDataPayload = { ...mainPayload, subjects: syncSubjects, notePagesIndex: syncNotePagesIndex };
+          // Strip tempNotes so the admin's temp notes never overwrite the recipient's
+          // personal temp notes.  Each user's tempNotes are private to their own account.
+          const { tempNotes: _stripAdminTempNotes, ...syncStudyDataPayload } = {
+            ...mainPayload,
+            subjects: syncSubjects,
+            notePagesIndex: syncNotePagesIndex,
+          };
           const syncNotesDataPayload = { ...notesData, notes: syncNotes };
 
           // Fetch test decks for this course so they are relayed to the recipient.

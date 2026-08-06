@@ -663,10 +663,19 @@ export function AdminProvider({ children }: { children: ReactNode }) {
               completionMap,
             );
 
-            // Write merged studyData to user's own collection (persists across refreshes)
+            // Preserve the recipient's own tempNotes — they are personal and must
+            // never be overwritten by the admin's sync payload.
+            const userTempNotes: unknown[] = userDataSnap.exists()
+              ? ((userDataSnap.data().tempNotes as unknown[] | undefined) ?? [])
+              : [];
+
+            // Write merged studyData to user's own collection (persists across refreshes).
+            // Exclude tempNotes from syncStudyData (admin stripped them before sending,
+            // but guard here too) and restore the user's own tempNotes instead.
+            const { tempNotes: _ignored, ...syncStudyDataWithoutTemp } = syncStudyData as Record<string, unknown>;
             await setDoc(
               doc(db, 'users', uid, 'studyData', shareId),
-              { ...syncStudyData, subjects: mergedSubjects, savedAt: Date.now() },
+              { ...syncStudyDataWithoutTemp, subjects: mergedSubjects, tempNotes: userTempNotes, savedAt: Date.now() },
               { merge: false },
             );
 
@@ -717,12 +726,13 @@ export function AdminProvider({ children }: { children: ReactNode }) {
             // Also dispatch a synchronous window event so StudyContext can update
             // the UI instantly without waiting for the Firestore onSnapshot chain
             // (which has a hasPendingWrites guard that adds a round-trip delay).
+            // tempNotes intentionally excluded — each user's temp notes are personal
+            // and must not be overwritten by the admin's live-sync payload.
             window.dispatchEvent(new CustomEvent('study-livesync', {
               detail: {
                 shareId,
                 subjects: mergedSubjects,
                 settings: syncStudyData.settings,
-                tempNotes: syncStudyData.tempNotes,
                 overallNote: liveSyncOverallNote,
                 notePagesIndex: syncStudyData.notePagesIndex,
                 notesMap: liveSyncNotesMap,
@@ -1037,13 +1047,17 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           });
         } catch { /* best-effort — missing test decks are not fatal */ }
 
+        // Strip admin's tempNotes before embedding in the snapshot — temp notes are
+        // personal to each user and must never be shared or disclosed to recipients.
+        const { tempNotes: _stripSendTempNotes, ...studyDataForSnapshotNoTemp } = studyDataForSnapshot;
+
         // Deep-strip undefined values from studyData before embedding in the
         // snapshot. Firestore rejects `undefined` anywhere in a nested object
         // ("Property courseSnapshot contains an invalid nested entity"), even
         // when top-level undefined keys are already removed. JSON round-trip
         // silently drops undefined keys at every depth level, which is exactly
         // what we need.
-        const cleanStudyData = JSON.parse(JSON.stringify(studyDataForSnapshot)) as Record<string, unknown>;
+        const cleanStudyData = JSON.parse(JSON.stringify(studyDataForSnapshotNoTemp)) as Record<string, unknown>;
 
         const snapshot: CourseSnapshot = {
           studyData: cleanStudyData,
@@ -1159,7 +1173,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     }
     notesMap = filterNotesMapByIds(notesMap, idSet);
 
-    const studyDataForSnapshot = { ...rawSd, subjects: filteredSubjects };
+    // Strip tempNotes — admin's personal temp notes must never reach recipients.
+    const { tempNotes: _stripAddSubjectsTempNotes, ...rawSdNoTemp } = rawSd as Record<string, unknown>;
+    const studyDataForSnapshot = { ...rawSdNoTemp, subjects: filteredSubjects };
     await updateDoc(doc(db, 'shareRequests', shareId), {
       sharedSubjectIds: mergedIds,
       courseSnapshot: {
@@ -1307,11 +1323,16 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
         // 2. Write the study data (subjects tree without note HTML)
         //    Always set hasNotesDoc: true so StudyContext loads notes from courseNotes.
+        //    Strip tempNotes (defense-in-depth): they are personal to each user and must
+        //    never be written to a recipient's doc, even if a legacy snapshot contains them.
+        const { tempNotes: _stripAcceptTempNotes, ...snapshotSdWithoutTemp } = snapshot.studyData as Record<string, unknown>;
         const sdToWrite: Record<string, unknown> = {
-          ...snapshot.studyData,
+          ...snapshotSdWithoutTemp,
           // Strip the admin's completion progress so the recipient always
           // receives a fresh course with zero progress of their own.
-          subjects: stripProgress((snapshot.studyData.subjects as unknown[] | undefined) ?? []),
+          subjects: stripProgress((snapshotSdWithoutTemp.subjects as unknown[] | undefined) ?? []),
+          // Recipients start with empty temp notes — personal to each user.
+          tempNotes: [],
           hasNotesDoc: true,
           savedAt: ts,
         };

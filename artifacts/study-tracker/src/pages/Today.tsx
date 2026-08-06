@@ -112,6 +112,45 @@ function pendingDaysLeft(item: PendingItem, todayStr: string): number {
   } catch { return PENDING_EXPIRY_DAYS; }
 }
 
+function PendingCountdown({ item, isBn }: { item: PendingItem; isBn: boolean }) {
+  const getMs = () => {
+    const from = item.addedDate ?? item.plannedDate;
+    try {
+      const [y, mo, d] = from.split('-').map(Number);
+      // Expiry = midnight (local) at from + PENDING_EXPIRY_DAYS days
+      const expiry = new Date(y, mo - 1, d + PENDING_EXPIRY_DAYS);
+      return Math.max(0, expiry.getTime() - Date.now());
+    } catch { return 0; }
+  };
+
+  const [ms, setMs] = useState<number>(() => getMs());
+
+  useEffect(() => {
+    const id = setInterval(() => setMs(getMs()), 1000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.addedDate, item.plannedDate]);
+
+  const totalSec = Math.floor(ms / 1000);
+  const s  = totalSec % 60;
+  const totalMin = Math.floor(totalSec / 60);
+  const m  = totalMin % 60;
+  const totalHr  = Math.floor(totalMin / 60);
+  const h  = totalHr  % 24;
+  const dd = Math.floor(totalHr  / 24);
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  const label = isBn
+    ? `${dd}দ : ${pad(h)}ঘ : ${pad(m)}মি : ${pad(s)}স`
+    : `${dd}d : ${pad(h)}h : ${pad(m)}m : ${pad(s)}s`;
+
+  return (
+    <span className="text-[10px] text-orange-500 font-bold bg-orange-500/10 px-2 py-0.5 rounded-full tabular-nums">
+      ⏱ {label}
+    </span>
+  );
+}
+
 function doesTaskExist(subjects: Subject[], task: PlanTask): boolean {
   const subj = subjects.find(s => s.id === task.subjectId);
   if (!subj) return false;
@@ -2442,9 +2481,7 @@ export function Today() {
                           </div>
                           <p className="font-bold text-sm text-foreground leading-snug mb-1">{item.task.mainTitle}</p>
                           <div className="flex items-center gap-2 mb-3">
-                            <span className="text-[10px] text-orange-500 font-bold bg-orange-500/10 px-2 py-0.5 rounded-full">
-                              {isBn ? `ডেডলাইন: ${dLeft} দিন বাকি` : `Deadline: ${dLeft} day${dLeft !== 1 ? 's' : ''} left`}
-                            </span>
+                            <PendingCountdown item={item} isBn={isBn} />
                             <span className="text-[10px] text-muted-foreground">
                               {item.plannedDate}
                             </span>

@@ -86,8 +86,11 @@ export function gatherFlaggedItems(
   opts: { important: boolean; weak: boolean }
 ): FlatMarkedItem[] {
   const out: FlatMarkedItem[] = [];
-  const matches = (item: { important?: boolean; weak?: boolean }) =>
-    (opts.important && !!item.important) || (opts.weak && !!item.weak);
+  // AND logic when both flags selected; OR logic when only one is selected
+  const matches = (item: { important?: boolean; weak?: boolean }) => {
+    if (opts.important && opts.weak) return !!item.important && !!item.weak;
+    return (opts.important && !!item.important) || (opts.weak && !!item.weak);
+  };
 
   for (const subj of subjects) {
     const subjBread = [subj.title];

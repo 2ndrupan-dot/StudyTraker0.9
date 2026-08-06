@@ -578,40 +578,40 @@ export function NotesIndex() {
           </div>
 
           {/* ── Tab switcher ── */}
-          <div className="relative px-5 pb-3 flex gap-1 flex-wrap">
+          <div className="relative px-3 pb-3 flex gap-1">
             <button
               onClick={() => setActiveTab('course')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all truncate ${
                 activeTab === 'course'
                   ? 'bg-white text-purple-700 shadow-md'
                   : 'bg-white/15 text-white/80 hover:bg-white/25'
               }`}
             >
-              <BookOpen size={12} />
-              {lang === 'bn' ? 'কোর্স নোটস' : 'Course Notes'}
+              <BookOpen size={11} className="shrink-0" />
+              <span className="truncate">{lang === 'bn' ? 'কোর্স নোটস' : 'Course Notes'}</span>
             </button>
             <button
               onClick={() => setActiveTab('personal')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all truncate ${
                 activeTab === 'personal'
                   ? 'bg-white text-purple-700 shadow-md'
                   : 'bg-white/15 text-white/80 hover:bg-white/25'
               }`}
             >
-              <User size={12} />
-              {lang === 'bn' ? 'ব্যক্তিগত নোটস' : 'Personal Notes'}
+              <User size={11} className="shrink-0" />
+              <span className="truncate">{lang === 'bn' ? 'ব্যক্তিগত নোটস' : 'Personal Notes'}</span>
             </button>
             {isSuperAdmin && (
               <button
                 onClick={() => setActiveTab('prompts')}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all truncate ${
                   activeTab === 'prompts'
                     ? 'bg-white text-purple-700 shadow-md'
                     : 'bg-white/15 text-white/80 hover:bg-white/25'
                 }`}
               >
-                <Sparkles size={12} />
-                {lang === 'bn' ? 'প্রম্পটস' : 'Prompts'}
+                <Sparkles size={11} className="shrink-0" />
+                <span className="truncate">{lang === 'bn' ? 'প্রম্পটস' : 'Prompts'}</span>
               </button>
             )}
           </div>

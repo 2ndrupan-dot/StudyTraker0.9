@@ -970,11 +970,19 @@ export function AdminPanel() {
   // ── Sent tab state ──
   const [sentSearch, setSentSearch] = useState('');
   const filteredSentShares = sentSearch.trim()
-    ? sentShares.filter(s => s.toEmail.toLowerCase().includes(sentSearch.trim().toLowerCase()))
+    ? sentShares.filter(s => {
+        const q = sentSearch.trim().toLowerCase();
+        const title = shareTitle(s, lang).toLowerCase();
+        return s.toEmail.toLowerCase().includes(q) || title.includes(q);
+      })
     : sentShares;
   const [trashSearch, setTrashSearch] = useState('');
   const filteredTrashedShares = trashSearch.trim()
-    ? trashedShares.filter(s => s.toEmail.toLowerCase().includes(trashSearch.trim().toLowerCase()))
+    ? trashedShares.filter(s => {
+        const q = trashSearch.trim().toLowerCase();
+        const title = shareTitle(s, lang).toLowerCase();
+        return s.toEmail.toLowerCase().includes(q) || title.includes(q);
+      })
     : trashedShares;
   const [editPermModal, setEditPermModal] = useState<ShareRequest | null>(null);
   const [editPermissions, setEditPermissions] = useState<SharePermissions>({ ...DEFAULT_PERMISSIONS });
@@ -2448,7 +2456,7 @@ export function AdminPanel() {
                   type="text"
                   value={sentSearch}
                   onChange={e => setSentSearch(e.target.value)}
-                  placeholder={lang === 'bn' ? 'ইমেইল দিয়ে খুঁজুন...' : 'Search by email...'}
+                  placeholder={lang === 'bn' ? 'ইমেইল বা কোর্স/নোটের নাম...' : 'Search by email or title...'}
                   className="w-full h-10 pl-9 pr-8 rounded-xl border border-border/60 bg-secondary text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
                 {sentSearch && (
@@ -2470,7 +2478,7 @@ export function AdminPanel() {
                   type="text"
                   value={trashSearch}
                   onChange={e => setTrashSearch(e.target.value)}
-                  placeholder={lang === 'bn' ? 'ইমেইল দিয়ে খুঁজুন...' : 'Search by email...'}
+                  placeholder={lang === 'bn' ? 'ইমেইল বা কোর্স/নোটের নাম...' : 'Search by email or title...'}
                   className="w-full h-10 pl-9 pr-8 rounded-xl border border-border/60 bg-secondary text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
                 {trashSearch && (

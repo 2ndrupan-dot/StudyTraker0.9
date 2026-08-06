@@ -67,6 +67,8 @@ export interface RevisionEntry {
   revisionMins: number;  // 50% of original
   stage: number;         // 0=first revision, increments on each completion
   done: boolean;
+  firstCompletedDate?: string;  // yyyy-MM-dd: when the original task was first completed
+  origin?: 'regular' | 'snoozed' | 'dismissed'; // why this revision appeared
 }
 
 const PENDING_EXPIRY_DAYS = 2;
@@ -1032,7 +1034,7 @@ export function Today() {
         currentRevisions = currentRevisions
           .map(r => r.id === rev.id ? { ...r, done: true } : r)
           .filter(r => r.id !== newId);
-        currentRevisions = [...currentRevisions, { ...rev, id: newId, stage, scheduledDate: newScheduledDate, done: false }];
+        currentRevisions = [...currentRevisions, { ...rev, id: newId, stage, scheduledDate: newScheduledDate, done: false, origin: 'dismissed' as const }];
       });
     }
 
@@ -1331,7 +1333,7 @@ export function Today() {
     const nextId = `${current.taskKey}_rev_s${nextStage}_${nextScheduledDate}`;
     let updated = revisions.map(r => r.id === id ? { ...r, done: true } : r);
     if (!updated.some(r => r.id === nextId)) {
-      updated = [...updated, { ...current, id: nextId, stage: nextStage, scheduledDate: nextScheduledDate, done: false }];
+      updated = [...updated, { ...current, id: nextId, stage: nextStage, scheduledDate: nextScheduledDate, done: false, origin: 'regular' as const }];
     }
     setRevisions(updated);
     syncRevisions(updated);
@@ -1355,7 +1357,7 @@ export function Today() {
     let updated = revisions
       .map(r => r.id === id ? { ...r, done: true } : r)
       .filter(r => r.id !== newId);
-    updated = [...updated, { ...current, id: newId, stage, scheduledDate: newScheduledDate, done: false }];
+    updated = [...updated, { ...current, id: newId, stage, scheduledDate: newScheduledDate, done: false, origin: 'snoozed' as const }];
     setRevisions(updated);
     syncRevisions(updated);
     // Persist the original ID as dismissed so offline devices don't reschedule it again
@@ -1407,6 +1409,8 @@ export function Today() {
       revisionMins: Math.max(Math.round(task.estimatedMins * 0.5), MIN_POINT),
       stage: 0,
       done: false,
+      firstCompletedDate: todayIST(settings.timezone),
+      origin: 'regular',
     };
     return [...existing, entry];
   };
@@ -2319,7 +2323,30 @@ export function Today() {
                                             </React.Fragment>
                                           ))}
                                         </div>
-                                        <p className="font-bold text-sm text-foreground leading-snug mb-2">{rev.mainTitle}</p>
+                                        <p className="font-bold text-sm text-foreground leading-snug mb-1.5">{rev.mainTitle}</p>
+                                        {/* Origin badge + first-completed date */}
+                                        <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                                          {rev.origin === 'snoozed' && (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600">
+                                              ⏩ {isBn ? 'আগে লেটার দেওয়া হয়েছিল' : 'Snoozed last time'}
+                                            </span>
+                                          )}
+                                          {rev.origin === 'dismissed' && (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/10 text-red-500">
+                                              ⚠️ {isBn ? 'আগে মিস হয়ে গিয়েছিল' : 'Missed last time'}
+                                            </span>
+                                          )}
+                                          {(rev.origin === 'regular' || !rev.origin) && (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/10 text-green-600">
+                                              ✓ {isBn ? 'নিয়ম অনুযায়ী এসেছে' : 'On schedule'}
+                                            </span>
+                                          )}
+                                          {rev.firstCompletedDate && (
+                                            <span className="text-[10px] text-muted-foreground px-2 py-0.5 rounded-full bg-secondary">
+                                              📅 {isBn ? 'প্রথম সম্পন্ন:' : 'Completed:'} {rev.firstCompletedDate}
+                                            </span>
+                                          )}
+                                        </div>
                                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                                           <span className="text-muted-foreground text-[11px] font-semibold bg-secondary px-2 py-1 rounded-lg flex items-center gap-1">
                                             <Clock size={10} /> {formatMins(rev.revisionMins, t('hour'), t('mins'))}
@@ -2681,9 +2708,32 @@ export function Today() {
                             </React.Fragment>
                           ))}
                         </div>
-                        <h3 className="font-bold text-sm text-foreground leading-snug mb-2.5">
+                        <h3 className="font-bold text-sm text-foreground leading-snug mb-1.5">
                           {rev.mainTitle}
                         </h3>
+                        {/* Origin badge + first-completed date */}
+                        <div className="flex items-center gap-1.5 flex-wrap mb-2.5">
+                          {rev.origin === 'snoozed' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600">
+                              ⏩ {isBn ? 'আগে লেটার দেওয়া হয়েছিল' : 'Snoozed last time'}
+                            </span>
+                          )}
+                          {rev.origin === 'dismissed' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/10 text-red-500">
+                              ⚠️ {isBn ? 'আগে মিস হয়ে গিয়েছিল' : 'Missed last time'}
+                            </span>
+                          )}
+                          {(rev.origin === 'regular' || !rev.origin) && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/10 text-green-600">
+                              ✓ {isBn ? 'নিয়ম অনুযায়ী এসেছে' : 'On schedule'}
+                            </span>
+                          )}
+                          {rev.firstCompletedDate && (
+                            <span className="text-[10px] text-muted-foreground px-2 py-0.5 rounded-full bg-secondary">
+                              📅 {isBn ? 'প্রথম সম্পন্ন:' : 'Completed:'} {rev.firstCompletedDate}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 mb-3 flex-wrap">
                           <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-semibold bg-secondary px-2.5 py-1 rounded-lg w-fit">
                             <Clock size={10} /> ~{formatMins(rev.revisionMins, t('hour'), t('mins'))}

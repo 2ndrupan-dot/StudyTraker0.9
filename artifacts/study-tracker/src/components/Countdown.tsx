@@ -62,9 +62,10 @@ export function Countdown({
     return <span className={className}>{lang === 'bn' ? 'মেয়াদ শেষ' : 'Expired'}</span>;
   }
 
+  const d = lang === 'bn' ? 'দি' : 'd';
   const text = parts.days > 0
-    ? `${parts.days}${lang === 'bn' ? 'দি' : 'd'} ${pad(parts.hours)}:${pad(parts.minutes)}:${pad(parts.seconds)}`
-    : `${pad(parts.hours)}:${pad(parts.minutes)}:${pad(parts.seconds)}`;
+    ? `${parts.days}${d} : ${pad(parts.hours)}h : ${pad(parts.minutes)}m : ${pad(parts.seconds)}s`
+    : `${pad(parts.hours)}h : ${pad(parts.minutes)}m : ${pad(parts.seconds)}s`;
 
   return <span className={className}>{text}</span>;
 }
@@ -95,9 +96,10 @@ export function CountUp({
   const minutes = Math.floor((elapsed % (1000 * 60 * 60)) / (1000 * 60));
   const seconds = Math.floor((elapsed % (1000 * 60)) / 1000);
 
+  const d = lang === 'bn' ? 'দি' : 'd';
   const text = days > 0
-    ? `${days}${lang === 'bn' ? 'দি' : 'd'} ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
-    : `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+    ? `${days}${d} : ${pad(hours)}h : ${pad(minutes)}m : ${pad(seconds)}s`
+    : `${pad(hours)}h : ${pad(minutes)}m : ${pad(seconds)}s`;
 
   return <span className={className}>{text}</span>;
 }

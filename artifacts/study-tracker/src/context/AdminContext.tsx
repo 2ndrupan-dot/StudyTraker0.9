@@ -167,6 +167,7 @@ interface AdminContextType {
   extendShare: (shareId: string, addValue: number, addUnit: 'minutes' | 'hours' | 'days' | 'months') => Promise<void>;
   getCourseSubjectsForShare: (courseId: string) => Promise<{ id: string; title: string }[]>;
   addSubjectsToShare: (shareId: string, additionalSubjectIds: string[]) => Promise<void>;
+  removeSubjectsFromShare: (shareId: string, removeSubjectIds: string[]) => Promise<void>;
   trashShare: (shareId: string) => Promise<void>;
   restoreShare: (shareId: string) => Promise<void>;
   permanentlyDeleteShare: (shareId: string) => Promise<void>;
@@ -1186,6 +1187,58 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  /** Remove specific subjects from an already-sent course share. Re-snapshots the
+   *  course with the narrowed subject list so the recipient loses access to the
+   *  removed subjects on next sync. */
+  const removeSubjectsFromShare = async (shareId: string, removeSubjectIds: string[]) => {
+    if (!user || removeSubjectIds.length === 0) return;
+    const share = allSentShares.find(s => s.id === shareId);
+    if (!share || share.type !== 'course' || !share.courseId) return;
+
+    const removeSet = new Set(removeSubjectIds);
+    const remainingIds = (share.sharedSubjectIds || []).filter(id => !removeSet.has(id));
+
+    const sdSnap = await getDoc(doc(db, 'users', user.id, 'studyData', share.courseId));
+    if (!sdSnap.exists()) return;
+    const rawSd = sdSnap.data();
+
+    const filteredSubjects = remainingIds.length > 0
+      ? filterSubjectsByIds((rawSd.subjects as unknown[]) || [], remainingIds)
+      : [];
+    const idSet = collectAllIds(filteredSubjects);
+
+    let notesMap: Record<string, string> = {};
+    let overallNote = '';
+    if (rawSd.hasNotesDoc) {
+      const ndSnap = await getDoc(doc(db, 'users', user.id, 'courseNotes', share.courseId));
+      if (ndSnap.exists()) {
+        const nd = ndSnap.data() as { overallNote?: string; notes?: Record<string, string>; chunked?: boolean };
+        if (nd.chunked) {
+          const entries = await readChunkEntries(collection(db, 'users', user.id, 'courseNotes', share.courseId, 'chunks'));
+          const merged = reassembleEntries(entries);
+          overallNote = merged['__overall__'] || '';
+          delete merged['__overall__'];
+          notesMap = merged;
+        } else {
+          notesMap = nd.notes || {};
+          overallNote = nd.overallNote || '';
+        }
+      }
+    }
+    notesMap = filterNotesMapByIds(notesMap, idSet);
+
+    const { tempNotes: _strip, ...rawSdNoTemp } = rawSd as Record<string, unknown>;
+    const studyDataForSnapshot = { ...rawSdNoTemp, subjects: filteredSubjects };
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      sharedSubjectIds: remainingIds.length > 0 ? remainingIds : null,
+      courseSnapshot: {
+        studyData: studyDataForSnapshot,
+        notesJson: JSON.stringify({ notes: notesMap, overallNote }),
+      },
+      syncedAt: Date.now(),
+    });
+  };
+
   // ── Manual delete → trash → restore / permanent delete ────────────────────
   const trashShare = async (shareId: string) => {
     const share = allSentShares.find(s => s.id === shareId);
@@ -1454,7 +1507,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       updateSharePermissions, cancelShare,
       pendingShares, acceptShare, declineShare,
       acceptedShares, markSeen,
-      extendShare, getCourseSubjectsForShare, addSubjectsToShare,
+      extendShare, getCourseSubjectsForShare, addSubjectsToShare, removeSubjectsFromShare,
       trashShare, restoreShare, permanentlyDeleteShare, resendShare, completeShareTest,
       appContact, saveContactSettings,
     }}>

@@ -849,7 +849,7 @@ export function AdminPanel() {
     visibleAdmins, currentAdminPermissions, updateAdminPermissions, updateAdminDuration,
     makeAdminPermanent,
     sendShare, sentShares, trashedShares, loadingSentShares, updateSharePermissions,
-    extendShare, getCourseSubjectsForShare, addSubjectsToShare,
+    extendShare, getCourseSubjectsForShare, addSubjectsToShare, removeSubjectsFromShare,
     trashShare, restoreShare, permanentlyDeleteShare, resendShare,
     appContact, saveContactSettings, acceptedShares } = useAdmin();
   const { courses, activeCourse } = useCourse();
@@ -992,6 +992,7 @@ export function AdminPanel() {
   const [addSubjectsModal, setAddSubjectsModal] = useState<ShareRequest | null>(null);
   const [addSubjectsAvailable, setAddSubjectsAvailable] = useState<{ id: string; title: string }[]>([]);
   const [addSubjectsPicked, setAddSubjectsPicked] = useState<string[]>([]);
+  const [removeSubjectsPicked, setRemoveSubjectsPicked] = useState<string[]>([]);
   const [addingSubjects, setAddingSubjects] = useState(false);
 
   // ── Bulk selection state ──
@@ -1289,17 +1290,23 @@ export function AdminPanel() {
     if (!share.courseId) return;
     setAddSubjectsModal(share);
     setAddSubjectsPicked([]);
+    setRemoveSubjectsPicked([]);
     const list = await getCourseSubjectsForShare(share.courseId);
     setAddSubjectsAvailable(list);
   };
 
   const handleConfirmAddSubjects = async () => {
-    if (!addSubjectsModal || addSubjectsPicked.length === 0) return;
+    if (!addSubjectsModal) return;
+    const hasAdd = addSubjectsPicked.length > 0;
+    const hasRemove = removeSubjectsPicked.length > 0;
+    if (!hasAdd && !hasRemove) return;
     setAddingSubjects(true);
     try {
-      await addSubjectsToShare(addSubjectsModal.id, addSubjectsPicked);
+      if (hasRemove) await removeSubjectsFromShare(addSubjectsModal.id, removeSubjectsPicked);
+      if (hasAdd) await addSubjectsToShare(addSubjectsModal.id, addSubjectsPicked);
       setAddSubjectsModal(null);
       setAddSubjectsPicked([]);
+      setRemoveSubjectsPicked([]);
     } finally {
       setAddingSubjects(false);
     }
@@ -2872,62 +2879,118 @@ export function AdminPanel() {
         </div>
       </Modal>
 
-      {/* Add Subjects Modal */}
+      {/* Manage Subjects Modal */}
       <Modal
         isOpen={!!addSubjectsModal}
-        onClose={() => setAddSubjectsModal(null)}
-        title={lang === 'bn' ? 'আরও সাবজেক্ট যোগ করুন' : 'Add More Subjects'}
+        onClose={() => { setAddSubjectsModal(null); setRemoveSubjectsPicked([]); setAddSubjectsPicked([]); }}
+        title={lang === 'bn' ? 'সাবজেক্ট ম্যানেজ করুন' : 'Manage Subjects'}
         align="bottom"
         icon={ListPlus}
       >
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">→ {addSubjectsModal?.toEmail}</p>
           {(() => {
-            const alreadySent = new Set(addSubjectsModal?.sharedSubjectIds || []);
-            const remaining = addSubjectsAvailable.filter(s => !alreadySent.has(s.id));
-            const already = addSubjectsAvailable.filter(s => alreadySent.has(s.id));
+            const alreadySentIds = new Set(addSubjectsModal?.sharedSubjectIds || []);
+            const sentSubjects = addSubjectsAvailable.filter(s => alreadySentIds.has(s.id));
+            const newSubjects = addSubjectsAvailable.filter(s => !alreadySentIds.has(s.id));
+            const keepCount = sentSubjects.length - removeSubjectsPicked.length;
+            const noChanges = addSubjectsPicked.length === 0 && removeSubjectsPicked.length === 0;
             return (
               <>
-                {already.length > 0 && (
+                {/* Already sent — checkboxes, uncheck to remove */}
+                {sentSubjects.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-[11px] font-semibold text-muted-foreground">
-                      {lang === 'bn' ? 'আগে পাঠানো হয়েছে' : 'Already sent'}
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      {lang === 'bn' ? 'পাঠানো সাবজেক্ট' : 'Sent subjects'}
                     </p>
-                    {already.map(s => (
-                      <div key={s.id} className="flex items-center gap-2 p-2 rounded-lg bg-secondary/40 opacity-60">
-                        <Check size={13} className="text-green-600 shrink-0" />
-                        <span className="text-sm text-foreground truncate">{s.title}</span>
-                      </div>
-                    ))}
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                      {sentSubjects.map(s => {
+                        const markedForRemoval = removeSubjectsPicked.includes(s.id);
+                        return (
+                          <label
+                            key={s.id}
+                            className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer transition-colors ${
+                              markedForRemoval
+                                ? 'bg-red-50 dark:bg-red-950/30 line-through opacity-60'
+                                : 'hover:bg-secondary/60 bg-green-50/60 dark:bg-green-950/20'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!markedForRemoval}
+                              onChange={() =>
+                                setRemoveSubjectsPicked(prev =>
+                                  prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]
+                                )
+                              }
+                              className="w-4 h-4 rounded shrink-0"
+                            />
+                            <span className="text-sm text-foreground truncate">{s.title}</span>
+                            {markedForRemoval && (
+                              <span className="ml-auto text-[10px] font-semibold text-red-500 shrink-0">
+                                {lang === 'bn' ? 'রিমুভ হবে' : 'Will remove'}
+                              </span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {removeSubjectsPicked.length > 0 && keepCount === 0 && (
+                      <p className="text-[11px] text-red-500 font-medium">
+                        {lang === 'bn'
+                          ? '⚠️ অন্তত একটি সাবজেক্ট রাখতে হবে।'
+                          : '⚠️ At least one subject must remain.'}
+                      </p>
+                    )}
                   </div>
                 )}
-                {remaining.length > 0 ? (
+
+                {/* New subjects to add */}
+                {newSubjects.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-[11px] font-semibold text-muted-foreground">
-                      {lang === 'bn' ? 'নতুন সাবজেক্ট' : 'New subjects'}
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      {lang === 'bn' ? 'নতুন সাবজেক্ট যোগ করুন' : 'Add new subjects'}
                     </p>
-                    <div className="max-h-52 overflow-y-auto space-y-1">
-                      {remaining.map(s => (
+                    <div className="max-h-40 overflow-y-auto space-y-1">
+                      {newSubjects.map(s => (
                         <label key={s.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-secondary/60 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={addSubjectsPicked.includes(s.id)}
-                            onChange={() => setAddSubjectsPicked(prev => prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id])}
+                            onChange={() =>
+                              setAddSubjectsPicked(prev =>
+                                prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]
+                              )
+                            }
                             className="w-4 h-4 rounded accent-primary shrink-0"
                           />
                           <span className="text-sm text-foreground truncate">{s.title}</span>
                         </label>
                       ))}
                     </div>
-                    <Button className="w-full" onClick={handleConfirmAddSubjects} disabled={addingSubjects || addSubjectsPicked.length === 0}>
-                      {addingSubjects ? '...' : (lang === 'bn' ? 'যোগ করুন' : 'Add Selected')}
-                    </Button>
                   </div>
-                ) : (
+                )}
+
+                {addSubjectsAvailable.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-4">
-                    {lang === 'bn' ? 'সব সাবজেক্ট ইতিমধ্যে পাঠানো হয়েছে।' : 'All subjects already sent.'}
+                    {lang === 'bn' ? 'কোনো সাবজেক্ট পাওয়া যায়নি।' : 'No subjects found.'}
                   </p>
                 )}
+
+                <Button
+                  className="w-full"
+                  onClick={handleConfirmAddSubjects}
+                  disabled={addingSubjects || noChanges || (removeSubjectsPicked.length > 0 && keepCount === 0)}
+                  variant={removeSubjectsPicked.length > 0 && addSubjectsPicked.length === 0 ? 'destructive' : 'default'}
+                >
+                  {addingSubjects
+                    ? '...'
+                    : removeSubjectsPicked.length > 0 && addSubjectsPicked.length === 0
+                      ? (lang === 'bn' ? `${removeSubjectsPicked.length}টি সাবজেক্ট রিমুভ করুন` : `Remove ${removeSubjectsPicked.length} subject(s)`)
+                      : removeSubjectsPicked.length > 0
+                        ? (lang === 'bn' ? 'পরিবর্তন সেভ করুন' : 'Save changes')
+                        : (lang === 'bn' ? `${addSubjectsPicked.length}টি যোগ করুন` : `Add ${addSubjectsPicked.length} subject(s)`)}
+                </Button>
               </>
             );
           })()}

@@ -2358,11 +2358,6 @@ export function Today() {
                                           )}
                                           <RevisionCountdown isBn={isBn} />
                                         </div>
-                                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                          <span className="text-muted-foreground text-[11px] font-semibold bg-secondary px-2 py-1 rounded-lg flex items-center gap-1">
-                                            <Clock size={10} /> {formatMins(rev.revisionMins, t('hour'), t('mins'))}
-                                          </span>
-                                        </div>
                                         <div className="flex gap-2">
                                           <button
                                             onClick={() => confirmCompleteRevision(rev.id)}
@@ -2747,11 +2742,6 @@ export function Today() {
                             </span>
                           )}
                           <RevisionCountdown isBn={isBn} />
-                        </div>
-                        <div className="flex items-center gap-2 mb-3 flex-wrap">
-                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-semibold bg-secondary px-2.5 py-1 rounded-lg w-fit">
-                            <Clock size={10} /> ~{formatMins(rev.revisionMins, t('hour'), t('mins'))}
-                          </span>
                         </div>
                         <div className="flex gap-2">
                           <motion.button

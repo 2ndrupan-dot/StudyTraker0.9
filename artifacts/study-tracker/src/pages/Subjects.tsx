@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useAdmin } from '@/context/AdminContext';
 import { Layout } from '@/components/Layout';
 import {
-  Plus, Trash2, ChevronRight,
+  Plus, Trash2, ChevronRight, ChevronDown,
   BookOpen, Layers, List, Lightbulb, Dot, FolderPlus,
   CheckCircle2, Circle, Pencil, Lock,
   Star, AlertTriangle, StickyNote, Filter, RotateCcw, GripVertical, ArrowUpDown,
@@ -431,6 +431,7 @@ export function Subjects() {
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [importantOnly, setImportantOnly] = useState(false);
   const [weakOnly, setWeakOnly] = useState(false);
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
 
   // Single note modal for any level
   const [notePath, setNotePath] = useState<MarkPath | null>(null);
@@ -833,74 +834,99 @@ export function Subjects() {
             .filter(g => g.items.length > 0);
 
           return (
-            <div className="space-y-4">
-              {groups.map(group => (
-                <motion.div
-                  key={group.subjectId}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-card border border-border/60 rounded-2xl overflow-hidden"
-                >
-                  {/* Subject header */}
-                  <div
-                    className="px-4 py-3 border-b border-border/50 flex items-center gap-2.5"
-                    style={{ borderLeftColor: group.subjectColor, borderLeftWidth: 4 }}
+            <div className="space-y-2">
+              {groups.map((group, gi) => {
+                const isOpen = expandedGroupId === group.subjectId;
+                return (
+                  <motion.div
+                    key={group.subjectId}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: gi * 0.04 }}
+                    className="bg-card border border-border/60 rounded-2xl overflow-hidden"
                   >
-                    <span className="text-sm font-bold text-foreground flex-1">{group.subjectTitle}</span>
-                    <span className="text-[10px] font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full border border-border/60">
-                      {group.items.length}
-                    </span>
-                  </div>
-                  {/* Items */}
-                  <ul className="divide-y divide-border/40">
-                    {group.items.map((it, i) => (
-                      <li key={`${it.level}-${i}`} className="px-4 py-3 group/row hover:bg-secondary/30 transition-colors">
-                        <div className="flex items-start gap-2.5">
-                          <div className="flex-1 min-w-0">
-                            {/* Breadcrumb (excluding subject name since it's the header) */}
-                            {it.breadcrumb.slice(1).length > 0 && (
-                              <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground font-medium mb-1.5 leading-relaxed">
-                                {it.breadcrumb.slice(1).map((c, ci) => (
-                                  <React.Fragment key={ci}>
-                                    {ci > 0 && <ChevronRight size={8} className="opacity-40 shrink-0" />}
-                                    <span className="max-w-[140px] truncate">{c}</span>
-                                  </React.Fragment>
-                                ))}
+                    {/* Subject header — clickable accordion trigger */}
+                    <button
+                      type="button"
+                      onClick={() => setExpandedGroupId(isOpen ? null : group.subjectId)}
+                      className="w-full px-4 py-3 flex items-center gap-2.5 hover:bg-secondary/40 transition-colors text-left"
+                      style={{ borderLeftColor: group.subjectColor, borderLeftWidth: 4 }}
+                    >
+                      <span className="text-sm font-bold text-foreground flex-1">{group.subjectTitle}</span>
+                      <span className="text-[10px] font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full border border-border/60 shrink-0">
+                        {group.items.length}
+                      </span>
+                      <motion.span
+                        animate={{ rotate: isOpen ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="shrink-0 text-muted-foreground"
+                      >
+                        <ChevronDown size={15} />
+                      </motion.span>
+                    </button>
+
+                    {/* Items — shown only when expanded */}
+                    <AnimatePresence initial={false}>
+                      {isOpen && (
+                        <motion.ul
+                          key="items"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.22, ease: 'easeInOut' }}
+                          className="divide-y divide-border/40 overflow-hidden border-t border-border/50"
+                        >
+                          {group.items.map((it, i) => (
+                            <li key={`${it.level}-${i}`} className="px-4 py-3 group/row hover:bg-secondary/30 transition-colors">
+                              <div className="flex items-start gap-2.5">
+                                <div className="flex-1 min-w-0">
+                                  {/* Breadcrumb (excluding subject name since it's the header) */}
+                                  {it.breadcrumb.slice(1).length > 0 && (
+                                    <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground font-medium mb-1.5 leading-relaxed">
+                                      {it.breadcrumb.slice(1).map((c, ci) => (
+                                        <React.Fragment key={ci}>
+                                          {ci > 0 && <ChevronRight size={8} className="opacity-40 shrink-0" />}
+                                          <span className="max-w-[140px] truncate">{c}</span>
+                                        </React.Fragment>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {/* Level tag + title */}
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border/60 shrink-0">
+                                      {it.level}
+                                    </span>
+                                    <h4 className="text-sm font-bold text-foreground flex-1 min-w-0">{it.title}</h4>
+                                  </div>
+                                  {/* Marks badges */}
+                                  <div className="mt-1.5">
+                                    <MarksBadgeRow
+                                      important={it.important}
+                                      weak={it.weak}
+                                      note={it.note}
+                                      onClickNote={() => openNote(it.path, it.note ?? '')}
+                                    />
+                                  </div>
+                                </div>
+                                <ItemActions
+                                  path={it.path}
+                                  important={it.important}
+                                  weak={it.weak}
+                                  hasNote={!!it.note}
+                                  currentNote={it.note}
+                                  onOpenNote={openNote}
+                                  size="sm"
+                                  alwaysVisible
+                                />
                               </div>
-                            )}
-                            {/* Level tag + title */}
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border/60 shrink-0">
-                                {it.level}
-                              </span>
-                              <h4 className="text-sm font-bold text-foreground flex-1 min-w-0">{it.title}</h4>
-                            </div>
-                            {/* Marks badges */}
-                            <div className="mt-1.5">
-                              <MarksBadgeRow
-                                important={it.important}
-                                weak={it.weak}
-                                note={it.note}
-                                onClickNote={() => openNote(it.path, it.note ?? '')}
-                              />
-                            </div>
-                          </div>
-                          <ItemActions
-                            path={it.path}
-                            important={it.important}
-                            weak={it.weak}
-                            hasNote={!!it.note}
-                            currentNote={it.note}
-                            onOpenNote={openNote}
-                            size="sm"
-                            alwaysVisible
-                          />
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </motion.div>
-              ))}
+                            </li>
+                          ))}
+                        </motion.ul>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                );
+              })}
             </div>
           );
         })()}

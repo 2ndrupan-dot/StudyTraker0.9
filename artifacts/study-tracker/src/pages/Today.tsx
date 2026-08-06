@@ -88,8 +88,13 @@ function formatMins(mins: number, h: string, m: string) {
 function getRevisionStageLabel(stage: number, isBn: boolean): string {
   const ordinalsBn = ['১ম', '২য়', '৩য়', '৪র্থ', '৫ম'];
   const ordinalsEn = ['1st', '2nd', '3rd', '4th', '5th'];
-  const idx = Math.min(stage ?? 0, ordinalsBn.length - 1);
-  return isBn ? `${ordinalsBn[idx]} রিভিশন` : `${ordinalsEn[idx]} Revision`;
+  const totalStages = STAGE_NEXT_DAYS.length; // 4
+  const current = Math.min((stage ?? 0) + 1, totalStages);
+  const curIdx = Math.min(current - 1, ordinalsEn.length - 1);
+  const totIdx = Math.min(totalStages - 1, ordinalsEn.length - 1);
+  return isBn
+    ? `${ordinalsBn[totIdx]} স্টেজের ${ordinalsBn[curIdx]}`
+    : `${ordinalsEn[curIdx]} of ${ordinalsEn[totIdx]} stage`;
 }
 
 function getAllItemIds(subjects: Subject[]): Set<string> {

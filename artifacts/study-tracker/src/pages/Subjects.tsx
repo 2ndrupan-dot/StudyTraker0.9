@@ -433,6 +433,9 @@ export function Subjects() {
   const [weakOnly, setWeakOnly] = useState(false);
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
 
+  // Reset accordion when any filter changes
+  useEffect(() => { setExpandedGroupId(null); }, [filter, importantOnly, weakOnly]);
+
   // Single note modal for any level
   const [notePath, setNotePath] = useState<MarkPath | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
@@ -713,7 +716,7 @@ export function Subjects() {
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setFilter(key)}
+                  onClick={() => setFilter(f => (key === 'all' || f !== key) ? key : 'all')}
                   className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all ${
                     isActive
                       ? `${activeCls} border-transparent shadow-sm`
@@ -824,7 +827,9 @@ export function Subjects() {
           );
 
           // Group items by subject, preserving subject order
+          // Also apply status filter (AND logic with mark filter)
           const groups = subjects
+            .filter(s => filter === 'all' || matchesStatus(subjectStatus(s), filter))
             .map(s => ({
               subjectId: s.id,
               subjectTitle: s.title,

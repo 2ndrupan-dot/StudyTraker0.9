@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useAdmin } from '@/context/AdminContext';
 import { useCourse } from '@/context/CourseContext';
 import { Layout } from '@/components/Layout';
-import { Plus, FileText, Trash2, Pencil, Check, X, StickyNote, Loader2, ArrowUpDown, GripVertical } from 'lucide-react';
+import { Plus, FileText, Trash2, Pencil, Check, X, StickyNote, Loader2, ArrowUpDown, GripVertical, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { ConfirmModal, NoteEditorModal } from '@/components/ui';
@@ -83,6 +83,9 @@ export function NotesIndex() {
 
   // Local cache: which note IDs have HTML content (populated after first open)
   const [htmlCache, setHtmlCache] = useState<Record<string, string>>({});
+
+  // Search
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Reorder mode
   const [reorderMode, setReorderMode] = useState(false);
@@ -163,6 +166,9 @@ export function NotesIndex() {
 
   const noteModalItem = notePagesIndex.find(n => n.id === noteModalId);
   const noteCount = notePagesIndex.length;
+  const filteredNotes = searchQuery.trim()
+    ? notePagesIndex.filter(n => n.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : notePagesIndex;
 
   return (
     <>
@@ -267,6 +273,28 @@ export function NotesIndex() {
             )}
           </AnimatePresence>
 
+          {/* ── Search bar ── */}
+          {noteCount > 0 && !isCreating && (
+            <div className="relative mb-3">
+              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder={lang === 'bn' ? 'নোট খুঁজুন...' : 'Search notes...'}
+                className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          )}
+
           {/* ── Empty state ── */}
           {noteCount === 0 && !isCreating && (
             <motion.div
@@ -298,13 +326,32 @@ export function NotesIndex() {
             </motion.div>
           )}
 
+          {/* ── No search results ── */}
+          {noteCount > 0 && filteredNotes.length === 0 && searchQuery.trim() && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col items-center justify-center py-12 text-center px-6"
+            >
+              <div className="mb-3 w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+                <Search size={24} className="text-primary/60" />
+              </div>
+              <p className="text-sm font-semibold text-foreground mb-1">
+                {lang === 'bn' ? 'কোনো নোট পাওয়া যায়নি' : 'No notes found'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {lang === 'bn' ? `"${searchQuery}" এর সাথে কোনো নোট মিলছে না` : `No notes match "${searchQuery}"`}
+              </p>
+            </motion.div>
+          )}
+
           {/* ── Notes list ── */}
-          {noteCount > 0 && (
+          {noteCount > 0 && filteredNotes.length > 0 && (
             <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-              <SortableContext items={notePagesIndex.map(n => n.id)} strategy={verticalListSortingStrategy}>
+              <SortableContext items={filteredNotes.map(n => n.id)} strategy={verticalListSortingStrategy}>
                 <ul className="space-y-2">
                   <AnimatePresence>
-                    {notePagesIndex.map((note, idx) => (
+                    {filteredNotes.map((note, idx) => (
                       <SortableNoteCard key={note.id} id={note.id} reorderMode={reorderMode}>
                         {handle => (
                           <NoteCard

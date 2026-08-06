@@ -361,15 +361,7 @@ export function NotesIndex() {
     );
   };
 
-  // ── Shared-course read-only notice ──
-  const readOnlyNotice = isCourseNotesReadOnly && activeTab === 'course' && selectedSubjectId ? (
-    <div className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40 text-blue-700 dark:text-blue-300 text-xs font-medium">
-      <BookOpen size={13} className="shrink-0" />
-      {lang === 'bn'
-        ? 'এই নোটগুলো অ্যাডমিন কর্তৃক শেয়ার করা — শুধুমাত্র পড়া যাবে।'
-        : 'These notes are shared by the admin — read-only.'}
-    </div>
-  ) : null;
+  // Read-only notice intentionally hidden
 
   // ── Header subtitle ──
   const headerSubtitle = selectedSubject
@@ -520,8 +512,6 @@ export function NotesIndex() {
                 {/* Notes inside a subject */}
                 {selectedSubjectId && (
                   <>
-                    {readOnlyNotice}
-
                     {/* Create input */}
                     <AnimatePresence>
                       {isCreating && (

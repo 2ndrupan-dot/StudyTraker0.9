@@ -876,6 +876,7 @@ export function AdminPanel() {
   // Duration / expiry for new admin
   const [newAdminHasExpiry, setNewAdminHasExpiry] = useState(false);
   const [newAdminDurationValue, setNewAdminDurationValue] = useState(7);
+  const [newAdminDurationRaw, setNewAdminDurationRaw] = useState('7');
   const [newAdminDurationUnit, setNewAdminDurationUnit] = useState<'minutes' | 'hours' | 'days' | 'months'>('days');
   const [addingAdmin, setAddingAdmin] = useState(false);
   const [adminError, setAdminError] = useState('');
@@ -1038,10 +1039,13 @@ export function AdminPanel() {
     setAdminError('');
     setAddingAdmin(true);
     try {
+      // Keep the input editable while typing, but never submit an invalid
+      // duration if the field was left blank or contains a non-positive value.
+      const durationValue = Math.max(1, parseInt(newAdminDurationRaw, 10) || 1);
       await addAdmin(
         newAdminEmail.trim(),
         newAdminPermissions,
-        newAdminHasExpiry ? newAdminDurationValue : undefined,
+        newAdminHasExpiry ? durationValue : undefined,
         newAdminHasExpiry ? newAdminDurationUnit : undefined,
       );
       setNewAdminEmail('');
@@ -1049,6 +1053,7 @@ export function AdminPanel() {
       setShowNewAdminPerms(false);
       setNewAdminHasExpiry(false);
       setNewAdminDurationValue(7);
+      setNewAdminDurationRaw('7');
       setNewAdminDurationUnit('days');
     } catch {
       setAdminError(lang === 'bn' ? 'যোগ করতে সমস্যা হয়েছে।' : 'Failed to add admin.');
@@ -1537,8 +1542,18 @@ export function AdminPanel() {
                           <Input
                             type="number"
                             min={1}
-                            value={newAdminDurationValue}
-                            onChange={e => setNewAdminDurationValue(Math.max(1, Number(e.target.value) || 1))}
+                            value={newAdminDurationRaw}
+                            onChange={e => {
+                              const raw = e.target.value;
+                              setNewAdminDurationRaw(raw);
+                              const value = parseInt(raw, 10);
+                              if (!isNaN(value) && value > 0) setNewAdminDurationValue(value);
+                            }}
+                            onBlur={() => {
+                              const value = Math.max(1, parseInt(newAdminDurationRaw, 10) || 1);
+                              setNewAdminDurationValue(value);
+                              setNewAdminDurationRaw(String(value));
+                            }}
                             className="flex-1 h-9 text-sm"
                           />
                           <select

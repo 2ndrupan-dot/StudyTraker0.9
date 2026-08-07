@@ -83,10 +83,16 @@ export function NotesIndex() {
   const { isAdmin, isSuperAdmin, appContact } = useAdmin();
   const { activeCourseId, sharedCoursesMeta } = useCourse();
   const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
+  // Course Notes are available to admins on their own courses and to every
+  // recipient while viewing a course accepted from an admin.  A regular user
+  // on their own course should only see their private notes.
+  const canViewCourseNotes = isAdmin || !!activeSharedMeta;
   const isCourseNotesReadOnly = !!activeSharedMeta;
 
   // ── Tab & subject navigation ──
-  const [activeTab, setActiveTab] = useState<ActiveTab>('course');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(
+    canViewCourseNotes ? 'course' : 'personal',
+  );
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
 
   // ── Course Notes state ──
@@ -238,6 +244,16 @@ export function NotesIndex() {
     setReorderMode(false); setPersonalReorderMode(false); setPromptReorderMode(false);
     setSearchQuery(''); setPersonalSearchQuery(''); setPromptSearchQuery('');
   }, [activeTab]);
+
+  // Admin access can change live (manual removal or expiry).  Never leave a
+  // regular user on the hidden Course Notes view; the underlying course-note
+  // data remains untouched so it becomes available again if they are promoted.
+  useEffect(() => {
+    if (!canViewCourseNotes && activeTab === 'course') {
+      setActiveTab('personal');
+      setSelectedSubjectId(null);
+    }
+  }, [canViewCourseNotes, activeTab]);
 
   // ── Course Notes: create ──
   const handleCreate = () => {
@@ -577,44 +593,49 @@ export function NotesIndex() {
             )}
           </div>
 
-          {/* ── Tab switcher ── */}
-          <div className="relative px-3 pb-3 flex gap-1">
-            <button
-              onClick={() => setActiveTab('course')}
-              className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl font-bold transition-all ${isSuperAdmin ? 'text-[10px]' : 'text-xs'} ${
-                activeTab === 'course'
-                  ? 'bg-white text-purple-700 shadow-md'
-                  : 'bg-white/15 text-white/80 hover:bg-white/25'
-              }`}
-            >
-              <BookOpen size={10} className="shrink-0" />
-              <span className="whitespace-nowrap">{lang === 'bn' ? 'কোর্স নোটস' : 'Course Notes'}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('personal')}
-              className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl font-bold transition-all ${isSuperAdmin ? 'text-[10px]' : 'text-xs'} ${
-                activeTab === 'personal'
-                  ? 'bg-white text-purple-700 shadow-md'
-                  : 'bg-white/15 text-white/80 hover:bg-white/25'
-              }`}
-            >
-              <User size={10} className="shrink-0" />
-              <span className="whitespace-nowrap">{lang === 'bn' ? 'ব্যক্তিগত নোটস' : 'Personal Notes'}</span>
-            </button>
-            {isSuperAdmin && (
+          {/* ── Tab switcher ──
+              Regular users on their own course have no tab/button for
+              Personal Notes — the page itself is their personal-notes view.
+              Shared-course recipients still get both sections. */}
+          {canViewCourseNotes && (
+            <div className="relative px-3 pb-3 flex gap-1">
               <button
-                onClick={() => setActiveTab('prompts')}
-                className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-[10px] font-bold transition-all ${
-                  activeTab === 'prompts'
+                onClick={() => setActiveTab('course')}
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl font-bold transition-all ${isSuperAdmin ? 'text-[10px]' : 'text-xs'} ${
+                  activeTab === 'course'
                     ? 'bg-white text-purple-700 shadow-md'
                     : 'bg-white/15 text-white/80 hover:bg-white/25'
                 }`}
               >
-                <Sparkles size={10} className="shrink-0" />
-                <span className="whitespace-nowrap">{lang === 'bn' ? 'প্রম্পটস' : 'Prompts'}</span>
+                <BookOpen size={10} className="shrink-0" />
+                <span className="whitespace-nowrap">{lang === 'bn' ? 'কোর্স নোটস' : 'Course Notes'}</span>
               </button>
-            )}
-          </div>
+              <button
+                onClick={() => setActiveTab('personal')}
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl font-bold transition-all ${isSuperAdmin ? 'text-[10px]' : 'text-xs'} ${
+                  activeTab === 'personal'
+                    ? 'bg-white text-purple-700 shadow-md'
+                    : 'bg-white/15 text-white/80 hover:bg-white/25'
+                }`}
+              >
+                <User size={10} className="shrink-0" />
+                <span className="whitespace-nowrap">{lang === 'bn' ? 'ব্যক্তিগত নোটস' : 'Personal Notes'}</span>
+              </button>
+              {isSuperAdmin && (
+                <button
+                  onClick={() => setActiveTab('prompts')}
+                  className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-[10px] font-bold transition-all ${
+                    activeTab === 'prompts'
+                      ? 'bg-white text-purple-700 shadow-md'
+                      : 'bg-white/15 text-white/80 hover:bg-white/25'
+                  }`}
+                >
+                  <Sparkles size={10} className="shrink-0" />
+                  <span className="whitespace-nowrap">{lang === 'bn' ? 'প্রম্পটস' : 'Prompts'}</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="p-5 max-w-2xl mx-auto">

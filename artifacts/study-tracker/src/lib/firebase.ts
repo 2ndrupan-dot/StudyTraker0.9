@@ -5,7 +5,6 @@ import {
   initializeFirestore,
   getFirestore,
   memoryLocalCache,
-  enableNetwork,
 } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -54,33 +53,15 @@ export const db = firestore;
 export const storage = getStorage(app);
 export default app;
 
-// ─── Firestore reconnection on tab visibility ────────────────────────────────
-// When the user navigates away (PDF window, another site, etc.) the browser
-// can suspend the Firestore WebSocket. On return, `enableNetwork` explicitly
-// wakes it back up so listeners and writes resume immediately without a page
-// reload.
-//
-// The listener is registered once on a module-level symbol so Vite HMR
-// re-executions don't stack up multiple copies of the same handler.
-const _VIS_KEY = '__studytrack_vis_handler__';
-if (typeof document !== 'undefined' && !(window as any)[_VIS_KEY]) {
-  const handler = () => {
-    if (document.visibilityState === 'visible') {
-      enableNetwork(db).catch(() => {
-        // Silently ignore — the SDK retries automatically.
-      });
-    }
-  };
-  (window as any)[_VIS_KEY] = handler;
-  document.addEventListener('visibilitychange', handler);
-}
+// Firestore manages its own network reconnect when a mobile browser suspends
+// and resumes a tab. Calling enableNetwork() from a visibility handler can
+// race with the SDK's own online-state transition and has caused intermittent
+// "INTERNAL ASSERTION FAILED" crashes on mobile browsers. Do not force a second
+// network transition here; listeners and pending writes reconnect automatically.
 
-// ─── HMR: force a full page reload when this module changes ─────────────────
-// firebase.ts holds singleton state that cannot be partially hot-swapped —
-// re-executing the module while Firestore listeners are still alive causes
-// "INTERNAL ASSERTION FAILED: Unexpected state (ID: da08)".
-// Declining HMR here tells Vite to do a full refresh instead, which cleanly
-// re-initialises the SDK from scratch.
+// Firebase keeps singleton state outside the module, so partially replacing
+// this module during Vite HMR can leave old Firestore listeners attached to
+// new SDK objects. Ask Vite to reload the page for this module instead.
 if (import.meta.hot) {
-  import.meta.hot.decline();
+  (import.meta.hot as any).decline?.();
 }

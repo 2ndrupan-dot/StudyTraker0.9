@@ -8,13 +8,15 @@ import {
   updateProfile as firebaseUpdateProfile,
   updatePassword,
   sendPasswordResetEmail,
+  signInWithRedirect,
+  setPersistence,
+  browserLocalPersistence,
   EmailAuthProvider,
   reauthenticateWithCredential,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, googleProvider } from '@/lib/firebase';
-import { useLocation } from 'wouter';
 
 export interface AppUser {
   id: string;
@@ -88,34 +90,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [, setLocation] = useLocation();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async fbUser => {
-      if (fbUser) {
-        const appUser = mapFirebaseUser(fbUser);
-        // Try to load profile photo stored in Firestore
-        const photo = await loadPhotoFromFirestore(fbUser.uid);
-        if (photo) appUser.photoURL = photo;
+    let unsubscribe: (() => void) | undefined;
+    let active = true;
+
+    // Make the persistence mode explicit. This prevents an auth result from
+    // disappearing on mobile when the browser suspends or recreates the tab.
+    // Authentication must not wait for Firestore or a profile document.
+    const startAuth = async () => {
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+      } catch (persistenceError) {
+        // Some privacy-focused browsers reject local persistence. Firebase can
+        // still authenticate in session memory, so continue instead of making
+        // the login screen unusable.
+        console.warn('[auth] local persistence unavailable; using session auth', persistenceError);
+      }
+
+      if (!active) return;
+      unsubscribe = onAuthStateChanged(auth, fbUser => {
+        // Keep this callback synchronous. Starting a Firestore read here can
+        // overlap the SDK's auth-token transition and has caused intermittent
+        // Firestore INTERNAL ASSERTION FAILED errors on mobile browsers.
         setUser(prev => {
-          // Keep the same object reference if nothing changed — prevents
-          // StudyContext from resetting on token-refresh / reconnect events
+          if (!fbUser) return prev === null ? prev : null;
+          const next = mapFirebaseUser(fbUser);
+          // Keep the same object reference on token refreshes so all
+          // user-scoped data providers do not unnecessarily tear down and
+          // recreate their listeners.
           if (
             prev &&
-            prev.id === appUser.id &&
-            prev.name === appUser.name &&
-            prev.email === appUser.email &&
-            prev.photoURL === appUser.photoURL
+            prev.id === next.id &&
+            prev.name === next.name &&
+            prev.email === next.email &&
+            prev.photoURL === next.photoURL
           ) return prev;
-          return appUser;
+          return next;
         });
-      } else {
+        setLoading(false);
+      });
+    };
+
+    startAuth().catch(authError => {
+      console.error('[auth] failed to initialise Firebase Auth', authError);
+      if (active) {
         setUser(null);
+        setLoading(false);
+        setError('loginError');
       }
-      setLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
   }, []);
+
+  // A profile photo is optional metadata. Load it after auth has settled so a
+  // Firestore outage/assertion can never turn a successful login into a failed
+  // auth transition.
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    loadPhotoFromFirestore(user.id).then(photo => {
+      if (!active || !photo) return;
+      setUser(prev => {
+        if (!prev || prev.id !== user.id || prev.photoURL === photo) return prev;
+        return { ...prev, photoURL: photo };
+      });
+    });
+    return () => { active = false; };
+  }, [user?.id]);
 
   const clearError = () => setError('');
 
@@ -123,7 +169,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError('');
     try {
       await signInWithEmailAndPassword(auth, email, pass);
-      setLocation('/today');
     } catch (e: any) {
       const code = e.code || '';
       if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
@@ -141,9 +186,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError('');
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
-      await firebaseUpdateProfile(cred.user, { displayName: name });
-      setUser({ id: cred.user.uid, name, email });
-      setLocation('/today');
+      // Creating the Firebase account is the important operation. A profile
+      // update can fail independently on a flaky mobile connection; do not
+      // report registration as failed after the account was already created.
+      try {
+        await firebaseUpdateProfile(cred.user, { displayName: name });
+      } catch (profileError) {
+        console.warn('[auth] account created but display-name update failed', profileError);
+      }
+      setUser({ ...mapFirebaseUser(cred.user), name });
     } catch (e: any) {
       const code = e.code || '';
       if (code === 'auth/email-already-in-use') {
@@ -161,9 +212,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError('');
     try {
       await signInWithPopup(auth, googleProvider);
-      setLocation('/today');
     } catch (e: any) {
       const code = e.code || '';
+      // Popup windows are frequently blocked on Android WebView/in-app
+      // browsers. Redirect is the reliable fallback and returns through the
+      // same onAuthStateChanged path when the app is opened again.
+      if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
       if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
         setError('googleSignInFailed');
       }
@@ -184,7 +241,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await signOut(auth);
     setUser(null);
-    setLocation('/auth');
   };
 
   const updateProfile = async (name: string, currentPass: string, newPass?: string) => {

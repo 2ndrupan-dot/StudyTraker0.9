@@ -5,11 +5,12 @@ import { useStudy } from '@/context/StudyContext';
 import { useTest, type TestCard } from '@/context/TestContext';
 import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
+import { useAdmin } from '@/context/AdminContext';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { ConfirmModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ClipboardList, Plus, ChevronLeft, Pencil, Trash2, Check, X,
+  ClipboardList, Plus, ChevronLeft, Pencil, Trash2, Check, X, User as UserIcon,
   ArrowUpDown, GripVertical, Info, Play, BookOpen, Search,
 } from 'lucide-react';
 import {
@@ -224,13 +225,24 @@ function CardForm({ initialTitle = '', initialQuestion = '', initialAnswer = '',
 
 export function Test() {
   const { subjects, reorderSubjects } = useStudy();
-  const { testDecks, testDecksLoaded, addTestCard, updateTestCard, deleteTestCard, reorderTestCards } = useTest();
+  const {
+    testDecks, personalTestDecks, testDecksLoaded, personalTestDecksLoaded,
+    addTestCard, updateTestCard, deleteTestCard, reorderTestCards,
+    addPersonalTestCard, updatePersonalTestCard, deletePersonalTestCard, reorderPersonalTestCards,
+  } = useTest();
   const { activeCourseId, sharedCoursesMeta } = useCourse();
+  const { isAdmin } = useAdmin();
   const isSharedCourse = !!(activeCourseId && sharedCoursesMeta[activeCourseId]);
+  const canViewCourseTests = isAdmin || isSharedCourse;
+  const isCourseTestReadOnly = isSharedCourse;
   const { t, lang } = useLang();
   const [, navigate] = useLocation();
 
   // Navigation state
+  type ActiveTestTab = 'course' | 'personal';
+  const [activeTab, setActiveTab] = useState<ActiveTestTab>(
+    canViewCourseTests ? 'course' : 'personal',
+  );
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
 
   // Card interactions
@@ -256,7 +268,8 @@ export function Test() {
   );
 
   const selectedSubject = subjects.find(s => s.id === selectedSubjectId);
-  const deck = selectedSubjectId ? (testDecks[selectedSubjectId] ?? []) : [];
+  const deckMap = activeTab === 'course' ? testDecks : personalTestDecks;
+  const deck = selectedSubjectId ? (deckMap[selectedSubjectId] ?? []) : [];
   const filteredDeck = searchQuery.trim()
     ? deck.filter(c => c.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
     : deck;
@@ -281,6 +294,22 @@ export function Test() {
     setSearchQuery('');
   };
 
+  useEffect(() => {
+    if (!canViewCourseTests && activeTab === 'course') {
+      setActiveTab('personal');
+    }
+  }, [canViewCourseTests, activeTab]);
+
+  useEffect(() => {
+    setSelectedSubjectId(null);
+    setIsAdding(false);
+    setEditingCardId(null);
+    setExpandedCardId(null);
+    setReorderMode(false);
+    setSaveError('');
+    setSearchQuery('');
+  }, [activeTab]);
+
   const handleSaveNew = async (title: string, question: string, answer: string) => {
     if (!title.trim() || !question.trim() || !answer.trim()) {
       setSaveError(t('testCardSaveError'));
@@ -288,7 +317,9 @@ export function Test() {
     }
     if (!selectedSubjectId) return;
     setSaveError('');
-    await addTestCard(selectedSubjectId, { title: title.trim(), question: question.trim(), answer: answer.trim() });
+    const data = { title: title.trim(), question: question.trim(), answer: answer.trim() };
+    if (activeTab === 'course') await addTestCard(selectedSubjectId, data);
+    else await addPersonalTestCard(selectedSubjectId, data);
     setIsAdding(false);
   };
 
@@ -299,19 +330,22 @@ export function Test() {
     }
     if (!selectedSubjectId || !editingCardId) return;
     setSaveError('');
-    await updateTestCard(selectedSubjectId, editingCardId, { title: title.trim(), question: question.trim(), answer: answer.trim() });
+    const data = { title: title.trim(), question: question.trim(), answer: answer.trim() };
+    if (activeTab === 'course') await updateTestCard(selectedSubjectId, editingCardId, data);
+    else await updatePersonalTestCard(selectedSubjectId, editingCardId, data);
     setEditingCardId(null);
   };
 
   const handleDeleteCard = async () => {
     if (!confirmDeleteCardId || !selectedSubjectId) return;
-    await deleteTestCard(selectedSubjectId, confirmDeleteCardId);
+    if (activeTab === 'course') await deleteTestCard(selectedSubjectId, confirmDeleteCardId);
+    else await deletePersonalTestCard(selectedSubjectId, confirmDeleteCardId);
     if (expandedCardId === confirmDeleteCardId) setExpandedCardId(null);
     setConfirmDeleteCardId(null);
   };
 
   // Drag end for subjects (on subject view) or test cards (on deck view)
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -324,12 +358,15 @@ export function Test() {
       // Reorder test cards
       const fromIdx = deck.findIndex(c => c.id === active.id);
       const toIdx = deck.findIndex(c => c.id === over.id);
-      if (fromIdx !== -1 && toIdx !== -1) reorderTestCards(selectedSubjectId, fromIdx, toIdx);
+      if (fromIdx !== -1 && toIdx !== -1) {
+        if (activeTab === 'course') await reorderTestCards(selectedSubjectId, fromIdx, toIdx);
+        else await reorderPersonalTestCards(selectedSubjectId, fromIdx, toIdx);
+      }
     }
   };
 
   const handleStartTest = (cardId: string) => {
-    navigate(`/test/run?sid=${selectedSubjectId}&cid=${cardId}`);
+    navigate(`/test/run?sid=${selectedSubjectId}&cid=${cardId}&type=${activeTab}`);
   };
 
   // ── Sortable items list ───────────────────────────────────────────────────
@@ -381,8 +418,8 @@ export function Test() {
 
             {/* Header right actions */}
             <div className="flex items-center gap-2">
-              {/* Reorder button - shown only on deck view; hidden for shared courses */}
-              {(!!selectedSubjectId && deck.length > 0) && !isAdding && !editingCardId && !isSharedCourse && (
+              {/* Reorder button - shown only on editable deck views */}
+              {(!!selectedSubjectId && deck.length > 0) && !isAdding && !editingCardId && !(activeTab === 'course' && isCourseTestReadOnly) && (
                 <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(313 80% 52%)' } as React.CSSProperties}>
                   <motion.button
                     whileTap={{ scale: 0.97 }}
@@ -391,15 +428,15 @@ export function Test() {
                     className={`spin-border-inner h-7 w-7 flex items-center justify-center transition-colors ${
                       reorderMode ? 'bg-white text-purple-600 shadow-md' : 'bg-white/15 text-white hover:bg-white/25'
                     }`}
-                    title={reorderMode ? (lang === 'bn' ? 'রি-অর্ডার বন্ধ' : 'Done reordering') : t(selectedSubjectId ? 'testReorderCards' : 'testReorderSubjects')}
+                     title={reorderMode ? (lang === 'bn' ? 'রি-অর্ডার বন্ধ' : 'Done reordering') : t('testReorderCards')}
                   >
                     <ArrowUpDown size={13} />
                   </motion.button>
                 </span>
               )}
 
-              {/* Add Test Card button — shown only on deck view; hidden for shared courses */}
-              {selectedSubjectId && !isAdding && !editingCardId && !isSharedCourse && (
+              {/* Add Test Card button — shown only on editable deck views */}
+              {selectedSubjectId && !isAdding && !editingCardId && !(activeTab === 'course' && isCourseTestReadOnly) && (
                 <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(313 80% 52%)' } as React.CSSProperties}>
                   <motion.button
                     whileTap={{ scale: 0.97 }}
@@ -413,6 +450,28 @@ export function Test() {
               )}
             </div>
           </div>
+          {canViewCourseTests && (
+            <div className="relative px-3 pb-3 flex gap-1">
+              <button
+                onClick={() => setActiveTab('course')}
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  activeTab === 'course' ? 'bg-white text-purple-700 shadow-md' : 'bg-white/15 text-white/80 hover:bg-white/25'
+                }`}
+              >
+                <BookOpen size={10} className="shrink-0" />
+                <span className="whitespace-nowrap">{lang === 'bn' ? 'কোর্স টেস্ট' : 'Course Test'}</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('personal')}
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  activeTab === 'personal' ? 'bg-white text-purple-700 shadow-md' : 'bg-white/15 text-white/80 hover:bg-white/25'
+                }`}
+              >
+                <UserIcon size={10} className="shrink-0" />
+                <span className="whitespace-nowrap">{lang === 'bn' ? 'পার্সোনাল টেস্ট' : 'Personal Test'}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── Body ── */}
@@ -434,7 +493,7 @@ export function Test() {
           {/* ── Subject list view ── */}
           {!selectedSubjectId && (
             <>
-              {subjects.length === 0 ? (
+                  {subjects.length === 0 ? (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -454,8 +513,8 @@ export function Test() {
                   <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       <AnimatePresence>
-                        {subjects.map((subj, idx) => {
-                          const count = (testDecks[subj.id] ?? []).length;
+                         {subjects.map((subj, idx) => {
+                           const count = (deckMap[subj.id] ?? []).length;
                           const accent = CARD_ACCENTS[idx % CARD_ACCENTS.length];
                           const iconColor = ICON_COLORS[idx % ICON_COLORS.length];
                           return (
@@ -477,7 +536,9 @@ export function Test() {
                                       </div>
                                     )}
                                     <div className={cn('w-9 h-9 rounded-xl bg-white/60 dark:bg-white/10 flex items-center justify-center mb-3 shadow-sm', iconColor)}>
-                                      <ClipboardList size={16} strokeWidth={2} className={iconColor} />
+                                       {activeTab === 'course'
+                                         ? <BookOpen size={16} strokeWidth={2} className={iconColor} />
+                                         : <UserIcon size={16} strokeWidth={2} className={iconColor} />}
                                     </div>
                                     <p className="text-sm font-bold text-foreground leading-snug mb-1 line-clamp-2">{subj.title}</p>
                                     <p className="text-[11px] text-muted-foreground font-medium">
@@ -542,7 +603,7 @@ export function Test() {
                   <p className="text-muted-foreground text-sm mb-6 leading-relaxed">
                     {lang === 'bn' ? 'টেস্ট কার্ড যোগ করুন।' : 'Add a test card to get started.'}
                   </p>
-                  {!isSharedCourse && (
+                   {!(activeTab === 'course' && isCourseTestReadOnly) && (
                     <motion.button
                       whileTap={{ scale: 0.95 }}
                       onClick={() => setIsAdding(true)}
@@ -598,7 +659,7 @@ export function Test() {
                                   expanded={expandedCardId === card.id}
                                   reorderMode={reorderMode}
                                   dragHandle={handle}
-                                  isShared={isSharedCourse}
+                                   isShared={activeTab === 'course' && isCourseTestReadOnly}
                                   onToggleExpand={() => {
                                     if (!reorderMode) setExpandedCardId(id => id === card.id ? null : card.id);
                                   }}

@@ -21,11 +21,18 @@ export interface TestCard {
 interface TestContextValue {
   /** subjectId → sorted TestCard[] */
   testDecks: Record<string, TestCard[]>;
+  /** Personal test cards for the active course; never shared with admins/recipients. */
+  personalTestDecks: Record<string, TestCard[]>;
   testDecksLoaded: boolean;
+  personalTestDecksLoaded: boolean;
   addTestCard: (subjectId: string, data: Pick<TestCard, 'title' | 'question' | 'answer'>) => Promise<void>;
   updateTestCard: (subjectId: string, cardId: string, data: Pick<TestCard, 'title' | 'question' | 'answer'>) => Promise<void>;
   deleteTestCard: (subjectId: string, cardId: string) => Promise<void>;
   reorderTestCards: (subjectId: string, fromIdx: number, toIdx: number) => Promise<void>;
+  addPersonalTestCard: (subjectId: string, data: Pick<TestCard, 'title' | 'question' | 'answer'>) => Promise<void>;
+  updatePersonalTestCard: (subjectId: string, cardId: string, data: Pick<TestCard, 'title' | 'question' | 'answer'>) => Promise<void>;
+  deletePersonalTestCard: (subjectId: string, cardId: string) => Promise<void>;
+  reorderPersonalTestCards: (subjectId: string, fromIdx: number, toIdx: number) => Promise<void>;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -43,7 +50,9 @@ export function TestProvider({ children }: { children: ReactNode }) {
   const { activeCourseId } = useCourse();
 
   const [testDecks, setTestDecks] = useState<Record<string, TestCard[]>>({});
+  const [personalTestDecks, setPersonalTestDecks] = useState<Record<string, TestCard[]>>({});
   const [testDecksLoaded, setTestDecksLoaded] = useState(false);
+  const [personalTestDecksLoaded, setPersonalTestDecksLoaded] = useState(false);
 
   // Keep a stable ref to activeCourseId so the relay closure always sees the latest value
   const activeCourseIdRef = useRef(activeCourseId);
@@ -71,9 +80,12 @@ export function TestProvider({ children }: { children: ReactNode }) {
   // Subscribe to Firestore testDecks collection for the active course
   useEffect(() => {
     setTestDecksLoaded(false);
+    setPersonalTestDecksLoaded(false);
     if (!user || !activeCourseId) {
       setTestDecks({});
+      setPersonalTestDecks({});
       setTestDecksLoaded(true);
+      setPersonalTestDecksLoaded(true);
       return;
     }
 
@@ -93,7 +105,25 @@ export function TestProvider({ children }: { children: ReactNode }) {
       setTestDecksLoaded(true);
     });
 
-    return () => unsub();
+    const personalColRef = collection(db, 'users', user.id, 'courses', activeCourseId, 'personalTestDecks');
+    const personalUnsub: Unsubscribe = onSnapshot(personalColRef, snap => {
+      const decks: Record<string, TestCard[]> = {};
+      snap.forEach(d => {
+        const data = d.data();
+        const cards: TestCard[] = Array.isArray(data.cards) ? data.cards : [];
+        decks[d.id] = [...cards].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      });
+      setPersonalTestDecks(decks);
+      setPersonalTestDecksLoaded(true);
+    }, err => {
+      console.error('[TestContext] personal snapshot error', err);
+      setPersonalTestDecksLoaded(true);
+    });
+
+    return () => {
+      unsub();
+      personalUnsub();
+    };
   }, [user, activeCourseId]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -101,6 +131,11 @@ export function TestProvider({ children }: { children: ReactNode }) {
   const deckRef = (subjectId: string) => {
     if (!user || !activeCourseId) throw new Error('Not authenticated');
     return doc(db, 'users', user.id, 'courses', activeCourseId, 'testDecks', subjectId);
+  };
+
+  const personalDeckRef = (subjectId: string) => {
+    if (!user || !activeCourseId) throw new Error('Not authenticated');
+    return doc(db, 'users', user.id, 'courses', activeCourseId, 'personalTestDecks', subjectId);
   };
 
   // ── Live-sync relay for test deck mutations ─────────────────────────────
@@ -214,10 +249,68 @@ export function TestProvider({ children }: { children: ReactNode }) {
     await persistDeck(subjectId, existing);
   };
 
+  const persistPersonalDeck = async (subjectId: string, cards: TestCard[]) => {
+    const ordered = cards.map((c, i) => ({ ...c, order: i }));
+    setPersonalTestDecks(prev => ({ ...prev, [subjectId]: ordered }));
+    await setDoc(personalDeckRef(subjectId), { cards: ordered, updatedAt: Date.now() });
+  };
+
+  const addPersonalTestCard = async (
+    subjectId: string,
+    data: Pick<TestCard, 'title' | 'question' | 'answer'>,
+  ) => {
+    const existing = personalTestDecks[subjectId] ?? [];
+    const now = Date.now();
+    const newCard: TestCard = {
+      id: uid(),
+      title: data.title,
+      question: data.question,
+      answer: data.answer,
+      order: existing.length,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await persistPersonalDeck(subjectId, [...existing, newCard]);
+  };
+
+  const updatePersonalTestCard = async (
+    subjectId: string,
+    cardId: string,
+    data: Pick<TestCard, 'title' | 'question' | 'answer'>,
+  ) => {
+    const existing = personalTestDecks[subjectId] ?? [];
+    const updated = existing.map(c =>
+      c.id === cardId ? { ...c, ...data, updatedAt: Date.now() } : c,
+    );
+    await persistPersonalDeck(subjectId, updated);
+  };
+
+  const deletePersonalTestCard = async (subjectId: string, cardId: string) => {
+    const existing = personalTestDecks[subjectId] ?? [];
+    const filtered = existing.filter(c => c.id !== cardId);
+    if (filtered.length === 0) {
+      const next = { ...personalTestDecks };
+      delete next[subjectId];
+      setPersonalTestDecks(next);
+      await deleteDoc(personalDeckRef(subjectId));
+    } else {
+      await persistPersonalDeck(subjectId, filtered);
+    }
+  };
+
+  const reorderPersonalTestCards = async (subjectId: string, fromIdx: number, toIdx: number) => {
+    const existing = [...(personalTestDecks[subjectId] ?? [])];
+    if (fromIdx === toIdx) return;
+    const [moved] = existing.splice(fromIdx, 1);
+    existing.splice(toIdx, 0, moved);
+    await persistPersonalDeck(subjectId, existing);
+  };
+
   return (
     <TestContext.Provider value={{
-      testDecks, testDecksLoaded,
+      testDecks, personalTestDecks, testDecksLoaded, personalTestDecksLoaded,
       addTestCard, updateTestCard, deleteTestCard, reorderTestCards,
+      addPersonalTestCard, updatePersonalTestCard, deletePersonalTestCard, reorderPersonalTestCards,
     }}>
       {children}
     </TestContext.Provider>

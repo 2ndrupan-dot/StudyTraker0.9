@@ -14,3 +14,4 @@
 - [StudyTrack share permissions must gate every NoteEditorModal call site](studytrack-share-permissions-every-callsite.md) — editNotes/downloadNotes/copyNotes only work where each page explicitly wires editAllowed/downloadAllowed/copyAllowed + a save-time guard; missed sites silently ignore admin permissions.
 - [Admin expiry and expiryTick ordering](admin-expiry-ordering.md) — expiryTick useState must be declared BEFORE all const computed values that depend on it (adminEmails, visibleAdmins, etc.); declaring it after causes a duplicate-const crash.
 - [Auth and Firestore separation](auth-firestore-separation.md) — auth state must settle independently from optional Firestore profile/data listeners, especially on mobile reconnects.
+- [Personal test privacy](personal-test-privacy.md) — personal test cards use a separate course subcollection and never enter course-share snapshots or admin relays.

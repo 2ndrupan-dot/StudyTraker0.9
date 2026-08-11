@@ -129,6 +129,31 @@ async function readChunkEntries(colRef: CollectionReference): Promise<Array<[str
   return entries;
 }
 
+/** Read the complete companion note document, including chunked note maps. */
+async function readCourseNotes(
+  notesDocRef: DocumentReference,
+): Promise<{ exists: boolean; overallNote: string; notes: Record<string, string> }> {
+  const snap = await getDoc(notesDocRef);
+  if (!snap.exists()) return { exists: false, overallNote: '', notes: {} };
+  const data = snap.data() as {
+    overallNote?: string;
+    notes?: Record<string, string>;
+    chunked?: boolean;
+  };
+  if (!data.chunked) {
+    return {
+      exists: true,
+      overallNote: data.overallNote || '',
+      notes: data.notes || {},
+    };
+  }
+  const entries = await readChunkEntries(collection(notesDocRef, 'chunks'));
+  const merged = reassembleEntries(entries);
+  const overallNote = merged['__overall__'] || '';
+  delete merged['__overall__'];
+  return { exists: true, overallNote, notes: merged };
+}
+
 /** Bin-pack a NoteElement array into chunk arrays that each stay under `limit`
  *  bytes when JSON-serialised (elements themselves are not split further). */
 function packElements(elements: NoteElement[], limit: number): NoteElement[][] {
@@ -311,6 +336,47 @@ function mergeNotes(
   }
 
   return { subjects: subjects.map(mergeS), tempNotes: mergeTN(tempNotes) };
+}
+
+/** Collect every note key represented by a node that the user explicitly
+ * removed.  We include keys even when the current device has no note content
+ * for them: another device may have saved that content meanwhile. */
+function collectDeletedNoteKeys(node: any, kind: string, out = new Set<string>()): Set<string> {
+  if (!node || typeof node !== 'object') return out;
+  if (node.id) out.add(`${kind}:${node.id}`);
+  const children: Record<string, [string, string]> = {
+    s: ['chapters', 'c'],
+    c: ['topics', 't'],
+    t: ['subtopics', 'st'],
+    st: ['concepts', 'con'],
+    con: ['points', 'pt'],
+    tn: ['children', 'tn'],
+  };
+  const child = children[kind];
+  if (child && Array.isArray(node[child[0]])) {
+    for (const item of node[child[0]]) collectDeletedNoteKeys(item, child[1], out);
+  }
+  return out;
+}
+
+function noteKeyForPath(path: MarkPath): string {
+  const ids: Record<string, string | undefined> = {
+    subject: path.subjectId,
+    chapter: path.chapterId,
+    topic: path.topicId,
+    subtopic: path.subtopicId,
+    concept: path.conceptId,
+    point: path.pointId,
+  };
+  const prefixes: Record<string, string> = {
+    subject: 's',
+    chapter: 'c',
+    topic: 't',
+    subtopic: 'st',
+    concept: 'con',
+    point: 'pt',
+  };
+  return `${prefixes[path.level]}:${ids[path.level]}`;
 }
 
 interface NotePageMeta {
@@ -532,6 +598,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // Firestore (mirrors the `${lsKey}__unsynced` localStorage flag, kept as a
   // ref too for synchronous checks inside the onSnapshot callback).
   const hasUnsyncedEditRef = useRef(false);
+  // Snapshot of the note map that this device actually loaded.  A note absent
+  // from this device's stale state is not a deletion and must not be removed
+  // from the remote companion document on the next save.
+  const loadedNotesRef = useRef<Record<string, string>>({});
+  const loadedOverallNoteRef = useRef('');
+  const courseSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   // Always-current refs so flushSave never captures stale closures
   const userRef = useRef(user);
@@ -574,6 +646,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         if (nextSubjects) nextSubjects = merged.subjects;
         if (nextTempNotes) nextTempNotes = merged.tempNotes;
       }
+      if (detail.notesMap) {
+        loadedNotesRef.current = { ...detail.notesMap };
+      }
+      if (detail.overallNote !== undefined) loadedOverallNoteRef.current = detail.overallNote;
       if (nextSubjects)          setSubjects(nextSubjects);
       if (detail.settings)       setSettings(prev => ({ ...prev, ...detail.settings }));
       if (nextTempNotes)         setTempNotes(nextTempNotes);
@@ -610,6 +686,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setDataLoaded(false);
     notesGuardArmedRef.current = true;
     subjectsGuardArmedRef.current = true;
+    loadedNotesRef.current = {};
+    loadedOverallNoteRef.current = '';
 
     const docRef = doc(db, 'users', user.id, 'studyData', activeCourseId);
     const notesDocRef = doc(db, 'users', user.id, 'courseNotes', activeCourseId);
@@ -645,6 +723,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         setOverallNoteState(localData.overallNote || '');
         setNotePagesIndex(localData.notePagesIndex || []);
         lastSavedAt.current = localData.savedAt ?? 0;
+        loadedNotesRef.current = extractNotes(localData.subjects || [], localData.tempNotes || []).notes;
+        loadedOverallNoteRef.current = localData.overallNote || '';
       }
       setDataLoaded(true);
       setTimeout(() => { isInitialLoad.current = false; }, 200);
@@ -766,6 +846,19 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
           if (!fsDataRaw) {
             if (active) {
+              const lsRaw = localKey('data');
+              const localData = lsRaw ? getLocalData(lsRaw) : null;
+              if (localData) {
+                setSubjects(localData.subjects || []);
+                setSettings(prev => ({ ...prev, ...localData.settings }));
+                setTempNotes(localData.tempNotes || []);
+                setOverallNoteState(localData.overallNote || '');
+                setNotePagesIndex(localData.notePagesIndex || []);
+                setPersonalNotePagesIndex(localData.personalNotePagesIndex || []);
+                lastSavedAt.current = localData.savedAt ?? 0;
+                loadedNotesRef.current = extractNotes(localData.subjects || [], localData.tempNotes || []).notes;
+                loadedOverallNoteRef.current = localData.overallNote || '';
+              }
               setDataLoaded(true);
               setTimeout(() => { isInitialLoad.current = false; }, 200);
             }
@@ -776,6 +869,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           (async () => {
             const fsData = await withNotesDoc(fsDataRaw);
             if (!active || mySeq !== seq) return; // stale or unmounted — discard
+            // This is the remote baseline.  If this device has an unsynced
+            // local edit, comparing against the remote state lets the merge
+            // preserve both that edit and untouched notes from Firestore.
+            loadedNotesRef.current = extractNotes(
+              fsData.subjects || [],
+              fsData.tempNotes || [],
+            ).notes;
+            loadedOverallNoteRef.current = fsData.overallNote || '';
 
             const lsRaw = localKey('data');
             const localData = lsRaw ? getLocalData(lsRaw) : null;
@@ -845,6 +946,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
               setOverallNoteState(best.overallNote || '');
               setNotePagesIndex(best.notePagesIndex || []);
               setPersonalNotePagesIndex(best.personalNotePagesIndex || []);
+              loadedNotesRef.current = extractNotes(loadedSubjects, best.tempNotes || []).notes;
+              loadedOverallNoteRef.current = best.overallNote || '';
             } else if (legacySubjects) {
               const migrated = legacySubjects.map((s: any) => ({
                 ...s,
@@ -897,6 +1000,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             // snapshots arriving after this are ignored.
             lastSavedAt.current = fsData.savedAt ?? 0;
             skipNextSaveRef.current = true;
+            loadedNotesRef.current = extractNotes(
+              fsData.subjects || [],
+              fsData.tempNotes || [],
+            ).notes;
+            loadedOverallNoteRef.current = fsData.overallNote || '';
 
             setSubjects(fsData.subjects || []);
             setSettings(prev => ({ ...prev, ...fsData.settings }));
@@ -922,6 +1030,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           setOverallNoteState(localData.overallNote || '');
           setNotePagesIndex(localData.notePagesIndex || []);
           setPersonalNotePagesIndex(localData.personalNotePagesIndex || []);
+          loadedNotesRef.current = extractNotes(localData.subjects || [], localData.tempNotes || []).notes;
+          loadedOverallNoteRef.current = localData.overallNote || '';
+          lastSavedAt.current = localData.savedAt ?? 0;
         }
         setDataLoaded(true);
         setTimeout(() => { isInitialLoad.current = false; }, 200);
@@ -1001,7 +1112,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // save is still visible in the console if it ever happens.
   const subjectsGuardArmedRef = useRef(true);
 
-  const flushSave = async (
+  const flushSaveNow = async (
     subjectsToSave: Subject[],
     settingsToSave: CourseSettings,
     tempNotesToSave: TempNoteItem[],
@@ -1065,7 +1176,44 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       // Firebase Storage (no size ceiling there) and keep only a URL reference in
       // the courseNotes document — mirrors how oversized individual note pages
       // are already routed to Storage.
-      const notesData = { overallNote: overallNoteToSave, notes };
+      // Merge against the latest remote companion document before writing.
+      // The current UI state may have been produced from a stale snapshot on
+      // this device.  Only keys that changed relative to the loaded baseline
+      // are local mutations; untouched remote keys must survive this save.
+      let notesToSave = notes;
+      let overallNoteToSaveMerged = overallNoteToSave;
+      try {
+        const remoteNotes = await readCourseNotes(notesDocRef);
+        if (remoteNotes.exists) {
+          const baseline = loadedNotesRef.current;
+          const mergedNotes: Record<string, string> = { ...remoteNotes.notes };
+          const allKeys = new Set([
+            ...Object.keys(remoteNotes.notes),
+            ...Object.keys(baseline),
+            ...Object.keys(notes),
+          ]);
+          for (const key of allKeys) {
+            const before = baseline[key];
+            const current = notes[key];
+            // Equal means this device did not touch the note.  Preserve the
+            // newest remote value (or its existence) in that case.
+            if (current === before) continue;
+            if (current) mergedNotes[key] = current;
+            else delete mergedNotes[key]; // explicit local clear/delete
+          }
+          notesToSave = mergedNotes;
+          overallNoteToSaveMerged =
+            overallNoteToSave === loadedOverallNoteRef.current
+              ? remoteNotes.overallNote
+              : overallNoteToSave;
+        }
+      } catch (err) {
+        // The main save can still proceed when the companion read is offline.
+        // In that case the local payload is retained and will be retried by
+        // the normal unsynced marker flow.
+        console.warn('[StudyContext] Could not merge remote notes before save:', err);
+      }
+      const notesData = { overallNote: overallNoteToSaveMerged, notes: notesToSave };
 
       // Diagnostic only (does NOT block the write — see notesGuardArmedRef
       // comment above for why blocking here breaks legitimate first-clears).
@@ -1198,6 +1346,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       const lsKeyForFlag = localKey('data');
       if (lsKeyForFlag) localStorage.removeItem(`${lsKeyForFlag}__unsynced`);
       hasUnsyncedEditRef.current = false;
+      loadedNotesRef.current = notesToSave;
+      loadedOverallNoteRef.current = overallNoteToSaveMerged;
       setSyncStatus('success');
       setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
     } catch (err) {
@@ -1205,6 +1355,42 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       setSyncStatus('failed');
       setTimeout(() => setSyncStatus(s => s === 'failed' ? 'idle' : s), 4000);
     }
+  };
+
+  // Serialize course-level saves. Without this, two devices (or two rapid
+  // local edits) can both read the same companion notes document and the
+  // slower write can put an older note map back over the newer one.
+  const flushSave = (
+    subjectsToSave: Subject[],
+    settingsToSave: CourseSettings,
+    tempNotesToSave: TempNoteItem[],
+    overallNoteToSave: string,
+    notePagesIndexToSave: NotePageMeta[],
+    personalNotePagesIndexToSave: NotePageMeta[],
+  ) => {
+    const targetUserId = userRef.current?.id;
+    const targetCourseId = activeCourseIdRef.current;
+    courseSaveQueueRef.current = courseSaveQueueRef.current
+      .catch(() => {})
+      .then(() => {
+        // A queued write must never follow the user into a different course.
+        // This is especially important during login/course switching, when
+        // the old debounce can finish after the new course is active.
+        if (
+          !targetUserId ||
+          !targetCourseId ||
+          userRef.current?.id !== targetUserId ||
+          activeCourseIdRef.current !== targetCourseId
+        ) return;
+        return flushSaveNow(
+          subjectsToSave,
+          settingsToSave,
+          tempNotesToSave,
+          overallNoteToSave,
+          notePagesIndexToSave,
+          personalNotePagesIndexToSave,
+        );
+      });
   };
 
   useEffect(() => {

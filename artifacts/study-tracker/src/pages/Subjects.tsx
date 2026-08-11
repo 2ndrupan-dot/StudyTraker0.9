@@ -202,8 +202,8 @@ interface ActivePath {
 
 const collapseAnim = {
   initial: { height: 0, opacity: 0 },
-  animate: { height: 'auto', opacity: 1, transition: { duration: 0.28, ease: [0.4, 0, 0.2, 1] } },
-  exit: { height: 0, opacity: 0, transition: { duration: 0.22, ease: [0.4, 0, 0.2, 1] } },
+  animate: { height: 'auto', opacity: 1, transition: { duration: 0.28, ease: 'easeInOut' as const } },
+  exit: { height: 0, opacity: 0, transition: { duration: 0.22, ease: 'easeInOut' as const } },
 };
 
 const itemAnim = {
@@ -626,7 +626,9 @@ export function Subjects() {
     subtopic: List, concept: Lightbulb, point: Dot,
   };
 
-  const modalTitle = modal === 'edit' ? `${t('edit')}: ${formTitle || '...'}` : t(levelTitleKey[activePath.level]);
+  const modalTitle = modal === 'edit'
+    ? `${t('edit')}: ${formTitle || '...'}`
+    : t(levelTitleKey[activePath.level] as Parameters<typeof t>[0]);
   const ModalIcon = levelIcon[activePath.level];
 
   // ─── Apply filter to subject list ───────────────────────────────────────

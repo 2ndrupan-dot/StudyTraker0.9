@@ -2858,14 +2858,17 @@ export function Today() {
 
       <Modal isOpen={isDaysModalOpen} onClose={() => setDaysModalOpen(false)} title={t('setCourseDays')}>
         <p className="text-sm text-muted-foreground mb-4">{t('setCourseDaysDesc')}</p>
-        <Input
-          label={t('numberOfDays')}
-          type="number"
-          value={daysInput}
-          onChange={e => setDaysInput(e.target.value)}
-          placeholder="e.g. 90"
-          onKeyDown={e => e.key === 'Enter' && handleSetDays()}
-        />
+        <label className="block text-sm font-medium text-foreground">
+          {t('numberOfDays')}
+          <Input
+            className="mt-1.5"
+            type="number"
+            value={daysInput}
+            onChange={e => setDaysInput(e.target.value)}
+            placeholder="e.g. 90"
+            onKeyDown={e => e.key === 'Enter' && handleSetDays()}
+          />
+        </label>
         <div className="mt-4 flex gap-2">
           <Button variant="ghost" onClick={() => setDaysModalOpen(false)} className="flex-1">{t('cancel')}</Button>
           <Button variant="primary" onClick={handleSetDays} className="flex-1">{t('saveGoal')}</Button>
@@ -2874,15 +2877,18 @@ export function Today() {
 
       <Modal isOpen={isHoursModalOpen} onClose={() => setHoursModalOpen(false)} title={t('setDailyHours')}>
         <p className="text-sm text-muted-foreground mb-4">{t('setDailyHoursDesc')}</p>
-        <Input
-          label={t('hoursPerDay')}
-          type="number"
-          step="0.5"
-          value={hoursInput}
-          onChange={e => setHoursInput(e.target.value)}
-          placeholder="e.g. 3"
-          onKeyDown={e => e.key === 'Enter' && handleSetHours()}
-        />
+        <label className="block text-sm font-medium text-foreground">
+          {t('hoursPerDay')}
+          <Input
+            className="mt-1.5"
+            type="number"
+            step="0.5"
+            value={hoursInput}
+            onChange={e => setHoursInput(e.target.value)}
+            placeholder="e.g. 3"
+            onKeyDown={e => e.key === 'Enter' && handleSetHours()}
+          />
+        </label>
         <div className="mt-4 flex gap-2">
           <Button variant="ghost" onClick={() => setHoursModalOpen(false)} className="flex-1">{t('cancel')}</Button>
           <Button variant="primary" onClick={handleSetHours} className="flex-1">{t('save')}</Button>

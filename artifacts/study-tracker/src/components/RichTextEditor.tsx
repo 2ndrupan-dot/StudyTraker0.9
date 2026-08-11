@@ -361,7 +361,7 @@ function usePopover() {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as globalThis.Node)) setOpen(false);
     };
     if (open) document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -1448,7 +1448,7 @@ export function RichTextEditor({
   useEffect(() => {
     if (!showLinkPopover) return;
     const handler = (e: MouseEvent) => {
-      const t = e.target as Node;
+      const t = e.target as globalThis.Node;
       if (showLinkPopover && !linkPopoverRef.current?.contains(t)) setShowLinkPopover(false);
     };
     document.addEventListener('mousedown', handler);
@@ -1513,7 +1513,7 @@ export function RichTextEditor({
     const incoming = toSafeHtml(value);
     if (incoming === lastEditorHtmlRef.current) return;
     lastEditorHtmlRef.current = incoming;
-    editor.commands.setContent(incoming, false);
+    editor.commands.setContent(incoming, { emitUpdate: false });
   }, [value]);
 
   // When the link popover is dismissed (click-outside), clear the decoration highlight
@@ -1806,7 +1806,7 @@ export function RichTextPreview({
     console.log('[RichTextPreview] received html:', incoming.substring(0, 600));
     const current = editor.isEmpty ? '' : editor.getHTML();
     if (incoming !== current) {
-      editor.commands.setContent(incoming, false);
+      editor.commands.setContent(incoming, { emitUpdate: false });
     }
   }, [editor, html]);
 

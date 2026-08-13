@@ -469,6 +469,7 @@ interface StudyContextType {
   renameNotePage: (id: string, title: string) => void;
   deleteNotePage: (id: string) => Promise<void>;
   loadNotePage: (id: string) => Promise<NotePage | null>;
+  subscribeNotePage: (id: string, onChange: (page: NotePage) => void) => () => void;
   saveNotePage: (page: NotePage) => Promise<void>;
   reorderNotePages: (fromIdx: number, toIdx: number) => void;
 
@@ -2890,6 +2891,41 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     return local;
   };
 
+  const subscribeNotePage = (id: string, onChange: (page: NotePage) => void): (() => void) => {
+    const ref = notePageDocRef(id);
+    if (!ref) return () => {};
+
+    let sequence = 0;
+    return onSnapshot(
+      ref,
+      async snap => {
+        if (!snap.exists()) return;
+        const currentSequence = ++sequence;
+        const d = snap.data() as NotePage;
+        let elements = d.elements || [];
+        if (d.chunked) {
+          elements = await readElementChunks(collection(ref, 'chunks'));
+        }
+        // A newer parent snapshot can arrive while the chunk collection is
+        // still being read. Never deliver the older chunk result afterward.
+        if (currentSequence !== sequence) return;
+        onChange({
+          id: d.id ?? id,
+          title: d.title ?? 'Untitled page',
+          elements,
+          pageCount: d.pageCount ?? 1,
+          html: d.html,
+          privateNote: d.privateNote,
+          chunked: d.chunked,
+          chunkCount: d.chunkCount,
+          createdAt: d.createdAt ?? Date.now(),
+          updatedAt: d.updatedAt ?? Date.now(),
+        });
+      },
+      error => console.warn('[subscribeNotePage] live update failed:', error),
+    );
+  };
+
   const saveNotePage = async (page: NotePage): Promise<void> => {
     const updated: NotePage = { ...page, updatedAt: Date.now() };
     const pageId = page.id;
@@ -2974,6 +3010,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         }
       });
     }
+    // Keep the editor's Saved indicator tied to the queued Firestore write,
+    // not just to the immediate localStorage update/enqueue operation.
+    await noteWriteQueueRef.current;
   };
 
   return (
@@ -2990,7 +3029,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       addPoint, deletePoint, togglePointComplete, updatePointMeta,
       tempNotes, addTempNote, updateTempNote, updateTempNoteContent, toggleTempNoteDone, deleteTempNote,
       overallNote, setOverallNote,
-      notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, saveNotePage, reorderNotePages,
+      notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, subscribeNotePage, saveNotePage, reorderNotePages,
       personalNotePagesIndex, createPersonalNotePage, renamePersonalNotePage, deletePersonalNotePage, loadPersonalNotePage, savePersonalNotePage, reorderPersonalNotePages,
       promptNotePagesIndex, createPromptNotePage, renamePromptNotePage, deletePromptNotePage, loadPromptNotePage, savePromptNotePage, reorderPromptNotePages,
     }}>

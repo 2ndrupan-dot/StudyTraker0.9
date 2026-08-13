@@ -24,7 +24,7 @@ export function NoteEditor() {
   const [, setLocation] = useLocation();
   const { t } = useLang();
   const { user } = useAuth();
-  const { loadNotePage, saveNotePage, renameNotePage } = useStudy();
+  const { loadNotePage, subscribeNotePage, saveNotePage, renameNotePage } = useStudy();
 
   const [page, setPage] = useState<NotePage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,6 +49,17 @@ export function NoteEditor() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<number | null>(null);
+  const latestRemoteUpdatedAtRef = useRef(0);
+  const skipNextAutoSaveRef = useRef(false);
+
+  const pageContentKey = (value: NotePage) => JSON.stringify({
+    id: value.id,
+    title: value.title,
+    elements: value.elements,
+    pageCount: value.pageCount,
+    html: value.html,
+    privateNote: value.privateNote,
+  });
 
   // Load page
   useEffect(() => {
@@ -56,6 +67,7 @@ export function NoteEditor() {
     setLoading(true);
     loadNotePage(params.id).then(p => {
       if (p) {
+        latestRemoteUpdatedAtRef.current = p.updatedAt ?? 0;
         setPage(p);
         setTitleDraft(p.title);
       } else {
@@ -64,11 +76,37 @@ export function NoteEditor() {
       setLoading(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params?.id]);
+  }, [params?.id, user?.id]);
+
+  // Keep an already-open note page current when the same ID is edited on
+  // another device. Local writes are echoed by Firestore too, so compare the
+  // content before replacing the editor state to avoid a save loop.
+  useEffect(() => {
+    if (!params?.id) return;
+    const unsubscribe = subscribeNotePage(params.id, remote => {
+      if ((remote.updatedAt ?? 0) <= latestRemoteUpdatedAtRef.current) return;
+      latestRemoteUpdatedAtRef.current = remote.updatedAt ?? 0;
+      setPage(current => {
+        if (!current || current.id !== remote.id) return current;
+        if (pageContentKey(current) === pageContentKey(remote)) return current;
+        skipNextAutoSaveRef.current = true;
+        setTitleDraft(remote.title);
+        return remote;
+      });
+    });
+    return unsubscribe;
+    // Context functions are recreated with provider renders; the route ID is
+    // the subscription's actual lifecycle key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params?.id, user?.id]);
 
   // Auto-save (debounced)
   useEffect(() => {
     if (!page || loading) return;
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false;
+      return;
+    }
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     setSavingState('saving');
     saveTimerRef.current = window.setTimeout(async () => {

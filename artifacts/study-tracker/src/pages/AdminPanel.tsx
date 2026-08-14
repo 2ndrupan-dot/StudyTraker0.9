@@ -11,7 +11,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
-import { useAdmin, SharePermissions, ShareRequest, AdminRolePermissions, VisibleAdminEntry, DEFAULT_ADMIN_ROLE_PERMISSIONS } from '@/context/AdminContext';
+import { useAdmin, SharePermissions, ShareRequest, NoteShareItem, AdminRolePermissions, VisibleAdminEntry, DEFAULT_ADMIN_ROLE_PERMISSIONS } from '@/context/AdminContext';
 import { useCourse } from '@/context/CourseContext';
 import { useStudy } from '@/context/StudyContext';
 import { useLang } from '@/context/LangContext';
@@ -174,6 +174,28 @@ function NotePicker({
   const levelLabel: Record<NoteLevel, string> = lang === 'bn'
     ? { subjects: 'সাবজেক্ট', chapters: 'চ্যাপ্টার', topics: 'টপিক', subtopics: 'সাবটপিক', concepts: 'কনসেপ্ট', points: 'পয়েন্ট' }
     : { subjects: 'Subjects', chapters: 'Chapters', topics: 'Topics', subtopics: 'Subtopics', concepts: 'Concepts', points: 'Points' };
+  const collectNotes = (items: any[], parentBreadcrumb: string[]): Array<NotePick & { id: string }> => {
+    const result: Array<NotePick & { id: string }> = [];
+    for (const item of items) {
+      const breadcrumb = [...parentBreadcrumb, item.title];
+      if (item.note?.trim()) {
+        result.push({ id: item.id, title: item.title, html: item.note, breadcrumb });
+      }
+      const childKey: Record<NoteLevel, string | undefined> = {
+        subjects: 'chapters',
+        chapters: 'topics',
+        topics: 'subtopics',
+        subtopics: 'concepts',
+        concepts: 'points',
+        points: undefined,
+      };
+      const children = childKey[level] ? item[childKey[level]!] : [];
+      if (Array.isArray(children)) result.push(...collectNotes(children, breadcrumb));
+    }
+    return result;
+  };
+  const selectableNotes = collectNotes(currentItems, buildBreadcrumb());
+  const allNotesSelected = selectableNotes.length > 0 && selectableNotes.every(note => pickedIds.has(note.id));
 
   return (
     <div className="space-y-3">
@@ -199,7 +221,25 @@ function NotePicker({
         </button>
       )}
 
-      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{levelLabel[level]}</p>
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{levelLabel[level]}</p>
+        {selectableNotes.length > 0 && (
+          <button
+            onClick={() => {
+              if (allNotesSelected) {
+                selectableNotes.forEach(note => onToggle(note));
+              } else {
+                selectableNotes.filter(note => !pickedIds.has(note.id)).forEach(note => onToggle(note));
+              }
+            }}
+            className="text-[11px] font-semibold text-primary hover:underline"
+          >
+            {allNotesSelected
+              ? (lang === 'bn' ? 'সব বাদ দিন' : 'Deselect all')
+              : (lang === 'bn' ? 'সব সিলেক্ট' : 'Select all')}
+          </button>
+        )}
+      </div>
 
       <div className="relative max-h-48 overflow-hidden">
         <AnimatePresence mode="wait" custom={dir} initial={false}>
@@ -273,6 +313,12 @@ function NotePagesPicker({
   lang: string;
 }) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [loadingAll, setLoadingAll] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredPages = searchQuery.trim()
+    ? notePagesIndex.filter(page => page.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : notePagesIndex;
 
   const handlePick = async (page: { id: string; title: string }) => {
     if (pickedIds.has(page.id)) {
@@ -302,31 +348,89 @@ function NotePagesPicker({
     );
   }
 
+  const allFilteredSelected = filteredPages.length > 0 && filteredPages.every(page => pickedIds.has(page.id));
+  const handleSelectAll = async () => {
+    if (allFilteredSelected) {
+      filteredPages.forEach(page => {
+        if (pickedIds.has(page.id)) {
+          onToggle({ id: page.id, title: page.title, html: '', breadcrumb: [lang === 'bn' ? 'নোট' : 'Notes', page.title] });
+        }
+      });
+      return;
+    }
+    setLoadingAll(true);
+    try {
+      for (const page of filteredPages) {
+        if (pickedIds.has(page.id)) continue;
+        const full = await loadNotePage(page.id);
+        onToggle({
+          id: page.id,
+          title: page.title,
+          html: full?.html || '',
+          breadcrumb: [lang === 'bn' ? 'নোট' : 'Notes', page.title],
+        });
+      }
+    } finally {
+      setLoadingAll(false);
+    }
+  };
+
   return (
-    <div className="space-y-1 max-h-52 overflow-y-auto">
-      {notePagesIndex.map(page => (
-        <div key={page.id} className="flex items-center gap-2 p-2.5 rounded-xl hover:bg-secondary/60 transition-colors">
-          <StickyNote size={14} className="text-primary shrink-0" />
-          <span className="text-sm font-medium truncate flex-1">{page.title}</span>
-          <button
-            onClick={() => handlePick(page)}
-            disabled={loadingId === page.id}
-            className={cn(
-              "flex items-center gap-1 p-2 rounded-lg text-xs font-semibold shrink-0 transition-colors disabled:opacity-60",
-              pickedIds.has(page.id)
-                ? "bg-green-500/15 text-green-700 hover:bg-green-500/25"
-                : "bg-primary/10 text-primary hover:bg-primary/20"
-            )}
-          >
-            {pickedIds.has(page.id) && <Check size={11} />}
-            {loadingId === page.id
-              ? (lang === 'bn' ? 'লোড হচ্ছে...' : 'Loading...')
-              : pickedIds.has(page.id)
-                ? (lang === 'bn' ? 'যোগ হয়েছে' : 'Added')
-                : (lang === 'bn' ? 'সিলেক্ট' : 'Select')}
-          </button>
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder={lang === 'bn' ? 'নোট খুঁজুন...' : 'Search notes...'}
+            className="w-full pl-8 pr-8 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+              <X size={13} />
+            </button>
+          )}
         </div>
-      ))}
+        <button
+          onClick={handleSelectAll}
+          disabled={loadingAll || filteredPages.length === 0}
+          className="text-[11px] font-semibold text-primary hover:underline whitespace-nowrap disabled:opacity-50"
+        >
+          {allFilteredSelected
+            ? (lang === 'bn' ? 'সব বাদ দিন' : 'Deselect all')
+            : (lang === 'bn' ? 'সব সিলেক্ট' : 'Select all')}
+        </button>
+      </div>
+      <div className="space-y-1 max-h-52 overflow-y-auto">
+        {filteredPages.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-5">
+            {lang === 'bn' ? `"${searchQuery}"-এর সাথে কোনো নোট মিলছে না` : `No notes match "${searchQuery}"`}
+          </p>
+        ) : filteredPages.map(page => (
+          <div key={page.id} className="flex items-center gap-2 p-2.5 rounded-xl hover:bg-secondary/60 transition-colors">
+            <StickyNote size={14} className="text-primary shrink-0" />
+            <span className="text-sm font-medium truncate flex-1">{page.title}</span>
+            <button
+              onClick={() => handlePick(page)}
+              disabled={loadingId === page.id || loadingAll}
+              className={cn(
+                "flex items-center gap-1 p-2 rounded-lg text-xs font-semibold shrink-0 transition-colors disabled:opacity-60",
+                pickedIds.has(page.id)
+                  ? "bg-green-500/15 text-green-700 hover:bg-green-500/25"
+                  : "bg-primary/10 text-primary hover:bg-primary/20"
+              )}
+            >
+              {pickedIds.has(page.id) && <Check size={11} />}
+              {loadingId === page.id
+                ? (lang === 'bn' ? 'লোড হচ্ছে...' : 'Loading...')
+                : pickedIds.has(page.id)
+                  ? (lang === 'bn' ? 'যোগ হয়েছে' : 'Added')
+                  : (lang === 'bn' ? 'সিলেক্ট' : 'Select')}
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -853,8 +957,14 @@ export function AdminPanel() {
     trashShare, restoreShare, permanentlyDeleteShare, resendShare,
     appContact, saveContactSettings, acceptedShares } = useAdmin();
   const { courses, activeCourse } = useCourse();
-  const { subjects, notePagesIndex, loadNotePage } = useStudy();
-  const { testDecks } = useTest();
+  const {
+    subjects,
+    notePagesIndex,
+    personalNotePagesIndex,
+    loadNotePage,
+    loadPersonalNotePage,
+  } = useStudy();
+  const { testDecks, personalTestDecks } = useTest();
 
   const [tab, setTab] = useState<'admins' | 'share' | 'sent' | 'contact'>('admins');
   const [sentSubTab, setSentSubTab] = useState<'active' | 'trash'>('active');
@@ -922,6 +1032,8 @@ export function AdminPanel() {
   // or standalone pages from the top-level "Notes" section. Both feed the same
   // notesPickedList / NoteShareItem[] pipeline, so they can be mixed freely.
   const [noteSource, setNoteSource] = useState<'inline' | 'pages'>('inline');
+  const [noteSectionSource, setNoteSectionSource] = useState<'course' | 'personal'>('course');
+  const [selectedNoteSubjectId, setSelectedNoteSubjectId] = useState('');
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -933,9 +1045,21 @@ export function AdminPanel() {
   const [loadingCourseSubjects, setLoadingCourseSubjects] = useState(false);
 
   // ── Test card picker state ──
+  const [testCardSource, setTestCardSource] = useState<'course' | 'personal'>('course');
   const [selectedTestSubjectId, setSelectedTestSubjectId] = useState('');
-  const [selectedTestCardId, setSelectedTestCardId] = useState('');
-  const [selectedTestCard, setSelectedTestCard] = useState<TestCard | null>(null);
+  const [selectedTestCards, setSelectedTestCards] = useState<Array<TestCard & {
+    subjectId: string;
+    subjectTitle: string;
+    source: 'course' | 'personal';
+  }>>([]);
+  const selectedTestCard = selectedTestCards[0];
+  const activeTestDecks = testCardSource === 'course' ? testDecks : personalTestDecks;
+  const activeTestCards = selectedTestSubjectId ? (activeTestDecks[selectedTestSubjectId] ?? []) : [];
+  const selectedTestCardIds = new Set(
+    selectedTestCards
+      .filter(card => card.source === testCardSource && card.subjectId === selectedTestSubjectId)
+      .map(card => card.id),
+  );
 
   useEffect(() => {
     if (shareForm.type !== 'course' || !shareForm.courseId) {
@@ -1161,15 +1285,22 @@ export function AdminPanel() {
       const noteItems = shareForm.type === 'note'
         ? notesPickedList.map(({ id: _id, ...rest }) => rest)
         : undefined;
-      // Fan out to a separate shareRequest doc per recipient AND, for note
-      // shares, per note — each recipient gets their own independent card
-      // (own status/permissions/expiry), and each selected note becomes its
-      // own notification instead of being bundled into one "N notes" card.
-      const noteBatches = shareForm.type === 'note'
-        ? (noteItems && noteItems.length > 0 ? noteItems.map(n => [n]) : [undefined])
-        : [undefined];
+      // Fan out to a separate shareRequest doc per recipient and per selected
+      // note/test card. Each item keeps its own status, permissions and expiry,
+      // while preserving the existing one-item-per-notification behavior.
       for (const toEmail of shareForm.toEmails) {
-        for (const noteBatch of noteBatches) {
+        const noteBatches = shareForm.type === 'note'
+          ? (noteItems && noteItems.length > 0 ? noteItems.map(n => [n]) : [undefined])
+          : [undefined];
+        const testCardBatches = shareForm.type === 'testcard'
+          ? (selectedTestCards.length > 0 ? selectedTestCards : [undefined])
+          : [undefined];
+        const batches = shareForm.type === 'note' ? noteBatches : testCardBatches;
+        for (const batch of batches) {
+          const noteBatch = shareForm.type === 'note' ? batch as NoteShareItem[] | undefined : undefined;
+          const testCard = shareForm.type === 'testcard'
+            ? batch as (TestCard & { subjectId: string; subjectTitle: string; source: 'course' | 'personal' }) | undefined
+            : undefined;
           await sendShare({
             toEmail,
             type: shareForm.type,
@@ -1184,12 +1315,12 @@ export function AdminPanel() {
             durationValue: shareForm.durationValue,
             durationUnit: shareForm.durationUnit,
             sharedSubjectIds: shareForm.type === 'course' && courseSubjects.length > 0 ? selectedSubjectIds : undefined,
-            testCardId: shareForm.type === 'testcard' ? selectedTestCard?.id : undefined,
-            testCardTitle: shareForm.type === 'testcard' ? selectedTestCard?.title : undefined,
-            testCardSubjectId: shareForm.type === 'testcard' ? selectedTestSubjectId : undefined,
-            testCardSubjectTitle: shareForm.type === 'testcard' ? subjects.find(s => s.id === selectedTestSubjectId)?.title : undefined,
-            testCardQuestion: shareForm.type === 'testcard' ? selectedTestCard?.question : undefined,
-            testCardAnswer: shareForm.type === 'testcard' ? selectedTestCard?.answer : undefined,
+            testCardId: shareForm.type === 'testcard' ? testCard?.id : undefined,
+            testCardTitle: shareForm.type === 'testcard' ? testCard?.title : undefined,
+            testCardSubjectId: shareForm.type === 'testcard' ? testCard?.subjectId : undefined,
+            testCardSubjectTitle: shareForm.type === 'testcard' ? testCard?.subjectTitle : undefined,
+            testCardQuestion: shareForm.type === 'testcard' ? testCard?.question : undefined,
+            testCardAnswer: shareForm.type === 'testcard' ? testCard?.answer : undefined,
           });
         }
       }
@@ -1207,8 +1338,10 @@ export function AdminPanel() {
       setCourseSubjects([]);
       setSelectedSubjectIds([]);
       setSelectedTestSubjectId('');
-      setSelectedTestCardId('');
-      setSelectedTestCard(null);
+      setSelectedTestCards([]);
+      setTestCardSource('course');
+      setSelectedNoteSubjectId('');
+      setNoteSectionSource('course');
       setTimeout(() => setSendSuccess(false), 3000);
     } catch (err) {
       setSendError(
@@ -1844,7 +1977,15 @@ export function AdminPanel() {
                         key={type}
                         onClick={() => {
                           setShareForm(f => ({ ...f, type }));
-                          if (type !== 'testcard') { setSelectedTestSubjectId(''); setSelectedTestCardId(''); setSelectedTestCard(null); }
+                          if (type !== 'testcard') {
+                            setSelectedTestSubjectId('');
+                            setSelectedTestCards([]);
+                          }
+                          if (type === 'testcard') {
+                            setSelectedTestSubjectId('');
+                            setSelectedTestCards([]);
+                            setTestCardSource('course');
+                          }
                         }}
                         className={cn(
                           "flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all",
@@ -1978,24 +2119,28 @@ export function AdminPanel() {
                       onClick={() => setTestCardPickerOpen(true)}
                       className={cn(
                         "w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all duration-200",
-                        selectedTestCard
+                        selectedTestCards.length > 0
                           ? "border-primary/60 bg-primary/5"
                           : "border-border/50 bg-secondary/40 hover:bg-secondary/70 hover:border-border"
                       )}
                     >
                       <div className={cn(
                         "flex items-center justify-center w-8 h-8 rounded-xl shrink-0",
-                        selectedTestCard ? "bg-primary/10" : "bg-secondary"
+                        selectedTestCards.length > 0 ? "bg-primary/10" : "bg-secondary"
                       )}>
-                        <Trophy size={15} className={selectedTestCard ? "text-primary" : "text-muted-foreground"} />
+                        <Trophy size={15} className={selectedTestCards.length > 0 ? "text-primary" : "text-muted-foreground"} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        {selectedTestCard ? (
+                        {selectedTestCards.length > 0 ? (
                           <>
                             <p className="text-[10px] font-semibold uppercase tracking-widest text-primary/70 mb-0.5">
-                              {subjects.find(s => s.id === selectedTestSubjectId)?.title || ''}
+                              {selectedTestCards[0].subjectTitle}
                             </p>
-                            <p className="text-sm font-bold text-foreground truncate">{selectedTestCard.title}</p>
+                            <p className="text-sm font-bold text-foreground truncate">
+                              {selectedTestCards.length === 1
+                                ? selectedTestCards[0].title
+                                : (lang === 'bn' ? `${selectedTestCards.length}টি কার্ড সিলেক্ট করা হয়েছে` : `${selectedTestCards.length} cards selected`)}
+                            </p>
                           </>
                         ) : (
                           <p className="text-sm font-semibold text-muted-foreground">
@@ -2003,13 +2148,12 @@ export function AdminPanel() {
                           </p>
                         )}
                       </div>
-                      {selectedTestCard ? (
+                      {selectedTestCards.length > 0 ? (
                         <button
                           onClick={e => {
                             e.stopPropagation();
                             setSelectedTestSubjectId('');
-                            setSelectedTestCardId('');
-                            setSelectedTestCard(null);
+                            setSelectedTestCards([]);
                             setShareForm(f => ({ ...f, testCardTitle: '' }));
                           }}
                           className="p-1 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
@@ -2029,6 +2173,26 @@ export function AdminPanel() {
                       icon={Trophy}
                     >
                       <div className="space-y-5">
+                        <div className="flex items-center gap-1.5 p-1 bg-secondary rounded-xl">
+                          {(['course', 'personal'] as const).map(source => (
+                            <button
+                              key={source}
+                              onClick={() => {
+                                setTestCardSource(source);
+                                setSelectedTestSubjectId('');
+                                setTestCardSearchQuery('');
+                              }}
+                              className={cn(
+                                "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                                testCardSource === source ? "bg-card shadow-sm text-foreground" : "text-muted-foreground",
+                              )}
+                            >
+                              {source === 'course'
+                                ? (lang === 'bn' ? 'কোর্স টেস্ট কার্ড' : 'Course test cards')
+                                : (lang === 'bn' ? 'পার্সোনাল টেস্ট কার্ড' : 'Personal test cards')}
+                            </button>
+                          ))}
+                        </div>
                         {/* Subject chips */}
                         {subjects.length === 0 ? (
                           <p className="text-xs text-muted-foreground text-center py-4">
@@ -2049,9 +2213,6 @@ export function AdminPanel() {
                                     key={s.id}
                                     onClick={() => {
                                       setSelectedTestSubjectId(s.id);
-                                      setSelectedTestCardId('');
-                                      setSelectedTestCard(null);
-                                      setShareForm(f => ({ ...f, testCardTitle: '' }));
                                       setTestCardSearchQuery('');
                                     }}
                                     style={isActive ? {
@@ -2092,28 +2253,62 @@ export function AdminPanel() {
                               </p>
 
                               {/* Search box — only if there are cards */}
-                              {(testDecks[selectedTestSubjectId]?.length ?? 0) > 0 && (
-                                <div className="relative">
-                                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                                  <input
-                                    type="text"
-                                    value={testCardSearchQuery}
-                                    onChange={e => setTestCardSearchQuery(e.target.value)}
-                                    placeholder={lang === 'bn' ? 'কার্ড খুঁজুন...' : 'Search cards...'}
-                                    className="w-full pl-8 pr-8 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
-                                  />
-                                  {testCardSearchQuery && (
-                                    <button
-                                      onClick={() => setTestCardSearchQuery('')}
-                                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                                    >
-                                      <X size={13} />
-                                    </button>
-                                  )}
+                              {activeTestCards.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                  <div className="relative flex-1">
+                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                                    <input
+                                      type="text"
+                                      value={testCardSearchQuery}
+                                      onChange={e => setTestCardSearchQuery(e.target.value)}
+                                      placeholder={lang === 'bn' ? 'কার্ড খুঁজুন...' : 'Search cards...'}
+                                      className="w-full pl-8 pr-8 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
+                                    />
+                                    {testCardSearchQuery && (
+                                      <button
+                                        onClick={() => setTestCardSearchQuery('')}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                      >
+                                        <X size={13} />
+                                      </button>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const q = testCardSearchQuery.toLowerCase();
+                                      const visible = activeTestCards.filter(card => card.title.toLowerCase().includes(q));
+                                      const allSelected = visible.length > 0 && visible.every(card => selectedTestCardIds.has(card.id));
+                                      if (allSelected) {
+                                        setSelectedTestCards(prev => prev.filter(card =>
+                                          !(card.source === testCardSource && card.subjectId === selectedTestSubjectId && visible.some(v => v.id === card.id)),
+                                        ));
+                                      } else {
+                                        setSelectedTestCards(prev => {
+                                          const next = [...prev];
+                                          visible.forEach(card => {
+                                            if (!next.some(item => item.id === card.id && item.source === testCardSource && item.subjectId === selectedTestSubjectId)) {
+                                              const subjectTitle = subjects.find(s => s.id === selectedTestSubjectId)?.title || '';
+                                              next.push({ ...card, subjectId: selectedTestSubjectId, subjectTitle, source: testCardSource });
+                                            }
+                                          });
+                                          return next;
+                                        });
+                                      }
+                                    }}
+                                    className="text-[11px] font-semibold text-primary hover:underline whitespace-nowrap"
+                                  >
+                                    {(() => {
+                                      const q = testCardSearchQuery.toLowerCase();
+                                      const visible = activeTestCards.filter(card => card.title.toLowerCase().includes(q));
+                                      return visible.length > 0 && visible.every(card => selectedTestCardIds.has(card.id))
+                                        ? (lang === 'bn' ? 'সব বাদ দিন' : 'Deselect all')
+                                        : (lang === 'bn' ? 'সব সিলেক্ট' : 'Select all');
+                                    })()}
+                                  </button>
                                 </div>
                               )}
 
-                              {(!testDecks[selectedTestSubjectId] || testDecks[selectedTestSubjectId].length === 0) ? (
+                              {activeTestCards.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center gap-1.5 py-6 rounded-2xl border border-dashed border-border/50 bg-secondary/30">
                                   <Trophy size={18} className="text-muted-foreground/30" />
                                   <p className="text-xs text-muted-foreground/60">
@@ -2121,7 +2316,7 @@ export function AdminPanel() {
                                   </p>
                                 </div>
                               ) : (() => {
-                                const filtered = testDecks[selectedTestSubjectId].filter(c =>
+                                const filtered = activeTestCards.filter(c =>
                                   c.title.toLowerCase().includes(testCardSearchQuery.toLowerCase())
                                 );
                                 if (filtered.length === 0) return (
@@ -2137,18 +2332,31 @@ export function AdminPanel() {
                                 return (
                                   <div className="space-y-1.5">
                                     {filtered.map((card, idx) => {
-                                      const isSelected = selectedTestCardId === card.id;
+                                      const isSelected = selectedTestCardIds.has(card.id);
                                       const cardHues = ['#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899'];
-                                      const accent = cardHues[testDecks[selectedTestSubjectId].indexOf(card) % cardHues.length];
+                                      const accent = cardHues[activeTestCards.indexOf(card) % cardHues.length];
                                       return (
                                         <button
                                           key={card.id}
                                           onClick={() => {
-                                            setSelectedTestCardId(card.id);
-                                            setSelectedTestCard(card);
+                                            setSelectedTestCards(prev => {
+                                              const exists = prev.some(item =>
+                                                item.id === card.id && item.source === testCardSource && item.subjectId === selectedTestSubjectId,
+                                              );
+                                              if (exists) {
+                                                return prev.filter(item => !(
+                                                  item.id === card.id && item.source === testCardSource && item.subjectId === selectedTestSubjectId
+                                                ));
+                                              }
+                                              const subjectTitle = subjects.find(s => s.id === selectedTestSubjectId)?.title || '';
+                                              return [...prev, {
+                                                ...card,
+                                                subjectId: selectedTestSubjectId,
+                                                subjectTitle,
+                                                source: testCardSource,
+                                              }];
+                                            });
                                             setShareForm(f => ({ ...f, testCardTitle: card.title }));
-                                            setTestCardPickerOpen(false);
-                                            setTestCardSearchQuery('');
                                           }}
                                           style={isSelected ? {
                                             borderColor: accent,
@@ -2232,7 +2440,10 @@ export function AdminPanel() {
                     {/* Source toggle: subject/chapter/topic notes vs. standalone Notes-page items */}
                     <div className="flex items-center gap-1.5 p-1 bg-secondary rounded-xl">
                       <button
-                        onClick={() => setNoteSource('inline')}
+                        onClick={() => {
+                          setNoteSource('inline');
+                          setSelectedNoteSubjectId('');
+                        }}
                         className={cn(
                           "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
                           noteSource === 'inline' ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"
@@ -2241,7 +2452,11 @@ export function AdminPanel() {
                         {lang === 'bn' ? 'সাবজেক্ট নোট' : 'Subject notes'}
                       </button>
                       <button
-                        onClick={() => setNoteSource('pages')}
+                        onClick={() => {
+                          setNoteSource('pages');
+                          setSelectedNoteSubjectId('');
+                          setNoteSectionSource('course');
+                        }}
                         className={cn(
                           "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
                           noteSource === 'pages' ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"
@@ -2263,17 +2478,85 @@ export function AdminPanel() {
                         lang={lang}
                       />
                     ) : (
-                      <NotePagesPicker
-                        notePagesIndex={notePagesIndex}
-                        loadNotePage={loadNotePage}
-                        pickedIds={new Set(notesPickedList.map(n => n.id))}
-                        onToggle={pick => setNotesPickedList(list =>
-                          list.some(n => n.id === pick.id)
-                            ? list.filter(n => n.id !== pick.id)
-                            : [...list, pick]
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-1.5 p-1 bg-secondary rounded-xl">
+                          {(['course', 'personal'] as const).map(source => (
+                            <button
+                              key={source}
+                              onClick={() => {
+                                setNoteSectionSource(source);
+                                setSelectedNoteSubjectId('');
+                              }}
+                              className={cn(
+                                "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                                noteSectionSource === source ? "bg-card shadow-sm text-foreground" : "text-muted-foreground",
+                              )}
+                            >
+                              {source === 'course'
+                                ? (lang === 'bn' ? 'কোর্স নোটস' : 'Course notes')
+                                : (lang === 'bn' ? 'পার্সোনাল নোটস' : 'Personal notes')}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                              {lang === 'bn' ? 'সাবজেক্ট সিলেক্ট করুন' : 'Select a subject'}
+                            </p>
+                            {selectedNoteSubjectId && (
+                              <button
+                                onClick={() => setSelectedNoteSubjectId('')}
+                                className="text-[11px] text-primary hover:underline"
+                              >
+                                {lang === 'bn' ? 'পরিবর্তন করুন' : 'Change'}
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex gap-2 flex-wrap">
+                            {subjects.map((subject, i) => {
+                              const isActive = selectedNoteSubjectId === subject.id;
+                              const color = subject.color || ['#6366f1', '#06b6d4', '#10b981', '#f59e0b'][i % 4];
+                              return (
+                                <button
+                                  key={subject.id}
+                                  onClick={() => setSelectedNoteSubjectId(subject.id)}
+                                  style={isActive ? { background: `${color}18`, borderColor: color, color } : {}}
+                                  className={cn(
+                                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all",
+                                    isActive
+                                      ? ""
+                                      : "border-border/50 bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground",
+                                  )}
+                                >
+                                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                                  {subject.title}
+                                  {isActive && <Check size={10} strokeWidth={3} />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {selectedNoteSubjectId ? (
+                          <NotePagesPicker
+                            notePagesIndex={(noteSectionSource === 'course' ? notePagesIndex : personalNotePagesIndex)
+                              .filter(page => page.subjectId === selectedNoteSubjectId && (noteSectionSource === 'personal' || !page.privateNote))}
+                            loadNotePage={noteSectionSource === 'course' ? loadNotePage : loadPersonalNotePage}
+                            pickedIds={new Set(notesPickedList.map(n => n.id))}
+                            onToggle={pick => setNotesPickedList(list =>
+                              list.some(n => n.id === pick.id)
+                                ? list.filter(n => n.id !== pick.id)
+                                : [...list, pick]
+                            )}
+                            lang={lang}
+                          />
+                        ) : (
+                          <p className="text-xs text-muted-foreground text-center py-4 rounded-xl bg-secondary/30">
+                            {lang === 'bn' ? 'উপরের তালিকা থেকে একটি সাবজেক্ট বেছে নিন।' : 'Choose a subject above to see its notes.'}
+                          </p>
                         )}
-                        lang={lang}
-                      />
+                      </div>
                     )}
                   </div>
                 )}
@@ -2304,7 +2587,7 @@ export function AdminPanel() {
                           (!isSuperAdmin && !currentAdminPermissions?.canShareReceivedContent &&
                             acceptedShares.some(s => s.id === shareForm.courseId && s.type === 'course')))
                       : shareForm.type === 'message' ? !shareForm.messageText.trim()
-                      : shareForm.type === 'testcard' ? !selectedTestCard
+                      : shareForm.type === 'testcard' ? selectedTestCards.length === 0
                       : notesPickedList.length === 0
                   }
                   onClick={() => setShareStep(3)}

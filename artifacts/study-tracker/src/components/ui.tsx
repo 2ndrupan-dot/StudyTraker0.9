@@ -450,7 +450,17 @@ export const NoteEditorModal = ({
 
   // Re-run search whenever the query changes or the preview becomes visible
   React.useEffect(() => {
-    if (!searchOpen || editing) return;
+    if (!searchOpen) {
+      clearHighlights();
+      return;
+    }
+    // In edit mode, RichTextEditor owns the search decorations so the
+    // highlighted result remains editable. Preview mode still uses the DOM
+    // highlighter below.
+    if (editing) {
+      clearHighlights();
+      return;
+    }
     const timer = window.setTimeout(() => runHighlight(searchQuery), 30);
     return () => window.clearTimeout(timer);
   }, [searchOpen, editing, searchQuery, value, expanded, runHighlight]);
@@ -803,7 +813,6 @@ export const NoteEditorModal = ({
       <button
         onClick={() => {
           if (searchOpen) { closeSearch(); return; }
-          if (editing) setEditing(false);
           setSearchOpen(true);
         }}
         className={cn(
@@ -903,7 +912,7 @@ export const NoteEditorModal = ({
                     </div>
 
                     {/* Find-in-note bar */}
-                    {searchOpen && !editing && (
+                    {searchOpen && (
                       <SearchBar
                         searchQuery={searchQuery}
                         setSearchQuery={setSearchQuery}
@@ -926,6 +935,9 @@ export const NoteEditorModal = ({
                             className="flex-1 min-h-0"
                             autoFocus
                             hideCompiler={hideCompiler}
+                            searchQuery={searchQuery}
+                            searchMatchIndex={matchIdx}
+                            onSearchMatchCount={setMatchCount}
                           />
                           <div className="flex gap-2 shrink-0">
                             <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>
@@ -983,7 +995,7 @@ export const NoteEditorModal = ({
                   </div>
 
                   {/* Find-in-note bar */}
-                  {searchOpen && !editing && (
+                   {searchOpen && (
                     <SearchBar
                       searchQuery={searchQuery}
                       setSearchQuery={setSearchQuery}
@@ -1007,6 +1019,9 @@ export const NoteEditorModal = ({
                           maxHeight="45vh"
                           autoFocus
                           hideCompiler={hideCompiler}
+                          searchQuery={searchQuery}
+                          searchMatchIndex={matchIdx}
+                          onSearchMatchCount={setMatchCount}
                         />
                         <div className="flex gap-2 shrink-0">
                           <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>

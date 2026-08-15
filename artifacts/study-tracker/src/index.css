@@ -270,8 +270,18 @@ html, body {
 .rich-editor-content li > ul,
 .rich-editor-content li > ol { display: block; margin-top: 0.1em; }
 .rich-editor-content mark { border-radius: 3px; padding: 0 2px; }
-mark.search-hl { background-color: rgba(250, 204, 21, 0.55); color: inherit; border-radius: 2px; padding: 0 1px; }
-mark.search-hl.search-hl-active { background-color: #f97316; color: #fff; }
+mark.search-hl,
+.rich-editor-content .search-hl {
+  background-color: rgba(250, 204, 21, 0.55);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+mark.search-hl.search-hl-active,
+.rich-editor-content .search-hl.search-hl-active {
+  background-color: #f97316;
+  color: #fff;
+}
 .rich-editor-content ::selection { background-color: rgba(99, 102, 241, 0.28); color: inherit; }
 .rich-editor-content a {
   color: hsl(var(--primary));

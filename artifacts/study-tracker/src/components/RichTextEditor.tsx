@@ -1368,6 +1368,26 @@ export function toSafeHtml(value: string): string {
 }
 
 // ─── Main Editor ──────────────────────────────────────────────────────────────
+type SearchMatchRange = { from: number; to: number };
+
+function findSearchMatches(doc: any, query: string): SearchMatchRange[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+
+  const matches: SearchMatchRange[] = [];
+  doc.descendants((node: any, pos: number) => {
+    if (!node.isText || !node.text) return;
+    const text = node.text as string;
+    const lowerText = text.toLowerCase();
+    let offset = lowerText.indexOf(needle);
+    while (offset !== -1) {
+      matches.push({ from: pos + offset, to: pos + offset + needle.length });
+      offset = lowerText.indexOf(needle, offset + needle.length);
+    }
+  });
+  return matches;
+}
+
 interface RichTextEditorProps {
   value: string;
   onChange: (html: string) => void;
@@ -1378,13 +1398,17 @@ interface RichTextEditorProps {
   autoFocus?: boolean;
   /** Hide the admin compiler toolbar button (used when embedded inside the compiler modal itself) */
   hideCompiler?: boolean;
+  /** Optional find-in-note query. Decorations keep matches highlighted while editable. */
+  searchQuery?: string;
+  searchMatchIndex?: number;
+  onSearchMatchCount?: (count: number) => void;
 }
 
 export function RichTextEditor({
   value, onChange,
   placeholder = 'Write something...',
   className, minHeight = '8rem', maxHeight, autoFocus = false,
-  hideCompiler = false,
+  hideCompiler = false, searchQuery = '', searchMatchIndex = 0, onSearchMatchCount,
 }: RichTextEditorProps) {
   const { t } = useLang();
   const { settings, subjects } = useStudy();
@@ -1427,6 +1451,44 @@ export function RichTextEditor({
       },
     });
   }, []);
+
+  // Search decorations are ProseMirror decorations rather than HTML changes,
+  // so the highlighted text remains fully editable and does not disturb the
+  // document's stored HTML.
+  const searchQueryRef = useRef('');
+  const searchMatchIndexRef = useRef(0);
+  const searchPluginKey = useMemo(() => new PluginKey('editorSearchHighlight'), []);
+  const SearchHighlight = useMemo(() => {
+    const queryRef = searchQueryRef;
+    const matchIndexRef = searchMatchIndexRef;
+    const pluginKey = searchPluginKey;
+    return Extension.create({
+      name: 'editorSearchHighlight',
+      addProseMirrorPlugins() {
+        return [
+          new Plugin({
+            key: pluginKey,
+            props: {
+              decorations(state) {
+                const matches = findSearchMatches(state.doc, queryRef.current);
+                if (matches.length === 0) return DecorationSet.empty;
+                return DecorationSet.create(
+                  state.doc,
+                  matches.map((match, index) =>
+                    Decoration.inline(match.from, match.to, {
+                      class: index === matchIndexRef.current
+                        ? 'search-hl search-hl-active'
+                        : 'search-hl',
+                    })
+                  )
+                );
+              },
+            },
+          }),
+        ];
+      },
+    });
+  }, [searchPluginKey]);
 
   // Note ref picker
   const [showNoteRefPicker, setShowNoteRefPicker] = useState(false);
@@ -1474,6 +1536,7 @@ export function RichTextEditor({
       CustomLink,
       NoteRef,
       LinkSelectionHighlight,
+      SearchHighlight,
     ],
     content: toSafeHtml(value),
     onUpdate: ({ editor }) => {
@@ -1515,6 +1578,24 @@ export function RichTextEditor({
     lastEditorHtmlRef.current = incoming;
     editor.commands.setContent(incoming, { emitUpdate: false });
   }, [value]);
+
+  // Refresh decorations and the result count whenever the query, active
+  // result, or document changes. Scrolling the active decoration mirrors the
+  // preview-mode search behavior.
+  useEffect(() => {
+    if (!editor) return;
+    searchQueryRef.current = searchQuery;
+    searchMatchIndexRef.current = searchMatchIndex;
+    const matches = findSearchMatches(editor.state.doc, searchQuery);
+    onSearchMatchCount?.(matches.length);
+    editor.view.dispatch(editor.state.tr.setMeta(searchPluginKey, true));
+    requestAnimationFrame(() => {
+      const active = editor.view.dom.querySelector('.search-hl-active');
+      if (active instanceof HTMLElement) {
+        active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  }, [editor, searchQuery, searchMatchIndex, value, onSearchMatchCount, searchPluginKey]);
 
   // When the link popover is dismissed (click-outside), clear the decoration highlight
   useEffect(() => {

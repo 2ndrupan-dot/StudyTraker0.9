@@ -11,7 +11,7 @@ import { ConfirmModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ClipboardList, Plus, ChevronLeft, Pencil, Trash2, Check, X, User as UserIcon,
-  ArrowUpDown, GripVertical, Info, Play, BookOpen, Search,
+  ArrowUpDown, GripVertical, Info, Play, BookOpen, Search, Copy, ClipboardPaste,
 } from 'lucide-react';
 import {
   DndContext, DragEndEvent, PointerSensor, TouchSensor, KeyboardSensor,
@@ -68,6 +68,9 @@ const ICON_COLORS = [
   'text-blue-500', 'text-violet-500', 'text-emerald-500', 'text-amber-500',
   'text-rose-500', 'text-cyan-500', 'text-purple-500', 'text-orange-500',
 ];
+
+type CopiedTestCard = Pick<TestCard, 'title' | 'question' | 'answer'>;
+const COPIED_TEST_CARD_STORAGE_KEY = 'studytrack_copied_test_card';
 
 // ─── Info modal ───────────────────────────────────────────────────────────────
 
@@ -251,6 +254,7 @@ export function Test() {
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [confirmDeleteCardId, setConfirmDeleteCardId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState('');
+  const [copiedCard, setCopiedCard] = useState<CopiedTestCard | null>(null);
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -260,6 +264,24 @@ export function Test() {
 
   // Info modal
   const [showInfo, setShowInfo] = useState(false);
+
+  // Keep the copied card while moving between subjects, tabs, or routes.
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(COPIED_TEST_CARD_STORAGE_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as Partial<CopiedTestCard>;
+      if (typeof parsed.title === 'string' && typeof parsed.question === 'string' && typeof parsed.answer === 'string') {
+        setCopiedCard({
+          title: parsed.title,
+          question: parsed.question,
+          answer: parsed.answer,
+        });
+      }
+    } catch {
+      sessionStorage.removeItem(COPIED_TEST_CARD_STORAGE_KEY);
+    }
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -336,6 +358,37 @@ export function Test() {
     setEditingCardId(null);
   };
 
+  const handleCopyCard = (card: TestCard) => {
+    const nextCopiedCard: CopiedTestCard = {
+      title: card.title,
+      question: card.question,
+      answer: card.answer,
+    };
+    setCopiedCard(nextCopiedCard);
+    try {
+      sessionStorage.setItem(COPIED_TEST_CARD_STORAGE_KEY, JSON.stringify(nextCopiedCard));
+    } catch {
+      // The in-memory copy still works if browser storage is unavailable.
+    }
+  };
+
+  const handlePasteCard = async () => {
+    if (!selectedSubjectId || !copiedCard) return;
+    setSaveError('');
+    if (activeTab === 'course') await addTestCard(selectedSubjectId, copiedCard);
+    else await addPersonalTestCard(selectedSubjectId, copiedCard);
+    setExpandedCardId(null);
+  };
+
+  const handleClearCopiedCard = () => {
+    setCopiedCard(null);
+    try {
+      sessionStorage.removeItem(COPIED_TEST_CARD_STORAGE_KEY);
+    } catch {
+      // Nothing else is needed when browser storage is unavailable.
+    }
+  };
+
   const handleDeleteCard = async () => {
     if (!confirmDeleteCardId || !selectedSubjectId) return;
     if (activeTab === 'course') await deleteTestCard(selectedSubjectId, confirmDeleteCardId);
@@ -378,6 +431,7 @@ export function Test() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   const cardCount = selectedSubjectId ? deck.length : 0;
+  const canEditSelectedDeck = activeTab !== 'course' || !isCourseTestReadOnly;
 
   return (
     <>
@@ -445,6 +499,21 @@ export function Test() {
                     className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
                   >
                     <Plus size={12} /> {t('addTestCard')}
+                  </motion.button>
+                </span>
+              )}
+
+              {/* Paste a copied card into the currently selected subject. */}
+              {selectedSubjectId && copiedCard && !isAdding && !editingCardId && canEditSelectedDeck && (
+                <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(313 80% 52%)' } as React.CSSProperties}>
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    type="button"
+                    onClick={handlePasteCard}
+                    title={t('testCardPaste')}
+                    className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
+                  >
+                    <ClipboardPaste size={12} /> {t('testCardPaste')}
                   </motion.button>
                 </span>
               )}
@@ -665,6 +734,7 @@ export function Test() {
                                   }}
                                   onEdit={() => { setEditingCardId(card.id); setExpandedCardId(null); setReorderMode(false); setSaveError(''); }}
                                   onDelete={() => setConfirmDeleteCardId(card.id)}
+                                   onCopy={() => handleCopyCard(card)}
                                   onStartTest={() => handleStartTest(card.id)}
                                   t={t}
                                   lang={lang}
@@ -717,6 +787,7 @@ interface TestCardItemProps {
   onToggleExpand: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onCopy: () => void;
   onStartTest: () => void;
   t: (k: string) => string;
   lang: string;
@@ -724,7 +795,7 @@ interface TestCardItemProps {
 
 function TestCardItem({
   card, index, expanded, reorderMode, dragHandle, isShared,
-  onToggleExpand, onEdit, onDelete, onStartTest, t, lang,
+  onToggleExpand, onEdit, onDelete, onCopy, onStartTest, t, lang,
 }: TestCardItemProps) {
   const accent = CARD_ACCENTS[index % CARD_ACCENTS.length];
   const iconColor = ICON_COLORS[index % ICON_COLORS.length];
@@ -749,9 +820,20 @@ function TestCardItem({
               {card.title}
             </button>
 
-            {/* Actions — hidden for shared courses */}
-            {!reorderMode && !isShared && (
+            {/* Copy is available for both course and personal cards. */}
+            {!reorderMode && (
               <div className="flex items-center gap-0.5 shrink-0">
+                <motion.button
+                  whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+                  onClick={onCopy}
+                  title={t('testCardCopy')}
+                  aria-label={t('testCardCopy')}
+                  className="p-1.5 rounded-xl hover:bg-white/70 dark:hover:bg-white/10 text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <Copy size={13} />
+                </motion.button>
+                {!isShared && (
+                  <>
                 <motion.button
                   whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
                   onClick={onEdit}
@@ -768,6 +850,8 @@ function TestCardItem({
                 >
                   <Trash2 size={13} />
                 </motion.button>
+                  </>
+                )}
               </div>
             )}
 

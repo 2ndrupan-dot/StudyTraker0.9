@@ -442,8 +442,8 @@ export function Test() {
           style={{ background: 'linear-gradient(135deg, hsl(243 88% 52%) 0%, hsl(283 80% 52%) 50%, hsl(313 80% 52%) 100%)' }}
         >
           <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl pointer-events-none" />
-          <div className="relative px-5 pt-5 pb-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="relative px-3 sm:px-5 pt-5 pb-4 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3 min-w-0">
               {selectedSubject ? (
                 <button
                   onClick={handleBack}
@@ -456,8 +456,8 @@ export function Test() {
                   <ClipboardList size={22} className="text-white" strokeWidth={2.2} />
                 </div>
               )}
-              <div>
-                <h1 className="text-2xl font-bold text-white leading-tight" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-bold text-white leading-tight truncate" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>
                   {selectedSubject ? selectedSubject.title : t('testTabTitle')}
                 </h1>
                 {selectedSubject && (
@@ -471,7 +471,7 @@ export function Test() {
             </div>
 
             {/* Header right actions */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               {/* Reorder button - shown only on editable deck views */}
               {(!!selectedSubjectId && deck.length > 0) && !isAdding && !editingCardId && !(activeTab === 'course' && isCourseTestReadOnly) && (
                 <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(313 80% 52%)' } as React.CSSProperties}>
@@ -496,9 +496,9 @@ export function Test() {
                     whileTap={{ scale: 0.97 }}
                     type="button"
                     onClick={() => { setIsAdding(true); setReorderMode(false); setExpandedCardId(null); setSaveError(''); }}
-                    className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
+                    className="spin-border-inner flex items-center h-7 gap-1 px-2 sm:px-2.5 whitespace-nowrap bg-white/20 text-white text-[10px] sm:text-[11px] font-bold hover:bg-white/30 transition-colors"
                   >
-                    <Plus size={12} /> {t('addTestCard')}
+                    <Plus size={12} className="shrink-0" /> {t('addTestCard')}
                   </motion.button>
                 </span>
               )}
@@ -511,9 +511,10 @@ export function Test() {
                     type="button"
                     onClick={handlePasteCard}
                     title={t('testCardPaste')}
-                    className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
+                    className="spin-border-inner flex items-center justify-center h-7 w-7 sm:w-auto gap-1 px-0 sm:px-2.5 whitespace-nowrap bg-white/20 text-white text-[10px] sm:text-[11px] font-bold hover:bg-white/30 transition-colors"
                   >
-                    <ClipboardPaste size={12} /> {t('testCardPaste')}
+                    <ClipboardPaste size={12} className="shrink-0" />
+                    <span className="hidden sm:inline">{t('testCardPaste')}</span>
                   </motion.button>
                 </span>
               )}

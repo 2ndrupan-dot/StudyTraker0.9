@@ -154,9 +154,7 @@ function PendingCountdown({ item, isBn }: { item: PendingItem; isBn: boolean }) 
   const dd = Math.floor(totalHr  / 24);
   const pad = (n: number) => String(n).padStart(2, '0');
 
-  const label = isBn
-    ? `${dd}দ : ${pad(h)}ঘ : ${pad(m)}মি : ${pad(s)}স`
-    : `${dd}d : ${pad(h)}h : ${pad(m)}m : ${pad(s)}s`;
+  const label = `${dd}d : ${pad(h)}h : ${pad(m)}m : ${pad(s)}s`;
 
   return (
     <span className="text-[10px] text-orange-500 font-bold bg-orange-500/10 px-2 py-0.5 rounded-full tabular-nums">
@@ -2466,9 +2464,7 @@ export function Today() {
                             >
                               {pendingItems.length > 0 ? (
                                 <div className="space-y-2">
-                                  {pendingItems.map(item => {
-                                    const dLeft = pendingDaysLeft(item, todayStr);
-                                    return (
+                                  {pendingItems.map(item => (
                                       <div key={item.task.key} className="bg-card rounded-xl border border-orange-200/60 overflow-hidden shadow-sm">
                                         <div className="h-1 w-full" style={{ backgroundColor: item.task.subjectColor }} />
                                         <div className="px-3 pt-2.5 pb-2.5">
@@ -2483,9 +2479,7 @@ export function Today() {
                                           </div>
                                           <p className="font-bold text-sm text-foreground leading-snug mb-1">{item.task.mainTitle}</p>
                                           <div className="flex items-center gap-1.5 flex-wrap mb-2">
-                                            <span className="text-[10px] text-orange-500 font-semibold">
-                                              {isBn ? `${dLeft} দিন বাকি` : `${dLeft} day${dLeft !== 1 ? 's' : ''} left`}
-                                            </span>
+                                            <PendingCountdown item={item} isBn={isBn} />
                                             {(() => { const pMarks = getTaskMarks(item.task); return pMarks.note ? (
                                               <button onClick={e => { e.stopPropagation(); openNoteModal(taskToMarkPath(item.task), pMarks.note ?? ''); }} className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-200 hover:bg-blue-500/20 transition-colors">
                                                 <StickyNote size={9} /> {isBn ? 'নোট' : 'Note'}
@@ -2508,8 +2502,7 @@ export function Today() {
                                           </div>
                                         </div>
                                       </div>
-                                    );
-                                  })}
+                                  ))}
                                 </div>
                               ) : (
                                 <div className="py-4 text-center text-[12px] text-muted-foreground bg-secondary/30 rounded-xl">
@@ -2576,9 +2569,7 @@ export function Today() {
 
               <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
                 {pendingItems.length > 0 ? (
-                  pendingItems.map(item => {
-                    const dLeft = pendingDaysLeft(item, todayStr);
-                    return (
+                  pendingItems.map(item => (
                       <motion.div
                         key={item.task.key}
                         layout
@@ -2630,8 +2621,7 @@ export function Today() {
                           </div>
                         </div>
                       </motion.div>
-                    );
-                  })
+                  ))
                 ) : (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.95 }}

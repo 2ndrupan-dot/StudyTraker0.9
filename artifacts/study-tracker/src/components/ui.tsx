@@ -1008,38 +1008,40 @@ export const NoteEditorModal = ({
                   )}
 
                   {/* Body — scrollable so header stays visible */}
-                  <div className="flex-1 min-h-0 overflow-y-auto p-6 pb-8 space-y-4" ref={editing ? undefined : previewContainerRef}>
-                    {editing ? (
-                      <>
-                        <RichTextEditor
-                          value={value}
-                          onChange={onChange}
-                          placeholder={placeholder}
-                          minHeight="7rem"
-                          maxHeight="45vh"
-                          autoFocus
-                          hideCompiler={hideCompiler}
-                          searchQuery={searchQuery}
-                          searchMatchIndex={matchIdx}
-                          onSearchMatchCount={setMatchCount}
-                        />
-                        <div className="flex gap-2 shrink-0">
-                          <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>
-                          <Button className="flex-1" onClick={onSave}>{saveLabel}</Button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="min-h-[7rem]">
-                        {value ? (
-                          <RichTextPreview html={value} className="leading-relaxed" onNoteRef={handleNoteRef} />
-                        ) : (
-                          <div className="flex flex-col items-center justify-center h-28 gap-2 text-muted-foreground">
-                            <Pencil size={24} className="opacity-30" />
-                            <p className="text-xs">{placeholder ?? 'No note yet. Tap to add one.'}</p>
+                  <div className="note-a4-viewport flex-1 min-h-0 overflow-auto p-6 pb-8" ref={editing ? undefined : previewContainerRef}>
+                    <div className="note-a4-page">
+                      {editing ? (
+                        <>
+                          <RichTextEditor
+                            value={value}
+                            onChange={onChange}
+                            placeholder={placeholder}
+                            minHeight="7rem"
+                            maxHeight="45vh"
+                            autoFocus
+                            hideCompiler={hideCompiler}
+                            searchQuery={searchQuery}
+                            searchMatchIndex={matchIdx}
+                            onSearchMatchCount={setMatchCount}
+                          />
+                          <div className="flex gap-2 shrink-0 mt-4">
+                            <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>
+                            <Button className="flex-1" onClick={onSave}>{saveLabel}</Button>
                           </div>
-                        )}
-                      </div>
-                    )}
+                        </>
+                      ) : (
+                        <div className="min-h-[7rem]">
+                          {value ? (
+                            <RichTextPreview html={value} className="leading-relaxed" onNoteRef={handleNoteRef} />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-28 gap-2 text-muted-foreground">
+                              <Pencil size={24} className="opacity-30" />
+                              <p className="text-xs">{placeholder ?? 'No note yet. Tap to add one.'}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </motion.div>
               )}

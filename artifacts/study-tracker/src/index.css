@@ -237,6 +237,33 @@ html, body {
 }
 
 /*
+ * Notes are authored for an A4 page, not for the width of the phone viewport.
+ * Keeping a real page width on the compact mobile viewer prevents Bengali and
+ * table cells from collapsing into one character per line. The surrounding
+ * viewport intentionally scrolls horizontally on small screens.
+ */
+.note-a4-viewport {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.note-a4-page {
+  width: 794px;
+  min-height: 1123px;
+  box-sizing: border-box;
+  padding: 42px 48px;
+  background: hsl(var(--card));
+}
+.note-a4-page .rich-editor-content {
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+.note-a4-page .rich-editor-content table {
+  width: 100%;
+  min-width: 100%;
+  table-layout: fixed;
+}
+
+/*
  * When the global note-size setting is active, it must win over any inline
  * font-size styles stored inside the note HTML (e.g. from the toolbar's
  * FontSizeSelect or from pasted content). The .note-size-locked class is added

@@ -260,7 +260,13 @@ html, body {
 .note-a4-page .rich-editor-content table {
   width: 100%;
   min-width: 100%;
-  table-layout: fixed;
+  /*
+   * Let the browser honour the table's intrinsic column sizes. The global
+   * fixed layout is useful for a narrow inline editor, but on an A4 page it
+   * can make a narrow column wrap Bengali words one character at a time.
+   * The A4 viewport can scroll when a table genuinely needs more width.
+   */
+  table-layout: auto;
 }
 
 /*

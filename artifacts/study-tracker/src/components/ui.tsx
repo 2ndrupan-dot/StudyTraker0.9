@@ -924,39 +924,46 @@ export const NoteEditorModal = ({
                       />
                     )}
 
-                    {/* Body */}
-                    <div className="flex-1 flex flex-col p-6 gap-4 overflow-hidden min-h-0">
-                      {editing ? (
-                        <>
-                          <RichTextEditor
-                            value={value}
-                            onChange={onChange}
-                            placeholder={placeholder}
-                            className="flex-1 min-h-0"
-                            autoFocus
-                            hideCompiler={hideCompiler}
-                            searchQuery={searchQuery}
-                            searchMatchIndex={matchIdx}
-                            onSearchMatchCount={setMatchCount}
-                          />
-                          <div className="flex gap-2 shrink-0">
-                            <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>
-                            <Button className="flex-1" onClick={onSave}>{saveLabel}</Button>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex-1 overflow-y-auto" ref={previewContainerRef}>
-                          {value ? (
-                            <RichTextPreview html={value} className="leading-relaxed" onNoteRef={handleNoteRef} />
-                          ) : (
-                            <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-                              <Pencil size={32} className="opacity-30" />
-                              <p className="text-sm">{placeholder ?? 'No note yet. Click the pencil to add one.'}</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                     {/* Body — the preview keeps an A4 page width on every screen.
+                         On a phone the page scrolls horizontally instead of
+                         shrinking tables until Bengali characters stack vertically. */}
+                     <div
+                       className="note-a4-viewport flex-1 min-h-0 overflow-auto p-6 pb-8"
+                       ref={editing ? undefined : previewContainerRef}
+                     >
+                       <div className="note-a4-page flex flex-col">
+                         {editing ? (
+                           <>
+                             <RichTextEditor
+                               value={value}
+                               onChange={onChange}
+                               placeholder={placeholder}
+                               className="flex-1 min-h-0"
+                               autoFocus
+                               hideCompiler={hideCompiler}
+                               searchQuery={searchQuery}
+                               searchMatchIndex={matchIdx}
+                               onSearchMatchCount={setMatchCount}
+                             />
+                             <div className="flex gap-2 shrink-0 mt-4">
+                               <Button variant="ghost" className="flex-1 text-muted-foreground" onClick={onClear}>{clearLabel}</Button>
+                               <Button className="flex-1" onClick={onSave}>{saveLabel}</Button>
+                             </div>
+                           </>
+                         ) : (
+                           <div className="min-h-[7rem]">
+                             {value ? (
+                               <RichTextPreview html={value} className="leading-relaxed" onNoteRef={handleNoteRef} />
+                             ) : (
+                               <div className="flex flex-col items-center justify-center h-28 gap-3 text-muted-foreground">
+                                 <Pencil size={32} className="opacity-30" />
+                                 <p className="text-sm">{placeholder ?? 'No note yet. Click the pencil to add one.'}</p>
+                               </div>
+                             )}
+                           </div>
+                         )}
+                       </div>
+                     </div>
                   </div>
                 </motion.div>
               ) : (

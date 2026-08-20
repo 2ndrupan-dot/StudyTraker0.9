@@ -1,5 +1,6 @@
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { useEffect, useState } from "react";
+import { RefreshCw, WifiOff } from "lucide-react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LangProvider } from "./context/LangContext";
 import { CourseProvider, useCourse } from "./context/CourseContext";
@@ -28,6 +29,59 @@ import { BrandedLoadingScreen } from "./components/BrandedLoadingScreen";
 // post-login transition in Auth.tsx, so app-open and post-login feel identical.
 function LoadingScreen() {
   return <BrandedLoadingScreen className="fixed inset-0 z-50" />;
+}
+
+function OfflineScreen() {
+  const reload = () => window.location.reload();
+
+  return (
+    <main className="min-h-[100dvh] flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 px-6 py-10">
+      <div className="w-full max-w-md rounded-3xl border border-indigo-100 bg-white/90 p-8 text-center shadow-xl shadow-indigo-100/60 backdrop-blur-sm">
+        <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-indigo-50 text-primary">
+          <WifiOff size={40} strokeWidth={1.8} aria-hidden="true" />
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          ইন্টারনেট সংযোগ নেই
+        </h1>
+        <p className="mt-3 text-base font-medium text-foreground/80">
+          Please connect your internet and try again.
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          আপনার ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন। সংযোগ ফিরে এলে নিচের
+          বাটনে চাপ দিন।
+        </p>
+        <button
+          type="button"
+          onClick={reload}
+          className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3.5 font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition hover:opacity-90 active:scale-[0.98]"
+        >
+          <RefreshCw size={18} aria-hidden="true" />
+          Reload / পুনরায় লোড করুন
+        </button>
+      </div>
+    </main>
+  );
+}
+
+function OfflineGuard({ children }: { children: React.ReactNode }) {
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  if (!isOnline) return <OfflineScreen />;
+  return <>{children}</>;
 }
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -146,25 +200,27 @@ function Router() {
 
 function App() {
   return (
-    <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-      <LangProvider>
-        <AuthProvider>
-          <PWAInstallProvider>
-            <CourseProvider>
-              <StudyProvider>
-                <TestProvider>
-                  <AdminProvider>
-                    <ContentProtectionGuard />
-                    <Router />
-                    <PWAUpdater />
-                  </AdminProvider>
-                </TestProvider>
-              </StudyProvider>
-            </CourseProvider>
-          </PWAInstallProvider>
-        </AuthProvider>
-      </LangProvider>
-    </WouterRouter>
+    <OfflineGuard>
+      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <LangProvider>
+          <AuthProvider>
+            <PWAInstallProvider>
+              <CourseProvider>
+                <StudyProvider>
+                  <TestProvider>
+                    <AdminProvider>
+                      <ContentProtectionGuard />
+                      <Router />
+                      <PWAUpdater />
+                    </AdminProvider>
+                  </TestProvider>
+                </StudyProvider>
+              </CourseProvider>
+            </PWAInstallProvider>
+          </AuthProvider>
+        </LangProvider>
+      </WouterRouter>
+    </OfflineGuard>
   );
 }
 

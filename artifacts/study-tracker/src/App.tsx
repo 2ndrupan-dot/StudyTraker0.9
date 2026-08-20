@@ -32,7 +32,13 @@ function LoadingScreen() {
 }
 
 function OfflineScreen() {
-  const reload = () => window.location.reload();
+  const [isReloading, setIsReloading] = useState(false);
+
+  const reload = () => {
+    if (isReloading) return;
+    setIsReloading(true);
+    window.setTimeout(() => window.location.reload(), 700);
+  };
 
   return (
     <main className="min-h-[100dvh] flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 px-6 py-10">
@@ -53,10 +59,11 @@ function OfflineScreen() {
         <button
           type="button"
           onClick={reload}
-          className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3.5 font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition hover:opacity-90 active:scale-[0.98]"
+          disabled={isReloading}
+          className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3.5 font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
         >
-          <RefreshCw size={18} aria-hidden="true" />
-          Reload / পুনরায় লোড করুন
+          <RefreshCw size={18} className={isReloading ? "animate-spin" : ""} aria-hidden="true" />
+          {isReloading ? "লোড হচ্ছে... / Loading..." : "Reload / পুনরায় লোড করুন"}
         </button>
       </div>
     </main>

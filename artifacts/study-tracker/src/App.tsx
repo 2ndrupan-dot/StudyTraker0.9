@@ -31,11 +31,37 @@ function LoadingScreen() {
   return <BrandedLoadingScreen className="fixed inset-0 z-50" />;
 }
 
-function OfflineScreen() {
+type ConnectionState = "checking" | "online" | "offline";
+
+async function hasInternetConnection(): Promise<boolean> {
+  if (!navigator.onLine) return false;
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 1500);
+
+  try {
+    // navigator.onLine can remain true when a device is connected to Wi-Fi
+    // without internet access. A no-cors request only checks reachability and
+    // does not read or send any user data.
+    await fetch("https://www.gstatic.com/generate_204", {
+      method: "GET",
+      mode: "no-cors",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function OfflineScreen({ checking = false }: { checking?: boolean }) {
   const [isReloading, setIsReloading] = useState(false);
 
   const reload = () => {
-    if (isReloading) return;
+    if (isReloading || checking) return;
     setIsReloading(true);
     window.setTimeout(() => window.location.reload(), 700);
   };
@@ -47,23 +73,28 @@ function OfflineScreen() {
           <WifiOff size={40} strokeWidth={1.8} aria-hidden="true" />
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          ইন্টারনেট সংযোগ নেই
+          {checking ? "ইন্টারনেট সংযোগ পরীক্ষা করা হচ্ছে..." : "ইন্টারনেট সংযোগ নেই"}
         </h1>
         <p className="mt-3 text-base font-medium text-foreground/80">
-          Please connect your internet and try again.
+          {checking ? "Checking your internet connection..." : "Please connect your internet and try again."}
         </p>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          আপনার ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন। সংযোগ ফিরে এলে নিচের
-          বাটনে চাপ দিন।
+          {checking
+            ? "অনুগ্রহ করে অপেক্ষা করুন।"
+            : "আপনার ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন। সংযোগ ফিরে এলে নিচের বাটনে চাপ দিন।"}
         </p>
         <button
           type="button"
           onClick={reload}
-          disabled={isReloading}
+          disabled={isReloading || checking}
           className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3.5 font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
         >
-          <RefreshCw size={18} className={isReloading ? "animate-spin" : ""} aria-hidden="true" />
-          {isReloading ? "লোড হচ্ছে... / Loading..." : "Reload / পুনরায় লোড করুন"}
+          <RefreshCw size={18} className={isReloading || checking ? "animate-spin" : ""} aria-hidden="true" />
+          {checking
+            ? "সংযোগ পরীক্ষা হচ্ছে... / Checking..."
+            : isReloading
+              ? "লোড হচ্ছে... / Loading..."
+              : "Reload / পুনরায় লোড করুন"}
         </button>
       </div>
     </main>
@@ -71,23 +102,45 @@ function OfflineScreen() {
 }
 
 function OfflineGuard({ children }: { children: React.ReactNode }) {
-  const [isOnline, setIsOnline] = useState(() =>
-    typeof navigator === "undefined" ? true : navigator.onLine,
+  const [connection, setConnection] = useState<ConnectionState>(() =>
+    typeof navigator === "undefined"
+      ? "checking"
+      : navigator.onLine
+        ? "checking"
+        : "offline",
   );
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    let active = true;
+
+    const verifyConnection = async () => {
+      if (!navigator.onLine) {
+        if (active) setConnection("offline");
+        return;
+      }
+      if (active) setConnection("checking");
+      const reachable = await hasInternetConnection();
+      if (active) setConnection(reachable ? "online" : "offline");
+    };
+
+    const handleOnline = () => {
+      void verifyConnection();
+    };
+    const handleOffline = () => setConnection("offline");
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    void verifyConnection();
     return () => {
+      active = false;
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
   }, []);
 
-  if (!isOnline) return <OfflineScreen />;
+  if (connection !== "online") {
+    return <OfflineScreen checking={connection === "checking"} />;
+  }
   return <>{children}</>;
 }
 

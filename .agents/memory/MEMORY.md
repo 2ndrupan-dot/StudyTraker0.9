@@ -17,3 +17,4 @@
 - [Auth and Firestore separation](auth-firestore-separation.md) — auth state must settle independently from optional Firestore profile/data listeners, especially on mobile reconnects.
 - [Personal test privacy](personal-test-privacy.md) — personal test cards use a separate course subcollection and never enter course-share snapshots or admin relays.
 - [Mockup production builds](mockup-build-env.md) — standalone mockup builds need PORT and BASE_PATH defaults because artifact env is injected only by the dev workflow.
+- [Offline reachability checks](offline-reachability.md) — navigator.onLine can be true without internet; verify external reachability before starting auth/data loading.

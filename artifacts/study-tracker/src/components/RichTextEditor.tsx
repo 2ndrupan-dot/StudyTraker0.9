@@ -1640,7 +1640,7 @@ export function RichTextEditor({
       style={settings?.globalNoteSize ? { '--note-size': settings.globalNoteSize } as React.CSSProperties : undefined}
     >
       {/* ── Toolbar ── */}
-      <div className="sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border/50 bg-secondary/95 backdrop-blur-sm">
+      <div className="rich-editor-toolbar sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border/50 bg-secondary">
 
         <FontSizeSelect editor={editor} t={t} />
 

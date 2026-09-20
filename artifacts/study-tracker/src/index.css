@@ -246,6 +246,16 @@ html, body {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
+
+/*
+ * The A4 viewer has 1.5rem of outer padding. Pull the sticky edit toolbar
+ * across that padding so it attaches to the actual top edge of the scroll
+ * area instead of leaving a strip where scrolled text remains visible.
+ */
+.note-a4-viewport .rich-editor-toolbar {
+  top: -1.5rem;
+}
+
 .note-a4-page {
   width: 794px;
   min-height: 1123px;

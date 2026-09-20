@@ -1636,11 +1636,11 @@ export function RichTextEditor({
 
   return (
     <div
-      className={cn('flex flex-col rounded-xl border border-border/60 bg-background overflow-hidden', className, settings?.globalNoteSize ? 'note-size-locked' : undefined)}
+      className={cn('flex flex-col rounded-xl border border-border/60 bg-background', className, settings?.globalNoteSize ? 'note-size-locked' : undefined)}
       style={settings?.globalNoteSize ? { '--note-size': settings.globalNoteSize } as React.CSSProperties : undefined}
     >
       {/* ── Toolbar ── */}
-      <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border/50 bg-secondary/40">
+      <div className="sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border/50 bg-secondary/95 backdrop-blur-sm">
 
         <FontSizeSelect editor={editor} t={t} />
 

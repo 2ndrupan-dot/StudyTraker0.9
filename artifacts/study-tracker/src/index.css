@@ -292,12 +292,28 @@ html, body {
 .note-size-locked .rich-editor-content * {
   font-size: var(--note-size) !important;
 }
+.note-size-locked .rich-editor-content sup,
+.note-size-locked .rich-editor-content sub {
+  font-size: calc(var(--note-size) * 0.75) !important;
+}
+.note-size-locked .rich-editor-content .katex * {
+  font-size: revert !important;
+}
 .rich-editor-content p { margin: 0 0 0.35em; }
 .rich-editor-content p:last-child { margin-bottom: 0; }
 .rich-editor-content strong { font-weight: 700; }
 .rich-editor-content em { font-style: italic; }
 .rich-editor-content u { text-decoration: underline; }
 .rich-editor-content s { text-decoration: line-through; }
+.rich-editor-content sup { vertical-align: super; }
+.rich-editor-content sub { vertical-align: sub; }
+.rich-editor-content .katex { font-size: 1em; }
+.rich-editor-content .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.15em 0;
+}
 .rich-editor-content ul {
   list-style: disc !important;
   padding-left: 1.4em !important;

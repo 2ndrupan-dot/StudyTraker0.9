@@ -420,6 +420,15 @@ importers:
       '@tiptap/extension-link':
         specifier: ^3.23.6
         version: 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)
+      '@tiptap/extension-mathematics':
+        specifier: 3.23.6
+        version: 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)(katex@0.16.47)
+      '@tiptap/extension-subscript':
+        specifier: 3.23.6
+        version: 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)
+      '@tiptap/extension-superscript':
+        specifier: 3.23.6
+        version: 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)
       '@tiptap/extension-table':
         specifier: ^3.23.6
         version: 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)
@@ -456,6 +465,9 @@ importers:
       gsap:
         specifier: ^3.14.2
         version: 3.14.2
+      katex:
+        specifier: ^0.16.47
+        version: 0.16.47
       prosemirror-state:
         specifier: ^1.4.4
         version: 1.4.4
@@ -2051,6 +2063,13 @@ packages:
       '@tiptap/core': 3.23.6
       '@tiptap/pm': 3.23.6
 
+  '@tiptap/extension-mathematics@3.23.6':
+    resolution: {integrity: sha512-ny9hQJy0eGF4nFLg4SkJcID7U7ias1B9rcoXOhm+LWZ4TJcZiU5VdVk2VaUWT89++i7M+aUirKEYOie9g697/g==}
+    peerDependencies:
+      '@tiptap/core': 3.23.6
+      '@tiptap/pm': 3.23.6
+      katex: ^0.16.4
+
   '@tiptap/extension-ordered-list@3.23.6':
     resolution: {integrity: sha512-1m/wWB/ZtXcmG2vNdiUkCqsOgqv5vBjCv/mVaHhF9OvV+zQS8YDjoWE7zEuT/GgELdT77Xq8lHrn4nCDudB3/A==}
     peerDependencies:
@@ -2065,6 +2084,18 @@ packages:
     resolution: {integrity: sha512-oF7FEZ37f15aCe5kPgzGDYf/m+hr7VdQ/Ko/Hds/UM9pX7AG1fdtmRrl6wqkRqDM/incZaC/AQR2/Dpo2VCNGQ==}
     peerDependencies:
       '@tiptap/core': 3.23.6
+
+  '@tiptap/extension-subscript@3.23.6':
+    resolution: {integrity: sha512-K9NP2sAjoQ0EKnPVw96864aMXZlK5r3cTaybg7vQ6kKIM9OEOB+36F4VHQgQdpYUMk94gxSP/ixBB8bTVN8lPA==}
+    peerDependencies:
+      '@tiptap/core': 3.23.6
+      '@tiptap/pm': 3.23.6
+
+  '@tiptap/extension-superscript@3.23.6':
+    resolution: {integrity: sha512-GTVHfik32a6m4q8rU3nl0mUKUfz3kTd+qIxUCGvoS/1Adb9M5Q0i5bfLk5jDOW896iCn00hPW7GbkP7WRd2Mhg==}
+    peerDependencies:
+      '@tiptap/core': 3.23.6
+      '@tiptap/pm': 3.23.6
 
   '@tiptap/extension-table-cell@3.23.6':
     resolution: {integrity: sha512-hS9TmmvRlT9/ikT+0ukACS+hmJuii4zQaH47cg3oJkz/Fv7O7tL7GZniKtK6l2OUZGPhY+4SV2RkDB6bD7DXfw==}
@@ -2358,6 +2389,10 @@ packages:
   commander@14.0.3:
     resolution: {integrity: sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw==}
     engines: {node: '>=20'}
+
+  commander@8.3.0:
+    resolution: {integrity: sha512-OkTL9umf+He2DZkUq8f8J9of7yL6RJKI24dVITBmNfZBmri9zYZQrKkuXiKhyfPSu8tUhnVBB1iKXevvnlR4Ww==}
+    engines: {node: '>= 12'}
 
   compare-versions@6.1.1:
     resolution: {integrity: sha512-4hm4VPpIecmlg59CHXnRDnqGplJFrbLG4aFEl5vl6cK1u76ws3LLvX7ikFnTDl5vo39sjWD6AaDPYodJp/NNHg==}
@@ -2937,6 +2972,10 @@ packages:
   jsonpointer@5.0.1:
     resolution: {integrity: sha512-p/nXbhSEcu3pZRdkW1OfJhpsVtW1gd4Wa1fnQc9YLiTfAjn0312eMKimbdIQzuZl9aa9xUGaRlP9T/CJE/ditQ==}
     engines: {node: '>=0.10.0'}
+
+  katex@0.16.47:
+    resolution: {integrity: sha512-Eeo8Ys1doU1z+x8AZsPpQu+p/QcZBI5PeOo7QGQdy2x2m0MU/hYagBbGOmXwr5KVbEfVuWv9LpnQWeehogurjg==}
+    hasBin: true
 
   leven@4.1.0:
     resolution: {integrity: sha512-KZ9W9nWDT7rF7Dazg8xyLHGLrmpgq2nVNFUckhqdW3szVP6YhCpp/RAnpmVExA9JvrMynjwSLVrEj3AepHR6ew==}
@@ -3588,6 +3627,7 @@ packages:
   tsconfck@3.1.6:
     resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
     engines: {node: ^18 || >=20}
+    deprecated: unmaintained
     hasBin: true
     peerDependencies:
       typescript: ^5.0.0
@@ -5396,6 +5436,12 @@ snapshots:
       '@tiptap/core': 3.23.6(@tiptap/pm@3.23.6)
       '@tiptap/pm': 3.23.6
 
+  '@tiptap/extension-mathematics@3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)(katex@0.16.47)':
+    dependencies:
+      '@tiptap/core': 3.23.6(@tiptap/pm@3.23.6)
+      '@tiptap/pm': 3.23.6
+      katex: 0.16.47
+
   '@tiptap/extension-ordered-list@3.23.6(@tiptap/extension-list@3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6))':
     dependencies:
       '@tiptap/extension-list': 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)
@@ -5407,6 +5453,16 @@ snapshots:
   '@tiptap/extension-strike@3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))':
     dependencies:
       '@tiptap/core': 3.23.6(@tiptap/pm@3.23.6)
+
+  '@tiptap/extension-subscript@3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)':
+    dependencies:
+      '@tiptap/core': 3.23.6(@tiptap/pm@3.23.6)
+      '@tiptap/pm': 3.23.6
+
+  '@tiptap/extension-superscript@3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)':
+    dependencies:
+      '@tiptap/core': 3.23.6(@tiptap/pm@3.23.6)
+      '@tiptap/pm': 3.23.6
 
   '@tiptap/extension-table-cell@3.23.6(@tiptap/extension-table@3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6))':
     dependencies:
@@ -5762,6 +5818,8 @@ snapshots:
   colorette@2.0.20: {}
 
   commander@14.0.3: {}
+
+  commander@8.3.0: {}
 
   compare-versions@6.1.1: {}
 
@@ -6245,6 +6303,10 @@ snapshots:
       graceful-fs: 4.2.11
 
   jsonpointer@5.0.1: {}
+
+  katex@0.16.47:
+    dependencies:
+      commander: 8.3.0
 
   leven@4.1.0: {}
 

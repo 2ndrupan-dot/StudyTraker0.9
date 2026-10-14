@@ -2,9 +2,13 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useEditor, EditorContent, Extension, Editor } from '@tiptap/react';
 import { Node, mergeAttributes } from '@tiptap/core';
+import { DOMParser as ProseMirrorDOMParser } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from 'prosemirror-state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
+import Mathematics from '@tiptap/extension-mathematics';
+import Subscript from '@tiptap/extension-subscript';
+import Superscript from '@tiptap/extension-superscript';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
@@ -21,6 +25,7 @@ import { useStudy } from '@/context/StudyContext';
 import { useAdmin } from '@/context/AdminContext';
 import { useAuth } from '@/context/AuthContext';
 import { Subject } from '@/lib/types';
+import 'katex/dist/katex.min.css';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, RemoveFormatting, Palette, Highlighter, ChevronDown,
@@ -1357,14 +1362,69 @@ function SubjectNotesCompilerModal({
 export function toSafeHtml(value: string): string {
   if (!value) return '';
   const trimmed = value.trim();
-  if (trimmed.startsWith('<')) return trimmed;
-  return trimmed
-    .split('\n')
-    .map(line => line
-      ? `<p>${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
-      : '<p></p>'
-    )
-    .join('');
+  const html = trimmed.startsWith('<')
+    ? trimmed
+    : trimmed
+      .split(/\r?\n/)
+      .map(line => line
+        ? `<p>${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
+        : '<p></p>'
+      )
+      .join('');
+  return convertDelimitedMathToNodes(html);
+}
+
+/**
+ * Convert common LaTeX delimiters into Tiptap math nodes before parsing note
+ * HTML. This works for existing notes as well as plain text and rich-text
+ * paste, while leaving all other Unicode characters untouched.
+ */
+function convertDelimitedMathToNodes(html: string): string {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+
+  // A standalone $$...$$ or \[...\] paragraph is a display equation.
+  template.content.querySelectorAll('p').forEach(paragraph => {
+    if (paragraph.childNodes.length !== 1 || paragraph.firstChild?.nodeType !== 3) return;
+    const source = paragraph.textContent?.trim() ?? '';
+    const match = /^(?:\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\])$/.exec(source);
+    if (!match) return;
+    const math = document.createElement('div');
+    math.setAttribute('data-type', 'block-math');
+    math.setAttribute('data-latex', (match[1] ?? match[2]).trim());
+    paragraph.replaceWith(math);
+  });
+
+  const textNodes: Text[] = [];
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+
+  const inlineMathPattern = /\\\((.+?)\\\)|(?<!\\)\$(?!\$)([^$\n]+?)(?<!\\)\$(?!\$)/g;
+  for (const textNode of textNodes) {
+    const parent = textNode.parentElement;
+    if (!parent || parent.closest('script, style, pre, code, [data-type="inline-math"], [data-type="block-math"]')) continue;
+
+    const source = textNode.nodeValue ?? '';
+    inlineMathPattern.lastIndex = 0;
+    const matches = Array.from(source.matchAll(inlineMathPattern));
+    if (matches.length === 0) continue;
+
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+    for (const match of matches) {
+      const index = match.index ?? 0;
+      if (index > cursor) fragment.append(document.createTextNode(source.slice(cursor, index)));
+      const math = document.createElement('span');
+      math.setAttribute('data-type', 'inline-math');
+      math.setAttribute('data-latex', (match[1] ?? match[2]).trim());
+      fragment.append(math);
+      cursor = index + match[0].length;
+    }
+    if (cursor < source.length) fragment.append(document.createTextNode(source.slice(cursor)));
+    textNode.replaceWith(fragment);
+  }
+
+  return template.innerHTML;
 }
 
 // ─── Main Editor ──────────────────────────────────────────────────────────────
@@ -1522,6 +1582,9 @@ export function RichTextEditor({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ code: false, codeBlock: false }),
+      Mathematics.configure({ katexOptions: { throwOnError: false } }),
+      Superscript,
+      Subscript,
       Underline,
       TextStyle,
       FontSize,
@@ -1549,19 +1612,29 @@ export function RichTextEditor({
     autofocus: autoFocus,
     editorProps: {
       attributes: { class: 'rich-editor-content outline-none', spellcheck: 'false' },
+      // Plain-text clipboard content otherwise bypasses transformPastedHTML.
+      // Parse it through the same safe HTML path so LaTeX survives pasting too.
+      clipboardTextParser: (text, $context) => {
+        const container = document.createElement('div');
+        container.innerHTML = toSafeHtml(text);
+        return ProseMirrorDOMParser
+          .fromSchema($context.doc.type.schema)
+          .parseSlice(container, { preserveWhitespace: 'full' });
+      },
       // Strip font-size from every element when pasting from external sources
       // (Word, Google Docs, websites, etc.) so the editor's own size settings
       // are never overridden by whatever the source happened to use.
       transformPastedHTML(html: string): string {
         const div = document.createElement('div');
-        div.innerHTML = html;
+        div.innerHTML = convertDelimitedMathToNodes(html);
         div.querySelectorAll<HTMLElement>('*').forEach(el => {
           el.style.removeProperty('font-size');
           // Also remove Word/Docs span wrappers that carry only a font-size
           if (
             el.tagName === 'SPAN' &&
             !el.getAttribute('style') &&
-            !el.className
+            !el.className &&
+            !el.hasAttribute('data-type')
           ) {
             el.replaceWith(...Array.from(el.childNodes));
           }
@@ -1650,6 +1723,12 @@ export function RichTextEditor({
         <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()}    active={isItalic} title="Italic"><Italic size={13} /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={isUnder}  title="Underline"><UnderlineIcon size={13} /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleStrike().run()}    active={isStrike} title="Strikethrough"><Strikethrough size={13} /></ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleSuperscript().run()} active={editor.isActive('superscript')} title="Superscript">
+          <span className="text-[11px] font-semibold">x<sup>2</sup></span>
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleSubscript().run()} active={editor.isActive('subscript')} title="Subscript">
+          <span className="text-[11px] font-semibold">x<sub>2</sub></span>
+        </ToolbarBtn>
 
         <div className="w-px h-4 bg-border/60 mx-1" />
 
@@ -1853,6 +1932,9 @@ export function RichTextPreview({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ code: false, codeBlock: false }),
+      Mathematics.configure({ katexOptions: { throwOnError: false } }),
+      Superscript,
+      Subscript,
       Underline,
       TextStyle,
       FontSize,

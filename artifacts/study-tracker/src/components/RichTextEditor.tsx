@@ -1385,13 +1385,12 @@ function convertDelimitedMathToNodes(html: string): string {
 
   // A standalone $$...$$ or \[...\] paragraph is a display equation.
   template.content.querySelectorAll('p').forEach(paragraph => {
-    if (paragraph.childNodes.length !== 1 || paragraph.firstChild?.nodeType !== 3) return;
     const source = paragraph.textContent?.trim() ?? '';
     const match = /^(?:\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\])$/.exec(source);
     if (!match) return;
     const math = document.createElement('div');
     math.setAttribute('data-type', 'block-math');
-    math.setAttribute('data-latex', (match[1] ?? match[2]).trim());
+    math.setAttribute('data-latex', (match[1] ?? match[2] ?? '').trim());
     paragraph.replaceWith(math);
   });
 
@@ -1399,7 +1398,8 @@ function convertDelimitedMathToNodes(html: string): string {
   const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
 
-  const inlineMathPattern = /\\\((.+?)\\\)|(?<!\\)\$(?!\$)([^$\n]+?)(?<!\\)\$(?!\$)/g;
+  const inlineMathPattern =
+    /\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|(?<!\\)\$\$(?!\$)([\s\S]+?)(?<!\\)\$\$(?!\$)|(?<!\\)\$(?!\$)([^$\n]+?)(?<!\\)\$(?!\$)/g;
   for (const textNode of textNodes) {
     const parent = textNode.parentElement;
     if (!parent || parent.closest('script, style, pre, code, [data-type="inline-math"], [data-type="block-math"]')) continue;
@@ -1416,7 +1416,7 @@ function convertDelimitedMathToNodes(html: string): string {
       if (index > cursor) fragment.append(document.createTextNode(source.slice(cursor, index)));
       const math = document.createElement('span');
       math.setAttribute('data-type', 'inline-math');
-      math.setAttribute('data-latex', (match[1] ?? match[2]).trim());
+      math.setAttribute('data-latex', (match[1] ?? match[2] ?? match[3] ?? match[4] ?? '').trim());
       fragment.append(math);
       cursor = index + match[0].length;
     }

@@ -8,8 +8,9 @@ import {
   Layers, Zap, Sun, ChevronRight, AlarmClock, Hash, Lightbulb, List,
   ChevronDown, AlertTriangle, X, RotateCcw, TrendingUp, PlayCircle,
   Lock, Flame, ThumbsUp, RefreshCw, Plus, StickyNote, Star, AlertOctagon,
-  Download, Share2, Check, GraduationCap, Headset,
+  Download, Share2, Check, GraduationCap,
 } from 'lucide-react';
+import { FaWhatsapp } from 'react-icons/fa';
 import { usePWAInstall } from '@/context/PWAInstallContext';
 import { differenceInDays, parseISO } from 'date-fns';
 import { todayIST, nowIST, toDateStrIST, addDaysIST, formatTodayDisplayIST, msUntilISTMidnight } from '@/lib/istTime';
@@ -1956,7 +1957,7 @@ export function Today() {
                         className="spin-border-inner w-8 h-8 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
                         aria-label="Contact Support"
                       >
-                        <Headset size={14} className="text-white" />
+                        <FaWhatsapp size={18} className="text-white" aria-hidden="true" />
                       </motion.button>
                     </span>
                   )}

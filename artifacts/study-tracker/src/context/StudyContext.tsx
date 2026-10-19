@@ -176,6 +176,34 @@ async function readCourseNotes(
   return { exists: true, overallNote, notes: merged };
 }
 
+/** Publish a complete note snapshot by staging chunks first and switching the
+ *  parent pointer only after every chunk is present. */
+async function writeCourseNotesSnapshot(
+  notesDocRef: DocumentReference,
+  notesData: { overallNote: string; notes: Record<string, string> },
+  savedAt: number,
+): Promise<void> {
+  const chunksRef = collection(notesDocRef, 'chunks');
+  const dataSize = byteSize(JSON.stringify(notesData));
+  let payload: Record<string, unknown>;
+  if (dataSize > FIRESTORE_NOTE_LIMIT) {
+    const entries: Array<[string, string]> = [];
+    if (notesData.overallNote) entries.push(['__overall__', notesData.overallNote]);
+    for (const [key, value] of Object.entries(notesData.notes)) {
+      if (value) entries.push([key, value]);
+    }
+    const split = entries.flatMap(([key, value]) => splitLargeValue(key, value, FIRESTORE_NOTE_LIMIT));
+    const chunks = packEntries(split, FIRESTORE_NOTE_LIMIT);
+    const chunkGeneration = await writeChunks(chunksRef, chunks);
+    payload = { savedAt, overallNote: '', notes: {}, chunked: true, chunkCount: chunks.length, chunkGeneration };
+  } else {
+    payload = JSON.parse(JSON.stringify({ savedAt, ...notesData, chunked: false }));
+  }
+
+  await setDoc(notesDocRef, payload, { merge: false });
+  await clearChunks(chunksRef, typeof payload.chunkGeneration === 'string' ? payload.chunkGeneration : undefined);
+}
+
 /** Bin-pack a NoteElement array into chunk arrays that each stay under `limit`
  *  bytes when JSON-serialised (elements themselves are not split further). */
 function packElements(elements: NoteElement[], limit: number): NoteElement[][] {
@@ -450,6 +478,8 @@ interface StudyContextType {
   syncStatus: 'idle' | 'syncing' | 'success' | 'failed';
   syncError: string | null;
   online: boolean;
+  localNotesRecoveryCount: number;
+  restoreLocalNotes: () => Promise<void>;
   setNote: (path: MarkPath, note: string) => void;
   toggleImportant: (path: MarkPath) => void;
   toggleWeak: (path: MarkPath) => void;
@@ -535,14 +565,27 @@ interface StudyContextType {
 
 const StudyContext = createContext<StudyContextType | undefined>(undefined);
 
-function getLocalData(key: string): StudyData | null {
+function getLocalData(key: string) {
+  return readLocalCourseSnapshot<StudyData>(key);
+}
+
+function safeSetLocalStorage(key: string, value: string): void {
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw) as StudyData;
-  } catch {
-    return null;
+    localStorage.setItem(key, value);
+  } catch (error) {
+    console.warn('[StudyContext] localStorage write failed:', error);
   }
+}
+
+function countRecoverableNotes(local: StudyData | null, remote: StudyData | null): number {
+  if (!local) return 0;
+  const localNotes = extractNotes(local.subjects || [], local.tempNotes || []).notes;
+  const remoteNotes = remote
+    ? extractNotes(remote.subjects || [], remote.tempNotes || []).notes
+    : {};
+  let count = Object.entries(localNotes).filter(([key, value]) => !!value && value !== remoteNotes[key]).length;
+  if (local.overallNote && local.overallNote !== (remote?.overallNote || '')) count++;
+  return count;
 }
 
 function doResetProgress(subjs: Subject[], currentSettings: CourseSettings, userEmail: string | undefined, courseId?: string): { subjects: Subject[]; settings: CourseSettings } {
@@ -617,6 +660,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'failed'>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [localNotesRecoveryCount, setLocalNotesRecoveryCount] = useState(0);
+  const localNotesRecoveryRef = useRef<{ data: StudyData; baseline: StudyData | null } | null>(null);
 
   // Track online / offline transitions
   useEffect(() => {
@@ -712,6 +757,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       setNotePagesIndex([]);
       setPersonalNotePagesIndex([]);
       setDataLoaded(false);
+      localNotesRecoveryRef.current = null;
+      setLocalNotesRecoveryCount(0);
       isInitialLoad.current = true;
       notesGuardArmedRef.current = true;
       subjectsGuardArmedRef.current = true;
@@ -726,6 +773,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setNotePagesIndex([]);
     setPersonalNotePagesIndex([]);
     setDataLoaded(false);
+    localNotesRecoveryRef.current = null;
+    setLocalNotesRecoveryCount(0);
     notesGuardArmedRef.current = true;
     subjectsGuardArmedRef.current = true;
     loadedNotesRef.current = {};
@@ -757,19 +806,26 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       if (!active || !isFirstSnapshot) return;
       isFirstSnapshot = false;
       const lsRaw = localKey('data');
-      const localData = lsRaw ? getLocalData(lsRaw) : null;
-      if (localData) {
-        setSubjects(localData.subjects || []);
-        setSettings(prev => ({ ...prev, ...localData.settings }));
-        setTempNotes(localData.tempNotes || []);
-        setOverallNoteState(localData.overallNote || '');
-        setNotePagesIndex(localData.notePagesIndex || []);
-        lastSavedAt.current = localData.savedAt ?? 0;
-        loadedNotesRef.current = extractNotes(localData.subjects || [], localData.tempNotes || []).notes;
-        loadedOverallNoteRef.current = localData.overallNote || '';
-      }
-      setDataLoaded(true);
-      setTimeout(() => { isInitialLoad.current = false; }, 200);
+      void (async () => {
+        const localSnapshot = lsRaw ? await getLocalData(lsRaw) : null;
+        if (!active) return;
+        const localData = localSnapshot?.data ?? null;
+        if (localData) {
+          setSubjects(localData.subjects || []);
+          setSettings(prev => ({ ...prev, ...localData.settings }));
+          setTempNotes(localData.tempNotes || []);
+          setOverallNoteState(localData.overallNote || '');
+          setNotePagesIndex(localData.notePagesIndex || []);
+          lastSavedAt.current = localData.savedAt ?? 0;
+          loadedNotesRef.current = extractNotes(localData.subjects || [], localData.tempNotes || []).notes;
+          loadedOverallNoteRef.current = localData.overallNote || '';
+          hasUnsyncedEditRef.current = !!localSnapshot?.unsynced;
+          localNotesRecoveryRef.current = { data: localData, baseline: null };
+          setLocalNotesRecoveryCount(countRecoverableNotes(localData, null));
+        }
+        setDataLoaded(true);
+        setTimeout(() => { isInitialLoad.current = false; }, 200);
+      })();
     }, 6000);
 
     /** Fetch the companion "courseNotes" document and merge its note content
@@ -895,20 +951,40 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           if (!fsDataRaw) {
             if (active) {
               const lsRaw = localKey('data');
-              const localData = lsRaw ? getLocalData(lsRaw) : null;
-              if (localData) {
-                setSubjects(localData.subjects || []);
-                setSettings(prev => ({ ...prev, ...localData.settings }));
-                setTempNotes(localData.tempNotes || []);
-                setOverallNoteState(localData.overallNote || '');
-                setNotePagesIndex(localData.notePagesIndex || []);
-                setPersonalNotePagesIndex(localData.personalNotePagesIndex || []);
-                lastSavedAt.current = localData.savedAt ?? 0;
-                loadedNotesRef.current = extractNotes(localData.subjects || [], localData.tempNotes || []).notes;
-                loadedOverallNoteRef.current = localData.overallNote || '';
-              }
-              setDataLoaded(true);
-              setTimeout(() => { isInitialLoad.current = false; }, 200);
+              void (async () => {
+                const localSnapshot = lsRaw ? await getLocalData(lsRaw) : null;
+                if (!active || mySeq !== seq) return;
+                const localData = localSnapshot?.data ?? null;
+                let remoteNotes = { exists: false, overallNote: '', notes: {} as Record<string, string> };
+                try {
+                  remoteNotes = await readCourseNotes(notesDocRef);
+                } catch { /* offline: use the browser snapshot if available */ }
+                if (!active || mySeq !== seq) return;
+                loadedNotesRef.current = {};
+                loadedOverallNoteRef.current = remoteNotes.overallNote;
+                if (localData) {
+                  const merged = mergeNotes(localData.subjects || [], localData.tempNotes || [], remoteNotes.notes);
+                  loadedNotesRef.current = extractNotes(merged.subjects, merged.tempNotes).notes;
+                  const remoteForComparison: StudyData = {
+                    ...localData,
+                    subjects: merged.subjects,
+                    tempNotes: merged.tempNotes,
+                    overallNote: remoteNotes.overallNote,
+                  };
+                  setSubjects(merged.subjects);
+                  setSettings(prev => ({ ...prev, ...localData.settings }));
+                  setTempNotes(merged.tempNotes);
+                  setOverallNoteState(remoteNotes.overallNote || localData.overallNote || '');
+                  setNotePagesIndex(localData.notePagesIndex || []);
+                  setPersonalNotePagesIndex(localData.personalNotePagesIndex || []);
+                  lastSavedAt.current = localData.savedAt ?? 0;
+                  hasUnsyncedEditRef.current = !!localSnapshot?.unsynced;
+                  localNotesRecoveryRef.current = { data: localData, baseline: remoteForComparison };
+                  setLocalNotesRecoveryCount(countRecoverableNotes(localData, remoteForComparison));
+                }
+                setDataLoaded(true);
+                setTimeout(() => { isInitialLoad.current = false; }, 200);
+              })();
             }
             return;
           }
@@ -927,12 +1003,20 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             loadedOverallNoteRef.current = fsData.overallNote || '';
 
             const lsRaw = localKey('data');
-            const localData = lsRaw ? getLocalData(lsRaw) : null;
+            const localSnapshot = lsRaw ? await getLocalData(lsRaw) : null;
+            if (!active || mySeq !== seq) return;
+            const localData = localSnapshot?.data ?? null;
             // Did THIS device make an edit that was never confirmed written to
             // Firestore (app closed mid-debounce, or while offline)? Only in
             // that case should the local cache be allowed to win over Firestore.
-            const localUnsynced = lsRaw ? localStorage.getItem(`${lsRaw}__unsynced`) === '1' : false;
+            const localUnsynced = !!localSnapshot?.unsynced;
             hasUnsyncedEditRef.current = localUnsynced;
+
+            const recoveryCount = countRecoverableNotes(localData, fsData);
+            localNotesRecoveryRef.current = recoveryCount > 0 && localData
+              ? { data: localData, baseline: fsData }
+              : null;
+            setLocalNotesRecoveryCount(recoveryCount);
 
             let legacySubjects: Subject[] | null = null;
             let legacySettings: CourseSettings | null = null;
@@ -1041,6 +1125,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           (async () => {
             const fsData = await withNotesDoc(fsDataRaw);
             if (!active || mySeq !== seq) return; // stale or unmounted — discard
+            const recoveryCandidate = localNotesRecoveryRef.current;
+            if (recoveryCandidate) {
+              const remaining = countRecoverableNotes(recoveryCandidate.data, fsData);
+              setLocalNotesRecoveryCount(remaining);
+              if (remaining === 0) localNotesRecoveryRef.current = null;
+            }
 
             // Mark that the next save-useEffect run should NOT echo this back to
             // Firestore — applying remote data must never create a save loop.
@@ -1070,20 +1160,27 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         clearTimeout(staleLoadTimer);
         if (!active) return;
         const lsRaw = localKey('data');
-        const localData = lsRaw ? getLocalData(lsRaw) : null;
-        if (localData) {
-          setSubjects(localData.subjects || []);
-          setSettings(prev => ({ ...prev, ...localData.settings }));
-          setTempNotes(localData.tempNotes || []);
-          setOverallNoteState(localData.overallNote || '');
-          setNotePagesIndex(localData.notePagesIndex || []);
-          setPersonalNotePagesIndex(localData.personalNotePagesIndex || []);
-          loadedNotesRef.current = extractNotes(localData.subjects || [], localData.tempNotes || []).notes;
-          loadedOverallNoteRef.current = localData.overallNote || '';
-          lastSavedAt.current = localData.savedAt ?? 0;
-        }
-        setDataLoaded(true);
-        setTimeout(() => { isInitialLoad.current = false; }, 200);
+        void (async () => {
+          const localSnapshot = lsRaw ? await getLocalData(lsRaw) : null;
+          if (!active) return;
+          const localData = localSnapshot?.data ?? null;
+          if (localData) {
+            setSubjects(localData.subjects || []);
+            setSettings(prev => ({ ...prev, ...localData.settings }));
+            setTempNotes(localData.tempNotes || []);
+            setOverallNoteState(localData.overallNote || '');
+            setNotePagesIndex(localData.notePagesIndex || []);
+            setPersonalNotePagesIndex(localData.personalNotePagesIndex || []);
+            loadedNotesRef.current = extractNotes(localData.subjects || [], localData.tempNotes || []).notes;
+            loadedOverallNoteRef.current = localData.overallNote || '';
+            lastSavedAt.current = localData.savedAt ?? 0;
+            hasUnsyncedEditRef.current = !!localSnapshot?.unsynced;
+            localNotesRecoveryRef.current = { data: localData, baseline: null };
+            setLocalNotesRecoveryCount(countRecoverableNotes(localData, null));
+          }
+          setDataLoaded(true);
+          setTimeout(() => { isInitialLoad.current = false; }, 200);
+        })();
       },
     );
 
@@ -1116,7 +1213,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       if (snap.exists()) {
         const idx = (snap.data().promptNotePagesIndex || []) as NotePageMeta[];
         setPromptNotePagesIndex(idx);
-        localStorage.setItem(lk, JSON.stringify(idx));
+        safeSetLocalStorage(lk, JSON.stringify(idx));
       }
       promptInitialLoadDoneRef.current = true;
     }).catch(() => { promptInitialLoadDoneRef.current = true; });
@@ -1126,7 +1223,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user || !promptInitialLoadDoneRef.current) return;
     const lk = `@study_promptindex_${user.email}`;
-    localStorage.setItem(lk, JSON.stringify(promptNotePagesIndex));
+    safeSetLocalStorage(lk, JSON.stringify(promptNotePagesIndex));
     if (promptIndexSaveTimerRef.current) clearTimeout(promptIndexSaveTimerRef.current);
     const uid_ = user.id;
     const snapshot = promptNotePagesIndex;
@@ -1196,8 +1293,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       personalNotePagesIndex: personalNotePagesIndexToSave,
       savedAt,
     };
-    // localStorage always gets the full payload (no size limit)
-    localStorage.setItem(lsKey, JSON.stringify(payload));
+    // Browser caches are best-effort only. A localStorage quota error must
+    // never prevent the Firestore write below.
+    void writeLocalCourseSnapshot(lsKey, payload, true);
     try {
       // Extract all rich-text note content from subjects and tempNotes so the main
       // Firestore document stays well under the 1 MB limit.  The notes are saved to
@@ -1218,12 +1316,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         hasNotesDoc: true,        // tells the loader to fetch the companion doc
       }));
 
-      // The flat notes map (all subject/chapter/topic/... notes for this course
-      // combined) can itself grow past Firestore's 1 MB document limit as the
-      // user accumulates notes over time. Once it does, offload the whole map to
-      // Firebase Storage (no size ceiling there) and keep only a URL reference in
-      // the courseNotes document — mirrors how oversized individual note pages
-      // are already routed to Storage.
+      // The flat notes map can itself grow past Firestore's 1 MB document limit;
+      // writeCourseNotesSnapshot stages it in a new chunk generation before
+      // switching the parent document, keeping the old generation available.
       // Merge against the latest remote companion document before writing.
       // The current UI state may have been produced from a stale snapshot on
       // this device.  Only keys that changed relative to the loaded baseline
@@ -1279,36 +1374,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         notesGuardArmedRef.current = false;
       }
 
-      {
-        const notesDataSize = byteSize(JSON.stringify(notesData));
-        const notesChunksRef = collection(notesDocRef, 'chunks');
-        let notesPayload: Record<string, unknown>;
-        if (notesDataSize > FIRESTORE_NOTE_LIMIT) {
-          const rawEntries: Array<[string, string]> = [];
-          if (notesData.overallNote) rawEntries.push(['__overall__', notesData.overallNote]);
-          for (const [k, v] of Object.entries(notesData.notes)) if (v) rawEntries.push([k, v]);
-          const splitEntries = rawEntries.flatMap(([k, v]) => splitLargeValue(k, v, FIRESTORE_NOTE_LIMIT));
-          const chunks = packEntries(splitEntries, FIRESTORE_NOTE_LIMIT);
-          const chunkGeneration = await writeChunks(notesChunksRef, chunks);
-          notesPayload = { savedAt, overallNote: '', notes: {}, chunked: true, chunkCount: chunks.length, chunkGeneration };
-        } else {
-          notesPayload = JSON.parse(JSON.stringify({ savedAt, ...notesData, chunked: false }));
-        }
-
-        // Write courseNotes FIRST, then studyData.  Sequential (not concurrent) so
-        // another device that receives the studyData snapshot can always getDoc the
-        // companion notes doc and find it already committed.  If we wrote both with
-        // Promise.all, a listener on another device could receive the main snapshot
-        // before courseNotes was committed and load stale (empty) notes.
-        await setDoc(notesDocRef, notesPayload, { merge: false });
-        // Only remove previous generations after the parent points at this
-        // complete write. A failed/interrupted save therefore leaves the old
-        // note set readable.
-        await clearChunks(
-          notesChunksRef,
-          typeof notesPayload.chunkGeneration === 'string' ? notesPayload.chunkGeneration : undefined,
-        );
-      }
+      // Write courseNotes FIRST, then studyData.  Sequential (not concurrent) so
+      // another device that receives the main snapshot can fetch a complete note
+      // generation. Previous chunks remain readable until this parent write lands.
+      await writeCourseNotesSnapshot(notesDocRef, notesData, savedAt);
       await setDoc(docRef, mainPayload, { merge: false });
 
       // ── Live-sync: relay update through shareRequests ────────────────────
@@ -1398,7 +1467,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       // Firestore now has this edit — clear the "unsynced" marker so a future
       // load on this device trusts Firestore instead of this local cache.
       const lsKeyForFlag = localKey('data');
-      if (lsKeyForFlag) localStorage.removeItem(`${lsKeyForFlag}__unsynced`);
+      if (lsKeyForFlag) await writeLocalCourseSnapshot(lsKeyForFlag, payload, false);
       hasUnsyncedEditRef.current = false;
       loadedNotesRef.current = notesToSave;
       loadedOverallNoteRef.current = overallNoteToSaveMerged;
@@ -1447,6 +1516,120 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       });
   };
 
+  const restoreLocalNotes = async () => {
+    const candidate = localNotesRecoveryRef.current;
+    const source = candidate?.data;
+    const baseline = candidate?.baseline;
+    const currentUser = userRef.current;
+    const currentCourseId = activeCourseIdRef.current;
+    if (!source || !currentUser || !currentCourseId) return;
+    setSyncStatus('syncing');
+    setSyncError(null);
+
+    // Finish any already-debounced edit before merging the recovery copy.
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      const pending = pendingSaveRef.current;
+      if (pending) {
+        flushSave(
+          pending.subjects,
+          pending.settings,
+          pending.tempNotes,
+          pending.overallNote,
+          pending.notePagesIndex,
+          pending.personalNotePagesIndex,
+        );
+      }
+    }
+    await courseSaveQueueRef.current.catch(() => {});
+
+    try {
+      const notesDocRef = doc(db, 'users', currentUser.id, 'courseNotes', currentCourseId);
+      const remoteNotes = await readCourseNotes(notesDocRef);
+      const mergedNotes = {
+        ...loadedNotesRef.current,
+        ...remoteNotes.notes,
+      };
+      const browserNotes = extractNotes(source.subjects || [], source.tempNotes || []).notes;
+      const baselineNotes = baseline
+        ? extractNotes(baseline.subjects || [], baseline.tempNotes || []).notes
+        : null;
+      for (const [key, value] of Object.entries(browserNotes)) {
+        if (
+          value &&
+          (!baselineNotes || mergedNotes[key] === baselineNotes[key])
+        ) {
+          mergedNotes[key] = value;
+        }
+      }
+      const remoteOverall = remoteNotes.exists ? remoteNotes.overallNote : loadedOverallNoteRef.current;
+      const baselineOverall = baseline?.overallNote || '';
+      const mergedOverall = source.overallNote &&
+        (!baselineNotes || remoteOverall === baselineOverall)
+        ? source.overallNote
+        : remoteOverall;
+      const savedAt = Date.now();
+
+      // Write the union directly. This keeps every cloud-only note, including
+      // notes whose old subject no longer exists in the current tree.
+      await writeCourseNotesSnapshot(notesDocRef, { overallNote: mergedOverall, notes: mergedNotes }, savedAt);
+
+      const studyDocRef = doc(db, 'users', currentUser.id, 'studyData', currentCourseId);
+      const studySnap = await getDoc(studyDocRef);
+      if (studySnap.exists()) {
+        await updateDoc(studyDocRef, { savedAt, hasNotesDoc: true });
+      } else {
+        const stripped = extractNotes(subjects, tempNotes);
+        await setDoc(studyDocRef, {
+          subjects: stripped.subjects,
+          settings,
+          tempNotes: stripped.tempNotes,
+          overallNote: '',
+          notePagesIndex,
+          personalNotePagesIndex,
+          savedAt,
+          hasNotesDoc: true,
+        });
+      }
+
+      const merged = mergeNotes(subjects, tempNotes, mergedNotes);
+      const payload: StudyData = {
+        subjects: merged.subjects,
+        settings,
+        tempNotes: merged.tempNotes,
+        overallNote: mergedOverall,
+        notePagesIndex,
+        personalNotePagesIndex,
+        savedAt,
+      };
+      loadedNotesRef.current = extractNotes(merged.subjects, merged.tempNotes).notes;
+      loadedOverallNoteRef.current = mergedOverall;
+      lastSavedAt.current = savedAt;
+      hasUnsyncedEditRef.current = false;
+      localNotesRecoveryRef.current = null;
+      setLocalNotesRecoveryCount(0);
+      skipNextSaveRef.current = true;
+      setSubjects(merged.subjects);
+      setTempNotes(merged.tempNotes);
+      setOverallNoteState(mergedOverall);
+      await writeLocalCourseSnapshot(
+        `@study_data_${currentCourseId}_${currentUser.email}`,
+        payload,
+        false,
+      );
+      setSyncStatus('success');
+      setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
+    } catch (error) {
+      const failure = error as { code?: string; message?: string };
+      setSyncStatus('failed');
+      setSyncError(failure.code || failure.message?.slice(0, 80) || 'unknown');
+      // Leave the browser snapshot available so the user can retry.
+      setLocalNotesRecoveryCount(countRecoverableNotes(source, null));
+      console.error('[StudyContext] Local note recovery failed:', error);
+    }
+  };
+
   useEffect(() => {
     if (!user || !dataLoaded) return;
     if (isInitialLoad.current) {
@@ -1474,7 +1657,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       // Use lastSavedAt.current (= the remote savedAt, set in onSnapshot) so the
       // localStorage entry keeps the original timestamp — not a fresh Date.now().
       const remotePayload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex, savedAt: lastSavedAt.current };
-      if (lsKey) localStorage.setItem(lsKey, JSON.stringify(remotePayload));
+      if (lsKey) void writeLocalCourseSnapshot(lsKey, remotePayload, false);
       return;
     }
 
@@ -1484,13 +1667,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     const payload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex, savedAt: Date.now() };
     const lsKey = localKey('data');
     if (lsKey) {
-      localStorage.setItem(lsKey, JSON.stringify(payload));
-      // Mark this edit as not-yet-confirmed-in-Firestore. Cleared by flushSave
-      // once the write succeeds. If the app is closed/killed before that, this
-      // flag survives (it's in localStorage) so the next load on THIS device
-      // knows to prefer its own cache over Firestore instead of guessing from
-      // timestamps that may have been set by a different device's clock.
-      localStorage.setItem(`${lsKey}__unsynced`, '1');
+      // Save locally when possible, but always queue Firestore independently.
+      // IndexedDB carries large snapshots when localStorage is full.
+      void writeLocalCourseSnapshot(lsKey, payload, true);
     }
     lastSavedAt.current = payload.savedAt!;
     hasUnsyncedEditRef.current = true;
@@ -1512,7 +1691,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         const { subjects: s, settings: st, tempNotes: tn, overallNote: on, notePagesIndex: np, personalNotePagesIndex: pnp } = pendingSaveRef.current;
         const payload: StudyData = { subjects: s, settings: st, tempNotes: tn, overallNote: on, notePagesIndex: np, personalNotePagesIndex: pnp, savedAt: Date.now() };
         const lsKey = `@study_data_${activeCourseId}_${user.email}`;
-        localStorage.setItem(lsKey, JSON.stringify(payload));
+        try {
+          localStorage.setItem(lsKey, JSON.stringify(payload));
+          localStorage.setItem(`${lsKey}__unsynced`, '1');
+        } catch (error) {
+          console.warn('[StudyContext] Could not persist unload snapshot in localStorage:', error);
+        }
       }
     };
     window.addEventListener('beforeunload', handleUnload);
@@ -1897,7 +2081,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setPersonalNotePagesIndex(prev => [meta, ...prev]);
     const emptyPage: NotePage = { ...meta, elements: [] };
     const lk = localPersonalPageKey(id);
-    if (lk) localStorage.setItem(lk, JSON.stringify(emptyPage));
+    if (lk) safeSetLocalStorage(lk, JSON.stringify(emptyPage));
     const ref = personalNotePageDocRef(id);
     if (ref) setDoc(ref, emptyPage).catch(() => {});
     return id;
@@ -1912,7 +2096,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     if (lk) {
       try {
         const cur = JSON.parse(localStorage.getItem(lk) || 'null') as NotePage | null;
-        if (cur) localStorage.setItem(lk, JSON.stringify({ ...cur, title: trimmed, updatedAt: Date.now() }));
+        if (cur) safeSetLocalStorage(lk, JSON.stringify({ ...cur, title: trimmed, updatedAt: Date.now() }));
       } catch {}
     }
     const ref = personalNotePageDocRef(id);
@@ -1962,7 +2146,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           updatedAt: d.updatedAt ?? Date.now(),
         };
         if (!local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0)) {
-          if (lk) localStorage.setItem(lk, JSON.stringify(remote));
+          if (lk) safeSetLocalStorage(lk, JSON.stringify(remote));
           return remote;
         }
         return local;
@@ -1976,7 +2160,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     const pageId = page.id;
 
     const lk = localPersonalPageKey(pageId);
-    if (lk) localStorage.setItem(lk, JSON.stringify(updated));
+    if (lk) safeSetLocalStorage(lk, JSON.stringify(updated));
 
     setPersonalNotePagesIndex(prev => prev.map(p =>
       p.id === pageId
@@ -2059,7 +2243,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setPromptNotePagesIndex(prev => [meta, ...prev]);
     const emptyPage: NotePage = { ...meta, elements: [] };
     const lk = localPromptPageKey(id);
-    if (lk) localStorage.setItem(lk, JSON.stringify(emptyPage));
+    if (lk) safeSetLocalStorage(lk, JSON.stringify(emptyPage));
     const ref = promptNotePageDocRef(id);
     if (ref) setDoc(ref, emptyPage).catch(() => {});
     return id;
@@ -2074,7 +2258,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     if (lk) {
       try {
         const cur = JSON.parse(localStorage.getItem(lk) || 'null') as NotePage | null;
-        if (cur) localStorage.setItem(lk, JSON.stringify({ ...cur, title: trimmed, updatedAt: Date.now() }));
+        if (cur) safeSetLocalStorage(lk, JSON.stringify({ ...cur, title: trimmed, updatedAt: Date.now() }));
       } catch {}
     }
     const ref = promptNotePageDocRef(id);
@@ -2124,7 +2308,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           updatedAt: d.updatedAt ?? Date.now(),
         };
         if (!local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0)) {
-          if (lk) localStorage.setItem(lk, JSON.stringify(remote));
+          if (lk) safeSetLocalStorage(lk, JSON.stringify(remote));
           return remote;
         }
         return local;
@@ -2138,7 +2322,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     const pageId = page.id;
 
     const lk = localPromptPageKey(pageId);
-    if (lk) localStorage.setItem(lk, JSON.stringify(updated));
+    if (lk) safeSetLocalStorage(lk, JSON.stringify(updated));
 
     setPromptNotePagesIndex(prev => prev.map(p =>
       p.id === pageId
@@ -2866,7 +3050,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     // Save empty page doc
     const emptyPage: NotePage = { ...meta, elements: [] };
     const lk = localPageKey(id);
-    if (lk) localStorage.setItem(lk, JSON.stringify(emptyPage));
+    if (lk) safeSetLocalStorage(lk, JSON.stringify(emptyPage));
     const ref = notePageDocRef(id);
     if (ref) setDoc(ref, emptyPage).catch(() => {});
     return id;
@@ -2882,7 +3066,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     if (lk) {
       try {
         const cur = JSON.parse(localStorage.getItem(lk) || 'null') as NotePage | null;
-        if (cur) localStorage.setItem(lk, JSON.stringify({ ...cur, title: trimmed, updatedAt: Date.now() }));
+        if (cur) safeSetLocalStorage(lk, JSON.stringify({ ...cur, title: trimmed, updatedAt: Date.now() }));
       } catch {}
     }
     const ref = notePageDocRef(id);
@@ -2938,7 +3122,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         };
         // Pick newest
         if (!local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0)) {
-          if (lk) localStorage.setItem(lk, JSON.stringify(remote));
+          if (lk) safeSetLocalStorage(lk, JSON.stringify(remote));
           return remote;
         }
         return local;
@@ -2989,7 +3173,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
     // 1. Save to localStorage immediately so the caller can show "Saved" right away.
     const lk = localPageKey(pageId);
-    if (lk) localStorage.setItem(lk, JSON.stringify(updated));
+    if (lk) safeSetLocalStorage(lk, JSON.stringify(updated));
 
     // 2. Update in-memory index (also triggers the main studyData debounce save).
     setNotePagesIndex(prev => prev.map(p =>
@@ -3076,6 +3260,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   return (
     <StudyContext.Provider value={{
       subjects, settings, dataLoaded, syncStatus, syncError, online,
+      localNotesRecoveryCount, restoreLocalNotes,
       setNote, toggleImportant, toggleWeak,
       setCourseTotalDays, setDailyStudyHours, setCourseStartDate, setTimezone, setGlobalNoteSize,
       addSubject, updateSubjectDays, deleteSubject, updateSubjectMeta, resetSubjectProgress,

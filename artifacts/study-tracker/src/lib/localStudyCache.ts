@@ -86,9 +86,9 @@ export async function readLocalCourseSnapshot<T>(key: string): Promise<LocalCour
     const localSavedAt = (localStorageSnapshot?.data as { savedAt?: number } | undefined)?.savedAt ?? 0;
     const indexedDbSavedAt = (indexedDbRecord.data as { savedAt?: number } | undefined)?.savedAt ?? 0;
     if (
-      indexedDbRecord.unsynced ||
       !localStorageSnapshot ||
-      indexedDbSavedAt >= localSavedAt
+      indexedDbSavedAt > localSavedAt ||
+      (indexedDbSavedAt === localSavedAt && indexedDbRecord.unsynced)
     ) {
       return { data: indexedDbRecord.data, unsynced: indexedDbRecord.unsynced };
     }

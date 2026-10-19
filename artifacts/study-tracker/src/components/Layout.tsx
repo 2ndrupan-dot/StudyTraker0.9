@@ -64,10 +64,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Online / Sync status */}
       <ConnectionStatus />
+      <LocalNotesRecoveryNotice />
 
       {/* Global Search Modal */}
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </>
+  );
+}
+
+function LocalNotesRecoveryNotice() {
+  const { localNotesRecoveryCount, restoreLocalNotes, online, syncStatus } = useStudy();
+  const { t } = useLang();
+  if (localNotesRecoveryCount < 1) return null;
+
+  return (
+    <div
+      role="status"
+      className="fixed top-10 left-2 right-2 z-40 mx-auto flex max-w-xl flex-col gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 shadow-lg sm:flex-row sm:items-center sm:justify-between dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+    >
+      <p className="m-0 leading-snug">
+        {t('localNotesRecoveryMessage').replace('{count}', String(localNotesRecoveryCount))}
+      </p>
+      <button
+        type="button"
+        disabled={!online || syncStatus === 'syncing'}
+        onClick={restoreLocalNotes}
+        className="shrink-0 rounded-lg bg-amber-700 px-3 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-amber-300 dark:text-amber-950"
+      >
+        {online ? t('restoreLocalNotes') : t('restoreLocalNotesOffline')}
+      </button>
+    </div>
   );
 }
 

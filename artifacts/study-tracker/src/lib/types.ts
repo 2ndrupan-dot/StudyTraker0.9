@@ -147,6 +147,7 @@ export interface NotePage {
   html?: string;         // Tiptap rich-text HTML content
   chunked?: boolean;     // true when elements are split across a "chunks" subcollection (> 800 KB)
   chunkCount?: number;   // number of chunk docs when chunked
+  chunkGeneration?: string; // active chunk generation; old generations remain until the parent write succeeds
   /** When true this note was created via the subject-library compiler and must never be synced to shared courses */
   privateNote?: boolean;
   createdAt: number;

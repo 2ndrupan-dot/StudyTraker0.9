@@ -7,6 +7,7 @@ import { nowIST, addDaysIST, toDateStrIST } from '@/lib/istTime';
 import { doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, collection, writeBatch, query, where, updateDoc, type CollectionReference, type DocumentReference } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { collectAllIds, filterSubjectsByIds, filterNotesMapByIds } from '@/lib/courseShare';
+import { readLocalCourseSnapshot, writeLocalCourseSnapshot } from '@/lib/localStudyCache';
 
 // Firestore document size limit — documents above this are split across a
 // "chunks" subcollection instead of relying on Firebase Storage (which
@@ -21,12 +22,15 @@ const FIRESTORE_NOTE_LIMIT = 800_000; // 800 KB (Firestore hard limit is 1 MB)
  *  stale chunks when data shrinks back under the size limit, and as the first
  *  step before writing a fresh set of chunks (indices may not line up 1:1
  *  between saves as content grows/shrinks). */
-async function clearChunks(colRef: CollectionReference): Promise<void> {
+async function clearChunks(colRef: CollectionReference, keepGeneration?: string): Promise<void> {
   const snap = await getDocs(colRef);
   if (snap.empty) return;
-  const batch = writeBatch(db);
-  snap.forEach(d => batch.delete(d.ref));
-  await batch.commit();
+  const obsolete = snap.docs.filter(d => !keepGeneration || d.data().generation !== keepGeneration);
+  for (let start = 0; start < obsolete.length; start += 400) {
+    const batch = writeBatch(db);
+    obsolete.slice(start, start + 400).forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
 }
 
 /** Split a string value that alone exceeds `limit` bytes into ordered parts.
@@ -100,20 +104,33 @@ function reassembleEntries(entries: Array<[string, string]>): Record<string, str
  *  that pattern. Arrays have no such restriction since entries aren't field
  *  names, so this sidesteps the problem entirely regardless of what the key
  *  looks like. */
-async function writeChunks(colRef: CollectionReference, chunks: Array<Record<string, string>>): Promise<void> {
-  await clearChunks(colRef);
-  const batch = writeBatch(db);
-  chunks.forEach((data, i) => {
-    const pairs = Object.entries(data).map(([k, v]) => ({ k, v }));
-    batch.set(doc(colRef, String(i)), { data: pairs });
-  });
-  await batch.commit();
+async function writeChunks(colRef: CollectionReference, chunks: Array<Record<string, string>>): Promise<string> {
+  const generation = doc(colRef).id;
+  for (let start = 0; start < chunks.length; start += 400) {
+    const batch = writeBatch(db);
+    chunks.slice(start, start + 400).forEach((data, offset) => {
+      const index = start + offset;
+      const pairs = Object.entries(data).map(([k, v]) => ({ k, v }));
+      batch.set(doc(colRef, `${generation}_${index}`), { generation, data: pairs });
+    });
+    await batch.commit();
+  }
+  return generation;
 }
 
-/** Read all chunk docs (ordered by numeric index) and flatten into entries. */
-async function readChunkEntries(colRef: CollectionReference): Promise<Array<[string, string]>> {
-  const snap = await getDocs(colRef);
-  const sorted = snap.docs.slice().sort((a, b) => Number(a.id) - Number(b.id));
+/** Read a selected generation, or legacy numeric chunk docs, and flatten entries. */
+async function readChunkEntries(
+  colRef: CollectionReference,
+  generation?: string,
+  chunkCount?: number,
+): Promise<Array<[string, string]>> {
+  const snap = generation
+    ? await getDocs(query(colRef, where('generation', '==', generation)))
+    : await getDocs(colRef);
+  const sorted = snap.docs.slice().sort((a, b) => {
+    const index = (id: string) => Number(id.slice(id.lastIndexOf('_') + 1));
+    return generation ? index(a.id) - index(b.id) : Number(a.id) - Number(b.id);
+  });
   const entries: Array<[string, string]> = [];
   for (const d of sorted) {
     const raw = d.data().data;
@@ -125,6 +142,9 @@ async function readChunkEntries(colRef: CollectionReference): Promise<Array<[str
       // previously saved chunks don't break.
       entries.push(...Object.entries(raw as Record<string, string>));
     }
+  }
+  if (generation && chunkCount && sorted.length !== chunkCount) {
+    throw new Error(`Incomplete note backup: expected ${chunkCount} chunks, received ${sorted.length}`);
   }
   return entries;
 }
@@ -139,6 +159,8 @@ async function readCourseNotes(
     overallNote?: string;
     notes?: Record<string, string>;
     chunked?: boolean;
+    chunkGeneration?: string;
+    chunkCount?: number;
   };
   if (!data.chunked) {
     return {
@@ -147,7 +169,7 @@ async function readCourseNotes(
       notes: data.notes || {},
     };
   }
-  const entries = await readChunkEntries(collection(notesDocRef, 'chunks'));
+  const entries = await readChunkEntries(collection(notesDocRef, 'chunks'), data.chunkGeneration, data.chunkCount);
   const merged = reassembleEntries(entries);
   const overallNote = merged['__overall__'] || '';
   delete merged['__overall__'];
@@ -174,20 +196,38 @@ function packElements(elements: NoteElement[], limit: number): NoteElement[][] {
   return chunks;
 }
 
-/** Write element chunks to `colRef`, replacing any previous chunk docs. */
-async function writeElementChunks(colRef: CollectionReference, chunks: NoteElement[][]): Promise<void> {
-  await clearChunks(colRef);
-  const batch = writeBatch(db);
-  chunks.forEach((elements, i) => batch.set(doc(colRef, String(i)), { elements }));
-  await batch.commit();
+/** Stage a new element-chunk generation without touching the currently active one. */
+async function writeElementChunks(colRef: CollectionReference, chunks: NoteElement[][]): Promise<string> {
+  const generation = doc(colRef).id;
+  for (let start = 0; start < chunks.length; start += 400) {
+    const batch = writeBatch(db);
+    chunks.slice(start, start + 400).forEach((elements, offset) => {
+      const index = start + offset;
+      batch.set(doc(colRef, `${generation}_${index}`), { generation, elements });
+    });
+    await batch.commit();
+  }
+  return generation;
 }
 
-/** Read all element chunk docs (ordered by numeric index) and flatten. */
-async function readElementChunks(colRef: CollectionReference): Promise<NoteElement[]> {
-  const snap = await getDocs(colRef);
-  const sorted = snap.docs.slice().sort((a, b) => Number(a.id) - Number(b.id));
+/** Read a selected generation, or legacy numeric chunks, and flatten elements. */
+async function readElementChunks(
+  colRef: CollectionReference,
+  generation?: string,
+  chunkCount?: number,
+): Promise<NoteElement[]> {
+  const snap = generation
+    ? await getDocs(query(colRef, where('generation', '==', generation)))
+    : await getDocs(colRef);
+  const sorted = snap.docs.slice().sort((a, b) => {
+    const index = (id: string) => Number(id.slice(id.lastIndexOf('_') + 1));
+    return generation ? index(a.id) - index(b.id) : Number(a.id) - Number(b.id);
+  });
   const elements: NoteElement[] = [];
   for (const d of sorted) elements.push(...((d.data().elements || []) as NoteElement[]));
+  if (generation && chunkCount && sorted.length !== chunkCount) {
+    throw new Error(`Incomplete note page backup: expected ${chunkCount} chunks, received ${sorted.length}`);
+  }
   return elements;
 }
 
@@ -232,6 +272,7 @@ function sanitizeForFirestore(page: NotePage): NotePage {
   if (page.chunked !== undefined) {
     clean.chunked = page.chunked;
     clean.chunkCount = page.chunkCount ?? 0;
+    if (page.chunkGeneration) clean.chunkGeneration = page.chunkGeneration;
   }
   return clean as unknown as NotePage;
 }
@@ -767,7 +808,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         }
 
         if (!notesSnap.exists()) return data;
-        const nd = notesSnap.data() as { overallNote?: string; notes?: Record<string, string>; chunked?: boolean };
+        const nd = notesSnap.data() as {
+          overallNote?: string;
+          notes?: Record<string, string>;
+          chunked?: boolean;
+          chunkGeneration?: string;
+          chunkCount?: number;
+        };
         let notesMap = nd.notes || {};
         let overallNoteVal = nd.overallNote || '';
         const sourceChunksColRef = sourceIsLegacyMain
@@ -776,7 +823,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         // Once the flat notes map itself outgrows the Firestore document limit,
         // it's split across a "chunks" subcollection — read and reassemble it.
         if (nd.chunked) {
-          const entries = await readChunkEntries(sourceChunksColRef);
+          const entries = await readChunkEntries(sourceChunksColRef, nd.chunkGeneration, nd.chunkCount);
           const merged = reassembleEntries(entries);
           overallNoteVal = merged['__overall__'] || '';
           delete merged['__overall__'];
@@ -1242,10 +1289,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           for (const [k, v] of Object.entries(notesData.notes)) if (v) rawEntries.push([k, v]);
           const splitEntries = rawEntries.flatMap(([k, v]) => splitLargeValue(k, v, FIRESTORE_NOTE_LIMIT));
           const chunks = packEntries(splitEntries, FIRESTORE_NOTE_LIMIT);
-          await writeChunks(notesChunksRef, chunks);
-          notesPayload = { savedAt, overallNote: '', notes: {}, chunked: true, chunkCount: chunks.length };
+          const chunkGeneration = await writeChunks(notesChunksRef, chunks);
+          notesPayload = { savedAt, overallNote: '', notes: {}, chunked: true, chunkCount: chunks.length, chunkGeneration };
         } else {
-          await clearChunks(notesChunksRef);
           notesPayload = JSON.parse(JSON.stringify({ savedAt, ...notesData, chunked: false }));
         }
 
@@ -1255,6 +1301,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         // Promise.all, a listener on another device could receive the main snapshot
         // before courseNotes was committed and load stale (empty) notes.
         await setDoc(notesDocRef, notesPayload, { merge: false });
+        // Only remove previous generations after the parent points at this
+        // complete write. A failed/interrupted save therefore leaves the old
+        // note set readable.
+        await clearChunks(
+          notesChunksRef,
+          typeof notesPayload.chunkGeneration === 'string' ? notesPayload.chunkGeneration : undefined,
+        );
       }
       await setDoc(docRef, mainPayload, { merge: false });
 
@@ -1894,7 +1947,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         const d = snap.data() as NotePage;
         let elements = d.elements || [];
         if (d.chunked) {
-          elements = await readElementChunks(collection(ref, 'chunks'));
+          elements = await readElementChunks(collection(ref, 'chunks'), d.chunkGeneration, d.chunkCount);
         }
         const remote: NotePage = {
           id: d.id ?? id,
@@ -1904,6 +1957,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           html: d.html,
           chunked: d.chunked,
           chunkCount: d.chunkCount,
+          chunkGeneration: d.chunkGeneration,
           createdAt: d.createdAt ?? Date.now(),
           updatedAt: d.updatedAt ?? Date.now(),
         };
@@ -1952,13 +2006,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             let firestorePayload: NotePage;
             if (serialisedSize > FIRESTORE_NOTE_LIMIT && user) {
               const chunks = packElements(cleaned.elements || [], FIRESTORE_NOTE_LIMIT);
-              await writeElementChunks(pageChunksRef, chunks);
-              firestorePayload = sanitizeForFirestore({ ...cleaned, chunked: true, chunkCount: chunks.length, elements: [] });
+              const chunkGeneration = await writeElementChunks(pageChunksRef, chunks);
+              firestorePayload = sanitizeForFirestore({ ...cleaned, chunked: true, chunkCount: chunks.length, chunkGeneration, elements: [] });
             } else {
-              await clearChunks(pageChunksRef);
               firestorePayload = { ...cleaned, chunked: false };
             }
             await setDoc(ref, firestorePayload);
+            await clearChunks(pageChunksRef, firestorePayload.chunkGeneration);
             return;
           } catch {
             if (attempt < 3) {
@@ -2055,7 +2109,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         const d = snap.data() as NotePage;
         let elements = d.elements || [];
         if (d.chunked) {
-          elements = await readElementChunks(collection(ref, 'chunks'));
+          elements = await readElementChunks(collection(ref, 'chunks'), d.chunkGeneration, d.chunkCount);
         }
         const remote: NotePage = {
           id: d.id ?? id,
@@ -2065,6 +2119,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           html: d.html,
           chunked: d.chunked,
           chunkCount: d.chunkCount,
+          chunkGeneration: d.chunkGeneration,
           createdAt: d.createdAt ?? Date.now(),
           updatedAt: d.updatedAt ?? Date.now(),
         };
@@ -2113,13 +2168,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             let firestorePayload: NotePage;
             if (serialisedSize > FIRESTORE_NOTE_LIMIT && user) {
               const chunks = packElements(cleaned.elements || [], FIRESTORE_NOTE_LIMIT);
-              await writeElementChunks(pageChunksRef, chunks);
-              firestorePayload = sanitizeForFirestore({ ...cleaned, chunked: true, chunkCount: chunks.length, elements: [] });
+              const chunkGeneration = await writeElementChunks(pageChunksRef, chunks);
+              firestorePayload = sanitizeForFirestore({ ...cleaned, chunked: true, chunkCount: chunks.length, chunkGeneration, elements: [] });
             } else {
-              await clearChunks(pageChunksRef);
               firestorePayload = { ...cleaned, chunked: false };
             }
             await setDoc(ref, firestorePayload);
+            await clearChunks(pageChunksRef, firestorePayload.chunkGeneration);
             return;
           } catch {
             if (attempt < 3) {
@@ -2867,7 +2922,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         let elements = d.elements || [];
         // If elements were split across a "chunks" subcollection, reassemble them.
         if (d.chunked) {
-          elements = await readElementChunks(collection(ref, 'chunks'));
+          elements = await readElementChunks(collection(ref, 'chunks'), d.chunkGeneration, d.chunkCount);
         }
         const remote: NotePage = {
           id: d.id ?? id,
@@ -2877,6 +2932,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           html: d.html,
           chunked: d.chunked,
           chunkCount: d.chunkCount,
+          chunkGeneration: d.chunkGeneration,
           createdAt: d.createdAt ?? Date.now(),
           updatedAt: d.updatedAt ?? Date.now(),
         };
@@ -2904,7 +2960,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         const d = snap.data() as NotePage;
         let elements = d.elements || [];
         if (d.chunked) {
-          elements = await readElementChunks(collection(ref, 'chunks'));
+          elements = await readElementChunks(collection(ref, 'chunks'), d.chunkGeneration, d.chunkCount);
         }
         // A newer parent snapshot can arrive while the chunk collection is
         // still being read. Never deliver the older chunk result afterward.
@@ -2918,6 +2974,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           privateNote: d.privateNote,
           chunked: d.chunked,
           chunkCount: d.chunkCount,
+          chunkGeneration: d.chunkGeneration,
           createdAt: d.createdAt ?? Date.now(),
           updatedAt: d.updatedAt ?? Date.now(),
         });
@@ -2978,18 +3035,19 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             if (serialisedSize > FIRESTORE_NOTE_LIMIT && user) {
               console.info('[saveNotePage] Note too large for Firestore (%d KB), splitting into chunks', Math.round(serialisedSize / 1024));
               const chunks = packElements(cleaned.elements || [], FIRESTORE_NOTE_LIMIT);
-              await writeElementChunks(pageChunksRef, chunks);
+              const chunkGeneration = await writeElementChunks(pageChunksRef, chunks);
               firestorePayload = sanitizeForFirestore({
                 ...cleaned,
                 chunked: true,
                 chunkCount: chunks.length,
+                chunkGeneration,
                 elements: [],   // cleared from Firestore doc — stored in chunks subcollection
               });
             } else {
-              await clearChunks(pageChunksRef);
               firestorePayload = { ...cleaned, chunked: false };
             }
             await setDoc(ref, firestorePayload);
+            await clearChunks(pageChunksRef, firestorePayload.chunkGeneration);
             setSyncStatus('success');
             setSyncError(null);
             setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);

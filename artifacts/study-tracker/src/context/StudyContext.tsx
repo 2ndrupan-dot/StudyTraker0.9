@@ -841,7 +841,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     let recoveredOverallNote: string | null = null;
 
     const withNotesDoc = async (data: StudyData): Promise<StudyData> => {
-      if (!(data as any).hasNotesDoc) return data; // old format — notes already embedded
+      const hasNotesDoc = !!(data as any).hasNotesDoc;
       try {
         let notesSnap = await getDoc(notesDocRef);
         let sourceIsLegacyMain = false;
@@ -865,12 +865,28 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
         if (!notesSnap.exists()) return data;
         const nd = notesSnap.data() as {
+          savedAt?: number;
           overallNote?: string;
           notes?: Record<string, string>;
           chunked?: boolean;
           chunkGeneration?: string;
           chunkCount?: number;
         };
+
+        // Course notes are committed before studyData is updated. If the app
+        // closes (or the second Firestore write fails) between those writes,
+        // the notes document can be newer than the main document and the latter
+        // will still have hasNotesDoc=false. Treat a same/newer companion as a
+        // completed note snapshot instead of silently ignoring it. A stale
+        // companion without the marker must not replace notes embedded in an
+        // older-format main document.
+        const companionIsCurrent =
+          typeof data.savedAt !== 'number' ||
+          (typeof nd.savedAt === 'number' && nd.savedAt >= data.savedAt);
+        if (!hasNotesDoc && !sourceIsLegacyMain && !companionIsCurrent) {
+          return data;
+        }
+
         let notesMap = nd.notes || {};
         let overallNoteVal = nd.overallNote || '';
         const sourceChunksColRef = sourceIsLegacyMain
@@ -906,9 +922,16 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         recoveredNotesMap = notesMap;
         recoveredOverallNote = overallNoteVal;
 
+        // When a fresh companion exists but the marker write did not finish,
+        // the old main document may still contain the previous embedded note
+        // values. Start from its structure without those values so a deliberate
+        // clear in the newer companion is not undone by the legacy fallback.
+        const mergeBase = !hasNotesDoc && !sourceIsLegacyMain
+          ? extractNotes(data.subjects || [], data.tempNotes || [])
+          : { subjects: data.subjects, tempNotes: data.tempNotes || [] };
         const { subjects, tempNotes } = mergeNotes(
-          data.subjects,
-          data.tempNotes || [],
+          mergeBase.subjects,
+          mergeBase.tempNotes,
           notesMap,
         );
         return { ...data, subjects, tempNotes, overallNote: overallNoteVal };

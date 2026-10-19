@@ -132,7 +132,7 @@ export const translations = {
     syncSaved: "Saved",
     syncFailed: "Failed",
     syncError: "Sync error, saved locally",
-    localNotesRecoveryMessage: "{count} local note(s) differ from Firestore. Merge this browser's notes without removing other cloud notes.",
+    localNotesRecoveryMessage: "{count} local note(s) are missing from Firestore. Restore them without removing other cloud notes.",
     restoreLocalNotes: "Restore local notes",
     restoreLocalNotesOffline: "Connect to restore",
 
@@ -600,7 +600,7 @@ export const translations = {
     syncSaved: "সেভ হয়েছে",
     syncFailed: "ব্যর্থ",
     syncError: "সিঙ্ক ত্রুটি, স্থানীয়ভাবে সংরক্ষিত",
-    localNotesRecoveryMessage: "এই ব্রাউজারের {count}টি নোট Firestore-এর নোট থেকে আলাদা। অন্য cloud নোট না মুছে এই নোটগুলো মিলিয়ে নিন।",
+    localNotesRecoveryMessage: "এই ব্রাউজারের {count}টি নোট Firestore-এ নেই। অন্য cloud নোট না মুছে এই নোটগুলো পুনরুদ্ধার করুন।",
     restoreLocalNotes: "এই নোটগুলো পুনরুদ্ধার করুন",
     restoreLocalNotesOffline: "পুনরুদ্ধারে ইন্টারনেট লাগবে",
 

@@ -583,8 +583,13 @@ function countRecoverableNotes(local: StudyData | null, remote: StudyData | null
   const remoteNotes = remote
     ? extractNotes(remote.subjects || [], remote.tempNotes || []).notes
     : {};
-  let count = Object.entries(localNotes).filter(([key, value]) => !!value && value !== remoteNotes[key]).length;
-  if (local.overallNote && local.overallNote !== (remote?.overallNote || '')) count++;
+  // A different value for an existing key is a newer/older version of the
+  // same cloud note, not a recoverable local-only note. Only offer recovery
+  // when the note is completely absent from Firestore.
+  let count = Object.entries(localNotes).filter(
+    ([key, value]) => !!value && !Object.prototype.hasOwnProperty.call(remoteNotes, key),
+  ).length;
+  if (local.overallNote && !remote?.overallNote) count++;
   return count;
 }
 

@@ -19,7 +19,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { StudyActivityChart } from '@/components/StudyActivityChart';
 import { format, parseISO, isValid, differenceInCalendarDays, addDays } from 'date-fns';
-import { doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { updateDoc, setDoc } from '@/lib/saveStatus';
 import { db } from '@/lib/firebase';
 
 function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = '—'): string {

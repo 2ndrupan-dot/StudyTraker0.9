@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import {
-  collection, doc, getDoc, getDocs, setDoc,
-  query, where, onSnapshot, addDoc, updateDoc, deleteDoc,
+  collection, doc, getDoc, getDocs,
+  query, where, onSnapshot,
 } from 'firebase/firestore';
+import { setDoc, addDoc, updateDoc, deleteDoc } from '@/lib/saveStatus';
 import { db } from '@/lib/firebase';
 import { useAuth } from './AuthContext';
 import { collectAllIds, filterSubjectsByIds, filterNotesMapByIds } from '@/lib/courseShare';

@@ -4,12 +4,10 @@ import {
   collection,
   doc,
   getDocs,
-  setDoc,
-  deleteDoc,
   getDoc,
   onSnapshot,
-  updateDoc,
 } from 'firebase/firestore';
+import { setDoc, deleteDoc, updateDoc } from '@/lib/saveStatus';
 import { db } from '@/lib/firebase';
 import type { SharePermissions } from './AdminContext';
 

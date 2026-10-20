@@ -15,7 +15,8 @@ import {
   reauthenticateWithCredential,
   type User as FirebaseUser,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
+import { setDoc, trackSave } from '@/lib/saveStatus';
 import { auth, db, googleProvider } from '@/lib/firebase';
 
 export interface AppUser {
@@ -246,11 +247,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateProfile = async (name: string, currentPass: string, newPass?: string) => {
     const fbUser = auth.currentUser;
     if (!fbUser || !fbUser.email) return;
-    const cred = EmailAuthProvider.credential(fbUser.email, currentPass);
-    await reauthenticateWithCredential(fbUser, cred);
-    await firebaseUpdateProfile(fbUser, { displayName: name });
-    if (newPass) await updatePassword(fbUser, newPass);
-    setUser(prev => prev ? { ...prev, name } : prev);
+    await trackSave('Profile', async () => {
+      const cred = EmailAuthProvider.credential(fbUser.email!, currentPass);
+      await reauthenticateWithCredential(fbUser, cred);
+      await firebaseUpdateProfile(fbUser, { displayName: name });
+      if (newPass) await updatePassword(fbUser, newPass);
+      setUser(prev => prev ? { ...prev, name } : prev);
+    });
   };
 
   const updateProfilePhoto = async (file: File) => {

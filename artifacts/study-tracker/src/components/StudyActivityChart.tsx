@@ -17,7 +17,8 @@ import {
 } from 'recharts';
 import { TrendingUp, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { setDoc, updateDoc } from '@/lib/saveStatus';
 import { db } from '@/lib/firebase';
 import { useLang } from '@/context/LangContext';
 

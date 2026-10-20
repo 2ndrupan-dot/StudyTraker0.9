@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText, User as UserIcon, Headset, ClipboardList } from 'lucide-react';
+import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText, User as UserIcon, Headset, ClipboardList, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
+import { dismissSaveFailure, useSaveStatus } from '@/lib/saveStatus';
 import { usePWAInstall } from '@/context/PWAInstallContext';
 import { useAdmin } from '@/context/AdminContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -114,10 +115,20 @@ function FloatingSearchButton({ onClick }: { onClick: () => void }) {
 }
 
 function ConnectionStatus() {
-  const { syncStatus, syncError, online } = useStudy();
+  const { syncStatus, syncError, online, clearSyncFailure } = useStudy();
+  const { pending, failures, lastSuccessAt } = useSaveStatus();
   const { t } = useLang();
   const [showBackOnline, setShowBackOnline] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
+  const [failuresOpen, setFailuresOpen] = useState(false);
   const wasOfflineRef = React.useRef(false);
+
+  useEffect(() => {
+    if (!lastSuccessAt) return;
+    setShowSaved(true);
+    const id = window.setTimeout(() => setShowSaved(false), 2500);
+    return () => window.clearTimeout(id);
+  }, [lastSuccessAt]);
 
   useEffect(() => {
     if (!online) {
@@ -135,34 +146,49 @@ function ConnectionStatus() {
     return;
   }, [online]);
 
-  const visible = !online || showBackOnline || syncStatus !== 'idle';
+  const visible = !online || showBackOnline || syncStatus !== 'idle' || pending > 0 || failures.length > 0 || showSaved;
   if (!visible) return null;
+
+  const visibleFailures = failures.length > 0
+    ? failures
+    : syncStatus === 'failed'
+      ? [{ id: 'study-context-failure', label: t('saveOperation'), message: syncError || t('syncFailed'), failedAt: Date.now() }]
+      : [];
+  const dismissFailure = (id: string) => {
+    if (id === 'study-context-failure') {
+      clearSyncFailure();
+      return;
+    }
+    dismissSaveFailure(id);
+    if (failures.length === 1 && syncStatus === 'failed') clearSyncFailure();
+    if (failures.length <= 1) setFailuresOpen(false);
+  };
 
   let label = '';
   let Icon: React.ElementType = Cloud;
   let cls = '';
   let spinning = false;
 
-  if (!online) {
+  if (visibleFailures.length > 0) {
+    label = t('syncFailed');
+    Icon = CloudOff;
+    cls = 'bg-red-600 text-white border-red-700 shadow-red-500/30';
+  } else if (!online) {
     label = t('offline');
     Icon = CloudOff;
     cls = 'bg-red-600 text-white border-red-700 shadow-red-500/30';
+  } else if (pending > 0 || syncStatus === 'syncing') {
+    label = t('syncing');
+    cls = 'bg-white/90 text-slate-600 border-slate-200 shadow-slate-300/40 backdrop-blur-sm';
+    spinning = true;
   } else if (showBackOnline) {
     label = t('online');
     Icon = Cloud;
     cls = 'bg-emerald-500 text-white border-emerald-600 shadow-emerald-400/30';
-  } else if (syncStatus === 'syncing') {
-    label = t('syncing');
-    cls = 'bg-white/90 text-slate-600 border-slate-200 shadow-slate-300/40 backdrop-blur-sm';
-    spinning = true;
-  } else if (syncStatus === 'success') {
+  } else if (syncStatus === 'success' || showSaved) {
     label = t('syncSaved');
     Icon = Check;
     cls = 'bg-emerald-500 text-white border-emerald-600 shadow-emerald-400/30';
-  } else if (syncStatus === 'failed') {
-    label = syncError ? `${t('syncFailed')}: ${syncError}` : t('syncFailed');
-    Icon = CloudOff;
-    cls = 'bg-red-600 text-white border-red-700 shadow-red-500/30';
   }
 
   return (
@@ -173,21 +199,72 @@ function ConnectionStatus() {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.9 }}
         transition={{ duration: 0.18, ease: 'easeOut' }}
-        className={cn(
-          'fixed top-2 right-2 z-50 flex items-center gap-1 shadow-sm rounded-full px-1.5 py-0.5 text-[10px] font-semibold border',
-          cls
-        )}
+        className="fixed top-2 right-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-end gap-2"
       >
-        {spinning ? (
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-            className="w-2 h-2 border border-slate-400 border-t-transparent rounded-full"
-          />
-        ) : (
-          <Icon size={10} strokeWidth={2.5} />
-        )}
-        <span className="hidden sm:inline">{label}</span>
+        <button
+          type="button"
+          onClick={() => visibleFailures.length > 0 && setFailuresOpen(open => !open)}
+          aria-expanded={visibleFailures.length > 0 ? failuresOpen : undefined}
+          aria-label={visibleFailures.length > 0 ? `${label}. ${t('syncFailureDetails')}` : label}
+          className={cn(
+            'flex items-center gap-1.5 shadow-sm rounded-full px-2.5 py-1 text-[11px] font-semibold border',
+            visibleFailures.length > 0 ? 'cursor-pointer' : 'cursor-default',
+            cls
+          )}
+        >
+          {spinning ? (
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+              className="w-2.5 h-2.5 border border-slate-400 border-t-transparent rounded-full"
+            />
+          ) : (
+            <Icon size={12} strokeWidth={2.5} />
+          )}
+          <span>{label}</span>
+          {visibleFailures.length > 1 && <span>({visibleFailures.length})</span>}
+        </button>
+
+        <AnimatePresence>
+          {failuresOpen && visibleFailures.length > 0 && (
+            <motion.section
+              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.98 }}
+              role="region"
+              aria-label={t('syncFailureDetails')}
+              className="w-[min(22rem,calc(100vw-1rem))] rounded-xl border border-red-200 bg-white p-3 text-slate-800 shadow-xl dark:border-red-900 dark:bg-slate-950 dark:text-slate-100"
+            >
+              <h2 className="mb-2 text-xs font-bold text-red-700 dark:text-red-300">{t('syncFailureDetails')}</h2>
+              <ul className="m-0 flex max-h-[60vh] list-none flex-col gap-2 overflow-y-auto p-0">
+                {visibleFailures.map(failure => (
+                  <li key={failure.id} className="rounded-lg bg-red-50 p-2.5 text-xs dark:bg-red-950/50">
+                    <div className="flex items-start justify-between gap-2">
+                      <strong className="leading-snug text-red-800 dark:text-red-200">{failure.label}</strong>
+                      <button
+                        type="button"
+                        onClick={() => dismissFailure(failure.id)}
+                        aria-label={t('dismissSyncFailure')}
+                        title={t('dismissSyncFailure')}
+                        className="shrink-0 rounded-md p-1 text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-300 dark:hover:bg-red-900"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    {(failure.occurrences ?? 1) > 1 && (
+                      <p className="mb-0 mt-1 text-[10px] font-medium text-red-700 dark:text-red-300">
+                        {t('saveOccurrences').replace('{count}', String(failure.occurrences))}
+                      </p>
+                    )}
+                    <p className="mb-0 mt-1 whitespace-pre-wrap break-words leading-relaxed text-red-700 dark:text-red-200">
+                      {failure.message}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </motion.section>
+          )}
+        </AnimatePresence>
       </motion.div>
     </AnimatePresence>
   );

@@ -19,3 +19,4 @@
 - [Mockup production builds](mockup-build-env.md) — standalone mockup builds need PORT and BASE_PATH defaults because artifact env is injected only by the dev workflow.
 - [Offline reachability checks](offline-reachability.md) — navigator.onLine can be true without internet; verify external reachability before starting auth/data loading.
 - [Course-notes partial commits](course-notes-partial-commits.md) — a fresh courseNotes sidecar can be committed before studyData.hasNotesDoc; recover it by savedAt, not only the marker.
+- [Global save-status tracking](firestore-save-status.md) — user-triggered Firestore writes must use the shared tracker so progress and persistent failures cover every screen.

@@ -4,7 +4,8 @@ import { useAuth } from './AuthContext';
 import { useCourse } from './CourseContext';
 import { addDays, formatISO } from 'date-fns';
 import { nowIST, addDaysIST, toDateStrIST } from '@/lib/istTime';
-import { doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, collection, writeBatch, query, where, updateDoc, type CollectionReference, type DocumentReference } from 'firebase/firestore';
+import { doc, getDoc, getDocs, onSnapshot, collection, query, where, type CollectionReference, type DocumentReference } from 'firebase/firestore';
+import { setDoc, deleteDoc, writeBatch, updateDoc } from '@/lib/saveStatus';
 import { db } from '@/lib/firebase';
 import { collectAllIds, filterSubjectsByIds, filterNotesMapByIds } from '@/lib/courseShare';
 import { readLocalCourseSnapshot, writeLocalCourseSnapshot } from '@/lib/localStudyCache';
@@ -477,6 +478,7 @@ interface StudyContextType {
   dataLoaded: boolean;
   syncStatus: 'idle' | 'syncing' | 'success' | 'failed';
   syncError: string | null;
+  clearSyncFailure: () => void;
   online: boolean;
   localNotesRecoveryCount: number;
   restoreLocalNotes: () => Promise<void>;
@@ -1504,7 +1506,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error('[StudyContext] Firestore save failed:', err);
       setSyncStatus('failed');
-      setTimeout(() => setSyncStatus(s => s === 'failed' ? 'idle' : s), 4000);
+      const failure = err as { code?: string; message?: string };
+      setSyncError(failure.code || failure.message || 'unknown');
     }
   };
 
@@ -3273,7 +3276,6 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             } else {
               setSyncStatus('failed');
               setSyncError(code !== 'unknown' ? code : (msg.slice(0, 60) || null));
-              setTimeout(() => setSyncStatus(s => s === 'failed' ? 'idle' : s), 6000);
               console.error('[saveNotePage] Firestore write failed after 3 attempts', { pageId, code, msg, err });
             }
           }
@@ -3288,6 +3290,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   return (
     <StudyContext.Provider value={{
       subjects, settings, dataLoaded, syncStatus, syncError, online,
+      clearSyncFailure: () => { setSyncStatus('idle'); setSyncError(null); },
       localNotesRecoveryCount, restoreLocalNotes,
       setNote, toggleImportant, toggleWeak,
       setCourseTotalDays, setDailyStudyHours, setCourseStartDate, setTimezone, setGlobalNoteSize,

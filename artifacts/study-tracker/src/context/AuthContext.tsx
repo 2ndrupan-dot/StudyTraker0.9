@@ -253,7 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await firebaseUpdateProfile(fbUser, { displayName: name });
       if (newPass) await updatePassword(fbUser, newPass);
       setUser(prev => prev ? { ...prev, name } : prev);
-    });
+    }, `profile:${fbUser.uid}`);
   };
 
   const updateProfilePhoto = async (file: File) => {

@@ -14,3 +14,9 @@ The user confirmed this project-wide behavior: one corner indicator should cover
 **Why:** The user asked for broad, consistent save feedback and confirmed the implementation direction.
 
 **How to apply:** Preserve the shared indicator and the explicit-dismissal behavior when extending save flows.
+
+For an active failure, Retry hides that failure while the operation is pending. Success uses the normal short-lived Saved state; another failure restores the red error details. A retry targeting a document should use the latest action for that document, and generated document IDs must stay fixed across retries.
+
+**Why:** The user explicitly requested this retry lifecycle; reusing the latest payload avoids overwriting newer edits, and a fixed ID avoids duplicate documents.
+
+**How to apply:** Keep retries idempotent, replay batches as fresh batches, and return a failed retry to the same persistent error state.

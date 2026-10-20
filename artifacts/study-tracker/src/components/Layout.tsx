@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText, User as UserIcon, Headset, ClipboardList, X } from 'lucide-react';
+import { Target, BookOpen, CheckCircle2, GraduationCap, Cloud, CloudOff, Search, Download, Share2, Check, FileText, User as UserIcon, Headset, ClipboardList, X, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
-import { dismissSaveFailure, useSaveStatus } from '@/lib/saveStatus';
+import { dismissSaveFailure, retrySaveFailure, useSaveStatus } from '@/lib/saveStatus';
 import { usePWAInstall } from '@/context/PWAInstallContext';
 import { useAdmin } from '@/context/AdminContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -163,6 +163,11 @@ function ConnectionStatus() {
     if (failures.length === 1 && syncStatus === 'failed') clearSyncFailure();
     if (failures.length <= 1) setFailuresOpen(false);
   };
+  const retryFailure = (id: string) => {
+    clearSyncFailure();
+    setFailuresOpen(false);
+    void retrySaveFailure(id);
+  };
 
   let label = '';
   let Icon: React.ElementType = Cloud;
@@ -241,16 +246,34 @@ function ConnectionStatus() {
                   <li key={failure.id} className="rounded-lg bg-red-50 p-2.5 text-xs dark:bg-red-950/50">
                     <div className="flex items-start justify-between gap-2">
                       <strong className="leading-snug text-red-800 dark:text-red-200">{failure.label}</strong>
-                      <button
-                        type="button"
-                        onClick={() => dismissFailure(failure.id)}
-                        aria-label={t('dismissSyncFailure')}
-                        title={t('dismissSyncFailure')}
-                        className="shrink-0 rounded-md p-1 text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-300 dark:hover:bg-red-900"
-                      >
-                        <X size={14} />
-                      </button>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => retryFailure(failure.id)}
+                          disabled={!failure.retry}
+                          aria-label={t('retrySave')}
+                          title={failure.retry ? t('retrySave') : t('retryUnavailable')}
+                          className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-semibold text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:cursor-not-allowed disabled:opacity-45 dark:text-red-300 dark:hover:bg-red-900"
+                        >
+                          <RotateCcw size={12} />
+                          {t('retrySave')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dismissFailure(failure.id)}
+                          aria-label={t('dismissSyncFailure')}
+                          title={t('dismissSyncFailure')}
+                          className="rounded-md p-1 text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-300 dark:hover:bg-red-900"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
                     </div>
+                    {!failure.retry && (
+                      <p className="mb-0 mt-1 text-[10px] text-red-700 dark:text-red-300">
+                        {t('retryUnavailable')}
+                      </p>
+                    )}
                     {(failure.occurrences ?? 1) > 1 && (
                       <p className="mb-0 mt-1 text-[10px] font-medium text-red-700 dark:text-red-300">
                         {t('saveOccurrences').replace('{count}', String(failure.occurrences))}

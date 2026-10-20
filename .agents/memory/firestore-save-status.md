@@ -8,3 +8,9 @@ Route user-facing Firestore mutations through the shared tracked-write layer rat
 **Why:** Users asked for one project-wide save indicator, and a direct SDK write bypasses its progress and error reporting.
 
 **How to apply:** When adding or moving a Firestore mutation, use the shared wrappers for document writes and batch commits. Keep failures visible until the user dismisses them; do not add timeout-based clearing.
+
+The user confirmed this project-wide behavior: one corner indicator should cover edits and additions across Notes, Tests, and the rest of the app, with persistent, expandable failure reasons and an explicit close button.
+
+**Why:** The user asked for broad, consistent save feedback and confirmed the implementation direction.
+
+**How to apply:** Preserve the shared indicator and the explicit-dismissal behavior when extending save flows.

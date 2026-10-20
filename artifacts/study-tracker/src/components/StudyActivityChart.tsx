@@ -370,6 +370,13 @@ export function StudyActivityChart({ uid, courseId, overallProg, startDate, data
 
     // Skip if nothing actually changed since last write
     if (rounded === lastWritten.current) return;
+    // The chart unmounts when the user leaves Progress. On returning, the
+    // current value is usually already persisted locally; don't issue the same
+    // Firestore write again just because this component mounted again.
+    if (rounded === lsLoad(uid, courseId)[todayStr]) {
+      lastWritten.current = rounded;
+      return;
+    }
 
     lastWritten.current = rounded;
     hasLocalWrite.current = true;

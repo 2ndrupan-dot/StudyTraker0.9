@@ -122,9 +122,14 @@ function ConnectionStatus() {
   const [showSaved, setShowSaved] = useState(false);
   const [failuresOpen, setFailuresOpen] = useState(false);
   const wasOfflineRef = React.useRef(false);
+  const lastSuccessSeenRef = React.useRef(lastSuccessAt);
 
   useEffect(() => {
-    if (!lastSuccessAt) return;
+    // Layout is mounted separately by each page. Ignore a success that
+    // happened before this instance mounted, otherwise tab navigation replays
+    // the previous "Saved" message.
+    if (!lastSuccessAt || lastSuccessAt === lastSuccessSeenRef.current) return;
+    lastSuccessSeenRef.current = lastSuccessAt;
     setShowSaved(true);
     const id = window.setTimeout(() => setShowSaved(false), 2500);
     return () => window.clearTimeout(id);
@@ -146,7 +151,13 @@ function ConnectionStatus() {
     return;
   }, [online]);
 
-  const visible = !online || showBackOnline || syncStatus !== 'idle' || pending > 0 || failures.length > 0 || showSaved;
+  const visible = !online ||
+    showBackOnline ||
+    syncStatus === 'syncing' ||
+    syncStatus === 'failed' ||
+    pending > 0 ||
+    failures.length > 0 ||
+    showSaved;
   if (!visible) return null;
 
   const visibleFailures = failures.length > 0
@@ -190,7 +201,7 @@ function ConnectionStatus() {
     label = t('online');
     Icon = Cloud;
     cls = 'bg-emerald-500 text-white border-emerald-600 shadow-emerald-400/30';
-  } else if (syncStatus === 'success' || showSaved) {
+  } else if (showSaved) {
     label = t('syncSaved');
     Icon = Check;
     cls = 'bg-emerald-500 text-white border-emerald-600 shadow-emerald-400/30';

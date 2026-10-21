@@ -475,6 +475,45 @@ interface StudyData {
   savedAt?: number;
 }
 
+function removeRecoveredNotes(data: StudyData, keys: ReadonlySet<string>): StudyData {
+  const clearNote = <T extends { id: string; note?: string }>(item: T, kind: string): T => ({
+    ...item,
+    note: keys.has(`${kind}:${item.id}`) ? undefined : item.note,
+  });
+  const clearPoint = (point: Point): Point => clearNote(point, 'pt');
+  const clearConcept = (concept: Concept): Concept => ({
+    ...clearNote(concept, 'con'),
+    points: (concept.points || []).map(clearPoint),
+  });
+  const clearSubtopic = (subtopic: Subtopic): Subtopic => ({
+    ...clearNote(subtopic, 'st'),
+    concepts: (subtopic.concepts || []).map(clearConcept),
+  });
+  const clearTopic = (topic: Topic): Topic => ({
+    ...clearNote(topic, 't'),
+    subtopics: (topic.subtopics || []).map(clearSubtopic),
+  });
+  const clearChapter = (chapter: Chapter): Chapter => ({
+    ...clearNote(chapter, 'c'),
+    topics: (chapter.topics || []).map(clearTopic),
+  });
+  const clearSubject = (subject: Subject): Subject => ({
+    ...clearNote(subject, 's'),
+    chapters: (subject.chapters || []).map(clearChapter),
+  });
+  const clearTempNote = (item: TempNoteItem): TempNoteItem => ({
+    ...clearNote(item, 'tn'),
+    children: (item.children || []).map(clearTempNote),
+  });
+
+  return {
+    ...data,
+    subjects: (data.subjects || []).map(clearSubject),
+    tempNotes: (data.tempNotes || []).map(clearTempNote),
+    overallNote: keys.has(OVERALL_NOTE_RECOVERY_KEY) ? '' : data.overallNote,
+  };
+}
+
 export interface LocalNotesRecoveryItem {
   key: string;
   title: string;
@@ -492,7 +531,7 @@ interface StudyContextType {
   localNotesRecoveryCount: number;
   localNotesRecoveryItems: LocalNotesRecoveryItem[];
   restoreLocalNotes: (keys?: string[]) => Promise<boolean>;
-  dismissLocalNotesRecovery: (keys: string[]) => void;
+  dismissLocalNotesRecovery: (keys: string[]) => Promise<void>;
   setNote: (path: MarkPath, note: string) => void;
   toggleImportant: (path: MarkPath) => void;
   toggleWeak: (path: MarkPath) => void;
@@ -785,10 +824,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setLocalNotesRecoveryItems(candidates.filter(item => !recoveryDismissalsRef.current.has(item.key)));
   };
 
-  const dismissLocalNotesRecovery = (keys: string[]) => {
+  const dismissLocalNotesRecovery = async (keys: string[]) => {
     const currentUser = userRef.current;
     const currentCourseId = activeCourseIdRef.current;
-    if (!currentUser || !currentCourseId) return;
+    if (!currentUser || !currentCourseId || keys.length === 0) return;
+    const recoverySnapshot = localNotesRecoveryRef.current?.data ?? null;
     const scope = recoveryDismissalKey(currentUser.id, currentCourseId);
     if (recoveryDismissalScopeRef.current !== scope) {
       recoveryDismissalScopeRef.current = scope;
@@ -806,6 +846,37 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       // Keep the dismissal active for the current session if storage is unavailable.
     }
     setLocalNotesRecoveryItems(items => items.filter(item => !keys.includes(item.key)));
+
+    // Finish any already-debounced course save before editing the local snapshot,
+    // so it cannot write the dismissed note back into localStorage or IndexedDB.
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      const pending = pendingSaveRef.current;
+      if (pending) {
+        flushSave(
+          pending.subjects,
+          pending.settings,
+          pending.tempNotes,
+          pending.overallNote,
+          pending.notePagesIndex,
+          pending.personalNotePagesIndex,
+        );
+      }
+    }
+    await courseSaveQueueRef.current.catch(() => {});
+
+    // Delete only the selected note contents, preserving the rest of this
+    // course's browser cache. The cache helper writes both localStorage and IDB.
+    const cacheKey = `@study_data_${currentCourseId}_${currentUser.email}`;
+    const cached = await readLocalCourseSnapshot<StudyData>(cacheKey);
+    const localData = cached?.data ?? recoverySnapshot;
+    if (!localData) return;
+    await writeLocalCourseSnapshot(
+      cacheKey,
+      removeRecoveredNotes(localData, new Set(keys)),
+      cached?.unsynced ?? false,
+    );
   };
 
   const localNotesRecoveryCount = localNotesRecoveryItems.length;

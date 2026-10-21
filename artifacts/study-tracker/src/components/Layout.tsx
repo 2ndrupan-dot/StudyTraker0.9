@@ -137,7 +137,7 @@ function LocalNotesRecoveryNotice() {
     if (type === 'restore') {
       void runRestore(keys);
     } else {
-      dismissLocalNotesRecovery(keys);
+      void dismissLocalNotesRecovery(keys);
     }
     setConfirmAction(null);
   };

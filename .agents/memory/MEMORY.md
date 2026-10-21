@@ -20,4 +20,5 @@
 - [Offline reachability checks](offline-reachability.md) — navigator.onLine can be true without internet; verify external reachability before starting auth/data loading.
 - [Course-notes partial commits](course-notes-partial-commits.md) — a fresh courseNotes sidecar can be committed before studyData.hasNotesDoc; recover it by savedAt, not only the marker.
 - [Global save-status tracking](firestore-save-status.md) — user-triggered Firestore writes must use the shared tracker so progress and persistent failures cover every screen.
+- [Fast-close recovery](studytrack-fast-close-recovery.md) — persist the local draft and unsynced marker before debounce/network work; unload hooks are only a backup.
 - [Cross-browser recovery baselines](cross-browser-recovery-baselines.md) — compare pending local content with its original cloud baseline; a later remote edit to the same item resolves stale recovery.

@@ -1960,6 +1960,17 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       hasUnsyncedEditRef.current = false;
       loadedNotesRef.current = notesToSave;
       loadedOverallNoteRef.current = overallNoteToSaveMerged;
+      const pending = pendingSaveRef.current;
+      if (
+        pending?.subjects === subjectsToSave &&
+        pending.settings === settingsToSave &&
+        pending.tempNotes === tempNotesToSave &&
+        pending.overallNote === overallNoteToSave &&
+        pending.notePagesIndex === notePagesIndexToSave &&
+        pending.personalNotePagesIndex === personalNotePagesIndexToSave
+      ) {
+        pendingSaveRef.current = null;
+      }
       setSyncStatus('success');
       setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
     } catch (err) {
@@ -2176,7 +2187,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  useEffect(() => {
+  React.useLayoutEffect(() => {
     if (!user || !dataLoaded) return;
     if (isInitialLoad.current) {
       // The save-effect can't run yet, but a server snapshot may have set
@@ -2261,8 +2272,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       }
     };
     window.addEventListener('beforeunload', handleUnload);
-    return () => window.removeEventListener('beforeunload', handleUnload);
-  }, [user]);
+    window.addEventListener('pagehide', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      window.removeEventListener('pagehide', handleUnload);
+    };
+  }, [user, activeCourseId]);
 
   // ─── Calculation helpers ───────────────────────────────────────────────
   const calculateWeight = (subj: Subject) => {

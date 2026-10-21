@@ -205,10 +205,7 @@ function ConnectionStatus({ isProfilePage }: { isProfilePage: boolean }) {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.9 }}
         transition={{ duration: 0.18, ease: 'easeOut' }}
-        className={cn(
-          'fixed right-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-end gap-2 md:top-2',
-          isProfilePage ? 'top-0' : 'top-0.5',
-        )}
+        className="fixed top-0.5 right-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-end gap-2 md:top-2"
       >
         <button
           type="button"
@@ -217,6 +214,7 @@ function ConnectionStatus({ isProfilePage }: { isProfilePage: boolean }) {
           aria-label={visibleFailures.length > 0 ? `${label}. ${t('syncFailureDetails')}` : label}
           className={cn(
             'flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shadow-sm',
+            isProfilePage && 'py-0',
             visibleFailures.length > 0 ? 'cursor-pointer' : 'cursor-default',
             cls
           )}

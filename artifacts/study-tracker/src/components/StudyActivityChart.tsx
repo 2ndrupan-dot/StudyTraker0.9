@@ -18,7 +18,7 @@ import {
 import { TrendingUp, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { setDoc, updateDoc } from '@/lib/saveStatus';
+import { setDocQuietly, updateDocQuietly } from '@/lib/saveStatus';
 import { db } from '@/lib/firebase';
 import { useLang } from '@/context/LangContext';
 
@@ -56,11 +56,11 @@ function fsRef(uid: string, courseId: string) {
 // Fallback to setDoc when the doc doesn't exist yet (new course / first use).
 async function fsSaveToday(uid: string, courseId: string, todayStr: string, value: number) {
   try {
-    await updateDoc(fsRef(uid, courseId), { [`snaps.${todayStr}`]: value });
+    await updateDocQuietly(fsRef(uid, courseId), { [`snaps.${todayStr}`]: value });
   } catch (e: any) {
     if (e?.code === 'not-found') {
       // Document doesn't exist yet — create it with just today's entry.
-      await setDoc(fsRef(uid, courseId), { snaps: { [todayStr]: value } });
+      await setDocQuietly(fsRef(uid, courseId), { snaps: { [todayStr]: value } });
     }
     // Any other error (offline) — will sync when back online.
   }

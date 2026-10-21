@@ -31,6 +31,7 @@ const pendingWrites = new Map<string, {
   label: string;
   retry?: RetryAction;
   resourceKey?: string;
+  showProgress: boolean;
 }>();
 const latestRetryActions = new Map<string, RetryAction>();
 const FAILURE_STORAGE_KEY = '@study_save_failures';
@@ -65,7 +66,7 @@ let snapshot: SaveStatusSnapshot = {
 
 function publish() {
   snapshot = {
-    pending: pendingWrites.size,
+    pending: [...pendingWrites.values()].filter(write => write.showProgress).length,
     failures: failureRecords,
     lastSuccessAt,
   };
@@ -97,9 +98,14 @@ function newId() {
   return `${Date.now()}-${nextId}`;
 }
 
-export function beginSave(label = 'Cloud save', retry?: RetryAction, resourceKey?: string) {
+export function beginSave(
+  label = 'Cloud save',
+  retry?: RetryAction,
+  resourceKey?: string,
+  showProgress = true,
+) {
   const id = newId();
-  pendingWrites.set(id, { label, retry, resourceKey });
+  pendingWrites.set(id, { label, retry, resourceKey, showProgress });
   publish();
   return id;
 }
@@ -115,7 +121,7 @@ export function completeSave(id: string) {
   const write = pendingWrites.get(id);
   if (!write) return;
   pendingWrites.delete(id);
-  lastSuccessAt = Date.now();
+  if (write.showProgress) lastSuccessAt = Date.now();
   cleanupRetryAction(write.resourceKey);
   publish();
 }
@@ -186,7 +192,7 @@ export async function retrySaveFailure(id: string): Promise<boolean> {
   // during the request cannot silently erase the failure.
   failureRecords = failureRecords.filter(item => item.id !== id);
   publish();
-  const retryId = beginSave(failure.label, failure.retry, failure.resourceKey);
+  const retryId = beginSave(failure.label, failure.retry, failure.resourceKey, true);
   try {
     await failure.retry();
     completeSave(retryId);
@@ -202,6 +208,7 @@ export async function trackSave<T>(
   label: string,
   action: () => Promise<T>,
   resourceKey?: string,
+  showProgress = true,
 ): Promise<T> {
   if (resourceKey) {
     latestRetryActions.set(resourceKey, action);
@@ -219,7 +226,7 @@ export async function trackSave<T>(
   const retry = resourceKey
     ? () => latestRetryActions.get(resourceKey)?.() ?? action()
     : action;
-  const id = beginSave(label, retry, resourceKey);
+  const id = beginSave(label, retry, resourceKey, showProgress);
   try {
     const result = await action();
     completeSave(id);
@@ -240,8 +247,12 @@ function getResourceKey(ref: unknown): string | undefined {
   return typeof path === 'string' ? `firestore:${path}` : undefined;
 }
 
-function trackFirestoreWrite<T>(action: () => Promise<T>, resourceKey?: string) {
-  return trackSave('Cloud save', action, resourceKey);
+function trackFirestoreWrite<T>(
+  action: () => Promise<T>,
+  resourceKey?: string,
+  showProgress = true,
+) {
+  return trackSave('Cloud save', action, resourceKey, showProgress);
 }
 
 export const setDoc: typeof firestoreSetDoc = ((...args: Parameters<typeof firestoreSetDoc>) =>
@@ -252,6 +263,17 @@ export const updateDoc: typeof firestoreUpdateDoc = ((...args: Parameters<typeof
 
 export const deleteDoc: typeof firestoreDeleteDoc = ((...args: Parameters<typeof firestoreDeleteDoc>) =>
   trackFirestoreWrite(() => firestoreDeleteDoc(...args), getResourceKey(args[0]))) as typeof firestoreDeleteDoc;
+
+// Background reconciliation and page-load maintenance still retain failures
+// for the user, but shouldn't show Syncing/Saved as if they had just edited.
+export const setDocQuietly: typeof firestoreSetDoc = ((...args: Parameters<typeof firestoreSetDoc>) =>
+  trackFirestoreWrite(() => firestoreSetDoc(...args), getResourceKey(args[0]), false)) as typeof firestoreSetDoc;
+
+export const updateDocQuietly: typeof firestoreUpdateDoc = ((...args: Parameters<typeof firestoreUpdateDoc>) =>
+  trackFirestoreWrite(() => firestoreUpdateDoc(...args), getResourceKey(args[0]), false)) as typeof firestoreUpdateDoc;
+
+export const deleteDocQuietly: typeof firestoreDeleteDoc = ((...args: Parameters<typeof firestoreDeleteDoc>) =>
+  trackFirestoreWrite(() => firestoreDeleteDoc(...args), getResourceKey(args[0]), false)) as typeof firestoreDeleteDoc;
 
 export const addDoc: typeof firestoreAddDoc = ((...args: Parameters<typeof firestoreAddDoc>) => {
   const [collectionRef, data] = args;
@@ -265,7 +287,19 @@ export const addDoc: typeof firestoreAddDoc = ((...args: Parameters<typeof fires
   }, getResourceKey(ref));
 }) as typeof firestoreAddDoc;
 
-export const writeBatch: typeof firestoreWriteBatch = ((...args: Parameters<typeof firestoreWriteBatch>) => {
+export const addDocQuietly: typeof firestoreAddDoc = ((...args: Parameters<typeof firestoreAddDoc>) => {
+  const [collectionRef, data] = args;
+  const ref = firestoreDoc(collectionRef);
+  return trackFirestoreWrite(async () => {
+    await firestoreSetDoc(ref, data);
+    return ref;
+  }, getResourceKey(ref), false);
+}) as typeof firestoreAddDoc;
+
+function createTrackedWriteBatch(
+  args: Parameters<typeof firestoreWriteBatch>,
+  showProgress: boolean,
+) {
   const batch = firestoreWriteBatch(...args);
   const operations: Array<{ method: 'set' | 'update' | 'delete'; args: unknown[] }> = [];
   let isFirstAttempt = true;
@@ -286,7 +320,7 @@ export const writeBatch: typeof firestoreWriteBatch = ((...args: Parameters<type
   return new Proxy(batch, {
     get(target, property, receiver) {
       if (property === 'commit') {
-        return () => trackSave('Cloud save', retryableCommit);
+        return () => trackSave('Cloud save', retryableCommit, undefined, showProgress);
       }
       if (property === 'set' || property === 'update' || property === 'delete') {
         const method = Reflect.get(target, property, target);
@@ -299,4 +333,10 @@ export const writeBatch: typeof firestoreWriteBatch = ((...args: Parameters<type
       return Reflect.get(target, property, receiver);
     },
   });
-}) as typeof firestoreWriteBatch;
+}
+
+export const writeBatch: typeof firestoreWriteBatch = ((...args: Parameters<typeof firestoreWriteBatch>) =>
+  createTrackedWriteBatch(args, true)) as typeof firestoreWriteBatch;
+
+export const writeBatchQuietly: typeof firestoreWriteBatch = ((...args: Parameters<typeof firestoreWriteBatch>) =>
+  createTrackedWriteBatch(args, false)) as typeof firestoreWriteBatch;

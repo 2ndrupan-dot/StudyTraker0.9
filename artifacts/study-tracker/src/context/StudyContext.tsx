@@ -5,7 +5,10 @@ import { useCourse } from './CourseContext';
 import { addDays, formatISO } from 'date-fns';
 import { nowIST, addDaysIST, toDateStrIST } from '@/lib/istTime';
 import { doc, getDoc, getDocs, onSnapshot, collection, query, where, type CollectionReference, type DocumentReference } from 'firebase/firestore';
-import { setDoc, deleteDoc, writeBatch, updateDoc } from '@/lib/saveStatus';
+import {
+  setDoc, deleteDoc, writeBatch, updateDoc,
+  setDocQuietly,
+} from '@/lib/saveStatus';
 import { db } from '@/lib/firebase';
 import { collectAllIds, filterSubjectsByIds, filterNotesMapByIds } from '@/lib/courseShare';
 import { readLocalCourseSnapshot, writeLocalCourseSnapshot } from '@/lib/localStudyCache';
@@ -913,13 +916,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         // this course's own notesDocRef so the fallback above is only needed
         // once — subsequent loads read it directly, no legacy lookup required.
         if (sourceIsLegacyMain) {
-          setDoc(notesDocRef, nd).catch(() => {});
+          setDocQuietly(notesDocRef, nd).catch(() => {});
           if (nd.chunked) {
             (async () => {
               try {
                 const entries = await getDocs(sourceChunksColRef);
                 for (const chunkDoc of entries.docs) {
-                  await setDoc(doc(collection(notesDocRef, 'chunks'), chunkDoc.id), chunkDoc.data());
+                  await setDocQuietly(doc(collection(notesDocRef, 'chunks'), chunkDoc.id), chunkDoc.data());
                 }
               } catch { /* best-effort self-heal; fallback path still works next time */ }
             })();
@@ -1226,43 +1229,88 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // so the same notes appear regardless of which course is active.
   const promptInitialLoadDoneRef = useRef(false);
   const promptIndexSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const promptIndexLastSyncedJsonRef = useRef<string | null>(null);
+  const promptIndexStateRef = useRef(promptNotePagesIndex);
+  promptIndexStateRef.current = promptNotePagesIndex;
+  const [promptIndexReady, setPromptIndexReady] = useState(false);
 
   useEffect(() => {
+    let active = true;
     if (!user) {
       setPromptNotePagesIndex([]);
       promptInitialLoadDoneRef.current = false;
-      return;
+      promptIndexLastSyncedJsonRef.current = null;
+      setPromptIndexReady(false);
+      return () => { active = false; };
     }
     promptInitialLoadDoneRef.current = false;
+    setPromptIndexReady(false);
+    promptIndexLastSyncedJsonRef.current = null;
     const lk = `@study_promptindex_${user.email}`;
+    let localIndex: NotePageMeta[] = [];
     try {
       const raw = localStorage.getItem(lk);
-      if (raw) setPromptNotePagesIndex(JSON.parse(raw) as NotePageMeta[]);
+      if (raw) {
+        localIndex = JSON.parse(raw) as NotePageMeta[];
+        setPromptNotePagesIndex(localIndex);
+      }
     } catch { /* ignore */ }
-    getDoc(doc(db, 'users', user.id, 'promptData', 'index')).then(snap => {
+    const indexRef = doc(db, 'users', user.id, 'promptData', 'index');
+    getDoc(indexRef).then(snap => {
+      if (!active) return;
       if (snap.exists()) {
         const idx = (snap.data().promptNotePagesIndex || []) as NotePageMeta[];
-        setPromptNotePagesIndex(idx);
-        safeSetLocalStorage(lk, JSON.stringify(idx));
+        promptIndexLastSyncedJsonRef.current = JSON.stringify(idx);
+        // If the user changed prompt notes while the first read was in flight,
+        // keep their newer local state and let the normal save effect write it.
+        if (JSON.stringify(promptIndexStateRef.current) === JSON.stringify(localIndex)) {
+          setPromptNotePagesIndex(idx);
+          safeSetLocalStorage(lk, JSON.stringify(idx));
+        }
+      } else {
+        // A local index may be the only copy after an offline session. Seed the
+        // cloud quietly; this is startup recovery, not a user-initiated save.
+        const localSnapshot = promptIndexStateRef.current;
+        promptIndexLastSyncedJsonRef.current = JSON.stringify(localSnapshot);
+        if (localSnapshot.length > 0) {
+          void setDocQuietly(indexRef, { promptNotePagesIndex: localSnapshot }, { merge: false })
+            .catch(() => {});
+        }
       }
       promptInitialLoadDoneRef.current = true;
-    }).catch(() => { promptInitialLoadDoneRef.current = true; });
+      setPromptIndexReady(true);
+    }).catch(() => {
+      if (!active) return;
+      const localSnapshot = promptIndexStateRef.current;
+      promptIndexLastSyncedJsonRef.current = JSON.stringify(localSnapshot);
+      if (localSnapshot.length > 0) {
+        void setDocQuietly(indexRef, { promptNotePagesIndex: localSnapshot }, { merge: false })
+          .catch(() => {});
+      }
+      promptInitialLoadDoneRef.current = true;
+      setPromptIndexReady(true);
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { active = false; };
   }, [user?.id]);
 
   useEffect(() => {
-    if (!user || !promptInitialLoadDoneRef.current) return;
+    if (!user || !promptIndexReady || !promptInitialLoadDoneRef.current) return;
     const lk = `@study_promptindex_${user.email}`;
     safeSetLocalStorage(lk, JSON.stringify(promptNotePagesIndex));
+    const snapshotJson = JSON.stringify(promptNotePagesIndex);
+    if (snapshotJson === promptIndexLastSyncedJsonRef.current) return;
     if (promptIndexSaveTimerRef.current) clearTimeout(promptIndexSaveTimerRef.current);
     const uid_ = user.id;
+    const indexRef = doc(db, 'users', uid_, 'promptData', 'index');
     const snapshot = promptNotePagesIndex;
     promptIndexSaveTimerRef.current = setTimeout(() => {
-      setDoc(doc(db, 'users', uid_, 'promptData', 'index'), { promptNotePagesIndex: snapshot }, { merge: false })
+      setDoc(indexRef, { promptNotePagesIndex: snapshot }, { merge: false })
+        .then(() => { promptIndexLastSyncedJsonRef.current = snapshotJson; })
         .catch(() => {});
     }, 1500);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [promptNotePagesIndex]);
+  }, [promptNotePagesIndex, user?.id, promptIndexReady]);
 
   // Save data (debounced for Firestore, immediate for localStorage)
   const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; overallNote: string; notePagesIndex: NotePageMeta[]; personalNotePagesIndex: NotePageMeta[] } | null>(null);

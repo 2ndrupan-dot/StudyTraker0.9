@@ -3,7 +3,10 @@ import {
   collection, doc, getDoc, getDocs,
   query, where, onSnapshot,
 } from 'firebase/firestore';
-import { setDoc, addDoc, updateDoc, deleteDoc } from '@/lib/saveStatus';
+import {
+  setDoc, addDoc, updateDoc, deleteDoc,
+  setDocQuietly, updateDocQuietly, deleteDocQuietly,
+} from '@/lib/saveStatus';
 import { db } from '@/lib/firebase';
 import { useAuth } from './AuthContext';
 import { collectAllIds, filterSubjectsByIds, filterNotesMapByIds } from '@/lib/courseShare';
@@ -412,7 +415,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       if (s.adminRevoked) continue; // frozen — timer stopped when admin was removed
       const expired = (s.status === 'pending' && s.pendingExpiresAt <= nowMs)
         || (s.status === 'accepted' && s.actualExpiresAt !== undefined && s.actualExpiresAt <= nowMs);
-      if (expired) deleteDoc(doc(db, 'shareRequests', s.id)).catch(() => {});
+      if (expired) deleteDocQuietly(doc(db, 'shareRequests', s.id)).catch(() => {});
     }
   }, [allSentShares, expiryTick]);
 
@@ -423,7 +426,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       if (s.adminRevoked) continue; // hidden from recipient; skip expiry delete
       const expired = (s.status === 'pending' && s.pendingExpiresAt <= nowMs)
         || (s.status === 'accepted' && s.actualExpiresAt !== undefined && s.actualExpiresAt <= nowMs);
-      if (expired) deleteDoc(doc(db, 'shareRequests', s.id)).catch(() => {});
+      if (expired) deleteDocQuietly(doc(db, 'shareRequests', s.id)).catch(() => {});
     }
   }, [allReceivedShares, expiryTick]);
 
@@ -442,7 +445,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       if (!snap.exists()) return;
       const records: AdminRecord[] = snap.data().admins || [];
       const filtered = records.filter(r => !r.expiresAt || r.expiresAt > nowMs);
-      setDoc(ref, { admins: filtered }, { merge: true }).catch(() => {});
+      setDocQuietly(ref, { admins: filtered }, { merge: true }).catch(() => {});
       // Mark share requests as revoked for every admin whose term just expired
       // (same pattern as manual removeAdmin — keeps cards visible when re-added).
       const revokedAt = Date.now();
@@ -451,7 +454,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           .then(sharesSnap => {
             sharesSnap.docs
               .filter(d => !d.data().adminRevoked)
-              .forEach(d => updateDoc(d.ref, { adminRevoked: true, revokedAt }).catch(() => {}));
+              .forEach(d => updateDocQuietly(d.ref, { adminRevoked: true, revokedAt }).catch(() => {}));
           }).catch(() => {});
       }
     }).catch(() => {});
@@ -490,7 +493,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           permissions: { ...DEFAULT_ADMIN_ROLE_PERMISSIONS },
         }));
         // Write back — will trigger another snapshot which takes the else branch
-        await setDoc(ref, { admins: migrated }, { merge: true });
+        await setDocQuietly(ref, { admins: migrated }, { merge: true });
         setFirestoreAdminRecords(migrated);
       } else {
         const admins: AdminRecord[] = ((data.admins || []) as AdminRecord[]).map(r => ({
@@ -541,7 +544,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     // we have. The frozen timer will show time-remaining as of re-addition.
     const revokedAt = ownRecord.addedAt;
     for (const s of toRevoke) {
-      updateDoc(doc(db, 'shareRequests', s.id), { adminRevoked: true, revokedAt })
+      updateDocQuietly(doc(db, 'shareRequests', s.id), { adminRevoked: true, revokedAt })
         .catch(() => {}); // best-effort; next reload will retry if it fails
     }
   }, [allSentShares, firestoreAdminRecords, isAdmin, loadingAdmins]); // eslint-disable-line
@@ -569,10 +572,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         if (!currentIds.has(trackedShareId)) {
           // Share was deleted by admin (or expired) — remove user's copy of the course data.
           if (trackedType === 'course') {
-            deleteDoc(doc(db, 'users', uid, 'courses', trackedShareId)).catch(() => {});
-            deleteDoc(doc(db, 'users', uid, 'studyData', trackedShareId)).catch(() => {});
-            deleteDoc(doc(db, 'users', uid, 'courseNotes', trackedShareId)).catch(() => {});
-            deleteDoc(doc(db, 'users', uid, 'sharedCourses', trackedShareId)).catch(() => {});
+            deleteDocQuietly(doc(db, 'users', uid, 'courses', trackedShareId)).catch(() => {});
+            deleteDocQuietly(doc(db, 'users', uid, 'studyData', trackedShareId)).catch(() => {});
+            deleteDocQuietly(doc(db, 'users', uid, 'courseNotes', trackedShareId)).catch(() => {});
+            deleteDocQuietly(doc(db, 'users', uid, 'sharedCourses', trackedShareId)).catch(() => {});
             courseWasRemoved = true;
           }
           tracking.delete(trackedShareId);
@@ -622,7 +625,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           if (lastPermJson !== newPermJson) {
             permissionsMap.set(shareDoc.id, newPermJson);
             // Intentionally fire-and-forget; failure is safe (will retry next snapshot)
-            setDoc(
+            setDocQuietly(
               doc(db, 'users', uid, 'sharedCourses', shareDoc.id),
               { permissions: newPermissions },
               { merge: true },
@@ -675,7 +678,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
             // Exclude tempNotes from syncStudyData (admin stripped them before sending,
             // but guard here too) and restore the user's own tempNotes instead.
             const { tempNotes: _ignored, ...syncStudyDataWithoutTemp } = syncStudyData as Record<string, unknown>;
-            await setDoc(
+            await setDocQuietly(
               doc(db, 'users', uid, 'studyData', shareId),
               { ...syncStudyDataWithoutTemp, subjects: mergedSubjects, tempNotes: userTempNotes, savedAt: Date.now() },
               { merge: false },
@@ -687,7 +690,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
             if (syncNotesJson) {
               try {
                 const notesData = JSON.parse(syncNotesJson) as { overallNote: string; notes: Record<string, string> };
-                await setDoc(
+                await setDocQuietly(
                   doc(db, 'users', uid, 'courseNotes', shareId),
                   { savedAt: Date.now(), overallNote: notesData.overallNote || '', notes: notesData.notes || {}, chunked: false },
                   { merge: false },
@@ -710,7 +713,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
               try {
                 const testDecksMap = JSON.parse(syncTestDecksJson) as Record<string, unknown[]>;
                 const deckWritePromises = Object.entries(testDecksMap).map(([subjectId, cards]) =>
-                  setDoc(
+                  setDocQuietly(
                     doc(db, 'users', uid, 'courses', shareId, 'testDecks', subjectId),
                     { cards, updatedAt: Date.now() },
                   )
@@ -784,10 +787,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
         console.log('[AdminContext] Startup reconciliation: removing', orphanedIds.length, 'orphaned shared course(s)');
         await Promise.all(orphanedIds.flatMap(courseId => [
-          deleteDoc(doc(db, 'users', uid, 'courses', courseId)).catch(() => {}),
-          deleteDoc(doc(db, 'users', uid, 'studyData', courseId)).catch(() => {}),
-          deleteDoc(doc(db, 'users', uid, 'courseNotes', courseId)).catch(() => {}),
-          deleteDoc(doc(db, 'users', uid, 'sharedCourses', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'courses', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'studyData', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'courseNotes', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'sharedCourses', courseId)).catch(() => {}),
         ]));
 
         if (!cancelled) {
@@ -839,10 +842,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
         console.log('[AdminContext] Admin-list revocation: removing', orphanedIds.length, 'shared course(s) from removed admin');
         await Promise.all(orphanedIds.flatMap(courseId => [
-          deleteDoc(doc(db, 'users', uid, 'courses', courseId)).catch(() => {}),
-          deleteDoc(doc(db, 'users', uid, 'studyData', courseId)).catch(() => {}),
-          deleteDoc(doc(db, 'users', uid, 'courseNotes', courseId)).catch(() => {}),
-          deleteDoc(doc(db, 'users', uid, 'sharedCourses', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'courses', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'studyData', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'courseNotes', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'sharedCourses', courseId)).catch(() => {}),
         ]));
 
         if (!cancelled) {

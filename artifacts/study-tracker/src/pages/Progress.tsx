@@ -20,7 +20,7 @@ import { ScrollReveal } from '@/components/ScrollReveal';
 import { StudyActivityChart } from '@/components/StudyActivityChart';
 import { format, parseISO, isValid, differenceInCalendarDays, addDays } from 'date-fns';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { updateDoc, setDoc } from '@/lib/saveStatus';
+import { updateDocQuietly, setDocQuietly } from '@/lib/saveStatus';
 import { db } from '@/lib/firebase';
 
 function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = '—'): string {
@@ -448,9 +448,9 @@ export function Progress() {
     if (startOfDayWritten.current?.date === todayStr) return;
     startOfDayWritten.current = { date: todayStr, value: overallProg };
     const ref = doc(db, 'users', uid, 'activitySnapshots', courseId);
-    updateDoc(ref, { [`startOfDay.${todayStr}`]: overallProg }).catch(async (e: any) => {
+    updateDocQuietly(ref, { [`startOfDay.${todayStr}`]: overallProg }).catch(async (e: any) => {
       if (e?.code === 'not-found') {
-        await setDoc(ref, { startOfDay: { [todayStr]: overallProg } }, { merge: true });
+        await setDocQuietly(ref, { startOfDay: { [todayStr]: overallProg } }, { merge: true });
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps

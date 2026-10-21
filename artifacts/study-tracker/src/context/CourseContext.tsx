@@ -7,7 +7,10 @@ import {
   getDoc,
   onSnapshot,
 } from 'firebase/firestore';
-import { setDoc, deleteDoc, updateDoc } from '@/lib/saveStatus';
+import {
+  setDoc, deleteDoc, updateDoc,
+  deleteDocQuietly,
+} from '@/lib/saveStatus';
 import { db } from '@/lib/firebase';
 import type { SharePermissions } from './AdminContext';
 
@@ -116,11 +119,11 @@ export function CourseProvider({ children }: { children: ReactNode }) {
         .map(meta => meta.courseId);
       if (expiredIds.length === 0) return;
       for (const courseId of expiredIds) {
-        deleteDoc(doc(db, 'users', user.id, 'sharedCourses', courseId)).catch(() => {});
-        deleteDoc(doc(db, 'users', user.id, 'courses', courseId)).catch(() => {});
-        deleteDoc(doc(db, 'users', user.id, 'studyData', courseId)).catch(() => {});
-        deleteDoc(doc(db, 'users', user.id, 'courseNotes', courseId)).catch(() => {});
-        deleteDoc(doc(db, 'users', user.id, 'todayData', courseId)).catch(() => {});
+        deleteDocQuietly(doc(db, 'users', user.id, 'sharedCourses', courseId)).catch(() => {});
+        deleteDocQuietly(doc(db, 'users', user.id, 'courses', courseId)).catch(() => {});
+        deleteDocQuietly(doc(db, 'users', user.id, 'studyData', courseId)).catch(() => {});
+        deleteDocQuietly(doc(db, 'users', user.id, 'courseNotes', courseId)).catch(() => {});
+        deleteDocQuietly(doc(db, 'users', user.id, 'todayData', courseId)).catch(() => {});
       }
       setCourses(prev => {
         const remaining = prev.filter(c => !expiredIds.includes(c.id));
@@ -201,9 +204,9 @@ export function CourseProvider({ children }: { children: ReactNode }) {
         });
         for (const expDoc of expired) {
           const c = expDoc.data() as DeletedCourse;
-          deleteDoc(doc(db, 'users', user.id, 'deletedCourses', c.id)).catch(() => {});
-          deleteDoc(doc(db, 'users', user.id, 'studyData', c.id)).catch(() => {});
-          deleteDoc(doc(db, 'users', user.id, 'todayData', c.id)).catch(() => {});
+          deleteDocQuietly(doc(db, 'users', user.id, 'deletedCourses', c.id)).catch(() => {});
+          deleteDocQuietly(doc(db, 'users', user.id, 'studyData', c.id)).catch(() => {});
+          deleteDocQuietly(doc(db, 'users', user.id, 'todayData', c.id)).catch(() => {});
         }
 
         deletedLoaded.sort((a, b) => b.deletedAt - a.deletedAt);

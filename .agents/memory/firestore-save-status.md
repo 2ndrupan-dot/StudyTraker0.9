@@ -26,3 +26,9 @@ Route navigation must not replay an old Syncing/Saved event. A newly mounted pag
 **Why:** Each page owns a Layout instance, so navigation remounts the corner status UI even though the shared save state persists.
 
 **How to apply:** Treat save success as an event, not as a persistent status to replay on mount; don't show stale success state as a new save.
+
+Background hydration, reconciliation, generated-plan persistence, activity snapshots, and expiry cleanup must not emit Syncing/Saved. Their failures still belong in the persistent Failed list and remain retryable.
+
+**Why:** The user wants corner status to reflect their saves, not page opening or tab navigation, while still surfacing any failed write.
+
+**How to apply:** Use quiet tracked writes for automatic maintenance: suppress progress/success only, never failure recording or retry support.

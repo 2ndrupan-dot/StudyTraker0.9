@@ -20,7 +20,7 @@ import { ScrollReveal } from '@/components/ScrollReveal';
 import type { Subject, MarkPath, MarkLevel } from '@/lib/types';
 import { ItemActions } from '@/components/ItemActions';
 import { doc, onSnapshot, getDoc, arrayUnion } from 'firebase/firestore';
-import { setDoc } from '@/lib/saveStatus';
+import { setDoc, setDocQuietly } from '@/lib/saveStatus';
 import { db } from '@/lib/firebase';
 import { useCourse } from '@/context/CourseContext';
 import { useAdmin } from '@/context/AdminContext';
@@ -719,24 +719,27 @@ export function Today() {
   }, [planReady]); // eslint-disable-line
 
   // ── Firestore write helpers (fire-and-forget) ──────────────────────────────
-  const writePlan = useCallback(async (date: string, tasks: PlanTask[]) => {
+  const writePlan = useCallback(async (date: string, tasks: PlanTask[], showProgress = true) => {
     if (!user?.id || !activeCourseId) return;
     lastWriteRef.current = Date.now();
-    await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { plan: { date, tasks } }, { merge: true })
+    const save = showProgress ? setDoc : setDocQuietly;
+    await save(doc(db, 'users', user.id, 'todayData', activeCourseId), { plan: { date, tasks } }, { merge: true })
       .catch(e => console.warn('[todaySync] writePlan:', e));
   }, [user?.id, activeCourseId]); // eslint-disable-line
 
-  const writePending = useCallback(async (items: PendingItem[]) => {
+  const writePending = useCallback(async (items: PendingItem[], showProgress = true) => {
     if (!user?.id || !activeCourseId) return;
     lastWriteRef.current = Date.now();
-    await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { pending: items }, { merge: true })
+    const save = showProgress ? setDoc : setDocQuietly;
+    await save(doc(db, 'users', user.id, 'todayData', activeCourseId), { pending: items }, { merge: true })
       .catch(e => console.warn('[todaySync] writePending:', e));
   }, [user?.id, activeCourseId]); // eslint-disable-line
 
-  const writeRevisions = useCallback(async (entries: RevisionEntry[]) => {
+  const writeRevisions = useCallback(async (entries: RevisionEntry[], showProgress = true) => {
     if (!user?.id || !activeCourseId) return;
     lastWriteRef.current = Date.now();
-    await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { revisions: entries }, { merge: true })
+    const save = showProgress ? setDoc : setDocQuietly;
+    await save(doc(db, 'users', user.id, 'todayData', activeCourseId), { revisions: entries }, { merge: true })
       .catch(e => console.warn('[todaySync] writeRevisions:', e));
   }, [user?.id, activeCourseId]); // eslint-disable-line
 
@@ -747,10 +750,15 @@ export function Today() {
   // two fields updated — the Pending/Revision panels would briefly flash the
   // stale half-updated state before the second snapshot corrected it. One
   // merged write means only one, fully-consistent snapshot is ever observed.
-  const writePendingAndRevisions = useCallback(async (items: PendingItem[], entries: RevisionEntry[]) => {
+  const writePendingAndRevisions = useCallback(async (
+    items: PendingItem[],
+    entries: RevisionEntry[],
+    showProgress = true,
+  ) => {
     if (!user?.id || !activeCourseId) return;
     lastWriteRef.current = Date.now();
-    await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { pending: items, revisions: entries }, { merge: true })
+    const save = showProgress ? setDoc : setDocQuietly;
+    await save(doc(db, 'users', user.id, 'todayData', activeCourseId), { pending: items, revisions: entries }, { merge: true })
       .catch(e => console.warn('[todaySync] writePendingAndRevisions:', e));
   }, [user?.id, activeCourseId]); // eslint-disable-line
 
@@ -770,29 +778,33 @@ export function Today() {
   }, [user?.id, activeCourseId]); // eslint-disable-line
 
   // Dual-write: localStorage (instant/offline) + Firestore (cross-device sync)
-  const syncPlan = useCallback((date: string, tasks: PlanTask[]) => {
+  const syncPlan = useCallback((date: string, tasks: PlanTask[], showProgress = true) => {
     if (!activeCourseId) return;
     savePlan(email, activeCourseId, date, tasks);
-    writePlan(date, tasks);
+    writePlan(date, tasks, showProgress);
   }, [email, activeCourseId, writePlan]);
 
-  const syncPending = useCallback((items: PendingItem[]) => {
+  const syncPending = useCallback((items: PendingItem[], showProgress = true) => {
     if (!activeCourseId) return;
     savePending(email, activeCourseId, items);
-    writePending(items);
+    writePending(items, showProgress);
   }, [email, activeCourseId, writePending]);
 
-  const syncPendingAndRevisions = useCallback((items: PendingItem[], entries: RevisionEntry[]) => {
+  const syncPendingAndRevisions = useCallback((
+    items: PendingItem[],
+    entries: RevisionEntry[],
+    showProgress = true,
+  ) => {
     if (!activeCourseId) return;
     savePending(email, activeCourseId, items);
     saveRevisions(email, activeCourseId, entries);
-    writePendingAndRevisions(items, entries);
+    writePendingAndRevisions(items, entries, showProgress);
   }, [email, activeCourseId, writePendingAndRevisions]);
 
-  const syncRevisions = useCallback((entries: RevisionEntry[]) => {
+  const syncRevisions = useCallback((entries: RevisionEntry[], showProgress = true) => {
     if (!activeCourseId) return;
     saveRevisions(email, activeCourseId, entries);
-    writeRevisions(entries);
+    writeRevisions(entries, showProgress);
   }, [email, activeCourseId, writeRevisions]);
 
   // ── Midnight auto-refresh (IST — triggers at 12:00 AM IST) ────────────────
@@ -1043,7 +1055,7 @@ export function Today() {
     // dismissal and then block the onSnapshot update via the write-grace period.
     const pendingCountBefore = currentPending.length;
     currentPending = currentPending.filter(p => pendingDaysLeft(p, todayStr) > 0);
-    if (currentPending.length !== pendingCountBefore) syncPending(currentPending);
+    if (currentPending.length !== pendingCountBefore) syncPending(currentPending, false);
 
     // ── Revisions: apply dismissals from other devices first ─────────────────
     // dismissedRevisionIds is synced to localStorage by onSnapshot whenever any
@@ -1087,7 +1099,7 @@ export function Today() {
 
     // Only write revisions to Firestore if something actually changed
     if (currentRevisions.length !== revisionsCountBefore || toAutoDismiss.length > 0) {
-      syncRevisions(currentRevisions);
+      syncRevisions(currentRevisions, false);
     }
 
     // ── New-day: clear stale pending items at midnight ────────────────────────
@@ -1128,7 +1140,7 @@ export function Today() {
       setLockedPlan(repaired);
       const changed = repaired.length !== stored.tasks.length ||
         repaired.some((t, i) => t.key !== stored.tasks[i]?.key);
-      if (changed) syncPlan(todayStr, repaired);
+      if (changed) syncPlan(todayStr, repaired, false);
     } else {
       if (stored && stored.date !== todayStr) {
         const stillIncomplete = stored.tasks.filter(t => !isTaskCompleted(subjects, t));
@@ -1178,7 +1190,7 @@ export function Today() {
                 .map(task => ({ task, plannedDate: capturedPlannedDate2, addedDate: capturedTodayStr2 }));
               const merged = [...firestorePending, ...toAdd];
               setPendingItems(merged);
-              syncPending(merged);
+              syncPending(merged, false);
             } catch {
               // Offline: re-read localStorage dismissed keys (best effort)
               const latestLocalDP = new Set(loadDismissedPendingKeys(capturedEmail2, capturedCourseId2 ?? ''));
@@ -1186,7 +1198,7 @@ export function Today() {
                 const filtered = latestLocalDP.size > 0
                   ? prev.filter(p => !latestLocalDP.has(p.task.key))
                   : prev;
-                if (filtered.length !== prev.length) syncPending(filtered);
+                if (filtered.length !== prev.length) syncPending(filtered, false);
                 return filtered;
               });
             }
@@ -1220,7 +1232,7 @@ export function Today() {
                   .map(task => ({ task, plannedDate: capturedPlannedDate, addedDate: capturedTodayStr }));
                 if (toAdd.length === 0) return prev;
                 const next = [...prev, ...toAdd];
-                syncPending(next);
+                syncPending(next, false);
                 return next;
               });
             } catch {
@@ -1233,7 +1245,7 @@ export function Today() {
                   .map(task => ({ task, plannedDate: capturedPlannedDate, addedDate: capturedTodayStr }));
                 if (toAdd.length === 0) return prev;
                 const next = [...prev, ...toAdd];
-                syncPending(next);
+                syncPending(next, false);
                 return next;
               });
             }
@@ -1242,7 +1254,7 @@ export function Today() {
       }
       const fresh = generateSmartPlan(subjects, dailyBudgetMins, currentPending, todayStr);
       setLockedPlan(fresh);
-      syncPlan(todayStr, fresh);
+      syncPlan(todayStr, fresh, false);
       // New day → any "Load More" extra minutes from a previous day no longer apply.
       setExtraLoadedMins(0);
     }

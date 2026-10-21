@@ -20,3 +20,9 @@ For an active failure, Retry hides that failure while the operation is pending. 
 **Why:** The user explicitly requested this retry lifecycle; reusing the latest payload avoids overwriting newer edits, and a fixed ID avoids duplicate documents.
 
 **How to apply:** Keep retries idempotent, replay batches as fresh batches, and return a failed retry to the same persistent error state.
+
+Route navigation must not replay an old Syncing/Saved event. A newly mounted page should show Saved only for a write that completes after that status view mounts; active pending writes and persistent failures remain visible across navigation.
+
+**Why:** Each page owns a Layout instance, so navigation remounts the corner status UI even though the shared save state persists.
+
+**How to apply:** Treat save success as an event, not as a persistent status to replay on mount; don't show stale success state as a new save.

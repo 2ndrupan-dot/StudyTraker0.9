@@ -641,7 +641,7 @@ function getRecoverableNotes(local: StudyData | null, remote: StudyData | null):
   const add = (key: string, title: string, breadcrumb: string[]) => {
     if (
       localNotes[key] &&
-      !Object.prototype.hasOwnProperty.call(remoteNotes, key)
+      !remoteNotes[key]?.trim()
     ) {
       items.push({ key, title: title || 'Untitled', breadcrumb });
     }
@@ -1168,12 +1168,24 @@ export function StudyProvider({ children }: { children: ReactNode }) {
                 loadedNotesRef.current = {};
                 loadedOverallNoteRef.current = remoteNotes.overallNote;
                 if (localData) {
+                  // Keep two views: the displayed data should retain browser-only
+                  // notes, but the recovery comparison must contain only notes
+                  // actually read from Firestore. mergeNotes falls back to the
+                  // source tree when a cloud key is absent, so using its result
+                  // directly as the baseline would make unsynced local notes look
+                  // as if they were already in the cloud.
                   const merged = mergeNotes(localData.subjects || [], localData.tempNotes || [], remoteNotes.notes);
+                  const strippedLocal = extractNotes(localData.subjects || [], localData.tempNotes || []);
+                  const remoteOnly = mergeNotes(
+                    strippedLocal.subjects,
+                    strippedLocal.tempNotes,
+                    remoteNotes.notes,
+                  );
                   loadedNotesRef.current = extractNotes(merged.subjects, merged.tempNotes).notes;
                   const remoteForComparison: StudyData = {
                     ...localData,
-                    subjects: merged.subjects,
-                    tempNotes: merged.tempNotes,
+                    subjects: remoteOnly.subjects,
+                    tempNotes: remoteOnly.tempNotes,
                     overallNote: remoteNotes.overallNote,
                   };
                   setSubjects(merged.subjects);
@@ -1804,7 +1816,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         if (
           keysToRestore.has(key) &&
           value &&
-          (!baselineNotes || mergedNotes[key] === baselineNotes[key])
+          (
+            !baselineNotes ||
+            (mergedNotes[key] || '') === (baselineNotes[key] || '')
+          )
         ) {
           mergedNotes[key] = value;
         }

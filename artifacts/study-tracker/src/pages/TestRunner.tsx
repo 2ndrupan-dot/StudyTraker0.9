@@ -79,12 +79,19 @@ export function TestRunner() {
     return deck.find(c => c.id === cardId) ?? null;
   }, [testDecks, personalTestDecks, subjectId, cardId, shareId, testType]);
 
-  const questions: ParsedQuestion[] = useMemo(() => {
+  const allQuestions: ParsedQuestion[] = useMemo(() => {
     if (!card) return [];
     return parseTestContent(card.question, card.answer);
   }, [card]);
 
   // Test state
+  const [reviewQuestionNumbers, setReviewQuestionNumbers] = useState<number[] | null>(null);
+  const questions = useMemo(
+    () => reviewQuestionNumbers === null
+      ? allQuestions
+      : allQuestions.filter(question => reviewQuestionNumbers.includes(question.number)),
+    [allQuestions, reviewQuestionNumbers],
+  );
   const [currentIdx, setCurrentIdx] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<number, number>>({}); // questionNumber → selectedOptionIdx
   const [revealed, setRevealed] = useState<Record<number, boolean>>({}); // questionNumber → answered
@@ -176,6 +183,23 @@ export function TestRunner() {
   };
 
   const handleRetry = () => {
+    setReviewQuestionNumbers(null);
+    setCurrentIdx(0);
+    setUserAnswers({});
+    setRevealed({});
+    setSkipped({});
+    setFinished(false);
+    setShowAnswerFirst(false);
+  };
+
+  const handleRetryMissed = () => {
+    const missedNumbers = questions
+      .filter(question => skipped[question.number] === true
+        || (userAnswers[question.number] !== undefined
+          && userAnswers[question.number] !== question.correctOptionIndex))
+      .map(question => question.number);
+    if (missedNumbers.length === 0) return;
+    setReviewQuestionNumbers(missedNumbers);
     setCurrentIdx(0);
     setUserAnswers({});
     setRevealed({});
@@ -235,27 +259,38 @@ export function TestRunner() {
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 max-w-xl mx-auto w-full space-y-5">
           {/* Action buttons */}
-          <div className="flex gap-3">
-            <button
-              onClick={handleRetry}
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm shadow-lg shadow-primary/25 hover:bg-primary/90"
-            >
-              <RotateCcw size={16} /> {t('testRetry')}
-            </button>
-            <button
-              onClick={async () => {
-                if (shareId) {
-                  await completeShareTest(shareId);
-                  sessionStorage.removeItem('@shared_test');
-                  navigate('/today');
-                } else {
-                  navigate('/test');
-                }
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-secondary text-foreground font-semibold text-sm hover:bg-secondary/70"
-            >
-              <ChevronLeft size={16} /> {t('testBack')}
-            </button>
+          <div className="flex flex-col gap-2.5">
+            <div className="flex gap-3">
+              <button
+                onClick={handleRetry}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm shadow-lg shadow-primary/25 hover:bg-primary/90"
+              >
+                <RotateCcw size={16} /> {t('testRetry')}
+              </button>
+              <button
+                onClick={async () => {
+                  if (shareId) {
+                    await completeShareTest(shareId);
+                    sessionStorage.removeItem('@shared_test');
+                    navigate('/today');
+                  } else {
+                    navigate('/test');
+                  }
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-secondary text-foreground font-semibold text-sm hover:bg-secondary/70"
+              >
+                <ChevronLeft size={16} /> {t('testBack')}
+              </button>
+            </div>
+            {wrongQuestions.length + skippedQuestions.length > 0 && (
+              <button
+                onClick={handleRetryMissed}
+                className="self-center inline-flex max-w-full items-center justify-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 active:scale-[0.98] sm:text-sm"
+              >
+                <RotateCcw size={14} className="shrink-0" />
+                <span className="text-center">{t('testRetryMissed')} ({wrongQuestions.length + skippedQuestions.length})</span>
+              </button>
+            )}
           </div>
 
           {/* Wrong answers review */}

@@ -657,6 +657,68 @@ interface RecoveryNotesBaseline {
   overallNote: string;
 }
 
+interface CourseNoteRecoveryDraft {
+  notes: Record<string, string>;
+  overallNote?: string;
+}
+
+function courseNoteRecoveryDraftKey(userId: string, courseId: string): string {
+  return `@study_note_recovery_${userId}_${courseId}`;
+}
+
+function readCourseNoteRecoveryDraft(userId: string, courseId: string): CourseNoteRecoveryDraft | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(courseNoteRecoveryDraftKey(userId, courseId)) || 'null') as
+      CourseNoteRecoveryDraft | null;
+    if (!parsed || typeof parsed !== 'object' || !parsed.notes || typeof parsed.notes !== 'object') return null;
+    return {
+      notes: Object.fromEntries(
+        Object.entries(parsed.notes).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+      ),
+      ...(typeof parsed.overallNote === 'string' ? { overallNote: parsed.overallNote } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function applyCourseNoteRecoveryDraft(
+  data: StudyData,
+  draft: CourseNoteRecoveryDraft | null,
+): StudyData {
+  if (!draft) return data;
+  const merged = mergeNotes(data.subjects || [], data.tempNotes || [], draft.notes);
+  return {
+    ...data,
+    subjects: merged.subjects,
+    tempNotes: merged.tempNotes,
+    ...(draft.overallNote !== undefined ? { overallNote: draft.overallNote } : {}),
+  };
+}
+
+function clearCourseNoteRecoveryDraftIfSynced(
+  userId: string,
+  courseId: string,
+  syncedNotes: Record<string, string>,
+  syncedOverallNote: string,
+): void {
+  const key = courseNoteRecoveryDraftKey(userId, courseId);
+  const draft = readCourseNoteRecoveryDraft(userId, courseId);
+  if (!draft) return;
+  const allNotesMatch = Object.entries(draft.notes).every(([noteKey, value]) =>
+    (syncedNotes[noteKey] || '') === value,
+  );
+  const overallNoteMatches =
+    draft.overallNote === undefined || draft.overallNote === syncedOverallNote;
+  if (allNotesMatch && overallNoteMatches) {
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      console.warn('[StudyContext] Could not clear the synced local note recovery copy:', error);
+    }
+  }
+}
+
 function contentFingerprint(content: string): string {
   let first = 0x811c9dc5;
   let second = 0x9e3779b9;
@@ -1205,17 +1267,22 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         const localSnapshot = lsRaw ? await getLocalData(lsRaw) : null;
         if (!active) return;
         const localData = localSnapshot?.data ?? null;
-        if (localData) {
-          setSubjects(localData.subjects || []);
-          setSettings(prev => ({ ...prev, ...localData.settings }));
-          setTempNotes(localData.tempNotes || []);
-          setOverallNoteState(localData.overallNote || '');
-          setNotePagesIndex(localData.notePagesIndex || []);
-          lastSavedAt.current = localData.savedAt ?? 0;
-          loadedNotesRef.current = extractNotes(localData.subjects || [], localData.tempNotes || []).notes;
-          loadedOverallNoteRef.current = localData.overallNote || '';
-          hasUnsyncedEditRef.current = !!localSnapshot?.unsynced;
-          setRecoveryCandidate(localData, null, user.id, activeCourseId, !!localSnapshot?.unsynced);
+        const recoveryDraft = readCourseNoteRecoveryDraft(user.id, activeCourseId);
+        const localUnsynced = !!localSnapshot?.unsynced || !!recoveryDraft;
+        const recoveryData = localData && recoveryDraft
+          ? applyCourseNoteRecoveryDraft(localData, recoveryDraft)
+          : localData;
+        if (recoveryData) {
+          setSubjects(recoveryData.subjects || []);
+          setSettings(prev => ({ ...prev, ...recoveryData.settings }));
+          setTempNotes(recoveryData.tempNotes || []);
+          setOverallNoteState(recoveryData.overallNote || '');
+          setNotePagesIndex(recoveryData.notePagesIndex || []);
+          lastSavedAt.current = recoveryData.savedAt ?? 0;
+          loadedNotesRef.current = extractNotes(localData?.subjects || [], localData?.tempNotes || []).notes;
+          loadedOverallNoteRef.current = localData?.overallNote || '';
+          hasUnsyncedEditRef.current = localUnsynced;
+          setRecoveryCandidate(recoveryData, null, user.id, activeCourseId, localUnsynced);
         }
         setDataLoaded(true);
         setTimeout(() => { isInitialLoad.current = false; }, 200);
@@ -1372,6 +1439,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
                 const localSnapshot = lsRaw ? await getLocalData(lsRaw) : null;
                 if (!active || mySeq !== seq) return;
                 const localData = localSnapshot?.data ?? null;
+                const recoveryDraft = readCourseNoteRecoveryDraft(user.id, activeCourseId);
+                const localUnsynced = !!localSnapshot?.unsynced || !!recoveryDraft;
+                const recoveryData = localData && recoveryDraft
+                  ? applyCourseNoteRecoveryDraft(localData, recoveryDraft)
+                  : localData;
                 let remoteNotes = { exists: false, overallNote: '', notes: {} as Record<string, string> };
                 try {
                   remoteNotes = await readCourseNotes(notesDocRef);
@@ -1379,15 +1451,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
                 if (!active || mySeq !== seq) return;
                 loadedNotesRef.current = {};
                 loadedOverallNoteRef.current = remoteNotes.overallNote;
-                if (localData) {
+                if (recoveryData) {
                   // Keep two views: the displayed data should retain browser-only
                   // notes, but the recovery comparison must contain only notes
                   // actually read from Firestore. mergeNotes falls back to the
                   // source tree when a cloud key is absent, so using its result
                   // directly as the baseline would make unsynced local notes look
                   // as if they were already in the cloud.
-                  const merged = mergeNotes(localData.subjects || [], localData.tempNotes || [], remoteNotes.notes);
-                  const strippedLocal = extractNotes(localData.subjects || [], localData.tempNotes || []);
+                  const merged = mergeNotes(recoveryData.subjects || [], recoveryData.tempNotes || [], remoteNotes.notes);
+                  const strippedLocal = extractNotes(recoveryData.subjects || [], recoveryData.tempNotes || []);
                   const remoteOnly = mergeNotes(
                     strippedLocal.subjects,
                     strippedLocal.tempNotes,
@@ -1395,20 +1467,26 @@ export function StudyProvider({ children }: { children: ReactNode }) {
                   );
                   loadedNotesRef.current = extractNotes(merged.subjects, merged.tempNotes).notes;
                   const remoteForComparison: StudyData = {
-                    ...localData,
+                    ...recoveryData,
                     subjects: remoteOnly.subjects,
                     tempNotes: remoteOnly.tempNotes,
                     overallNote: remoteNotes.overallNote,
                   };
                   setSubjects(merged.subjects);
-                  setSettings(prev => ({ ...prev, ...localData.settings }));
+                  setSettings(prev => ({ ...prev, ...recoveryData.settings }));
                   setTempNotes(merged.tempNotes);
-                  setOverallNoteState(remoteNotes.overallNote || localData.overallNote || '');
-                  setNotePagesIndex(localData.notePagesIndex || []);
-                  setPersonalNotePagesIndex(localData.personalNotePagesIndex || []);
-                  lastSavedAt.current = localData.savedAt ?? 0;
-                  hasUnsyncedEditRef.current = !!localSnapshot?.unsynced;
-                  setRecoveryCandidate(localData, remoteForComparison, user.id, activeCourseId, !!localSnapshot?.unsynced);
+                  setOverallNoteState(recoveryData.overallNote || remoteNotes.overallNote || '');
+                  setNotePagesIndex(recoveryData.notePagesIndex || []);
+                  setPersonalNotePagesIndex(recoveryData.personalNotePagesIndex || []);
+                  lastSavedAt.current = recoveryData.savedAt ?? 0;
+                  hasUnsyncedEditRef.current = localUnsynced;
+                  setRecoveryCandidate(
+                    recoveryData,
+                    remoteForComparison,
+                    user.id,
+                    activeCourseId,
+                    localUnsynced,
+                  );
                 }
                 setDataLoaded(true);
                 setTimeout(() => { isInitialLoad.current = false; }, 200);
@@ -1434,13 +1512,22 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             const localSnapshot = lsRaw ? await getLocalData(lsRaw) : null;
             if (!active || mySeq !== seq) return;
             const localData = localSnapshot?.data ?? null;
+            const recoveryDraft = readCourseNoteRecoveryDraft(user.id, activeCourseId);
+            const hasPendingNoteRecovery = !!recoveryDraft;
+            const recoveryData = applyCourseNoteRecoveryDraft(localData ?? fsData, recoveryDraft);
             // Did THIS device make an edit that was never confirmed written to
             // Firestore (app closed mid-debounce, or while offline)? Only in
             // that case should the local cache be allowed to win over Firestore.
             const localUnsynced = !!localSnapshot?.unsynced;
-            hasUnsyncedEditRef.current = localUnsynced;
+            hasUnsyncedEditRef.current = localUnsynced || hasPendingNoteRecovery;
 
-            setRecoveryCandidate(localData, fsData, user.id, activeCourseId, localUnsynced);
+            setRecoveryCandidate(
+              recoveryData,
+              fsData,
+              user.id,
+              activeCourseId,
+              localUnsynced || hasPendingNoteRecovery,
+            );
 
             let legacySubjects: Subject[] | null = null;
             let legacySettings: CourseSettings | null = null;
@@ -1613,18 +1700,23 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           const localSnapshot = lsRaw ? await getLocalData(lsRaw) : null;
           if (!active) return;
           const localData = localSnapshot?.data ?? null;
-          if (localData) {
-            setSubjects(localData.subjects || []);
-            setSettings(prev => ({ ...prev, ...localData.settings }));
-            setTempNotes(localData.tempNotes || []);
-            setOverallNoteState(localData.overallNote || '');
-            setNotePagesIndex(localData.notePagesIndex || []);
-            setPersonalNotePagesIndex(localData.personalNotePagesIndex || []);
-            loadedNotesRef.current = extractNotes(localData.subjects || [], localData.tempNotes || []).notes;
-            loadedOverallNoteRef.current = localData.overallNote || '';
-            lastSavedAt.current = localData.savedAt ?? 0;
-            hasUnsyncedEditRef.current = !!localSnapshot?.unsynced;
-            setRecoveryCandidate(localData, null, user.id, activeCourseId, !!localSnapshot?.unsynced);
+          const recoveryDraft = readCourseNoteRecoveryDraft(user.id, activeCourseId);
+          const localUnsynced = !!localSnapshot?.unsynced || !!recoveryDraft;
+          const recoveryData = localData && recoveryDraft
+            ? applyCourseNoteRecoveryDraft(localData, recoveryDraft)
+            : localData;
+          if (recoveryData) {
+            setSubjects(recoveryData.subjects || []);
+            setSettings(prev => ({ ...prev, ...recoveryData.settings }));
+            setTempNotes(recoveryData.tempNotes || []);
+            setOverallNoteState(recoveryData.overallNote || '');
+            setNotePagesIndex(recoveryData.notePagesIndex || []);
+            setPersonalNotePagesIndex(recoveryData.personalNotePagesIndex || []);
+            loadedNotesRef.current = extractNotes(localData?.subjects || [], localData?.tempNotes || []).notes;
+            loadedOverallNoteRef.current = localData?.overallNote || '';
+            lastSavedAt.current = recoveryData.savedAt ?? 0;
+            hasUnsyncedEditRef.current = localUnsynced;
+            setRecoveryCandidate(recoveryData, null, user.id, activeCourseId, localUnsynced);
           }
           setDataLoaded(true);
           setTimeout(() => { isInitialLoad.current = false; }, 200);
@@ -2015,9 +2107,27 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       if (thisIsLatestPendingSave) {
         const lsKeyForFlag = localKey('data');
         if (lsKeyForFlag) await writeLocalCourseSnapshot(lsKeyForFlag, payload, false);
-        clearRecoveryNotesBaseline(recoveryNotesBaselineKey(currentUser.id, currentCourseId));
-        hasUnsyncedEditRef.current = false;
-        setRecoveryCandidate(payload, payload, currentUser.id, currentCourseId, false);
+        clearCourseNoteRecoveryDraftIfSynced(
+          currentUser.id,
+          currentCourseId,
+          notesToSave,
+          overallNoteToSaveMerged,
+        );
+        const remainingNoteDraft = readCourseNoteRecoveryDraft(currentUser.id, currentCourseId);
+        if (remainingNoteDraft) {
+          hasUnsyncedEditRef.current = true;
+          setRecoveryCandidate(
+            applyCourseNoteRecoveryDraft(payload, remainingNoteDraft),
+            payload,
+            currentUser.id,
+            currentCourseId,
+            true,
+          );
+        } else {
+          clearRecoveryNotesBaseline(recoveryNotesBaselineKey(currentUser.id, currentCourseId));
+          hasUnsyncedEditRef.current = false;
+          setRecoveryCandidate(payload, payload, currentUser.id, currentCourseId, false);
+        }
       } else {
         // A newer edit may have been saved locally while this Firestore write
         // was in flight. Keep its recovery marker; this older acknowledgement
@@ -2094,14 +2204,56 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       savedAt,
     };
     const cacheKey = `@study_data_${activeCourseId}_${user.email}`;
+    const baselineKey = recoveryNotesBaselineKey(user.id, activeCourseId);
 
     if (!hasUnsyncedEditRef.current) {
       saveRecoveryNotesBaseline(
-        recoveryNotesBaselineKey(user.id, activeCourseId),
+        baselineKey,
         loadedNotesRef.current,
         loadedOverallNoteRef.current,
       );
     }
+    // Keep a compact, synchronous copy of note changes separately from the
+    // full course cache. The full snapshot can exceed localStorage's quota and
+    // fall back to asynchronous IndexedDB; a tab closed immediately after Save
+    // may close before that IndexedDB transaction completes.
+    let baseline = readRecoveryNotesBaseline(baselineKey);
+    if (!baseline) {
+      baseline = {
+        notes: Object.fromEntries(
+          Object.entries(loadedNotesRef.current).map(([key, value]) => [key, contentFingerprint(value)]),
+        ),
+        overallNote: contentFingerprint(loadedOverallNoteRef.current),
+      };
+      try {
+        localStorage.setItem(baselineKey, JSON.stringify(baseline));
+      } catch (error) {
+        console.warn('[StudyContext] Could not persist note recovery baseline:', error);
+      }
+    }
+    const nextNoteMap = extractNotes(nextSubjects, tempNotes).notes;
+    const changedNotes: Record<string, string> = {};
+    const noteKeys = new Set([...Object.keys(baseline.notes), ...Object.keys(nextNoteMap)]);
+    for (const key of noteKeys) {
+      const value = nextNoteMap[key] || '';
+      const baselineFingerprint = baseline.notes[key] ?? contentFingerprint('');
+      if (contentFingerprint(value) !== baselineFingerprint) changedNotes[key] = value;
+    }
+    const draft: CourseNoteRecoveryDraft = { notes: changedNotes };
+    if (contentFingerprint(nextOverallNote) !== baseline.overallNote) {
+      draft.overallNote = nextOverallNote;
+    }
+    try {
+      const recoveryKey = courseNoteRecoveryDraftKey(user.id, activeCourseId);
+      if (Object.keys(draft.notes).length > 0 || draft.overallNote !== undefined) {
+        localStorage.setItem(recoveryKey, JSON.stringify(draft));
+      } else {
+        localStorage.removeItem(recoveryKey);
+      }
+    } catch (error) {
+      console.warn('[StudyContext] Could not persist the compact note recovery copy:', error);
+    }
+
     hasUnsyncedEditRef.current = true;
     lastSavedAt.current = savedAt;
     pendingSaveRef.current = {

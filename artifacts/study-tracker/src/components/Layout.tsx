@@ -485,7 +485,7 @@ function ConnectionStatus({ isProfilePage }: { isProfilePage: boolean }) {
     Icon = CloudOff;
     cls = 'bg-red-600 text-white border-red-700 shadow-red-500/30';
   } else if (activeSaveCount > 0) {
-    label = t('syncingCount').replace('{count}', String(activeSaveCount));
+    label = t('syncing');
     cls = 'bg-white/90 text-slate-600 border-slate-200 shadow-slate-300/40 backdrop-blur-sm';
     spinning = true;
   } else if (showBackOnline) {

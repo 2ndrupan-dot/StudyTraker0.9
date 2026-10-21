@@ -930,8 +930,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const [localNotesRecoveryItems, setLocalNotesRecoveryItems] = useState<LocalNotesRecoveryItem[]>([]);
   const [localNotePageRecoveryItems, setLocalNotePageRecoveryItems] = useState<LocalNotesRecoveryItem[]>([]);
   const localNotePageRecoveryRef = useRef<Map<string, LocalNotePageRecoveryRecord>>(new Map());
+  const localNotePageRecoveryUnsubscribersRef = useRef<Map<string, () => void>>(new Map());
   const clearLocalNotePageRecovery = (source: LocalNotePageSource, pageId: string) => {
-    localNotePageRecoveryRef.current.delete(`note-page:${source}:${pageId}`);
+    const key = `note-page:${source}:${pageId}`;
+    localNotePageRecoveryRef.current.delete(key);
+    localNotePageRecoveryUnsubscribersRef.current.get(key)?.();
+    localNotePageRecoveryUnsubscribersRef.current.delete(key);
     setLocalNotePageRecoveryItems([...localNotePageRecoveryRef.current.values()].map(record => record.item));
   };
   const localNotesRecoveryRef = useRef<{
@@ -1181,6 +1185,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     // that their seq is still the latest before applying state, so out-of-order
     // resolutions from slow Firestore reads are discarded automatically.
     let seq = 0;
+    let recoveryNotesSeq = 0;
 
     // ── Cold-start safety net ────────────────────────────────────────────────
     // On a freshly opened app (especially mobile, right after the device's
@@ -1626,11 +1631,48 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         })();
       },
     );
+    const unsubscribeCourseNotes = onSnapshot(
+      notesDocRef,
+      snapshot => {
+        if (!active || !snapshot.exists() || snapshot.metadata.hasPendingWrites) return;
+        const recoverySeq = ++recoveryNotesSeq;
+        void (async () => {
+          const remoteNotes = await readCourseNotes(notesDocRef);
+          if (!active || recoverySeq !== recoveryNotesSeq || !remoteNotes.exists) return;
+          const candidate = localNotesRecoveryRef.current;
+          if (!candidate) return;
+          const stripped = extractNotes(
+            candidate.data.subjects || [],
+            candidate.data.tempNotes || [],
+          );
+          const remoteMerged = mergeNotes(stripped.subjects, stripped.tempNotes, remoteNotes.notes);
+          const remoteForComparison: StudyData = {
+            ...candidate.data,
+            subjects: remoteMerged.subjects,
+            tempNotes: remoteMerged.tempNotes,
+            overallNote: remoteNotes.overallNote,
+          };
+          setRecoveryCandidate(
+            candidate.data,
+            remoteForComparison,
+            user.id,
+            activeCourseId,
+            candidate.unsynced,
+            candidate.recoveryBaseline,
+          );
+        })().catch(error => {
+          console.warn('[StudyContext] Could not refresh note recovery from Firestore:', error);
+        });
+      },
+      error => console.warn('[StudyContext] Live note-recovery listener failed:', error),
+    );
 
     return () => {
       active = false; // prevent any in-flight async work from applying state
+      recoveryNotesSeq++;
       clearTimeout(staleLoadTimer);
       unsubscribe();
+      unsubscribeCourseNotes();
     };
   }, [user, activeCourseId]);
 
@@ -1975,6 +2017,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         if (lsKeyForFlag) await writeLocalCourseSnapshot(lsKeyForFlag, payload, false);
         clearRecoveryNotesBaseline(recoveryNotesBaselineKey(currentUser.id, currentCourseId));
         hasUnsyncedEditRef.current = false;
+        setRecoveryCandidate(payload, payload, currentUser.id, currentCourseId, false);
       } else {
         // A newer edit may have been saved locally while this Firestore write
         // was in flight. Keep its recovery marker; this older acknowledgement
@@ -4042,6 +4085,31 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
       if (!active || generation !== scanGeneration) return;
       localNotePageRecoveryRef.current = candidates;
+      const pageListeners = localNotePageRecoveryUnsubscribersRef.current;
+      for (const [key, unsubscribe] of pageListeners) {
+        if (candidates.has(key)) continue;
+        unsubscribe();
+        pageListeners.delete(key);
+      }
+      for (const [key, record] of candidates) {
+        if (pageListeners.has(key)) continue;
+        const collectionName = record.source === 'course-page'
+          ? 'notePages'
+          : record.source === 'personal-page'
+            ? 'personalNotePages'
+            : 'promptNotes';
+        const pageRef = doc(db, 'users', user.id, collectionName, record.page.id);
+        pageListeners.set(key, onSnapshot(
+          pageRef,
+          snapshot => {
+            if (!active || snapshot.metadata.hasPendingWrites) return;
+            // Another browser may have saved this page. Re-read the full page
+            // (including chunks) and compare it with the recovery baseline.
+            void scanLocalNotePages();
+          },
+          error => console.warn('[StudyContext] Live note-page recovery listener failed:', error),
+        ));
+      }
       setLocalNotePageRecoveryItems([...candidates.values()].map(record => record.item));
     };
 
@@ -4054,6 +4122,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
       scanGeneration++;
+      localNotePageRecoveryUnsubscribersRef.current.forEach(unsubscribe => unsubscribe());
+      localNotePageRecoveryUnsubscribersRef.current.clear();
       window.removeEventListener('focus', refreshOnReturn);
       document.removeEventListener('visibilitychange', refreshOnReturn);
     };

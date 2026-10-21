@@ -64,7 +64,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Online / Sync status */}
-      <ConnectionStatus />
+      <ConnectionStatus isProfilePage={location === '/progress'} />
       <LocalNotesRecoveryNotice />
 
       {/* Global Search Modal */}
@@ -114,7 +114,7 @@ function FloatingSearchButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function ConnectionStatus() {
+function ConnectionStatus({ isProfilePage }: { isProfilePage: boolean }) {
   const { syncStatus, syncError, online } = useStudy();
   const { pending, failures, lastSuccessAt } = useSaveStatus();
   const { t } = useLang();
@@ -205,7 +205,10 @@ function ConnectionStatus() {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.9 }}
         transition={{ duration: 0.18, ease: 'easeOut' }}
-        className="fixed top-0.5 right-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-end gap-2 md:top-2"
+        className={cn(
+          'fixed right-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-end gap-2 md:top-2',
+          isProfilePage ? 'top-0' : 'top-0.5',
+        )}
       >
         <button
           type="button"

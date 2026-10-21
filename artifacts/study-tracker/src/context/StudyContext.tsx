@@ -475,6 +475,12 @@ interface StudyData {
   savedAt?: number;
 }
 
+export interface LocalNotesRecoveryItem {
+  key: string;
+  title: string;
+  breadcrumb: string[];
+}
+
 interface StudyContextType {
   subjects: Subject[];
   settings: CourseSettings;
@@ -484,7 +490,9 @@ interface StudyContextType {
   clearSyncFailure: () => void;
   online: boolean;
   localNotesRecoveryCount: number;
-  restoreLocalNotes: () => Promise<void>;
+  localNotesRecoveryItems: LocalNotesRecoveryItem[];
+  restoreLocalNotes: (keys?: string[]) => Promise<boolean>;
+  dismissLocalNotesRecovery: (keys: string[]) => void;
   setNote: (path: MarkPath, note: string) => void;
   toggleImportant: (path: MarkPath) => void;
   toggleWeak: (path: MarkPath) => void;
@@ -582,20 +590,64 @@ function safeSetLocalStorage(key: string, value: string): void {
   }
 }
 
-function countRecoverableNotes(local: StudyData | null, remote: StudyData | null): number {
-  if (!local) return 0;
+const OVERALL_NOTE_RECOVERY_KEY = 'overall-note';
+
+function getRecoverableNotes(local: StudyData | null, remote: StudyData | null): LocalNotesRecoveryItem[] {
+  if (!local) return [];
   const localNotes = extractNotes(local.subjects || [], local.tempNotes || []).notes;
   const remoteNotes = remote
     ? extractNotes(remote.subjects || [], remote.tempNotes || []).notes
     : {};
-  // A different value for an existing key is a newer/older version of the
-  // same cloud note, not a recoverable local-only note. Only offer recovery
-  // when the note is completely absent from Firestore.
-  let count = Object.entries(localNotes).filter(
-    ([key, value]) => !!value && !Object.prototype.hasOwnProperty.call(remoteNotes, key),
-  ).length;
-  if (local.overallNote && !remote?.overallNote) count++;
-  return count;
+  const items: LocalNotesRecoveryItem[] = [];
+  const add = (key: string, title: string, breadcrumb: string[]) => {
+    if (
+      localNotes[key] &&
+      !Object.prototype.hasOwnProperty.call(remoteNotes, key)
+    ) {
+      items.push({ key, title: title || 'Untitled', breadcrumb });
+    }
+  };
+
+  const walkPoint = (point: Point, path: string[]) => add(`pt:${point.id}`, point.title, path);
+  const walkConcept = (concept: Concept, path: string[]) => {
+    const next = [...path, concept.title];
+    add(`con:${concept.id}`, concept.title, path);
+    (concept.points || []).forEach(point => walkPoint(point, next));
+  };
+  const walkSubtopic = (subtopic: Subtopic, path: string[]) => {
+    const next = [...path, subtopic.title];
+    add(`st:${subtopic.id}`, subtopic.title, path);
+    (subtopic.concepts || []).forEach(concept => walkConcept(concept, next));
+  };
+  const walkTopic = (topic: Topic, path: string[]) => {
+    const next = [...path, topic.title];
+    add(`t:${topic.id}`, topic.title, path);
+    (topic.subtopics || []).forEach(subtopic => walkSubtopic(subtopic, next));
+  };
+  const walkChapter = (chapter: Chapter, path: string[]) => {
+    const next = [...path, chapter.title];
+    add(`c:${chapter.id}`, chapter.title, path);
+    (chapter.topics || []).forEach(topic => walkTopic(topic, next));
+  };
+  (local.subjects || []).forEach(subject => {
+    const next = [subject.title];
+    add(`s:${subject.id}`, subject.title, []);
+    (subject.chapters || []).forEach(chapter => walkChapter(chapter, next));
+  });
+
+  const walkTempNotes = (notes: TempNoteItem[], path: string[]) => {
+    notes.forEach(note => {
+      const next = [...path, note.text];
+      add(`tn:${note.id}`, note.text, path);
+      walkTempNotes(note.children || [], next);
+    });
+  };
+  walkTempNotes(local.tempNotes || [], []);
+
+  if (local.overallNote && !remote?.overallNote) {
+    items.push({ key: OVERALL_NOTE_RECOVERY_KEY, title: '', breadcrumb: [] });
+  }
+  return items;
 }
 
 function doResetProgress(subjs: Subject[], currentSettings: CourseSettings, userEmail: string | undefined, courseId?: string): { subjects: Subject[]; settings: CourseSettings } {
@@ -670,7 +722,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'failed'>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
-  const [localNotesRecoveryCount, setLocalNotesRecoveryCount] = useState(0);
+  const [localNotesRecoveryItems, setLocalNotesRecoveryItems] = useState<LocalNotesRecoveryItem[]>([]);
   const localNotesRecoveryRef = useRef<{ data: StudyData; baseline: StudyData | null } | null>(null);
 
   // Track online / offline transitions
@@ -707,6 +759,56 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const activeCourseIdRef = useRef(activeCourseId);
   useEffect(() => { userRef.current = user; }, [user]);
   useEffect(() => { activeCourseIdRef.current = activeCourseId; }, [activeCourseId]);
+
+  const recoveryDismissalScopeRef = useRef('');
+  const recoveryDismissalsRef = useRef<Set<string>>(new Set());
+  const recoveryDismissalKey = (userId: string, courseId: string) =>
+    `@study_restore_dismissed_${userId}_${courseId}`;
+  const setRecoveryCandidate = (
+    data: StudyData | null,
+    baseline: StudyData | null,
+    userId: string,
+    courseId: string,
+  ) => {
+    const scope = recoveryDismissalKey(userId, courseId);
+    if (recoveryDismissalScopeRef.current !== scope) {
+      recoveryDismissalScopeRef.current = scope;
+      try {
+        const saved = JSON.parse(localStorage.getItem(scope) || '[]');
+        recoveryDismissalsRef.current = new Set(Array.isArray(saved) ? saved.filter((key): key is string => typeof key === 'string') : []);
+      } catch {
+        recoveryDismissalsRef.current = new Set();
+      }
+    }
+    const candidates = getRecoverableNotes(data, baseline);
+    localNotesRecoveryRef.current = candidates.length > 0 && data ? { data, baseline } : null;
+    setLocalNotesRecoveryItems(candidates.filter(item => !recoveryDismissalsRef.current.has(item.key)));
+  };
+
+  const dismissLocalNotesRecovery = (keys: string[]) => {
+    const currentUser = userRef.current;
+    const currentCourseId = activeCourseIdRef.current;
+    if (!currentUser || !currentCourseId) return;
+    const scope = recoveryDismissalKey(currentUser.id, currentCourseId);
+    if (recoveryDismissalScopeRef.current !== scope) {
+      recoveryDismissalScopeRef.current = scope;
+      try {
+        const saved = JSON.parse(localStorage.getItem(scope) || '[]');
+        recoveryDismissalsRef.current = new Set(Array.isArray(saved) ? saved.filter((key): key is string => typeof key === 'string') : []);
+      } catch {
+        recoveryDismissalsRef.current = new Set();
+      }
+    }
+    keys.forEach(key => recoveryDismissalsRef.current.add(key));
+    try {
+      localStorage.setItem(scope, JSON.stringify([...recoveryDismissalsRef.current]));
+    } catch {
+      // Keep the dismissal active for the current session if storage is unavailable.
+    }
+    setLocalNotesRecoveryItems(items => items.filter(item => !keys.includes(item.key)));
+  };
+
+  const localNotesRecoveryCount = localNotesRecoveryItems.length;
 
   const localKey = (suffix: string) => (user && activeCourseId) ? `@study_${suffix}_${activeCourseId}_${user.email}` : null;
 
@@ -768,7 +870,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       setPersonalNotePagesIndex([]);
       setDataLoaded(false);
       localNotesRecoveryRef.current = null;
-      setLocalNotesRecoveryCount(0);
+      setLocalNotesRecoveryItems([]);
       isInitialLoad.current = true;
       notesGuardArmedRef.current = true;
       subjectsGuardArmedRef.current = true;
@@ -784,7 +886,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setPersonalNotePagesIndex([]);
     setDataLoaded(false);
     localNotesRecoveryRef.current = null;
-    setLocalNotesRecoveryCount(0);
+    setLocalNotesRecoveryItems([]);
     notesGuardArmedRef.current = true;
     subjectsGuardArmedRef.current = true;
     loadedNotesRef.current = {};
@@ -830,8 +932,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           loadedNotesRef.current = extractNotes(localData.subjects || [], localData.tempNotes || []).notes;
           loadedOverallNoteRef.current = localData.overallNote || '';
           hasUnsyncedEditRef.current = !!localSnapshot?.unsynced;
-          localNotesRecoveryRef.current = { data: localData, baseline: null };
-          setLocalNotesRecoveryCount(countRecoverableNotes(localData, null));
+          setRecoveryCandidate(localData, null, user.id, activeCourseId);
         }
         setDataLoaded(true);
         setTimeout(() => { isInitialLoad.current = false; }, 200);
@@ -1012,8 +1113,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
                   setPersonalNotePagesIndex(localData.personalNotePagesIndex || []);
                   lastSavedAt.current = localData.savedAt ?? 0;
                   hasUnsyncedEditRef.current = !!localSnapshot?.unsynced;
-                  localNotesRecoveryRef.current = { data: localData, baseline: remoteForComparison };
-                  setLocalNotesRecoveryCount(countRecoverableNotes(localData, remoteForComparison));
+                  setRecoveryCandidate(localData, remoteForComparison, user.id, activeCourseId);
                 }
                 setDataLoaded(true);
                 setTimeout(() => { isInitialLoad.current = false; }, 200);
@@ -1045,11 +1145,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             const localUnsynced = !!localSnapshot?.unsynced;
             hasUnsyncedEditRef.current = localUnsynced;
 
-            const recoveryCount = countRecoverableNotes(localData, fsData);
-            localNotesRecoveryRef.current = recoveryCount > 0 && localData
-              ? { data: localData, baseline: fsData }
-              : null;
-            setLocalNotesRecoveryCount(recoveryCount);
+            setRecoveryCandidate(localData, fsData, user.id, activeCourseId);
 
             let legacySubjects: Subject[] | null = null;
             let legacySettings: CourseSettings | null = null;
@@ -1160,9 +1256,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             if (!active || mySeq !== seq) return; // stale or unmounted — discard
             const recoveryCandidate = localNotesRecoveryRef.current;
             if (recoveryCandidate) {
-              const remaining = countRecoverableNotes(recoveryCandidate.data, fsData);
-              setLocalNotesRecoveryCount(remaining);
-              if (remaining === 0) localNotesRecoveryRef.current = null;
+              setRecoveryCandidate(recoveryCandidate.data, fsData, user.id, activeCourseId);
             }
 
             // Mark that the next save-useEffect run should NOT echo this back to
@@ -1208,8 +1302,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             loadedOverallNoteRef.current = localData.overallNote || '';
             lastSavedAt.current = localData.savedAt ?? 0;
             hasUnsyncedEditRef.current = !!localSnapshot?.unsynced;
-            localNotesRecoveryRef.current = { data: localData, baseline: null };
-            setLocalNotesRecoveryCount(countRecoverableNotes(localData, null));
+            setRecoveryCandidate(localData, null, user.id, activeCourseId);
           }
           setDataLoaded(true);
           setTimeout(() => { isInitialLoad.current = false; }, 200);
@@ -1595,13 +1688,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       });
   };
 
-  const restoreLocalNotes = async () => {
+  const restoreLocalNotes = async (keys?: string[]): Promise<boolean> => {
     const candidate = localNotesRecoveryRef.current;
     const source = candidate?.data;
     const baseline = candidate?.baseline;
     const currentUser = userRef.current;
     const currentCourseId = activeCourseIdRef.current;
-    if (!source || !currentUser || !currentCourseId) return;
+    if (!source || !currentUser || !currentCourseId) return false;
+    const keysToRestore = new Set(keys ?? localNotesRecoveryItems.map(item => item.key));
+    if (keysToRestore.size === 0) return false;
     setSyncStatus('syncing');
     setSyncError(null);
 
@@ -1636,6 +1731,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         : null;
       for (const [key, value] of Object.entries(browserNotes)) {
         if (
+          keysToRestore.has(key) &&
           value &&
           (!baselineNotes || mergedNotes[key] === baselineNotes[key])
         ) {
@@ -1644,7 +1740,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       }
       const remoteOverall = remoteNotes.exists ? remoteNotes.overallNote : loadedOverallNoteRef.current;
       const baselineOverall = baseline?.overallNote || '';
-      const mergedOverall = source.overallNote &&
+      const mergedOverall = keysToRestore.has(OVERALL_NOTE_RECOVERY_KEY) &&
+        source.overallNote &&
         (!baselineNotes || remoteOverall === baselineOverall)
         ? source.overallNote
         : remoteOverall;
@@ -1686,8 +1783,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       loadedOverallNoteRef.current = mergedOverall;
       lastSavedAt.current = savedAt;
       hasUnsyncedEditRef.current = false;
-      localNotesRecoveryRef.current = null;
-      setLocalNotesRecoveryCount(0);
+      const updatedBaseline: StudyData = {
+        ...(baseline || source),
+        subjects: merged.subjects,
+        tempNotes: merged.tempNotes,
+        overallNote: mergedOverall,
+      };
+      setRecoveryCandidate(source, updatedBaseline, currentUser.id, currentCourseId);
       skipNextSaveRef.current = true;
       setSubjects(merged.subjects);
       setTempNotes(merged.tempNotes);
@@ -1699,13 +1801,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       );
       setSyncStatus('success');
       setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
+      return true;
     } catch (error) {
       const failure = error as { code?: string; message?: string };
       setSyncStatus('failed');
       setSyncError(failure.code || failure.message?.slice(0, 80) || 'unknown');
       // Leave the browser snapshot available so the user can retry.
-      setLocalNotesRecoveryCount(countRecoverableNotes(source, null));
+      setRecoveryCandidate(source, baseline || null, currentUser.id, currentCourseId);
       console.error('[StudyContext] Local note recovery failed:', error);
+      return false;
     }
   };
 
@@ -3339,7 +3443,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     <StudyContext.Provider value={{
       subjects, settings, dataLoaded, syncStatus, syncError, online,
       clearSyncFailure: () => { setSyncStatus('idle'); setSyncError(null); },
-      localNotesRecoveryCount, restoreLocalNotes,
+      localNotesRecoveryCount, localNotesRecoveryItems, restoreLocalNotes, dismissLocalNotesRecovery,
       setNote, toggleImportant, toggleWeak,
       setCourseTotalDays, setDailyStudyHours, setCourseStartDate, setTimezone, setGlobalNoteSize,
       addSubject, updateSubjectDays, deleteSubject, updateSubjectMeta, resetSubjectProgress,

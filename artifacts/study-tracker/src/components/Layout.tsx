@@ -469,6 +469,7 @@ function ConnectionStatus({ isProfilePage }: { isProfilePage: boolean }) {
     setFailuresOpen(false);
     void retrySaveFailure(id);
   };
+  const activeSaveCount = Math.max(pending, syncStatus === 'syncing' ? 1 : 0);
 
   let label = '';
   let Icon: React.ElementType = Cloud;
@@ -483,8 +484,8 @@ function ConnectionStatus({ isProfilePage }: { isProfilePage: boolean }) {
     label = t('offline');
     Icon = CloudOff;
     cls = 'bg-red-600 text-white border-red-700 shadow-red-500/30';
-  } else if (pending > 0 || syncStatus === 'syncing') {
-    label = t('syncing');
+  } else if (activeSaveCount > 0) {
+    label = t('syncingCount').replace('{count}', String(activeSaveCount));
     cls = 'bg-white/90 text-slate-600 border-slate-200 shadow-slate-300/40 backdrop-blur-sm';
     spinning = true;
   } else if (showBackOnline) {

@@ -120,6 +120,22 @@ export function NoteEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
+  // Persist the latest editor state locally as soon as the page starts closing.
+  // The network write may not finish during a tab/app close, but the recovery
+  // list can then compare this durable copy with Firestore on the next open.
+  useEffect(() => {
+    if (!page || loading) return;
+    const handlePageHide = () => {
+      if (saveTimerRef.current !== null) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      void saveNotePage(page);
+    };
+    window.addEventListener('pagehide', handlePageHide);
+    return () => window.removeEventListener('pagehide', handlePageHide);
+  }, [page, loading, saveNotePage]);
+
   // Keep title-rename in sync with index
   const commitTitle = () => {
     if (!page) return;

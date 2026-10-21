@@ -213,7 +213,7 @@ function ConnectionStatus() {
           aria-expanded={visibleFailures.length > 0 ? failuresOpen : undefined}
           aria-label={visibleFailures.length > 0 ? `${label}. ${t('syncFailureDetails')}` : label}
           className={cn(
-            'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow-sm',
+            'flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shadow-sm',
             visibleFailures.length > 0 ? 'cursor-pointer' : 'cursor-default',
             cls
           )}
@@ -222,10 +222,10 @@ function ConnectionStatus() {
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-              className="h-2.5 w-2.5 rounded-full border border-slate-400 border-t-transparent"
+              className="h-2 w-2 rounded-full border border-slate-400 border-t-transparent"
             />
           ) : (
-            <Icon className="h-3 w-3" strokeWidth={2.5} />
+            <Icon className="h-2.5 w-2.5" strokeWidth={2.5} />
           )}
           <span>{label}</span>
           {visibleFailures.length > 1 && <span className="hidden md:inline">({visibleFailures.length})</span>}

@@ -159,6 +159,12 @@ export function TestProvider({ children }: { children: ReactNode }) {
           // Firestore can echo a locally queued write before the server confirms
           // it. Keep it recoverable until a server-backed snapshot arrives.
         } else {
+          const baseCard = baseById.get(localCard.id);
+          const cloudChangedSinceRecovery = !sameCardContent(remoteCard, baseCard);
+          // A different browser may have saved this same card since the local
+          // edit. Treat that server-side change as resolved instead of keeping
+          // an obsolete restore entry (and let the cloud version win).
+          if (!hasPendingWrites && cloudChangedSinceRecovery) continue;
           changedCards.push(localCard);
         }
         // Keep the local copy visible while it is pending, but retain every
@@ -167,7 +173,14 @@ export function TestProvider({ children }: { children: ReactNode }) {
       }
 
       for (const card of snapshot.cards) {
-        if (!mergedById.has(card.id)) mergedById.set(card.id, card);
+        if (mergedById.has(card.id)) continue;
+        const cloudChangedSinceRecovery = !sameCardContent(
+          remoteById.get(card.id),
+          baseById.get(card.id),
+        );
+        if (hasPendingWrites || !cloudChangedSinceRecovery) {
+          mergedById.set(card.id, card);
+        }
       }
       mergedDecks[subjectId] = [...mergedById.values()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
@@ -190,10 +203,15 @@ export function TestProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      // A server-confirmed snapshot matching the full local deck means the
-      // write completed even if the tab closed before its promise callback ran.
-      if (!hasPendingWrites && changedCards.length === 0) {
-        writeTestDeckCache(cacheKey, { cards: remoteCards, baseCards: remoteCards, unsynced: false });
+      // Rebase the browser cache on every server-confirmed snapshot. This
+      // removes cloud-resolved local edits while preserving unrelated edits
+      // which are still waiting to be saved.
+      if (!hasPendingWrites) {
+        writeTestDeckCache(cacheKey, {
+          cards: mergedDecks[subjectId],
+          baseCards: remoteCards,
+          unsynced: changedCards.length > 0,
+        });
       }
     }
 

@@ -205,7 +205,7 @@ function ConnectionStatus() {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.9 }}
         transition={{ duration: 0.18, ease: 'easeOut' }}
-        className="fixed top-0 right-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-end gap-2 md:top-2"
+        className="fixed top-0.5 right-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-end gap-2 md:top-2"
       >
         <button
           type="button"

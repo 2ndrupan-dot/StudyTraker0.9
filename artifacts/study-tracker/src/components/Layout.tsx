@@ -205,7 +205,7 @@ function ConnectionStatus() {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.9 }}
         transition={{ duration: 0.18, ease: 'easeOut' }}
-        className="fixed top-1 right-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-end gap-2 md:top-2"
+        className="fixed top-0 right-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-end gap-2 md:top-2"
       >
         <button
           type="button"
@@ -213,7 +213,7 @@ function ConnectionStatus() {
           aria-expanded={visibleFailures.length > 0 ? failuresOpen : undefined}
           aria-label={visibleFailures.length > 0 ? `${label}. ${t('syncFailureDetails')}` : label}
           className={cn(
-            'flex h-10 w-10 items-center justify-center gap-1.5 rounded-full border p-0 text-[11px] font-semibold shadow-sm md:h-auto md:w-auto md:px-2.5 md:py-1',
+            'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow-sm',
             visibleFailures.length > 0 ? 'cursor-pointer' : 'cursor-default',
             cls
           )}
@@ -222,12 +222,12 @@ function ConnectionStatus() {
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-              className="h-[18px] w-[18px] rounded-full border-2 border-slate-400 border-t-transparent md:h-2.5 md:w-2.5 md:border"
+              className="h-2.5 w-2.5 rounded-full border border-slate-400 border-t-transparent"
             />
           ) : (
-            <Icon className="h-[18px] w-[18px] md:h-3 md:w-3" strokeWidth={2.5} />
+            <Icon className="h-3 w-3" strokeWidth={2.5} />
           )}
-          <span className="hidden md:inline">{label}</span>
+          <span>{label}</span>
           {visibleFailures.length > 1 && <span className="hidden md:inline">({visibleFailures.length})</span>}
         </button>
 

@@ -73,19 +73,82 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+const LOCAL_NOTES_RECOVERY_EXPANDED_KEY = 'studytrack-local-notes-recovery-expanded';
+
 function LocalNotesRecoveryNotice() {
   const { localNotesRecoveryCount, restoreLocalNotes, online, syncStatus } = useStudy();
   const { t } = useLang();
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      return sessionStorage.getItem(LOCAL_NOTES_RECOVERY_EXPANDED_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (localNotesRecoveryCount < 1) {
+      setExpanded(false);
+      try {
+        sessionStorage.removeItem(LOCAL_NOTES_RECOVERY_EXPANDED_KEY);
+      } catch {
+        // The notice remains collapsed in this component if storage is unavailable.
+      }
+    }
+  }, [localNotesRecoveryCount]);
+
   if (localNotesRecoveryCount < 1) return null;
+
+  const hideNotice = () => {
+    setExpanded(false);
+    try {
+      sessionStorage.removeItem(LOCAL_NOTES_RECOVERY_EXPANDED_KEY);
+    } catch {
+      // Keep the current component state even if session storage is unavailable.
+    }
+  };
+
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setExpanded(true);
+          try {
+            sessionStorage.setItem(LOCAL_NOTES_RECOVERY_EXPANDED_KEY, 'true');
+          } catch {
+            // Keep the current component state even if session storage is unavailable.
+          }
+        }}
+        aria-label={t('showLocalNotesRecovery')}
+        title={t('showLocalNotesRecovery')}
+        className="fixed bottom-[92px] right-3 z-50 inline-flex h-11 min-w-11 items-center justify-center rounded-full border border-amber-300 bg-amber-600 px-3 text-white shadow-lg hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+      >
+        <AlertCircle size={18} />
+        <span className="ml-1 text-xs font-bold">{localNotesRecoveryCount}</span>
+      </button>
+    );
+  }
 
   return (
     <div
       role="status"
       className="fixed top-10 left-2 right-2 z-40 mx-auto flex max-w-xl flex-col gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 shadow-lg sm:flex-row sm:items-center sm:justify-between dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
     >
-      <p className="m-0 leading-snug">
-        {t('localNotesRecoveryMessage').replace('{count}', String(localNotesRecoveryCount))}
-      </p>
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <p className="m-0 min-w-0 flex-1 leading-snug">
+          {t('localNotesRecoveryMessage').replace('{count}', String(localNotesRecoveryCount))}
+        </p>
+        <button
+          type="button"
+          onClick={hideNotice}
+          aria-label={t('hideLocalNotesRecovery')}
+          title={t('hideLocalNotesRecovery')}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-amber-900 hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 dark:text-amber-100 dark:hover:bg-amber-900"
+        >
+          <X size={16} />
+        </button>
+      </div>
       <button
         type="button"
         disabled={!online || syncStatus === 'syncing'}

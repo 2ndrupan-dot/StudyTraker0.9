@@ -139,6 +139,8 @@ export const translations = {
     retryUnavailable: "This older failure cannot be retried here. Open the item and save it again.",
     syncError: "Sync error, saved locally",
     localNotesRecoveryMessage: "{count} local note(s) are missing from Firestore. Restore them without removing other cloud notes.",
+    hideLocalNotesRecovery: "Hide restore message",
+    showLocalNotesRecovery: "Show restore message",
     restoreLocalNotes: "Restore local notes",
     restoreLocalNotesOffline: "Connect to restore",
 
@@ -614,6 +616,8 @@ export const translations = {
     retryUnavailable: "এই পুরোনো সেভটি এখান থেকে আবার করা যাবে না। বিষয়টি খুলে আবার সেভ করুন।",
     syncError: "সিঙ্ক ত্রুটি, স্থানীয়ভাবে সংরক্ষিত",
     localNotesRecoveryMessage: "এই ব্রাউজারের {count}টি নোট Firestore-এ নেই। অন্য cloud নোট না মুছে এই নোটগুলো পুনরুদ্ধার করুন।",
+    hideLocalNotesRecovery: "রিস্টোর বার্তা লুকান",
+    showLocalNotesRecovery: "রিস্টোর বার্তা দেখান",
     restoreLocalNotes: "এই নোটগুলো পুনরুদ্ধার করুন",
     restoreLocalNotesOffline: "পুনরুদ্ধারে ইন্টারনেট লাগবে",
 

@@ -1760,6 +1760,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
     const docRef = doc(db, 'users', currentUser.id, 'studyData', currentCourseId);
     const notesDocRef = doc(db, 'users', currentUser.id, 'courseNotes', currentCourseId);
+    const matchesPendingSave = (pending: typeof pendingSaveRef.current) =>
+      !pending || (
+        pending.subjects === subjectsToSave &&
+        pending.settings === settingsToSave &&
+        pending.tempNotes === tempNotesToSave &&
+        pending.overallNote === overallNoteToSave &&
+        pending.notePagesIndex === notePagesIndexToSave &&
+        pending.personalNotePagesIndex === personalNotePagesIndexToSave
+      );
 
     if (subjectsToSave.length === 0 && subjectsGuardArmedRef.current) {
       console.info(
@@ -1769,7 +1778,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }
     subjectsGuardArmedRef.current = false;
 
-    const savedAt = Date.now();
+    const savedAt = Math.max(Date.now(), lastSavedAt.current + 1);
     lastSavedAt.current = savedAt;
     const lsKey = `@study_data_${currentCourseId}_${currentUser.email}`;
     const payload: StudyData = {
@@ -1782,8 +1791,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       savedAt,
     };
     // Browser caches are best-effort only. A localStorage quota error must
-    // never prevent the Firestore write below.
-    void writeLocalCourseSnapshot(lsKey, payload, true);
+    // never prevent the Firestore write below. Do not let a stale queued save
+    // replace a newer snapshot written directly by a Save click.
+    if (matchesPendingSave(pendingSaveRef.current)) {
+      void writeLocalCourseSnapshot(lsKey, payload, true);
+    }
     try {
       // Extract all rich-text note content from subjects and tempNotes so the main
       // Firestore document stays well under the 1 MB limit.  The notes are saved to
@@ -1954,25 +1966,28 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
       // Firestore now has this edit — clear the "unsynced" marker so a future
       // load on this device trusts Firestore instead of this local cache.
-      const lsKeyForFlag = localKey('data');
-      if (lsKeyForFlag) await writeLocalCourseSnapshot(lsKeyForFlag, payload, false);
-      clearRecoveryNotesBaseline(recoveryNotesBaselineKey(currentUser.id, currentCourseId));
-      hasUnsyncedEditRef.current = false;
       loadedNotesRef.current = notesToSave;
       loadedOverallNoteRef.current = overallNoteToSaveMerged;
       const pending = pendingSaveRef.current;
-      if (
-        pending?.subjects === subjectsToSave &&
-        pending.settings === settingsToSave &&
-        pending.tempNotes === tempNotesToSave &&
-        pending.overallNote === overallNoteToSave &&
-        pending.notePagesIndex === notePagesIndexToSave &&
-        pending.personalNotePagesIndex === personalNotePagesIndexToSave
-      ) {
+      const thisIsLatestPendingSave = matchesPendingSave(pending);
+      if (thisIsLatestPendingSave) {
+        const lsKeyForFlag = localKey('data');
+        if (lsKeyForFlag) await writeLocalCourseSnapshot(lsKeyForFlag, payload, false);
+        clearRecoveryNotesBaseline(recoveryNotesBaselineKey(currentUser.id, currentCourseId));
+        hasUnsyncedEditRef.current = false;
+      } else {
+        // A newer edit may have been saved locally while this Firestore write
+        // was in flight. Keep its recovery marker; this older acknowledgement
+        // must not make the newer local snapshot look synced.
+        hasUnsyncedEditRef.current = true;
+      }
+      if (thisIsLatestPendingSave && pending) {
         pendingSaveRef.current = null;
       }
-      setSyncStatus('success');
-      setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
+      if (thisIsLatestPendingSave) {
+        setSyncStatus('success');
+        setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
+      }
     } catch (err) {
       console.error('[StudyContext] Firestore save failed:', err);
       setSyncStatus('failed');
@@ -2015,6 +2030,47 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           personalNotePagesIndexToSave,
         );
       });
+  };
+
+  // Persist note-modal saves in the click handler, before the next React
+  // render/effect. A user can close the tab immediately after Save, so the
+  // debounced effect and unload handler cannot be the first durable copy.
+  const persistCourseNoteDraftImmediately = (
+    nextSubjects: Subject[],
+    nextOverallNote: string,
+  ) => {
+    if (!user || !activeCourseId || !dataLoaded) return;
+    const savedAt = Math.max(Date.now(), lastSavedAt.current + 1);
+    const payload: StudyData = {
+      subjects: nextSubjects,
+      settings,
+      tempNotes,
+      overallNote: nextOverallNote,
+      notePagesIndex,
+      personalNotePagesIndex,
+      savedAt,
+    };
+    const cacheKey = `@study_data_${activeCourseId}_${user.email}`;
+
+    if (!hasUnsyncedEditRef.current) {
+      saveRecoveryNotesBaseline(
+        recoveryNotesBaselineKey(user.id, activeCourseId),
+        loadedNotesRef.current,
+        loadedOverallNoteRef.current,
+      );
+    }
+    hasUnsyncedEditRef.current = true;
+    lastSavedAt.current = savedAt;
+    pendingSaveRef.current = {
+      subjects: nextSubjects,
+      settings,
+      tempNotes,
+      overallNote: nextOverallNote,
+      notePagesIndex,
+      personalNotePagesIndex,
+    };
+    setSyncStatus('syncing');
+    void writeLocalCourseSnapshot(cacheKey, payload, true);
   };
 
   const restoreLocalNotes = async (keys?: string[]): Promise<boolean> => {
@@ -2224,7 +2280,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     // User-initiated change — save to localStorage immediately, then debounce
     // the Firestore write.  Push lastSavedAt forward right now so any stale
     // server snapshot arriving during the 400 ms debounce window is ignored.
-    const payload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex, savedAt: Date.now() };
+    const payload: StudyData = {
+      subjects,
+      settings,
+      tempNotes,
+      overallNote,
+      notePagesIndex,
+      personalNotePagesIndex,
+      savedAt: Math.max(Date.now(), lastSavedAt.current + 1),
+    };
     const lsKey = localKey('data');
     if (lsKey) {
       if (!hasUnsyncedEditRef.current && activeCourseId) {
@@ -3464,7 +3528,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   // ─── Note / Important / Weak ───────────────────────────────────────────
   // Generic patcher: mutates only the targeted node based on path.level
-  const applyMarkPatch = (path: MarkPath, patch: Partial<{ note: string; important: boolean; weak: boolean }>) => {
+  const applyMarkPatch = (
+    path: MarkPath,
+    patch: Partial<{ note: string; important: boolean; weak: boolean }>,
+    returnUpdatedSubjects = false,
+  ): Subject[] | null => {
     const sId = path.subjectId;
     const cleanedPatch: any = {};
     for (const k of Object.keys(patch) as (keyof typeof patch)[]) {
@@ -3487,33 +3555,31 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       return out as T;
     };
 
+    let update: ((previous: Subject[]) => Subject[]) | null = null;
     if (path.level === 'subject') {
-      setSubjects(updateSubjectFn(sId, s => merge(s)));
-      return;
-    }
-    if (path.level === 'chapter' && path.chapterId) {
-      setSubjects(updateChapterFn(sId, path.chapterId, ch => merge(ch)));
-      return;
-    }
-    if (path.level === 'topic' && path.chapterId && path.topicId) {
-      setSubjects(updateTopicFn(sId, path.chapterId, path.topicId, t => merge(t)));
-      return;
-    }
-    if (path.level === 'subtopic' && path.chapterId && path.topicId && path.subtopicId) {
-      setSubjects(updateSubtopicFn(sId, path.chapterId, path.topicId, path.subtopicId, sub => merge(sub)));
-      return;
-    }
-    if (path.level === 'concept' && path.chapterId && path.topicId && path.subtopicId && path.conceptId) {
-      setSubjects(updateConceptFn(sId, path.chapterId, path.topicId, path.subtopicId, path.conceptId, c => merge(c)));
-      return;
-    }
-    if (path.level === 'point' && path.chapterId && path.topicId && path.subtopicId && path.conceptId && path.pointId) {
-      setSubjects(updateConceptFn(sId, path.chapterId, path.topicId, path.subtopicId, path.conceptId, c => ({
+      update = updateSubjectFn(sId, s => merge(s));
+    } else if (path.level === 'chapter' && path.chapterId) {
+      update = updateChapterFn(sId, path.chapterId, ch => merge(ch));
+    } else if (path.level === 'topic' && path.chapterId && path.topicId) {
+      update = updateTopicFn(sId, path.chapterId, path.topicId, t => merge(t));
+    } else if (path.level === 'subtopic' && path.chapterId && path.topicId && path.subtopicId) {
+      update = updateSubtopicFn(sId, path.chapterId, path.topicId, path.subtopicId, sub => merge(sub));
+    } else if (path.level === 'concept' && path.chapterId && path.topicId && path.subtopicId && path.conceptId) {
+      update = updateConceptFn(sId, path.chapterId, path.topicId, path.subtopicId, path.conceptId, c => merge(c));
+    } else if (path.level === 'point' && path.chapterId && path.topicId && path.subtopicId && path.conceptId && path.pointId) {
+      update = updateConceptFn(sId, path.chapterId, path.topicId, path.subtopicId, path.conceptId, c => ({
         ...c,
         points: c.points.map(p => p.id === path.pointId ? merge(p) : p),
-      })));
-      return;
+      }));
     }
+    if (!update) return null;
+    if (!returnUpdatedSubjects) {
+      setSubjects(update);
+      return null;
+    }
+    const updatedSubjects = update(subjects);
+    setSubjects(updatedSubjects);
+    return updatedSubjects;
   };
 
   const getMarkable = (path: MarkPath): { note?: string; important?: boolean; weak?: boolean } | null => {
@@ -3537,7 +3603,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   };
 
   const setNote = (path: MarkPath, note: string) => {
-    applyMarkPatch(path, { note });
+    const updatedSubjects = applyMarkPatch(path, { note }, true);
+    if (updatedSubjects) {
+      persistCourseNoteDraftImmediately(updatedSubjects, overallNote);
+    }
   };
   const toggleImportant = (path: MarkPath) => {
     const cur = getMarkable(path);
@@ -3609,6 +3678,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // ─── Overall Note (Progress page) ───────────────────────────────────────
   const setOverallNote = (note: string) => {
     setOverallNoteState(note);
+    persistCourseNoteDraftImmediately(subjects, note);
   };
 
   // ─── A4 Note Pages (each page stored as a separate Firestore doc) ────

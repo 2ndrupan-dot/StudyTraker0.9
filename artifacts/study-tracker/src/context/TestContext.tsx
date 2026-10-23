@@ -25,9 +25,10 @@ export interface LocalTestRecoveryItem {
   subjectId: string;
   cardId: string;
   personal: boolean;
+  collectionName: TestDeckCollection;
 }
 
-type TestDeckCollection = 'testDecks' | 'personalTestDecks';
+type TestDeckCollection = 'testDecks' | 'personalTestDecks' | 'extraTestDecks';
 
 interface LocalTestDeckSnapshot {
   cards: TestCard[];
@@ -46,8 +47,11 @@ interface TestContextValue {
   testDecks: Record<string, TestCard[]>;
   /** Personal test cards for the active course; never shared with admins/recipients. */
   personalTestDecks: Record<string, TestCard[]>;
+  /** Extra test cards are a separate private deck collection for each subject. */
+  extraTestDecks: Record<string, TestCard[]>;
   testDecksLoaded: boolean;
   personalTestDecksLoaded: boolean;
+  extraTestDecksLoaded: boolean;
   localTestRecoveryItems: LocalTestRecoveryItem[];
   restoreLocalTestCards: (keys: string[]) => Promise<boolean>;
   dismissLocalTestRecovery: (keys: string[]) => void;
@@ -59,6 +63,10 @@ interface TestContextValue {
   updatePersonalTestCard: (subjectId: string, cardId: string, data: Pick<TestCard, 'title' | 'question' | 'answer'>) => Promise<void>;
   deletePersonalTestCard: (subjectId: string, cardId: string) => Promise<void>;
   reorderPersonalTestCards: (subjectId: string, fromIdx: number, toIdx: number) => Promise<void>;
+  addExtraTestCard: (subjectId: string, data: Pick<TestCard, 'title' | 'question' | 'answer'>) => Promise<void>;
+  updateExtraTestCard: (subjectId: string, cardId: string, data: Pick<TestCard, 'title' | 'question' | 'answer'>) => Promise<void>;
+  deleteExtraTestCard: (subjectId: string, cardId: string) => Promise<void>;
+  reorderExtraTestCards: (subjectId: string, fromIdx: number, toIdx: number) => Promise<void>;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -108,12 +116,15 @@ export function TestProvider({ children }: { children: ReactNode }) {
 
   const [testDecks, setTestDecks] = useState<Record<string, TestCard[]>>({});
   const [personalTestDecks, setPersonalTestDecks] = useState<Record<string, TestCard[]>>({});
+  const [extraTestDecks, setExtraTestDecks] = useState<Record<string, TestCard[]>>({});
   const [testDecksLoaded, setTestDecksLoaded] = useState(false);
   const [personalTestDecksLoaded, setPersonalTestDecksLoaded] = useState(false);
+  const [extraTestDecksLoaded, setExtraTestDecksLoaded] = useState(false);
   const [localTestRecoveryItems, setLocalTestRecoveryItems] = useState<LocalTestRecoveryItem[]>([]);
   const recoveryCandidatesRef = useRef<Map<string, TestRecoveryCandidate>>(new Map());
   const cloudTestDecksRef = useRef<Record<string, TestCard[]>>({});
   const cloudPersonalTestDecksRef = useRef<Record<string, TestCard[]>>({});
+  const cloudExtraTestDecksRef = useRef<Record<string, TestCard[]>>({});
 
   const publishRecoveryItems = () => {
     setLocalTestRecoveryItems([...recoveryCandidatesRef.current.values()].map(candidate => candidate.item));
@@ -198,7 +209,8 @@ export function TestProvider({ children }: { children: ReactNode }) {
             title: card.title || 'Untitled card',
             subjectId,
             cardId: card.id,
-            personal: collectionName === 'personalTestDecks',
+            personal: collectionName !== 'testDecks',
+            collectionName,
           },
         });
       }
@@ -216,7 +228,7 @@ export function TestProvider({ children }: { children: ReactNode }) {
     }
 
     const prefixKeys = [...recoveryCandidatesRef.current.entries()]
-      .filter(([, candidate]) => candidate.item.personal === (collectionName === 'personalTestDecks'))
+      .filter(([, candidate]) => candidate.item.collectionName === collectionName)
       .map(([key]) => key);
     for (const key of prefixKeys) {
       if (!seenKeys.has(key)) recoveryCandidatesRef.current.delete(key);
@@ -252,17 +264,21 @@ export function TestProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setTestDecksLoaded(false);
     setPersonalTestDecksLoaded(false);
+    setExtraTestDecksLoaded(false);
     recoveryCandidatesRef.current.clear();
     setLocalTestRecoveryItems([]);
     if (!user || !activeCourseId) {
       setTestDecks({});
       setPersonalTestDecks({});
+      setExtraTestDecks({});
       cloudTestDecksRef.current = {};
       cloudPersonalTestDecksRef.current = {};
+      cloudExtraTestDecksRef.current = {};
       recoveryCandidatesRef.current.clear();
       setLocalTestRecoveryItems([]);
       setTestDecksLoaded(true);
       setPersonalTestDecksLoaded(true);
+      setExtraTestDecksLoaded(true);
       return;
     }
 
@@ -315,9 +331,34 @@ export function TestProvider({ children }: { children: ReactNode }) {
       setPersonalTestDecksLoaded(true);
     });
 
+    const extraColRef = collection(db, 'users', user.id, 'courses', activeCourseId, 'extraTestDecks');
+    const extraUnsub: Unsubscribe = onSnapshot(extraColRef, snap => {
+      const decks: Record<string, TestCard[]> = {};
+      snap.forEach(d => {
+        const data = d.data();
+        const cards: TestCard[] = Array.isArray(data.cards) ? data.cards : [];
+        decks[d.id] = [...cards].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      });
+      cloudExtraTestDecksRef.current = decks;
+      setExtraTestDecks(mergeUnsyncedDecks(
+        decks,
+        'extraTestDecks',
+        user.id,
+        activeCourseId,
+        snap.metadata.hasPendingWrites,
+      ));
+      setExtraTestDecksLoaded(true);
+    }, err => {
+      console.error('[TestContext] extra test snapshot error', err);
+      cloudExtraTestDecksRef.current = {};
+      setExtraTestDecks(mergeUnsyncedDecks({}, 'extraTestDecks', user.id, activeCourseId, false));
+      setExtraTestDecksLoaded(true);
+    });
+
     return () => {
       unsub();
       personalUnsub();
+      extraUnsub();
     };
   }, [user, activeCourseId]);
 
@@ -331,6 +372,11 @@ export function TestProvider({ children }: { children: ReactNode }) {
   const personalDeckRef = (subjectId: string) => {
     if (!user || !activeCourseId) throw new Error('Not authenticated');
     return doc(db, 'users', user.id, 'courses', activeCourseId, 'personalTestDecks', subjectId);
+  };
+
+  const extraDeckRef = (subjectId: string) => {
+    if (!user || !activeCourseId) throw new Error('Not authenticated');
+    return doc(db, 'users', user.id, 'courses', activeCourseId, 'extraTestDecks', subjectId);
   };
 
   // ── Live-sync relay for test deck mutations ─────────────────────────────
@@ -476,6 +522,25 @@ export function TestProvider({ children }: { children: ReactNode }) {
     cloudPersonalTestDecksRef.current = { ...cloudPersonalTestDecksRef.current, [subjectId]: ordered };
   };
 
+  const persistExtraDeck = async (subjectId: string, cards: TestCard[]) => {
+    const ordered = cards.map((card, index) => ({ ...card, order: index }));
+    const cacheKey = testDeckCacheKey(user!.id, activeCourseId!, 'extraTestDecks', subjectId);
+    const previousCache = readTestDeckCache(cacheKey);
+    writeTestDeckCache(cacheKey, {
+      cards: ordered,
+      baseCards: previousCache?.unsynced ? previousCache.baseCards : (extraTestDecks[subjectId] ?? []),
+      unsynced: true,
+    });
+    setExtraTestDecks(prev => ({ ...prev, [subjectId]: ordered }));
+    await setDoc(extraDeckRef(subjectId), { cards: ordered, updatedAt: Date.now() });
+    writeTestDeckCache(cacheKey, { cards: ordered, baseCards: ordered, unsynced: false });
+    for (const key of recoveryCandidatesRef.current.keys()) {
+      if (key.startsWith(`extraTestDecks:${subjectId}:`)) recoveryCandidatesRef.current.delete(key);
+    }
+    publishRecoveryItems();
+    cloudExtraTestDecksRef.current = { ...cloudExtraTestDecksRef.current, [subjectId]: ordered };
+  };
+
   const restoreLocalTestCards = async (keys: string[]): Promise<boolean> => {
     const selected = keys
       .map(key => recoveryCandidatesRef.current.get(key))
@@ -494,8 +559,12 @@ export function TestProvider({ children }: { children: ReactNode }) {
         const snapshot = readTestDeckCache(cacheKey);
         if (!snapshot) continue;
         const first = candidates[0];
-        const collectionName: TestDeckCollection = first.item.personal ? 'personalTestDecks' : 'testDecks';
-        const remoteDecks = first.item.personal ? cloudPersonalTestDecksRef.current : cloudTestDecksRef.current;
+        const collectionName = first.item.collectionName;
+        const remoteDecks = collectionName === 'testDecks'
+          ? cloudTestDecksRef.current
+          : collectionName === 'personalTestDecks'
+            ? cloudPersonalTestDecksRef.current
+            : cloudExtraTestDecksRef.current;
         const remoteCards = remoteDecks[first.item.subjectId] ?? [];
         const cloudById = new Map(remoteCards.map(card => [card.id, card]));
         const selectedIds = new Set(candidates.map(candidate => candidate.item.cardId));
@@ -531,9 +600,12 @@ export function TestProvider({ children }: { children: ReactNode }) {
           unsynced: hasOtherPendingChanges,
         });
 
-        if (first.item.personal) {
+        if (collectionName === 'personalTestDecks') {
           cloudPersonalTestDecksRef.current = { ...cloudPersonalTestDecksRef.current, [first.item.subjectId]: restoredCloudCards };
           setPersonalTestDecks(prev => ({ ...prev, [first.item.subjectId]: nextCards }));
+        } else if (collectionName === 'extraTestDecks') {
+          cloudExtraTestDecksRef.current = { ...cloudExtraTestDecksRef.current, [first.item.subjectId]: restoredCloudCards };
+          setExtraTestDecks(prev => ({ ...prev, [first.item.subjectId]: nextCards }));
         } else {
           cloudTestDecksRef.current = { ...cloudTestDecksRef.current, [first.item.subjectId]: restoredCloudCards };
           setTestDecks(prev => ({ ...prev, [first.item.subjectId]: nextCards }));
@@ -566,7 +638,11 @@ export function TestProvider({ children }: { children: ReactNode }) {
       const snapshot = readTestDeckCache(cacheKey);
       if (!snapshot) continue;
       const first = candidates[0];
-      const remoteDecks = first.item.personal ? cloudPersonalTestDecksRef.current : cloudTestDecksRef.current;
+      const remoteDecks = first.item.collectionName === 'testDecks'
+        ? cloudTestDecksRef.current
+        : first.item.collectionName === 'personalTestDecks'
+          ? cloudPersonalTestDecksRef.current
+          : cloudExtraTestDecksRef.current;
       const remoteCards = remoteDecks[first.item.subjectId] ?? [];
       const remoteById = new Map(remoteCards.map(card => [card.id, card]));
       const baseById = new Map(snapshot.baseCards.map(card => [card.id, card]));
@@ -588,8 +664,10 @@ export function TestProvider({ children }: { children: ReactNode }) {
         baseCards: snapshot.baseCards,
         unsynced: hasOtherPendingChanges,
       });
-      if (first.item.personal) {
+      if (first.item.collectionName === 'personalTestDecks') {
         setPersonalTestDecks(prev => ({ ...prev, [first.item.subjectId]: nextCards }));
+      } else if (first.item.collectionName === 'extraTestDecks') {
+        setExtraTestDecks(prev => ({ ...prev, [first.item.subjectId]: nextCards }));
       } else {
         setTestDecks(prev => ({ ...prev, [first.item.subjectId]: nextCards }));
       }
@@ -650,12 +728,72 @@ export function TestProvider({ children }: { children: ReactNode }) {
     await persistPersonalDeck(subjectId, existing);
   };
 
+  const addExtraTestCard = async (
+    subjectId: string,
+    data: Pick<TestCard, 'title' | 'question' | 'answer'>,
+  ) => {
+    const existing = extraTestDecks[subjectId] ?? [];
+    const now = Date.now();
+    const newCard: TestCard = {
+      id: uid(),
+      title: data.title,
+      question: data.question,
+      answer: data.answer,
+      order: existing.length,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await persistExtraDeck(subjectId, [...existing, newCard]);
+  };
+
+  const updateExtraTestCard = async (
+    subjectId: string,
+    cardId: string,
+    data: Pick<TestCard, 'title' | 'question' | 'answer'>,
+  ) => {
+    const existing = extraTestDecks[subjectId] ?? [];
+    const updated = existing.map(card =>
+      card.id === cardId ? { ...card, ...data, updatedAt: Date.now() } : card,
+    );
+    await persistExtraDeck(subjectId, updated);
+  };
+
+  const deleteExtraTestCard = async (subjectId: string, cardId: string) => {
+    const filtered = (extraTestDecks[subjectId] ?? []).filter(card => card.id !== cardId);
+    if (filtered.length === 0) {
+      setExtraTestDecks(prev => {
+        const next = { ...prev };
+        delete next[subjectId];
+        return next;
+      });
+      await deleteDoc(extraDeckRef(subjectId));
+      writeTestDeckCache(
+        testDeckCacheKey(user!.id, activeCourseId!, 'extraTestDecks', subjectId),
+        { cards: [], baseCards: [], unsynced: false },
+      );
+      cloudExtraTestDecksRef.current = { ...cloudExtraTestDecksRef.current };
+      delete cloudExtraTestDecksRef.current[subjectId];
+    } else {
+      await persistExtraDeck(subjectId, filtered);
+    }
+  };
+
+  const reorderExtraTestCards = async (subjectId: string, fromIdx: number, toIdx: number) => {
+    const existing = [...(extraTestDecks[subjectId] ?? [])];
+    if (fromIdx === toIdx) return;
+    const [moved] = existing.splice(fromIdx, 1);
+    existing.splice(toIdx, 0, moved);
+    await persistExtraDeck(subjectId, existing);
+  };
+
   return (
     <TestContext.Provider value={{
-      testDecks, personalTestDecks, testDecksLoaded, personalTestDecksLoaded,
+      testDecks, personalTestDecks, extraTestDecks,
+      testDecksLoaded, personalTestDecksLoaded, extraTestDecksLoaded,
       localTestRecoveryItems, restoreLocalTestCards, dismissLocalTestRecovery,
       addTestCard, updateTestCard, deleteTestCard, reorderTestCards,
       addPersonalTestCard, updatePersonalTestCard, deletePersonalTestCard, reorderPersonalTestCards,
+      addExtraTestCard, updateExtraTestCard, deleteExtraTestCard, reorderExtraTestCards,
     }}>
       {children}
     </TestContext.Provider>

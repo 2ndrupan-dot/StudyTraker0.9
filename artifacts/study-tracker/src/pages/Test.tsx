@@ -11,7 +11,7 @@ import { ConfirmModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ClipboardList, Plus, ChevronLeft, Pencil, Trash2, Check, X, User as UserIcon,
-  ArrowUpDown, GripVertical, Info, Play, BookOpen, Search, Copy, ClipboardPaste,
+  ArrowUpDown, GripVertical, Info, Play, BookOpen, Search, Copy, ClipboardPaste, Sparkles,
 } from 'lucide-react';
 import {
   DndContext, DragEndEvent, PointerSensor, TouchSensor, KeyboardSensor,
@@ -229,9 +229,10 @@ function CardForm({ initialTitle = '', initialQuestion = '', initialAnswer = '',
 export function Test() {
   const { subjects, reorderSubjects } = useStudy();
   const {
-    testDecks, personalTestDecks, testDecksLoaded, personalTestDecksLoaded,
+    testDecks, personalTestDecks, extraTestDecks, testDecksLoaded, personalTestDecksLoaded, extraTestDecksLoaded,
     addTestCard, updateTestCard, deleteTestCard, reorderTestCards,
     addPersonalTestCard, updatePersonalTestCard, deletePersonalTestCard, reorderPersonalTestCards,
+    addExtraTestCard, updateExtraTestCard, deleteExtraTestCard, reorderExtraTestCards,
   } = useTest();
   const { activeCourseId, sharedCoursesMeta } = useCourse();
   const { isAdmin } = useAdmin();
@@ -242,7 +243,7 @@ export function Test() {
   const [, navigate] = useLocation();
 
   // Navigation state
-  type ActiveTestTab = 'course' | 'personal';
+  type ActiveTestTab = 'course' | 'personal' | 'extra';
   const [activeTab, setActiveTab] = useState<ActiveTestTab>(
     canViewCourseTests ? 'course' : 'personal',
   );
@@ -290,7 +291,11 @@ export function Test() {
   );
 
   const selectedSubject = subjects.find(s => s.id === selectedSubjectId);
-  const deckMap = activeTab === 'course' ? testDecks : personalTestDecks;
+  const deckMap = activeTab === 'course'
+    ? testDecks
+    : activeTab === 'personal'
+      ? personalTestDecks
+      : extraTestDecks;
   const deck = selectedSubjectId ? (deckMap[selectedSubjectId] ?? []) : [];
   const filteredDeck = searchQuery.trim()
     ? deck.filter(c => c.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
@@ -341,7 +346,8 @@ export function Test() {
     setSaveError('');
     const data = { title: title.trim(), question: question.trim(), answer: answer.trim() };
     if (activeTab === 'course') await addTestCard(selectedSubjectId, data);
-    else await addPersonalTestCard(selectedSubjectId, data);
+    else if (activeTab === 'personal') await addPersonalTestCard(selectedSubjectId, data);
+    else await addExtraTestCard(selectedSubjectId, data);
     setIsAdding(false);
   };
 
@@ -354,7 +360,8 @@ export function Test() {
     setSaveError('');
     const data = { title: title.trim(), question: question.trim(), answer: answer.trim() };
     if (activeTab === 'course') await updateTestCard(selectedSubjectId, editingCardId, data);
-    else await updatePersonalTestCard(selectedSubjectId, editingCardId, data);
+    else if (activeTab === 'personal') await updatePersonalTestCard(selectedSubjectId, editingCardId, data);
+    else await updateExtraTestCard(selectedSubjectId, editingCardId, data);
     setEditingCardId(null);
   };
 
@@ -376,7 +383,8 @@ export function Test() {
     if (!selectedSubjectId || !copiedCard) return;
     setSaveError('');
     if (activeTab === 'course') await addTestCard(selectedSubjectId, copiedCard);
-    else await addPersonalTestCard(selectedSubjectId, copiedCard);
+    else if (activeTab === 'personal') await addPersonalTestCard(selectedSubjectId, copiedCard);
+    else await addExtraTestCard(selectedSubjectId, copiedCard);
     setExpandedCardId(null);
   };
 
@@ -392,7 +400,8 @@ export function Test() {
   const handleDeleteCard = async () => {
     if (!confirmDeleteCardId || !selectedSubjectId) return;
     if (activeTab === 'course') await deleteTestCard(selectedSubjectId, confirmDeleteCardId);
-    else await deletePersonalTestCard(selectedSubjectId, confirmDeleteCardId);
+    else if (activeTab === 'personal') await deletePersonalTestCard(selectedSubjectId, confirmDeleteCardId);
+    else await deleteExtraTestCard(selectedSubjectId, confirmDeleteCardId);
     if (expandedCardId === confirmDeleteCardId) setExpandedCardId(null);
     setConfirmDeleteCardId(null);
   };
@@ -413,7 +422,8 @@ export function Test() {
       const toIdx = deck.findIndex(c => c.id === over.id);
       if (fromIdx !== -1 && toIdx !== -1) {
         if (activeTab === 'course') await reorderTestCards(selectedSubjectId, fromIdx, toIdx);
-        else await reorderPersonalTestCards(selectedSubjectId, fromIdx, toIdx);
+        else if (activeTab === 'personal') await reorderPersonalTestCards(selectedSubjectId, fromIdx, toIdx);
+        else await reorderExtraTestCards(selectedSubjectId, fromIdx, toIdx);
       }
     }
   };
@@ -520,8 +530,8 @@ export function Test() {
               )}
             </div>
           </div>
-          {canViewCourseTests && (
             <div className="relative px-3 pb-3 flex gap-1">
+              {canViewCourseTests && (
               <button
                 onClick={() => setActiveTab('course')}
                 className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all ${
@@ -531,6 +541,7 @@ export function Test() {
                 <BookOpen size={10} className="shrink-0" />
                 <span className="whitespace-nowrap">{lang === 'bn' ? 'কোর্স টেস্ট' : 'Course Test'}</span>
               </button>
+              )}
               <button
                 onClick={() => setActiveTab('personal')}
                 className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all ${
@@ -540,8 +551,16 @@ export function Test() {
                 <UserIcon size={10} className="shrink-0" />
                 <span className="whitespace-nowrap">{lang === 'bn' ? 'পার্সোনাল টেস্ট' : 'Personal Test'}</span>
               </button>
+              <button
+                onClick={() => setActiveTab('extra')}
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  activeTab === 'extra' ? 'bg-white text-purple-700 shadow-md' : 'bg-white/15 text-white/80 hover:bg-white/25'
+                }`}
+              >
+                <Sparkles size={10} className="shrink-0" />
+                <span className="whitespace-nowrap">{t('extraTestTab')}</span>
+              </button>
             </div>
-          )}
         </div>
 
         {/* ── Body ── */}
@@ -608,7 +627,9 @@ export function Test() {
                                     <div className={cn('w-9 h-9 rounded-xl bg-white/60 dark:bg-white/10 flex items-center justify-center mb-3 shadow-sm', iconColor)}>
                                        {activeTab === 'course'
                                          ? <BookOpen size={16} strokeWidth={2} className={iconColor} />
-                                         : <UserIcon size={16} strokeWidth={2} className={iconColor} />}
+                                         : activeTab === 'personal'
+                                           ? <UserIcon size={16} strokeWidth={2} className={iconColor} />
+                                           : <Sparkles size={16} strokeWidth={2} className={iconColor} />}
                                     </div>
                                     <p className="text-sm font-bold text-foreground leading-snug mb-1 line-clamp-2">{subj.title}</p>
                                     <p className="text-[11px] text-muted-foreground font-medium">

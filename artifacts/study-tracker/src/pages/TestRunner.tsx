@@ -41,7 +41,7 @@ function CircularScore({ correct, total, size = 72 }: { correct: number; total: 
 
 export function TestRunner() {
   const [, navigate] = useLocation();
-  const { testDecks, personalTestDecks } = useTest();
+  const { testDecks, personalTestDecks, extraTestDecks } = useTest();
   const { t, lang } = useLang();
   const { completeShareTest } = useAdmin();
 
@@ -50,7 +50,12 @@ export function TestRunner() {
   const subjectId = params.get('sid') ?? '';
   const cardId = params.get('cid') ?? '';
   const shareId = params.get('shareId') ?? '';
-  const testType = params.get('type') === 'personal' ? 'personal' : 'course';
+  const requestedTestType = params.get('type');
+  const testType = requestedTestType === 'personal'
+    ? 'personal'
+    : requestedTestType === 'extra'
+      ? 'extra'
+      : 'course';
 
   const card = useMemo(() => {
     // Shared test card — load from sessionStorage
@@ -74,10 +79,14 @@ export function TestRunner() {
       } catch { /* ignore */ }
       return null;
     }
-    const deckMap = testType === 'personal' ? personalTestDecks : testDecks;
+    const deckMap = testType === 'personal'
+      ? personalTestDecks
+      : testType === 'extra'
+        ? extraTestDecks
+        : testDecks;
     const deck = deckMap[subjectId] ?? [];
     return deck.find(c => c.id === cardId) ?? null;
-  }, [testDecks, personalTestDecks, subjectId, cardId, shareId, testType]);
+  }, [testDecks, personalTestDecks, extraTestDecks, subjectId, cardId, shareId, testType]);
 
   const allQuestions: ParsedQuestion[] = useMemo(() => {
     if (!card) return [];

@@ -371,7 +371,12 @@ function LocalTestCardRecoveryNotice() {
                   <div className="min-w-0 flex-1">
                     <p className="m-0 truncate text-xs font-semibold">{item.title}</p>
                     <p className="m-0 truncate text-[10px] opacity-70">
-                      {subjectTitle}{item.personal ? ` · ${t('personalTestCards')}` : ''}
+                      {subjectTitle}
+                      {item.collectionName === 'personalTestDecks'
+                        ? ` · ${t('personalTestCards')}`
+                        : item.collectionName === 'extraTestDecks'
+                          ? ` · ${t('extraTestCards')}`
+                          : ''}
                     </p>
                   </div>
                   <button

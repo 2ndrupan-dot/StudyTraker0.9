@@ -1,0 +1,280 @@
+You are an expert full-stack system designer and Firebase architect.
+
+Build and optimize a complete AI-powered learning system using Firebase (Firestore, Cloud Functions, Authentication).
+
+-----------------------------------
+🔷 CORE SYSTEM OVERVIEW
+-----------------------------------
+
+The system has TWO MAIN PARTS:
+
+1. Subject Section (User-generated course builder)
+2. Daily Routine Section (AI-based study planner)
+
+-----------------------------------
+🔷 LEVEL SYSTEM (VERY IMPORTANT)
+-----------------------------------
+
+Define hierarchy using levels:
+
+- L1 = Subject
+- L2 = Chapter
+- L3 = Topic
+- L4 = Subtopic
+- L5 = Concept
+- L6 = Point
+
+System must dynamically support these levels and also allow flexible nesting.
+
+-----------------------------------
+🔷 PART 1: DYNAMIC CONTENT STRUCTURE
+-----------------------------------
+
+Users can create hierarchical structures:
+
+Subject (L1) → Chapter (L2) → Topic (L3) → Subtopic (L4) → Concept (L5) → Point (L6)
+
+Each content item must include:
+- id
+- title
+- parent_id
+- subject_id
+- user_id
+- level (L1–L6)
+- order
+- type
+- estimated_time
+- adjusted_time
+- difficulty_level (easy/medium/hard)
+- is_unlocked (boolean)
+
+-----------------------------------
+🔷 GUIDED LEARNING FLOW (STRICT)
+-----------------------------------
+
+Enforce:
+
+Parent → Overview → Child → Next Child → Next Sibling
+
+Rules:
+- Parent must be completed before child unlocks
+- Only one branch active at a time
+- No random navigation
+- No mixing unrelated content
+
+-----------------------------------
+🔷 TOPIC-FIRST LEARNING (CRITICAL)
+-----------------------------------
+
+Every Topic (L3) MUST appear before its children.
+
+- Topic acts as overview
+- Must be manually completed first
+- Then only L4/L5/L6 items appear
+
+-----------------------------------
+🔷 UNIVERSAL COMPLETION RULE (ALL LEVELS)
+-----------------------------------
+
+Applies to L1–L6:
+
+1. Manual Completion:
+   - ONLY unlocks children
+   - DOES NOT complete children
+
+2. Auto Completion:
+   - Happens ONLY when all children complete
+
+3. Each item must be completed individually
+
+4. Recursive enforcement required
+
+-----------------------------------
+🔷 PROGRESS SYSTEM
+-----------------------------------
+
+Each item:
+- manual_complete
+- auto_complete
+- progress_percentage
+
+Optional labels:
+- Overview Completed
+- Fully Completed
+
+-----------------------------------
+🔷 PART 2: DAILY ROUTINE SYSTEM
+-----------------------------------
+
+User inputs:
+- daily study time
+- target days
+- max subjects = 3 (UPDATED)
+
+-----------------------------------
+🔷 ROUTINE GENERATION LOGIC
+-----------------------------------
+
+Every day at 12 AM:
+
+1. Fetch incomplete items
+2. Priority:
+   a. In-progress
+   b. Topic (L3)
+   c. Then children (L4 → L6)
+
+3. DO NOT include child if parent not complete
+4. Maintain strict order
+5. Allocate based on daily time
+
+-----------------------------------
+🔷 MULTI-SUBJECT RULE (UPDATED)
+-----------------------------------
+
+- Max 3 subjects allowed
+- Time must be divided proportionally
+- Ensure total time does not exceed daily limit
+
+-----------------------------------
+🔷 TIME MANAGEMENT SYSTEM
+-----------------------------------
+
+1. Total content time
+2. Available time = daily × days
+3. Adjustment ratio apply
+4. adjusted_time = estimated × difficulty × ratio
+
+-----------------------------------
+🔷 TIME LIMIT RULES
+-----------------------------------
+
+- Point ≥ 3 min
+- Concept ≥ 5 min
+- Subtopic ≥ 7 min
+
+-----------------------------------
+🔷 DIFFICULTY SYSTEM
+-----------------------------------
+
+- easy = 1x
+- medium = 1.5x
+- hard = 2x
+
+-----------------------------------
+🔷 ADAPTIVE SYSTEM
+-----------------------------------
+
+IF user behind:
+- reduce load
+- prioritize pending
+
+IF ahead:
+- increase load
+- add revision
+
+-----------------------------------
+🔷 REVISION SYSTEM
+-----------------------------------
+
+After completion:
+- Day 2
+- Day 5
+- Day 10
+
+Revision time = 50%
+
+-----------------------------------
+🔷 CONTEXT LOCK SYSTEM
+-----------------------------------
+
+- Only one branch visible
+- No parallel topics
+
+-----------------------------------
+🔷 CONTINUE LEARNING
+-----------------------------------
+
+- Resume last item
+- Track last activity
+
+-----------------------------------
+🔷 UI/UX BEHAVIOR (VERY IMPORTANT)
+-----------------------------------
+
+1. Daily Routine Page:
+
+- Initially ONLY show subject list (collapsed)
+- No subject should be expanded by default
+- On clicking a subject → expand its contents
+- When another subject is clicked:
+  → Previous subject MUST collapse automatically
+
+(Accordion behavior - only one open at a time)
+
+-----------------------------------
+
+2. Completed Items Behavior:
+
+- When a task is marked complete:
+  → REMOVE it from main routine list immediately
+
+- Add a "Completed Section" (top-right or separate tab)
+
+-----------------------------------
+
+3. Completed Section Rules:
+
+- Show completed items grouped by Subject
+- Clicking a subject:
+  → Show only that subject’s completed items
+  → Collapse others
+
+-----------------------------------
+
+4. Clean UI Requirement:
+
+- No clutter
+- No multiple expanded sections
+- Always maintain clean, minimal view
+
+-----------------------------------
+🔷 FIREBASE ARCHITECTURE
+-----------------------------------
+
+Use:
+- Firestore
+- Authentication
+- Cloud Functions
+- Cloud Messaging
+
+Collections:
+- subjects
+- content_items
+- progress
+- routine
+- user_settings
+
+-----------------------------------
+🔷 CLOUD FUNCTIONS
+-----------------------------------
+
+1. Daily Routine Generator
+2. Time Adjustment Engine
+3. Progress Watcher
+
+-----------------------------------
+🔷 FINAL INSTRUCTION
+-----------------------------------
+
+System must be:
+- scalable
+- optimized
+- clean UI driven
+- strict logic enforced
+
+If ANY data is missing:
+ASK USER FIRST
+
+Do NOT assume
+Do NOT skip logic
+Implement step-by-step

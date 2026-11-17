@@ -1,0 +1,1721 @@
+import React, { useMemo, useState, useEffect } from 'react';
+import { useStudy } from '@/context/StudyContext';
+import { useCourse } from '@/context/CourseContext';
+import { useLang } from '@/context/LangContext';
+import { useAuth } from '@/context/AuthContext';
+import { useAdmin } from '@/context/AdminContext';
+import { Layout } from '@/components/Layout';
+import {
+  Plus, Trash2, ChevronRight, ChevronDown,
+  BookOpen, Layers, List, Lightbulb, Dot, FolderPlus,
+  CheckCircle2, Circle, Pencil, Lock,
+  Star, AlertTriangle, StickyNote, Filter, RotateCcw, GripVertical, ArrowUpDown,
+} from 'lucide-react';
+import { Countdown } from '@/components/Countdown';
+import {
+  DndContext, closestCenter, PointerSensor, TouchSensor, KeyboardSensor,
+  useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, sortableKeyboardCoordinates, useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
+  isChapterUnlocked, isTopicUnlocked, isSubtopicUnlocked,
+  isConceptUnlocked, isPointUnlocked,
+  isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone,
+} from '@/lib/timeEngine';
+import { Modal, ConfirmModal, Input, Button, NoteEditorModal } from '@/components/ui';
+import { ScrollReveal } from '@/components/ScrollReveal';
+import { ItemActions, MarksBadgeRow } from '@/components/ItemActions';
+import { TempNoteSection } from '@/components/TempNoteSection';
+import { motion, AnimatePresence } from 'framer-motion';
+import { getRandomColor } from '@/lib/utils';
+import { format, parseISO } from 'date-fns';
+import type { DifficultyLevel, MarkPath, Subject, Chapter, Topic, Subtopic, Concept, Point } from '@/lib/types';
+
+type LevelType = 'subject' | 'chapter' | 'topic' | 'subtopic' | 'concept' | 'point';
+type StatusFilter = 'all' | 'inProgress' | 'completed' | 'notStarted';
+
+// ─── Status helpers ────────────────────────────────────────────────────────
+function chapterHasAnyProgress(ch: Chapter): boolean {
+  if (ch.completed) return true;
+  for (const t of ch.topics) {
+    if (t.completed) return true;
+    for (const s of t.subtopics) {
+      if (s.completed) return true;
+      for (const c of s.concepts) {
+        if (c.completed) return true;
+        for (const p of c.points) if (p.completed) return true;
+      }
+    }
+  }
+  return false;
+}
+function chapterStatus(ch: Chapter): 'completed' | 'inProgress' | 'notStarted' {
+  if (isChapterContentDone(ch)) return 'completed';
+  if (chapterHasAnyProgress(ch)) return 'inProgress';
+  return 'notStarted';
+}
+function subjectStatus(s: Subject): 'completed' | 'inProgress' | 'notStarted' {
+  if (s.chapters.length === 0) return 'notStarted';
+  if (s.chapters.every(isChapterContentDone)) return 'completed';
+  if (s.chapters.some(ch => chapterHasAnyProgress(ch) || isChapterContentDone(ch))) return 'inProgress';
+  return 'notStarted';
+}
+const matchesStatus = (status: 'completed' | 'inProgress' | 'notStarted', f: StatusFilter) =>
+  f === 'all' || f === status;
+
+// Flat marked item (for the importantOnly/weakOnly flat list view)
+export interface FlatMarkedItem {
+  level: 'subject' | 'chapter' | 'topic' | 'subtopic' | 'concept' | 'point';
+  title: string;
+  breadcrumb: string[];
+  important?: boolean;
+  weak?: boolean;
+  note?: string;
+  path: MarkPath;
+  subjectColor: string;
+  subjectId: string;
+}
+
+// Walk the subject tree and gather every node that has at least one of the requested flags.
+export function gatherFlaggedItems(
+  subjects: Subject[],
+  opts: { important: boolean; weak: boolean }
+): FlatMarkedItem[] {
+  const out: FlatMarkedItem[] = [];
+  // AND logic when both flags selected; OR logic when only one is selected
+  const matches = (item: { important?: boolean; weak?: boolean }) => {
+    if (opts.important && opts.weak) return !!item.important && !!item.weak;
+    return (opts.important && !!item.important) || (opts.weak && !!item.weak);
+  };
+
+  for (const subj of subjects) {
+    const subjBread = [subj.title];
+    if (matches(subj)) {
+      out.push({
+        level: 'subject', title: subj.title, breadcrumb: [],
+        important: subj.important, weak: subj.weak, note: subj.note,
+        path: { level: 'subject', subjectId: subj.id },
+        subjectColor: subj.color, subjectId: subj.id,
+      });
+    }
+    for (const ch of subj.chapters) {
+      if (matches(ch)) {
+        out.push({
+          level: 'chapter', title: ch.title, breadcrumb: subjBread,
+          important: ch.important, weak: ch.weak, note: ch.note,
+          path: { level: 'chapter', subjectId: subj.id, chapterId: ch.id },
+          subjectColor: subj.color, subjectId: subj.id,
+        });
+      }
+      const chBread = [...subjBread, ch.title];
+      for (const tp of ch.topics) {
+        if (matches(tp)) {
+          out.push({
+            level: 'topic', title: tp.title, breadcrumb: chBread,
+            important: tp.important, weak: tp.weak, note: tp.note,
+            path: { level: 'topic', subjectId: subj.id, chapterId: ch.id, topicId: tp.id },
+            subjectColor: subj.color, subjectId: subj.id,
+          });
+        }
+        const tpBread = [...chBread, tp.title];
+        for (const sub of tp.subtopics) {
+          if (matches(sub)) {
+            out.push({
+              level: 'subtopic', title: sub.title, breadcrumb: tpBread,
+              important: sub.important, weak: sub.weak, note: sub.note,
+              path: { level: 'subtopic', subjectId: subj.id, chapterId: ch.id, topicId: tp.id, subtopicId: sub.id },
+              subjectColor: subj.color, subjectId: subj.id,
+            });
+          }
+          const subBread = [...tpBread, sub.title];
+          for (const c of sub.concepts) {
+            if (matches(c)) {
+              out.push({
+                level: 'concept', title: c.title, breadcrumb: subBread,
+                important: c.important, weak: c.weak, note: c.note,
+                path: { level: 'concept', subjectId: subj.id, chapterId: ch.id, topicId: tp.id, subtopicId: sub.id, conceptId: c.id },
+                subjectColor: subj.color, subjectId: subj.id,
+              });
+            }
+            const cBread = [...subBread, c.title];
+            for (const p of c.points) {
+              if (matches(p)) {
+                out.push({
+                  level: 'point', title: p.title, breadcrumb: cBread,
+                  important: p.important, weak: p.weak, note: p.note,
+                  path: { level: 'point', subjectId: subj.id, chapterId: ch.id, topicId: tp.id, subtopicId: sub.id, conceptId: c.id, pointId: p.id },
+                  subjectColor: subj.color, subjectId: subj.id,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// Recursively check if any descendant has the given flag set
+function subjectHasDeepFlag(s: Subject, flag: 'important' | 'weak'): boolean {
+  for (const ch of s.chapters) {
+    if (ch[flag]) return true;
+    for (const t of ch.topics) {
+      if (t[flag]) return true;
+      for (const sub of t.subtopics) {
+        if (sub[flag]) return true;
+        for (const c of sub.concepts) {
+          if (c[flag]) return true;
+          for (const p of c.points) if (p[flag]) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Counts of overview-done vs content-done chapters within a subject
+function chapterCounts(s: Subject) {
+  let contentDone = 0;
+  let overviewOnly = 0; // chapters with completed flag set but content not yet finished
+  for (const c of s.chapters) {
+    const cd = isChapterContentDone(c);
+    if (cd) contentDone++;
+    else if (c.completed) overviewOnly++;
+  }
+  return { total: s.chapters.length, contentDone, overviewOnly };
+}
+
+interface ActivePath {
+  subjId: string;
+  chapterId: string;
+  topicId: string;
+  subtopicId: string;
+  conceptId: string;
+  pointId: string;
+  level: LevelType;
+}
+
+const collapseAnim = {
+  initial: { height: 0, opacity: 0 },
+  animate: { height: 'auto', opacity: 1, transition: { duration: 0.28, ease: 'easeInOut' as const } },
+  exit: { height: 0, opacity: 0, transition: { duration: 0.22, ease: 'easeInOut' as const } },
+};
+
+const itemAnim = {
+  initial: { opacity: 0, x: -8 },
+  animate: { opacity: 1, x: 0, transition: { duration: 0.22 } },
+  exit: { opacity: 0, x: -8, transition: { duration: 0.15 } },
+};
+
+// ─── Time Slider Component ─────────────────────────────────────────────────
+interface TimeSliderProps {
+  label: string;
+  value: number;
+  max: number;
+  onChange: (v: number) => void;
+  unit: string;
+}
+
+function TimeSlider({ label, value, max, onChange, unit }: TimeSliderProps) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex justify-between items-center">
+        <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+        <span className={`text-sm font-bold px-2.5 py-0.5 rounded-lg ${value > 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>
+          {value} {unit}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={max}
+        step={1}
+        value={value}
+        onChange={e => onChange(parseInt(e.target.value))}
+        className="w-full h-2 appearance-none rounded-full cursor-pointer"
+        style={{
+          background: `linear-gradient(to right, var(--color-primary) 0%, var(--color-primary) ${(value / max) * 100}%, var(--color-secondary) ${(value / max) * 100}%, var(--color-secondary) 100%)`,
+          accentColor: 'var(--color-primary)',
+        }}
+      />
+    </div>
+  );
+}
+
+function totalMinsFromSliders(months: number, days: number, hours: number, mins: number): number {
+  return months * 30 * 1440 + days * 1440 + hours * 60 + mins;
+}
+
+function formatTotalTime(total: number, t: (k: string) => string): string {
+  if (total === 0) return t('timeAuto');
+  const mo = Math.floor(total / (30 * 1440));
+  const d = Math.floor((total % (30 * 1440)) / 1440);
+  const h = Math.floor((total % 1440) / 60);
+  const m = total % 60;
+  const parts: string[] = [];
+  if (mo > 0) parts.push(`${mo} ${t('months')}`);
+  if (d > 0) parts.push(`${d} ${t('days')}`);
+  if (h > 0) parts.push(`${h} ${t('hoursLabel')}`);
+  if (m > 0) parts.push(`${m} ${t('minutesLabel')}`);
+  return parts.join(' ') || t('timeAuto');
+}
+
+function minutesToSliders(totalMins: number) {
+  const months = Math.floor(totalMins / (30 * 1440));
+  const rem1 = totalMins % (30 * 1440);
+  const days = Math.floor(rem1 / 1440);
+  const rem2 = rem1 % 1440;
+  const hours = Math.floor(rem2 / 60);
+  const mins = rem2 % 60;
+  return { months, days, hours, mins };
+}
+
+// ─── Sortable Item Wrapper ──────────────────────────────────────────────────
+function SortableItemWrapper({ id, reorderMode, children }: { id: string; reorderMode: boolean; children: (handle: React.ReactNode) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : undefined,
+    position: isDragging ? 'relative' : undefined,
+    opacity: isDragging ? 0.55 : undefined,
+  };
+  const handle = (
+    <button
+      type="button"
+      {...attributes}
+      {...(reorderMode ? listeners : {})}
+      onClick={e => e.stopPropagation()}
+      className={`shrink-0 self-stretch flex items-center px-1.5 transition-colors select-none border-l border-border/30 ml-1 ${
+        reorderMode
+          ? 'touch-none cursor-grab active:cursor-grabbing text-primary/70 hover:text-primary hover:bg-primary/10'
+          : 'touch-auto cursor-default text-muted-foreground/20 pointer-events-none'
+      }`}
+      title={reorderMode ? 'ড্র্যাগ করে সরান' : 'Reorder Mode চালু করুন'}
+    >
+      <GripVertical size={14} />
+    </button>
+  );
+  return <div ref={setNodeRef} style={style}>{children(handle)}</div>;
+}
+
+// ─── Tree trunk connector sync ────────────────────────────────────────────
+// Measures the last item in a nested list so the vertical trunk line stops
+// exactly at that item's curve-connection point (its vertical center),
+// never overshooting into the padding/"Add" button area below.
+function useTreeTrunk() {
+  const observerRef = React.useRef<ResizeObserver | null>(null);
+  const cleanupsRef = React.useRef<Map<HTMLElement, { mo: MutationObserver; lastObserved: HTMLElement | null }>>(new Map());
+
+  // Finds the last-item marker that belongs to THIS root's own list, not a
+  // nested descendant list (e.g. a chapter root must not pick up a topic's
+  // or subtopic's own last-item marker several levels deeper).
+  const findOwnLastItem = React.useCallback((root: HTMLElement): HTMLElement | null => {
+    const candidates = root.querySelectorAll('[data-last-item="true"]');
+    for (let i = 0; i < candidates.length; i++) {
+      const el = candidates[i] as HTMLElement;
+      const nearestRoot = el.parentElement?.closest('[data-trunk-root]');
+      if (nearestRoot === root) return el;
+    }
+    return null;
+  }, []);
+
+  const sync = React.useCallback((container: HTMLElement) => {
+    const trunk = container.querySelector('[data-trunk]') as HTMLElement | null;
+    if (!trunk) return;
+    const lastItem = findOwnLastItem(container);
+    if (!lastItem) { trunk.style.height = '0px'; return; }
+    const contTop = container.getBoundingClientRect().top;
+    const rect = lastItem.getBoundingClientRect();
+    trunk.style.height = `${Math.max(0, rect.top - contTop + rect.height / 2)}px`;
+  }, [findOwnLastItem]);
+
+  const registerRoot = React.useCallback((el: HTMLDivElement | null) => {
+    const existing = cleanupsRef.current;
+    if (!el) return;
+    if (!observerRef.current) {
+      observerRef.current = new ResizeObserver((entries) => {
+        entries.forEach((entry) => {
+          const root = (entry.target as HTMLElement).closest('[data-trunk-root]') as HTMLElement | null;
+          if (root) sync(root);
+        });
+      });
+    }
+    el.setAttribute('data-trunk-root', 'true');
+    const reobserve = () => {
+      sync(el);
+      observerRef.current!.observe(el);
+      const entry = existing.get(el);
+      const lastItem = findOwnLastItem(el);
+      if (entry?.lastObserved && entry.lastObserved !== lastItem) {
+        observerRef.current!.unobserve(entry.lastObserved);
+      }
+      if (lastItem) observerRef.current!.observe(lastItem);
+      existing.set(el, { mo: existing.get(el)?.mo ?? mo, lastObserved: lastItem });
+    };
+    const mo = new MutationObserver(() => reobserve());
+    mo.observe(el, { childList: true, subtree: true });
+    existing.set(el, { mo, lastObserved: null });
+    reobserve();
+
+    // React 19 ref-callback cleanup: runs when this specific root unmounts
+    // or is replaced, tearing down only that root's observers (not the
+    // shared ResizeObserver used by every other trunk root on the page).
+    return () => {
+      const entry = existing.get(el);
+      if (entry) {
+        entry.mo.disconnect();
+        if (entry.lastObserved) observerRef.current?.unobserve(entry.lastObserved);
+      }
+      observerRef.current?.unobserve(el);
+      existing.delete(el);
+    };
+  }, [sync, findOwnLastItem]);
+
+  React.useEffect(() => {
+    return () => {
+      cleanupsRef.current.forEach(({ mo }) => mo.disconnect());
+      cleanupsRef.current.clear();
+      observerRef.current?.disconnect();
+      observerRef.current = null;
+    };
+  }, []);
+
+  return registerRoot;
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────
+export function Subjects() {
+  const {
+    subjects, addSubject, deleteSubject, updateSubjectDays, updateSubjectMeta,
+    updateChapterMeta, updateTopicMeta, updateSubtopicMeta, updateConceptMeta, updatePointMeta,
+    addChapter, deleteChapter, toggleChapterComplete,
+    addTopic, deleteTopic, toggleTopicComplete,
+    addSubtopic, deleteSubtopic, toggleSubtopicComplete,
+    addConcept, deleteConcept, toggleConceptComplete,
+    addPoint, deletePoint, togglePointComplete,
+    setNote, resetSubjectProgress,
+    reorderSubjects, reorderChapters, reorderTopics, reorderSubtopics, reorderConcepts, reorderPoints,
+  } = useStudy();
+  const { t, lang } = useLang();
+  const { sharedCoursesMeta, activeCourseId } = useCourse();
+  const { user } = useAuth();
+  const { isAdmin, appContact } = useAdmin();
+
+  // If the active course was received via admin share, look up its permissions.
+  // undefined means the course is owned by the user — no restrictions.
+  const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
+  // Can the user add subjects/chapters/topics/subtopics/concepts/points?
+  const canAddItems = !activeSharedMeta || activeSharedMeta.permissions.addItems !== false;
+  // Can the user edit/delete/reorder items? Never allowed for shared courses.
+  const canEditItems = !activeSharedMeta;
+
+  const [reorderMode, setReorderMode] = useState(false);
+  const registerTrunkRoot = useTreeTrunk();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 1500, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleSubjDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const fromIdx = subjects.findIndex(s => s.id === active.id);
+    const toIdx = subjects.findIndex(s => s.id === over.id);
+    if (fromIdx !== -1 && toIdx !== -1) reorderSubjects(fromIdx, toIdx);
+  };
+
+  // ─── Filter / marks state ─────────────────────────────────────────────
+  const [filter, setFilter] = useState<StatusFilter>('all');
+  const [importantOnly, setImportantOnly] = useState(false);
+  const [weakOnly, setWeakOnly] = useState(false);
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+
+  // Reset accordion when any filter changes
+  useEffect(() => { setExpandedGroupId(null); }, [filter, importantOnly, weakOnly]);
+
+  // Single note modal for any level
+  const [notePath, setNotePath] = useState<MarkPath | null>(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  const openNote = (path: MarkPath, current: string) => {
+    setNotePath(path);
+    setNoteDraft(current);
+  };
+  const closeNote = () => { setNotePath(null); setNoteDraft(''); };
+  const saveNote = () => {
+    if (!notePath) return;
+    // Guard: respect editNotes permission for shared courses
+    if (activeSharedMeta && !activeSharedMeta.permissions.editNotes) { closeNote(); return; }
+    setNote(notePath, noteDraft);
+    closeNote();
+  };
+
+  // Expanded state per level
+  const [expandedSubj, setExpandedSubj] = useState<string | null>(null);
+  const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
+  const [expandedTopic, setExpandedTopic] = useState<string | null>(null);
+  const [expandedSubtopic, setExpandedSubtopic] = useState<string | null>(null);
+  const [expandedConcept, setExpandedConcept] = useState<string | null>(null);
+
+  // Auto-expand to a specific item when navigating from Global Search
+  useEffect(() => {
+    const stored = sessionStorage.getItem('study_nav_target');
+    if (!stored) return;
+    try {
+      const nav = JSON.parse(stored);
+      if (!['subject','chapter','topic','subtopic','concept','point','tempNote'].includes(nav.kind)) return;
+      sessionStorage.removeItem('study_nav_target');
+      if (nav.subjectId) setExpandedSubj(nav.subjectId);
+      if (nav.chapterId) setExpandedChapter(nav.chapterId);
+      if (nav.topicId) setExpandedTopic(nav.topicId);
+      if (nav.subtopicId) setExpandedSubtopic(nav.subtopicId);
+      if (nav.conceptId) setExpandedConcept(nav.conceptId);
+      // Scroll to the deepest expanded item after a brief delay
+      const targetId = nav.pointId || nav.conceptId || nav.subtopicId || nav.topicId || nav.chapterId || nav.subjectId;
+      if (targetId) {
+        setTimeout(() => {
+          const el = document.getElementById(`study-item-${targetId}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 350);
+      }
+    } catch {}
+  }, []); // eslint-disable-line
+
+  const toggleSubj = (id: string) => {
+    setExpandedSubj(e => e === id ? null : id);
+    setExpandedChapter(null); setExpandedTopic(null); setExpandedSubtopic(null); setExpandedConcept(null);
+  };
+  const toggleChapter = (id: string) => {
+    setExpandedChapter(e => e === id ? null : id);
+    setExpandedTopic(null); setExpandedSubtopic(null); setExpandedConcept(null);
+  };
+  const toggleTopic = (id: string) => {
+    setExpandedTopic(e => e === id ? null : id);
+    setExpandedSubtopic(null); setExpandedConcept(null);
+  };
+  const toggleSubtopicExpand = (id: string) => {
+    setExpandedSubtopic(e => e === id ? null : id);
+    setExpandedConcept(null);
+  };
+  const toggleConceptExpand = (id: string) => setExpandedConcept(e => e === id ? null : id);
+
+  // Modal state
+  type ModalType = null | 'add' | 'edit' | 'days' | 'delete';
+  const [modal, setModal] = useState<ModalType>(null);
+  const [activePath, setActivePath] = useState<ActivePath>({
+    subjId: '', chapterId: '', topicId: '', subtopicId: '', conceptId: '', pointId: '', level: 'subject'
+  });
+  const [formTitle, setFormTitle] = useState('');
+  const [formDays, setFormDays] = useState('');
+  const [formDifficulty, setFormDifficulty] = useState<DifficultyLevel>('easy');
+
+  // Slider state for time
+  const [sliderMonths, setSliderMonths] = useState(0);
+  const [sliderDays, setSliderDays] = useState(0);
+  const [sliderHours, setSliderHours] = useState(0);
+  const [sliderMins, setSliderMins] = useState(0);
+
+  // ─── Reset subject progress state ────────────────────────────────────
+  const [resetConfirmSubjId, setResetConfirmSubjId] = useState<string | null>(null);
+
+  const resetSliders = () => { setSliderMonths(0); setSliderDays(0); setSliderHours(0); setSliderMins(0); };
+  const resetForm = () => { setFormTitle(''); setFormDays(''); setFormDifficulty('easy'); resetSliders(); };
+  const closeModal = () => { setModal(null); resetForm(); };
+
+  const openAdd = (level: LevelType, path: Partial<ActivePath>) => {
+    setActivePath(prev => ({ ...prev, ...path, level }));
+    resetForm();
+    setModal('add');
+  };
+
+  const openEdit = (level: LevelType, path: Partial<ActivePath>, currentTitle: string, currentMins?: number, currentDays?: number, currentDifficulty?: DifficultyLevel) => {
+    setActivePath(prev => ({ ...prev, ...path, level }));
+    setFormTitle(currentTitle);
+    if (currentDays !== undefined) setFormDays(currentDays.toString());
+    else setFormDays('');
+    if (currentDifficulty) setFormDifficulty(currentDifficulty);
+    else setFormDifficulty('easy');
+    if (currentMins && currentMins > 0) {
+      const { months, days, hours, mins } = minutesToSliders(currentMins);
+      setSliderMonths(months);
+      setSliderDays(days);
+      setSliderHours(hours);
+      setSliderMins(mins);
+    } else {
+      resetSliders();
+    }
+    setModal('edit');
+  };
+
+  const openDelete = (level: LevelType, path: Partial<ActivePath>) => {
+    setActivePath(prev => ({ ...prev, ...path, level }));
+    setModal('delete');
+  };
+
+  const totalMins = totalMinsFromSliders(sliderMonths, sliderDays, sliderHours, sliderMins);
+  // Show time picker for all levels except subject (in edit) and except point
+  const showTimePicker = activePath.level !== 'point' && !(modal === 'edit' && activePath.level === 'subject');
+
+  const handleSave = () => {
+    if (!formTitle.trim()) return;
+    const { subjId, chapterId, topicId, subtopicId, conceptId, pointId, level } = activePath;
+    const mins = totalMins;
+
+    if (modal === 'add') {
+      const diff = formDifficulty;
+      if (level === 'subject') {
+        addSubject({ title: formTitle, color: getRandomColor(), allocatedDays: parseInt(formDays) || 0, manualDays: !!formDays, deadline: new Date().toISOString(), totalMinutes: mins || 1200 });
+      } else if (level === 'chapter') {
+        addChapter(subjId, { title: formTitle, totalMinutes: mins, ...(mins > 0 ? { estimatedMinutes: mins } : {}), ...(diff !== undefined ? { difficulty: diff } : {}) });
+      } else if (level === 'topic') {
+        addTopic(subjId, chapterId, { title: formTitle, totalMinutes: mins, ...(mins > 0 ? { estimatedMinutes: mins } : {}), ...(diff !== undefined ? { difficulty: diff } : {}) });
+      } else if (level === 'subtopic') {
+        addSubtopic(subjId, chapterId, topicId, { title: formTitle, ...(mins > 0 ? { estimatedMinutes: mins } : {}), ...(diff !== undefined ? { difficulty: diff } : {}) });
+      } else if (level === 'concept') {
+        addConcept(subjId, chapterId, topicId, subtopicId, { title: formTitle, ...(mins > 0 ? { estimatedMinutes: mins } : {}), ...(diff !== undefined ? { difficulty: diff } : {}) });
+      } else if (level === 'point') {
+        addPoint(subjId, chapterId, topicId, subtopicId, conceptId, { title: formTitle, difficulty: diff });
+      }
+    } else if (modal === 'edit') {
+      const newMins = mins > 0 ? mins : undefined;
+      const diff = formDifficulty;
+      if (level === 'subject') {
+        updateSubjectMeta(subjId, formTitle);
+        const parsedDays = parseInt(formDays);
+        if (!isNaN(parsedDays) && parsedDays > 0) updateSubjectDays(subjId, parsedDays);
+      }
+      else if (level === 'chapter') updateChapterMeta(subjId, chapterId, formTitle, newMins, diff);
+      else if (level === 'topic') updateTopicMeta(subjId, chapterId, topicId, formTitle, newMins, diff);
+      else if (level === 'subtopic') updateSubtopicMeta(subjId, chapterId, topicId, subtopicId, formTitle, newMins, diff);
+      else if (level === 'concept') updateConceptMeta(subjId, chapterId, topicId, subtopicId, conceptId, formTitle, newMins, diff);
+      else if (level === 'point') updatePointMeta(subjId, chapterId, topicId, subtopicId, conceptId, pointId, formTitle, diff);
+    } else if (modal === 'days') {
+      if (formDays) updateSubjectDays(subjId, parseInt(formDays));
+    }
+    closeModal();
+  };
+
+  const handleDelete = () => {
+    const { subjId, chapterId, topicId, subtopicId, conceptId, pointId, level } = activePath;
+    if (level === 'subject') deleteSubject(subjId);
+    else if (level === 'chapter') deleteChapter(subjId, chapterId);
+    else if (level === 'topic') deleteTopic(subjId, chapterId, topicId);
+    else if (level === 'subtopic') deleteSubtopic(subjId, chapterId, topicId, subtopicId);
+    else if (level === 'concept') deleteConcept(subjId, chapterId, topicId, subtopicId, conceptId);
+    else if (level === 'point') deletePoint(subjId, chapterId, topicId, subtopicId, conceptId, pointId);
+    closeModal();
+  };
+
+  const levelTitleKey: Record<LevelType, string> = {
+    subject: 'addSubject', chapter: 'addChapter', topic: 'addTopic',
+    subtopic: 'addSubtopic', concept: 'addConcept', point: 'addPoint',
+  };
+  const deleteTitleKey: Record<LevelType, string> = {
+    subject: 'deleteSubject', chapter: 'deleteChapter', topic: 'deleteTopic',
+    subtopic: 'deleteSubtopic', concept: 'deleteConcept', point: 'deletePoint',
+  };
+  const levelIcon: Record<LevelType, any> = {
+    subject: BookOpen, chapter: FolderPlus, topic: Layers,
+    subtopic: List, concept: Lightbulb, point: Dot,
+  };
+
+  const modalTitle = modal === 'edit'
+    ? `${t('edit')}: ${formTitle || '...'}`
+    : t(levelTitleKey[activePath.level] as Parameters<typeof t>[0]);
+  const ModalIcon = levelIcon[activePath.level];
+
+  // ─── Apply filter to subject list ───────────────────────────────────────
+  const subjectMatchesMarks = (s: Subject): boolean => {
+    if (importantOnly && !s.important && !subjectHasDeepFlag(s, 'important')) return false;
+    if (weakOnly && !s.weak && !subjectHasDeepFlag(s, 'weak')) return false;
+    return true;
+  };
+  const filteredSubjects = useMemo(() => {
+    return subjects.filter(s =>
+      matchesStatus(subjectStatus(s), filter) && subjectMatchesMarks(s)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjects, filter, importantOnly, weakOnly]);
+
+  return (
+    <Layout>
+      {/* ── Gradient header banner ── */}
+      <div className="sticky top-0 z-20 relative overflow-hidden rounded-b-2xl" style={{ background: 'linear-gradient(135deg, hsl(192 85% 45%) 0%, hsl(210 80% 52%) 50%, hsl(243 88% 62%) 100%)' }}>
+        <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl" />
+        <div className="relative px-5 pt-5 pb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <button onClick={() => window.location.reload()} className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0 cursor-pointer hover:bg-white/30 transition-colors active:scale-95" title="Reload">
+              <BookOpen size={22} className="text-white" strokeWidth={2.2} />
+            </button>
+            <div className="min-w-0">
+              <h1 className="font-bold text-white leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(1.05rem, 5.5vw, 1.5rem)', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('subjects')}</h1>
+              {activeSharedMeta && (
+                <p className="text-[10px] text-white/75 font-medium mt-0.5 truncate flex items-center gap-1 flex-wrap">
+                  <span>🔗 {lang === 'bn' ? 'শেয়ার্ড কোর্স' : 'Shared'} · {activeSharedMeta.fromAdminName}</span>
+                  {activeSharedMeta.actualExpiresAt && (
+                    <span className="font-mono font-bold tabular-nums text-white/90">
+                      · <Countdown targetMs={activeSharedMeta.actualExpiresAt} lang={lang} />
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {canEditItems && (
+              <motion.div whileTap={{ scale: 0.95 }}>
+                <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
+                  <button
+                    type="button"
+                    onClick={() => setReorderMode(v => !v)}
+                    className={`spin-border-inner h-7 w-7 flex items-center justify-center transition-all ${
+                      reorderMode
+                        ? 'bg-white text-indigo-600 shadow-md'
+                        : 'bg-white/15 text-white hover:bg-white/25'
+                    }`}
+                    title={reorderMode ? 'Reorder Mode বন্ধ করুন' : 'Reorder Mode চালু করুন'}
+                  >
+                    <ArrowUpDown size={13} />
+                  </button>
+                </span>
+              </motion.div>
+            )}
+            {canAddItems && (
+              <motion.div whileTap={{ scale: 0.95 }}>
+                <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
+                  <button
+                    className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
+                    onClick={() => openAdd('subject', {})}
+                  >
+                    <Plus size={12} /> {t('addSubject')}
+                  </button>
+                </span>
+              </motion.div>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="p-5">
+        {/* ─── Quick to-do notes (Temp Notes) ──────────────────────── */}
+        <TempNoteSection />
+
+        {/* ─── Filter chip bar ────────────────────────────────────────── */}
+        {subjects.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 flex items-center gap-1.5 flex-wrap"
+          >
+            <Filter size={13} className="text-muted-foreground mr-0.5" />
+            {([
+              ['all',         t('filterAll'),         'bg-primary text-primary-foreground'],
+              ['inProgress',  t('filterInProgress'),  'bg-amber-500 text-white'],
+              ['completed',   t('filterCompleted'),   'bg-green-500 text-white'],
+              ['notStarted',  t('filterNotStarted'),  'bg-slate-500 text-white'],
+            ] as const).map(([key, label, activeCls]) => {
+              const isActive = filter === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setFilter(f => (key === 'all' || f !== key) ? key : 'all')}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all ${
+                    isActive
+                      ? `${activeCls} border-transparent shadow-sm`
+                      : 'bg-card text-muted-foreground border-border/60 hover:bg-secondary'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+            <span className="mx-1 text-muted-foreground/40">|</span>
+            <button
+              type="button"
+              onClick={() => setImportantOnly(v => !v)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1 transition-all ${
+                importantOnly
+                  ? 'bg-yellow-400 text-yellow-900 border-yellow-500 shadow-sm'
+                  : 'bg-card text-muted-foreground border-border/60 hover:bg-secondary'
+              }`}
+            >
+              <Star size={11} fill={importantOnly ? 'currentColor' : 'none'} />
+              {t('importantOnly')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setWeakOnly(v => !v)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1 transition-all ${
+                weakOnly
+                  ? 'bg-rose-500 text-white border-rose-600 shadow-sm'
+                  : 'bg-card text-muted-foreground border-border/60 hover:bg-secondary'
+              }`}
+            >
+              <AlertTriangle size={11} fill={weakOnly ? 'currentColor' : 'none'} />
+              {t('weakOnly')}
+            </button>
+          </motion.div>
+        )}
+
+        {/* Empty state */}
+        {subjects.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center py-12 text-center px-6"
+          >
+            <motion.div
+              animate={{ y: [0, -10, 0] }}
+              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+              className="mb-4 w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center"
+            >
+              <BookOpen size={28} className="text-primary" />
+            </motion.div>
+            <h3 className="text-lg font-bold text-foreground mb-1.5">
+              {t('noSubjectsYet')}
+            </h3>
+            <p className="text-muted-foreground text-sm mb-6 leading-relaxed">
+              {t('addFirstSubject')}
+            </p>
+            {canAddItems && (
+              <motion.div whileTap={{ scale: 0.95 }}>
+                <Button
+                  variant="primary"
+                  className="py-3 px-6 rounded-2xl text-sm gap-2 shadow-lg shadow-primary/25"
+                  onClick={() => openAdd('subject', {})}
+                >
+                  <Plus size={18} /> {t('addSubject')}
+                </Button>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+
+        {/* No-filter-results state */}
+        {subjects.length > 0 && filteredSubjects.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-12 text-muted-foreground bg-card border border-dashed border-border/50 rounded-2xl"
+          >
+            <Filter size={32} className="mx-auto mb-3 opacity-30" />
+            <p className="font-semibold text-sm">{t('noResultsForFilter')}</p>
+            <button
+              onClick={() => { setFilter('all'); setImportantOnly(false); setWeakOnly(false); }}
+              className="mt-3 px-3 py-1 text-xs font-bold text-primary hover:underline"
+            >
+              {t('filterAll')}
+            </button>
+          </motion.div>
+        )}
+
+        {/* ─── Grouped marked-items view (when Important/Weak filter is on) ─── */}
+        {(importantOnly || weakOnly) && subjects.length > 0 && (() => {
+          const flagged = gatherFlaggedItems(subjects, { important: importantOnly, weak: weakOnly });
+          if (flagged.length === 0) return null;
+
+          // Group items by subject, preserving subject order
+          // Also apply status filter (AND logic with mark filter)
+          const groups = subjects
+            .filter(s => filter === 'all' || matchesStatus(subjectStatus(s), filter))
+            .map(s => ({
+              subjectId: s.id,
+              subjectTitle: s.title,
+              subjectColor: s.color,
+              items: flagged.filter(f => f.subjectId === s.id),
+            }))
+            .filter(g => g.items.length > 0);
+
+          return (
+            <div className="space-y-2">
+              {groups.map((group, gi) => {
+                const isOpen = expandedGroupId === group.subjectId;
+                return (
+                  <motion.div
+                    key={group.subjectId}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: gi * 0.04 }}
+                    className="bg-card border border-border/60 rounded-2xl overflow-hidden"
+                  >
+                    {/* Subject header — clickable accordion trigger */}
+                    <button
+                      type="button"
+                      onClick={() => setExpandedGroupId(isOpen ? null : group.subjectId)}
+                      className="w-full px-4 py-3 flex items-center gap-2.5 hover:bg-secondary/40 transition-colors text-left"
+                      style={{ borderLeftColor: group.subjectColor, borderLeftWidth: 4 }}
+                    >
+                      <span className="text-sm font-bold text-foreground flex-1">{group.subjectTitle}</span>
+                      <span className="text-[10px] font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full border border-border/60 shrink-0">
+                        {group.items.length}
+                      </span>
+                      <motion.span
+                        animate={{ rotate: isOpen ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="shrink-0 text-muted-foreground"
+                      >
+                        <ChevronDown size={15} />
+                      </motion.span>
+                    </button>
+
+                    {/* Items — shown only when expanded */}
+                    <AnimatePresence initial={false}>
+                      {isOpen && (
+                        <motion.ul
+                          key="items"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.22, ease: 'easeInOut' }}
+                          className="divide-y divide-border/40 overflow-hidden border-t border-border/50"
+                        >
+                          {group.items.map((it, i) => (
+                            <li key={`${it.level}-${i}`} className="px-4 py-3 group/row hover:bg-secondary/30 transition-colors">
+                              <div className="flex items-start gap-2.5">
+                                <div className="flex-1 min-w-0">
+                                  {/* Breadcrumb (excluding subject name since it's the header) */}
+                                  {it.breadcrumb.slice(1).length > 0 && (
+                                    <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground font-medium mb-1.5 leading-relaxed">
+                                      {it.breadcrumb.slice(1).map((c, ci) => (
+                                        <React.Fragment key={ci}>
+                                          {ci > 0 && <ChevronRight size={8} className="opacity-40 shrink-0" />}
+                                          <span className="max-w-[140px] truncate">{c}</span>
+                                        </React.Fragment>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {/* Level tag + title */}
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border/60 shrink-0">
+                                      {it.level}
+                                    </span>
+                                    <h4 className="text-sm font-bold text-foreground flex-1 min-w-0">{it.title}</h4>
+                                  </div>
+                                  {/* Marks badges */}
+                                  <div className="mt-1.5">
+                                    <MarksBadgeRow
+                                      important={it.important}
+                                      weak={it.weak}
+                                      note={it.note}
+                                      onClickNote={() => openNote(it.path, it.note ?? '')}
+                                    />
+                                  </div>
+                                </div>
+                                <ItemActions
+                                  path={it.path}
+                                  important={it.important}
+                                  weak={it.weak}
+                                  hasNote={!!it.note}
+                                  currentNote={it.note}
+                                  onOpenNote={openNote}
+                                  size="sm"
+                                  alwaysVisible
+                                />
+                              </div>
+                            </li>
+                          ))}
+                        </motion.ul>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {/* ─── Full subjects list (hidden when Important/Weak filter is active) ─── */}
+        {!importantOnly && !weakOnly && (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSubjDragEnd}>
+          <SortableContext items={filteredSubjects.map(s => s.id)} strategy={verticalListSortingStrategy}>
+          <AnimatePresence>
+          <div className="space-y-4">
+            {filteredSubjects.map((subj, idx) => {
+              const isExpanded = expandedSubj === subj.id;
+              const chapterCount = subj.chapters.length;
+              const completedChapters = subj.chapters.filter(c => isChapterContentDone(c)).length;
+              const counts = chapterCounts(subj);
+              const prog = chapterCount === 0 ? 0 : (completedChapters / chapterCount) * 100;
+              const overviewProg = chapterCount === 0 ? 0 : (counts.overviewOnly / chapterCount) * 100;
+              const subjPath: MarkPath = { subjectId: subj.id, level: 'subject' };
+
+              return (
+                <SortableItemWrapper key={subj.id} id={subj.id} reorderMode={reorderMode}>
+                {(subjHandle) => (
+                <ScrollReveal direction="right" delay={idx * 0.08}>
+                <motion.div
+                  id={`study-item-${subj.id}`}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  className="relative bg-card rounded-2xl shadow-sm border-2 overflow-hidden card-hover" style={{ borderColor: "rgba(148,163,184,0.55)" }}
+                >
+                  <div className="absolute left-0 top-0 bottom-0 w-1.5 z-10" style={{ backgroundColor: subj.color }} />
+                  {/* Subject header */}
+                  <div
+                    className="p-3 relative flex items-center justify-between cursor-pointer active:bg-secondary/40 transition-colors group/row"
+                    onClick={() => toggleSubj(subj.id)}
+                  >
+                    <div className="pl-3 flex-1 min-w-0">
+                      {/* Title */}
+                      <h3 className="font-bold text-foreground text-base leading-tight mb-0.5 break-words">{subj.title}</h3>
+                      {/* Badges row — L1, days, status badges, marks */}
+                      <div className="flex items-center gap-1 flex-nowrap overflow-hidden mb-1">
+                        <span className="text-[9px] font-bold text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded border border-border/40">L1</span>
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            setActivePath(prev => ({ ...prev, subjId: subj.id, level: 'subject' }));
+                            setFormDays(subj.allocatedDays.toString());
+                            setModal('days');
+                          }}
+                          className="px-1.5 py-0.5 bg-secondary text-muted-foreground text-[10px] font-bold rounded-md border border-border/50 cursor-pointer hover:bg-primary/10 transition-colors"
+                        >
+                          {subj.allocatedDays} d
+                        </button>
+                        {subj.chapters.length > 0 && subj.chapters.every(c => isChapterContentDone(c)) && (
+                          <span className="px-1.5 py-0.5 bg-green-500/10 text-green-700 text-[9px] font-bold rounded-md">✓ {t('filterCompleted')}</span>
+                        )}
+                        <MarksBadgeRow important={subj.important} weak={subj.weak} note={subj.note} onClickNote={() => openNote(subjPath, subj.note ?? '')} size="xs" />
+                      </div>
+                      {/* Meta row — chapters count + date */}
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium overflow-hidden">
+                        <span className="whitespace-nowrap">{t('chapters')}: {completedChapters}/{chapterCount}</span>
+                        <span className="shrink-0">•</span>
+                        <span className="whitespace-nowrap shrink-0">{format(parseISO(subj.deadline), 'MMM d, yy')}</span>
+                      </div>
+                      {/* Layered progress bar */}
+                      <div className="mt-2 h-1 w-full bg-secondary rounded-full overflow-hidden relative">
+                        {overviewProg > 0 && (
+                          <motion.div
+                            className="absolute left-0 top-0 h-full opacity-40"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${prog + overviewProg}%` }}
+                            transition={{ duration: 0.6, ease: 'easeOut' }}
+                            style={{ backgroundColor: subj.color }}
+                          />
+                        )}
+                        <motion.div
+                          className="absolute left-0 top-0 h-full"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${prog}%` }}
+                          transition={{ duration: 0.6, ease: 'easeOut' }}
+                          style={{ backgroundColor: subj.color }}
+                        />
+                      </div>
+                    </div>
+                    {/* Action buttons — compact two-row layout */}
+                    <div className="flex flex-col items-end gap-0.5 pl-1 shrink-0">
+                      <div className="flex items-center gap-0">
+                        <ItemActions
+                          path={subjPath}
+                          important={subj.important}
+                          weak={subj.weak}
+                          hasNote={!!subj.note}
+                          currentNote={subj.note}
+                          onOpenNote={openNote}
+                          size="sm"
+                        />
+                      </div>
+                      <div className="flex items-center gap-0">
+                        <button
+                          onClick={e => { e.stopPropagation(); setResetConfirmSubjId(subj.id); }}
+                          className="p-1 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 rounded-full transition-colors"
+                          title={t('resetSubject')}
+                        >
+                          <RotateCcw size={11} />
+                        </button>
+                        {canEditItems && <>
+                          <button
+                            onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
+                            className="p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors"
+                          >
+                            <Pencil size={11} />
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }); }}
+                            className="p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-full transition-colors"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </>}
+                        <motion.div
+                          animate={{ rotate: isExpanded ? 90 : 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="text-muted-foreground bg-secondary p-1 rounded-full"
+                        >
+                          <ChevronRight size={12} />
+                        </motion.div>
+                      </div>
+                    </div>
+                    {subjHandle}
+                  </div>
+
+                  {/* Chapters */}
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div {...collapseAnim} className="overflow-hidden bg-indigo-500/[0.04] border-t border-indigo-300/25">
+                        <div className="relative pt-0 px-3 pl-4 ml-2.5" ref={registerTrunkRoot}>
+                          <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-indigo-400/65 pointer-events-none" style={{ height: 0 }} />
+                          <div className="space-y-2">
+                          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
+                            const { active, over } = e;
+                            if (!over || active.id === over.id) return;
+                            const fIdx = subj.chapters.findIndex(c => c.id === active.id);
+                            const tIdx = subj.chapters.findIndex(c => c.id === over.id);
+                            if (fIdx !== -1 && tIdx !== -1) reorderChapters(subj.id, fIdx, tIdx);
+                          }}>
+                          <SortableContext items={subj.chapters.filter(c => matchesStatus(chapterStatus(c), filter)).map(c => c.id)} strategy={verticalListSortingStrategy}>
+                          {(() => { const filteredChapters = subj.chapters.filter(c => matchesStatus(chapterStatus(c), filter)); return filteredChapters
+                            .map((chapter, chIdx) => {
+                            const isLastChapter = chIdx === filteredChapters.length - 1;
+                            // chIdx in filtered list is fine for unlock since filter is purely visual;
+                            // use original index for unlock check
+                            const origChIdx = subj.chapters.findIndex(c => c.id === chapter.id);
+                            const chLocked = !isChapterUnlocked(subj, origChIdx);
+                            const chExpanded = expandedChapter === chapter.id;
+                            const topicCount = chapter.topics.length;
+                            const completedTopics = chapter.topics.filter(t => isTopicContentDone(t)).length;
+                            let chSubtopics = 0, chCompletedSubs = 0;
+                            chapter.topics.forEach(t => { chSubtopics += t.subtopics.length; chCompletedSubs += t.subtopics.filter(s => isSubtopicContentDone(s)).length; });
+                            const chPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, level: 'chapter' };
+                            return (
+                              <SortableItemWrapper key={chapter.id} id={chapter.id} reorderMode={reorderMode}>
+                              {(chHandle) => (
+                              <div className="relative" data-last-item={isLastChapter ? 'true' : undefined}>
+                              <div className="absolute -left-[19px] top-1/2 -translate-y-full h-[24px] w-[19px] border-l-[3px] border-b-[2px] border-indigo-400/65 rounded-bl-[10px] pointer-events-none" />
+                              <motion.div id={`study-item-${chapter.id}`} {...itemAnim} className={`relative bg-indigo-50/60 border-2 rounded-xl overflow-hidden shadow-sm ${chLocked ? 'opacity-70' : ''} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`} style={{ borderColor: chLocked ? "rgba(99,102,241,0.55)" : "rgba(99,102,241,0.65)" }}>
+                                <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-indigo-400/70 rounded-r-full z-10" />
+                                <div
+                                  className="px-3 pt-3 pb-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row relative"
+                                  onClick={() => toggleChapter(chapter.id)}
+                                >
+                                  <p className={`font-semibold text-sm w-full leading-snug break-words ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                    <BookOpen size={11} className="text-primary shrink-0 inline-block mr-1.5 -translate-y-0.5" />
+                                    {chapter.title}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 mt-1.5">
+                                    <button
+                                      onClick={e => { e.stopPropagation(); if (!chLocked) toggleChapterComplete(subj.id, chapter.id); }}
+                                      className={`shrink-0 transition-colors ${chLocked ? 'cursor-not-allowed text-muted-foreground/50' : 'text-muted-foreground hover:text-primary'}`}
+                                      disabled={chLocked}
+                                      title={chLocked ? t('completePrevChapter') : undefined}
+                                    >
+                                      {chLocked ? <Lock size={18} className="text-muted-foreground/50" /> : isChapterContentDone(chapter) ? <CheckCircle2 size={18} className="text-green-500" /> : chapter.completed ? <CheckCircle2 size={18} className="text-amber-600" /> : <Circle size={18} />}
+                                    </button>
+                                    <div className="flex items-center gap-1 flex-wrap">
+                                      <span className="text-[9px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L2</span>
+                                    </div>
+                                    <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                                      <ItemActions
+                                        path={chPath}
+                                        important={chapter.important}
+                                        weak={chapter.weak}
+                                        hasNote={!!chapter.note}
+                                        currentNote={chapter.note}
+                                        onOpenNote={openNote}
+                                        size="sm"
+                                      />
+                                      {canEditItems && <>
+                                        <button
+                                          onClick={e => { e.stopPropagation(); openEdit('chapter', { subjId: subj.id, chapterId: chapter.id }, chapter.title, chapter.estimatedMinutes, undefined, chapter.difficulty); }}
+                                          className="p-1.5 text-muted-foreground hover:text-primary rounded-lg transition-colors"
+                                        >
+                                          <Pencil size={12} />
+                                        </button>
+                                        <button
+                                          onClick={e => { e.stopPropagation(); openDelete('chapter', { subjId: subj.id, chapterId: chapter.id }); }}
+                                          className="p-1.5 text-muted-foreground hover:text-destructive transition-colors rounded-lg"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </>}
+                                      <motion.div animate={{ rotate: chExpanded ? 90 : 0 }} transition={{ duration: 0.18 }}>
+                                        <ChevronRight size={15} className="text-muted-foreground" />
+                                      </motion.div>
+                                      {chHandle}
+                                    </div>
+                                  </div>
+                                  <MarksBadgeRow important={chapter.important} weak={chapter.weak} note={chapter.note} onClickNote={() => openNote(chPath, chapter.note ?? '')} />
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                                    {t('topics')}: {completedTopics}/{topicCount}
+                                    {chSubtopics > 0 ? ` • Subtopics: ${chCompletedSubs}/${chSubtopics}` : ''}
+                                    {chapter.estimatedMinutes ? ` • ${formatTotalTime(chapter.estimatedMinutes, t)}` : ''}
+                                  </p>
+                                </div>
+
+                                {/* Topics */}
+                                <AnimatePresence>
+                                  {chExpanded && (
+                                    <motion.div {...collapseAnim} className="overflow-hidden border-t border-violet-300/25 bg-violet-500/[0.05]">
+                                      <div className="relative pt-0 px-2 pl-8 ml-2.5" ref={registerTrunkRoot}>
+                                        <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-violet-400/65 pointer-events-none" style={{ height: 0 }} />
+                                        <div className="space-y-1.5">
+                                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
+                                          const { active, over } = e;
+                                          if (!over || active.id === over.id) return;
+                                          const fIdx = chapter.topics.findIndex(t => t.id === active.id);
+                                          const tIdx = chapter.topics.findIndex(t => t.id === over.id);
+                                          if (fIdx !== -1 && tIdx !== -1) reorderTopics(subj.id, chapter.id, fIdx, tIdx);
+                                        }}>
+                                        <SortableContext items={chapter.topics.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                                        {chapter.topics.map((topic, topIdx) => {
+                                          const isLastTopic = topIdx === chapter.topics.length - 1;
+                                          const topLocked = chLocked || !isTopicUnlocked(chapter, topIdx);
+                                          const tExpanded = expandedTopic === topic.id;
+                                          const completedSubs = topic.subtopics.filter(s => isSubtopicContentDone(s)).length;
+                                          let topConcepts = 0, topCompletedConcepts = 0;
+                                          topic.subtopics.forEach(s => { topConcepts += s.concepts.length; topCompletedConcepts += s.concepts.filter(c => c.completed).length; });
+                                          const topPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, level: 'topic' };
+                                          return (
+                                            <SortableItemWrapper key={topic.id} id={topic.id} reorderMode={reorderMode}>
+                                            {(topHandle) => (
+                                            <div className="relative" data-last-item={isLastTopic ? 'true' : undefined}>
+                                            <div className="absolute -left-[35px] top-1/2 -translate-y-full h-[22px] w-[35px] border-l-[3px] border-b-[2px] border-violet-400/65 rounded-bl-[10px] pointer-events-none" />
+                                            <motion.div id={`study-item-${topic.id}`} {...itemAnim} className={`relative bg-violet-50/60 border-2 rounded-lg overflow-hidden ${topLocked ? 'opacity-60' : ''} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`} style={{ borderColor: topLocked ? "rgba(139,92,246,0.55)" : "rgba(139,92,246,0.6)" }}>
+                                              <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-violet-400/70 rounded-r-full z-10" />
+                                              <div
+                                                className="px-3 pt-2.5 pb-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
+                                                onClick={() => toggleTopic(topic.id)}
+                                              >
+                                                <p className={`text-xs font-semibold w-full leading-snug ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                  <Layers size={10} className="text-accent-foreground shrink-0 inline-block mr-1.5 -translate-y-0.5" />
+                                                  {topic.title}
+                                                </p>
+                                                <div className="flex items-center gap-1.5 mt-1">
+                                                  <button
+                                                    onClick={e => { e.stopPropagation(); if (!topLocked) toggleTopicComplete(subj.id, chapter.id, topic.id); }}
+                                                    className="shrink-0"
+                                                    disabled={topLocked}
+                                                    title={topLocked ? t('completePrevTopic') : undefined}
+                                                  >
+                                                    {topLocked ? <Lock size={15} className="text-muted-foreground/40" /> : isTopicContentDone(topic) ? <CheckCircle2 size={15} className="text-green-500" /> : topic.completed ? <CheckCircle2 size={15} className="text-amber-600" /> : <Circle size={15} className="text-muted-foreground" />}
+                                                  </button>
+                                                  <div className="flex items-center gap-1 flex-wrap">
+                                                    <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L3</span>
+                                                  </div>
+                                                  <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                                                    <ItemActions
+                                                      path={topPath}
+                                                      important={topic.important}
+                                                      weak={topic.weak}
+                                                      hasNote={!!topic.note}
+                                                      currentNote={topic.note}
+                                                      onOpenNote={openNote}
+                                                      size="sm"
+                                                    />
+                                                    {canEditItems && <>
+                                                      <button
+                                                        onClick={e => { e.stopPropagation(); openEdit('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }, topic.title, topic.estimatedMinutes, undefined, topic.difficulty); }}
+                                                        className="p-1 text-muted-foreground hover:text-primary"
+                                                      >
+                                                        <Pencil size={10} />
+                                                      </button>
+                                                      <button
+                                                        onClick={e => { e.stopPropagation(); openDelete('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }); }}
+                                                        className="p-1 text-muted-foreground hover:text-destructive"
+                                                      >
+                                                        <Trash2 size={11} />
+                                                      </button>
+                                                    </>}
+                                                    <motion.div animate={{ rotate: tExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
+                                                      <ChevronRight size={13} className="text-muted-foreground" />
+                                                    </motion.div>
+                                                    {topHandle}
+                                                  </div>
+                                                </div>
+                                                <MarksBadgeRow size="xs" important={topic.important} weak={topic.weak} note={topic.note} onClickNote={() => openNote(topPath, topic.note ?? '')} />
+                                                <p className="text-[9px] text-muted-foreground mt-0.5">
+                                                  Subtopics: {completedSubs}/{topic.subtopics.length}
+                                                  {topConcepts > 0 ? ` • Concepts: ${topCompletedConcepts}/${topConcepts}` : ''}
+                                                  {topic.estimatedMinutes ? ` • ${formatTotalTime(topic.estimatedMinutes, t)}` : ''}
+                                                </p>
+                                              </div>
+
+                                              {/* Subtopics */}
+                                              <AnimatePresence>
+                                                {tExpanded && (
+                                                  <motion.div {...collapseAnim} className="overflow-hidden border-t border-sky-300/20 bg-sky-500/[0.05]">
+                                                    <div className="relative pt-0 px-2 pl-10 ml-2.5" ref={registerTrunkRoot}>
+                                                      <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-sky-400/65 pointer-events-none" style={{ height: 0 }} />
+                                                      <div className="space-y-1">
+                                                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
+                                                        const { active, over } = e;
+                                                        if (!over || active.id === over.id) return;
+                                                        const fIdx = topic.subtopics.findIndex(s => s.id === active.id);
+                                                        const tIdx = topic.subtopics.findIndex(s => s.id === over.id);
+                                                        if (fIdx !== -1 && tIdx !== -1) reorderSubtopics(subj.id, chapter.id, topic.id, fIdx, tIdx);
+                                                      }}>
+                                                      <SortableContext items={topic.subtopics.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                                                      {topic.subtopics.map((sub, subIdx) => {
+                                                        const isLastSub = subIdx === topic.subtopics.length - 1;
+                                                        const subLocked = topLocked || !isSubtopicUnlocked(topic, subIdx);
+                                                        const subExpanded = expandedSubtopic === sub.id;
+                                                        const completedConcepts = sub.concepts.filter(c => isConceptContentDone(c)).length;
+                                                        let subPoints = 0, subCompletedPoints = 0;
+                                                        sub.concepts.forEach(c => { subPoints += c.points.length; subCompletedPoints += c.points.filter(p => p.completed).length; });
+                                                        const subPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, level: 'subtopic' };
+                                                        return (
+                                                          <SortableItemWrapper key={sub.id} id={sub.id} reorderMode={reorderMode}>
+                                                          {(subHandle) => (
+                                                          <div className="relative" data-last-item={isLastSub ? 'true' : undefined}>
+                                                          <div className="absolute -left-[43px] top-1/2 -translate-y-full h-[20px] w-[43px] border-l-[3px] border-b-[2px] border-sky-400/65 rounded-bl-[10px] pointer-events-none" />
+                                                          <motion.div id={`study-item-${sub.id}`} {...itemAnim} className={`relative bg-sky-50/60 border-2 rounded-lg overflow-hidden ${subLocked ? 'opacity-55' : ''} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`} style={{ borderColor: subLocked ? "rgba(14,165,233,0.5)" : "rgba(14,165,233,0.6)" }}>
+                                                            <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-sky-400/70 rounded-r-full z-10" />
+                                                            <div
+                                                              className="px-2.5 pt-2 pb-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
+                                                              onClick={() => toggleSubtopicExpand(sub.id)}
+                                                            >
+                                                              <p className={`text-[11px] font-medium w-full leading-snug ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                <List size={9} className="text-blue-400 shrink-0 inline-block mr-1.5 -translate-y-0.5" />
+                                                                {sub.title}
+                                                              </p>
+                                                              <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                                                <button onClick={e => { e.stopPropagation(); if (!subLocked) toggleSubtopicComplete(subj.id, chapter.id, topic.id, sub.id); }} disabled={subLocked} title={subLocked ? t('completePrevSubtopic') : undefined} className="shrink-0">
+                                                                  {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : isSubtopicContentDone(sub) ? <CheckCircle2 size={13} className="text-green-500" /> : sub.completed ? <CheckCircle2 size={13} className="text-amber-600" /> : <Circle size={13} className="text-muted-foreground" />}
+                                                                </button>
+                                                                <div className="flex items-center gap-1 flex-wrap">
+                                                                  <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L4</span>
+                                                                </div>
+                                                                <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                                                                  <ItemActions
+                                                                    path={subPath}
+                                                                    important={sub.important}
+                                                                    weak={sub.weak}
+                                                                    hasNote={!!sub.note}
+                                                                    currentNote={sub.note}
+                                                                    onOpenNote={openNote}
+                                                                    size="sm"
+                                                                  />
+                                                                  {canEditItems && <>
+                                                                    <button onClick={e => { e.stopPropagation(); openEdit('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title, sub.estimatedMinutes, undefined, sub.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
+                                                                      <Pencil size={9} />
+                                                                    </button>
+                                                                    <button onClick={e => { e.stopPropagation(); openDelete('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
+                                                                      <Trash2 size={10} />
+                                                                    </button>
+                                                                  </>}
+                                                                  <motion.div animate={{ rotate: subExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
+                                                                    <ChevronRight size={11} className="text-muted-foreground" />
+                                                                  </motion.div>
+                                                                  {subHandle}
+                                                                </div>
+                                                              </div>
+                                                              <MarksBadgeRow size="xs" important={sub.important} weak={sub.weak} note={sub.note} onClickNote={() => openNote(subPath, sub.note ?? '')} />
+                                                              <p className="text-[8px] text-muted-foreground">
+                                                                Concepts: {completedConcepts}/{sub.concepts.length}
+                                                                {subPoints > 0 ? ` • Points: ${subCompletedPoints}/${subPoints}` : ''}
+                                                                {sub.estimatedMinutes ? ` • ${formatTotalTime(sub.estimatedMinutes, t)}` : ''}
+                                                              </p>
+                                                            </div>
+
+                                                            {/* Concepts */}
+                                                            <AnimatePresence>
+                                                              {subExpanded && (
+                                                                <motion.div {...collapseAnim} className="overflow-hidden border-t border-border/20 bg-secondary/10">
+                                                                  <div className="relative ml-2.5 p-1.5 pl-8 space-y-1" ref={registerTrunkRoot}>
+                                                                    <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-fuchsia-400/70 pointer-events-none" style={{ height: 0 }} />
+                                                                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
+                                                                      const { active, over } = e;
+                                                                      if (!over || active.id === over.id) return;
+                                                                      const fIdx = sub.concepts.findIndex(c => c.id === active.id);
+                                                                      const tIdx = sub.concepts.findIndex(c => c.id === over.id);
+                                                                      if (fIdx !== -1 && tIdx !== -1) reorderConcepts(subj.id, chapter.id, topic.id, sub.id, fIdx, tIdx);
+                                                                    }}>
+                                                                    <SortableContext items={sub.concepts.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                                                                    {sub.concepts.map((concept, conIdx) => {
+                                                                      const conLocked = subLocked || !isConceptUnlocked(sub, conIdx);
+                                                                      const cExpanded = expandedConcept === concept.id;
+                                                                      const completedPoints = concept.points.filter(p => p.completed).length;
+                                                                      const conPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, level: 'concept' };
+                                                                      return (
+                                                                        <SortableItemWrapper key={concept.id} id={concept.id} reorderMode={reorderMode}>
+                                                                        {(conHandle) => (
+                                                                         <div className="relative" data-last-item={conIdx === sub.concepts.length - 1 ? 'true' : undefined}>
+                                                                         <div className="absolute -left-[35px] top-1/2 -translate-y-full h-[20px] w-[35px] border-l-[3px] border-b-[2px] border-fuchsia-400/70 rounded-bl-[10px] pointer-events-none" />
+                                                                         <motion.div id={`study-item-${concept.id}`} {...itemAnim} className={`relative bg-fuchsia-50/60 border-2 rounded-lg overflow-hidden ${conLocked ? 'opacity-50' : ''} ${concept.important ? 'ring-1 ring-yellow-300/40' : ''} ${concept.weak ? 'ring-1 ring-rose-300/40' : ''}`} style={{ borderColor: conLocked ? "rgba(232,121,249,0.5)" : "rgba(232,121,249,0.65)" }}>
+                                                                           <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-fuchsia-400/70 rounded-r-full z-10" />
+                                                                          <div
+                                                                             className="px-2 pt-1.5 pb-1 pl-3 cursor-pointer hover:bg-fuchsia-100/50 group/row relative"
+                                                                            onClick={() => toggleConceptExpand(concept.id)}
+                                                                          >
+                                                                            <p className={`text-[10px] font-medium w-full leading-snug ${isConceptContentDone(concept) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                              {concept.title}
+                                                                            </p>
+                                                                            <div className="flex items-center gap-1 mt-0.5">
+                                                                              <button onClick={e => { e.stopPropagation(); if (!conLocked) toggleConceptComplete(subj.id, chapter.id, topic.id, sub.id, concept.id); }} disabled={conLocked} title={conLocked ? t('completePrevConcept') : undefined} className="shrink-0">
+                                                                                {conLocked ? <Lock size={11} className="text-muted-foreground/30" /> : isConceptContentDone(concept) ? <CheckCircle2 size={11} className="text-green-500" /> : concept.completed ? <CheckCircle2 size={11} className="text-amber-600" /> : <Circle size={11} className="text-muted-foreground" />}
+                                                                              </button>
+                                                                              <div className="flex items-center gap-1 flex-wrap">
+                                                                                 <Lightbulb size={8} className="text-fuchsia-500 shrink-0" />
+                                                                                <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L5</span>
+                                                                              </div>
+                                                                              <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                                                                                <ItemActions
+                                                                                  path={conPath}
+                                                                                  important={concept.important}
+                                                                                  weak={concept.weak}
+                                                                                  hasNote={!!concept.note}
+                                                                                  currentNote={concept.note}
+                                                                                  onOpenNote={openNote}
+                                                                                  size="sm"
+                                                                                />
+                                                                                {canEditItems && <>
+                                                                                  <button onClick={e => { e.stopPropagation(); openEdit('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title, concept.estimatedMinutes, undefined, concept.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
+                                                                                    <Pencil size={8} />
+                                                                                  </button>
+                                                                                  <button onClick={e => { e.stopPropagation(); openDelete('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
+                                                                                    <Trash2 size={9} />
+                                                                                  </button>
+                                                                                </>}
+                                                                                <motion.div animate={{ rotate: cExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
+                                                                                  <ChevronRight size={10} className="text-muted-foreground" />
+                                                                                </motion.div>
+                                                                                {conHandle}
+                                                                              </div>
+                                                                            </div>
+                                                                            <MarksBadgeRow size="xs" important={concept.important} weak={concept.weak} note={concept.note} onClickNote={() => openNote(conPath, concept.note ?? '')} />
+                                                                            <p className="text-[8px] text-muted-foreground">
+                                                                              {concept.points.length > 0 ? `Points: ${completedPoints}/${concept.points.length}` : ''}
+                                                                              {concept.estimatedMinutes ? ` • ${formatTotalTime(concept.estimatedMinutes, t)}` : ''}
+                                                                            </p>
+                                                                          </div>
+
+                                                                          {/* Points */}
+                                                                          <AnimatePresence>
+                                                                            {cExpanded && (
+                                                                              <motion.div {...collapseAnim} className="overflow-hidden border-t border-border/10 bg-secondary/10">
+                                                                                 <div className="relative ml-2.5 p-1.5 pl-7 space-y-0.5" ref={registerTrunkRoot}>
+                                                                                   <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-emerald-400/70 pointer-events-none" style={{ height: 0 }} />
+                                                                                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
+                                                                                    const { active, over } = e;
+                                                                                    if (!over || active.id === over.id) return;
+                                                                                    const fIdx = concept.points.findIndex(p => p.id === active.id);
+                                                                                    const tIdx = concept.points.findIndex(p => p.id === over.id);
+                                                                                    if (fIdx !== -1 && tIdx !== -1) reorderPoints(subj.id, chapter.id, topic.id, sub.id, concept.id, fIdx, tIdx);
+                                                                                  }}>
+                                                                                  <SortableContext items={concept.points.map(p => p.id)} strategy={verticalListSortingStrategy}>
+                                                                                  {concept.points.map((point, ptIdx) => {
+                                                                                    const ptLocked = conLocked || !isPointUnlocked(concept, ptIdx);
+                                                                                    const ptPath: MarkPath = { subjectId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id, level: 'point' };
+                                                                                    return (
+                                                                                    <SortableItemWrapper key={point.id} id={point.id} reorderMode={reorderMode}>
+                                                                                    {(ptHandle) => (
+                                                                                     <div className="relative" data-last-item={ptIdx === concept.points.length - 1 ? 'true' : undefined}>
+                                                                                     <div className="absolute -left-[31px] top-1/2 -translate-y-full h-[18px] w-[31px] border-l-[3px] border-b-[2px] border-emerald-400/70 rounded-bl-[10px] pointer-events-none" />
+                                                                                    <motion.div
+                                                                                      id={`study-item-${point.id}`}
+                                                                                      {...itemAnim}
+                                                                                       className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-lg border border-emerald-300/60 bg-emerald-50/40 hover:bg-emerald-50/80 group/row ${ptLocked ? 'opacity-45' : ''} ${point.important ? 'ring-1 ring-yellow-300/40' : ''} ${point.weak ? 'ring-1 ring-rose-300/40' : ''}`}
+                                                                                    >
+                                                                                      <p className={`text-[9px] font-medium w-full ${point.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                                        {point.title}
+                                                                                      </p>
+                                                                                      <div className="flex items-center gap-1.5">
+                                                                                        <button onClick={() => { if (!ptLocked) togglePointComplete(subj.id, chapter.id, topic.id, sub.id, concept.id, point.id); }} disabled={ptLocked} title={ptLocked ? t('completePrevPoint') : undefined} className="shrink-0">
+                                                                                          {ptLocked ? <Lock size={10} className="text-muted-foreground/30" /> : point.completed ? <CheckCircle2 size={10} className="text-green-500" /> : <Circle size={10} className="text-muted-foreground" />}
+                                                                                        </button>
+                                                                                        <Dot size={10} className="text-muted-foreground shrink-0" />
+                                                                                        <span className="text-[7px] font-bold text-muted-foreground/40 bg-secondary/60 px-1 py-0.5 rounded border border-border/20 shrink-0">L6</span>
+                                                                                        <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                                                                                          <ItemActions
+                                                                                            path={ptPath}
+                                                                                            important={point.important}
+                                                                                            weak={point.weak}
+                                                                                            hasNote={!!point.note}
+                                                                                            currentNote={point.note}
+                                                                                            onOpenNote={openNote}
+                                                                                            size="sm"
+                                                                                          />
+                                                                                          {canEditItems && (
+                                                                                            <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-all shrink-0">
+                                                                                              <button onClick={() => openEdit('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title, undefined, undefined, point.difficulty)} className="p-0.5 text-muted-foreground hover:text-primary">
+                                                                                                <Pencil size={8} />
+                                                                                              </button>
+                                                                                              <button onClick={() => openDelete('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id })} className="p-0.5 text-muted-foreground hover:text-destructive">
+                                                                                                <Trash2 size={9} />
+                                                                                              </button>
+                                                                                            </div>
+                                                                                          )}
+                                                                                          {ptHandle}
+                                                                                        </div>
+                                                                                      </div>
+                                                                                      {(point.important || point.weak || point.note) && (
+                                                                                        <div className="ml-6">
+                                                                                          <MarksBadgeRow size="xs" important={point.important} weak={point.weak} note={point.note} onClickNote={() => openNote(ptPath, point.note ?? '')} />
+                                                                                        </div>
+                                                                                      )}
+                                                                                    </motion.div>
+                                                                                     </div>
+                                                                                    )}
+                                                                                    </SortableItemWrapper>
+                                                                                  ); })}
+                                                                                  </SortableContext>
+                                                                                  </DndContext>
+                                                                                  {canAddItems && <button
+                                                                                    onClick={() => openAdd('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id })}
+                                                                                    className="w-full py-1 border border-dashed text-[9px] font-semibold text-foreground/60 rounded-md flex items-center justify-center gap-0.5 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.35)", backgroundColor: "rgba(14,165,233,0.03)" }}
+                                                                                  >
+                                                                                    <Plus size={9} /> {t('addPoint')}
+                                                                                  </button>}
+                                                                                </div>
+                                                                              </motion.div>
+                                                                            )}
+                                                                          </AnimatePresence>
+                                                                        </motion.div>
+                                                                         </div>
+                                                                        )}
+                                                                        </SortableItemWrapper>
+                                                                      );
+                                                                    })}
+                                                                    </SortableContext>
+                                                                    </DndContext>
+                                                                    {canAddItems && <button
+                                                                      onClick={() => openAdd('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id })}
+                                                                      className="w-full py-1.5 border border-dashed text-[10px] font-semibold text-foreground/60 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.4)", backgroundColor: "rgba(14,165,233,0.04)" }}
+                                                                    >
+                                                                      <Plus size={10} /> {t('addConcept')}
+                                                                    </button>}
+                                                                  </div>
+                                                                </motion.div>
+                                                              )}
+                                                            </AnimatePresence>
+                                                          </motion.div>
+                                                          </div>
+                                                          )}
+                                                          </SortableItemWrapper>
+                                                        );
+                                                      })}
+                                                      </SortableContext>
+                                                      </DndContext>
+                                                      </div>
+                                                      </div>
+                                                      <div className="px-2 pl-10 ml-2.5 pt-2 pb-2">
+                                                      {canAddItems && <button
+                                                        onClick={() => openAdd('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id })}
+                                                        className="w-full py-2 border border-dashed text-[10px] font-semibold text-foreground/65 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.45)", backgroundColor: "rgba(14,165,233,0.05)" }}
+                                                      >
+                                                        <Plus size={11} /> {t('addSubtopic')}
+                                                      </button>}
+                                                      </div>
+                                                  </motion.div>
+                                                )}
+                                              </AnimatePresence>
+                                            </motion.div>
+                                            </div>
+                                            )}
+                                            </SortableItemWrapper>
+                                          );
+                                        })}
+                                        </SortableContext>
+                                        </DndContext>
+                                        </div>
+                                        </div>
+                                        <div className="px-2 pl-8 ml-2.5 pt-2 pb-2">
+                                        {canAddItems && <button
+                                          onClick={() => openAdd('topic', { subjId: subj.id, chapterId: chapter.id })}
+                                          className="w-full py-2 border border-dashed text-xs font-semibold text-foreground/65 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(139,92,246,0.45)", backgroundColor: "rgba(139,92,246,0.05)" }}
+                                        >
+                                          <Plus size={12} /> {t('addTopic')}
+                                        </button>}
+                                        </div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </motion.div>
+                              </div>
+                              )}
+                              </SortableItemWrapper>
+                            );
+                          }); })()}
+                          </SortableContext>
+                          </DndContext>
+                          </div>
+                          </div>
+                          <div className="px-3 pl-4 ml-2.5 pt-2 pb-3">
+                          {canAddItems && <button
+                            onClick={() => openAdd('chapter', { subjId: subj.id })}
+                            className="w-full py-3 border-2 border-dashed text-sm font-semibold text-foreground/65 rounded-xl flex items-center justify-center gap-2 transition-colors hover:text-foreground" style={{ borderColor: "rgba(99,102,241,0.5)", backgroundColor: "rgba(99,102,241,0.05)" }}
+                          >
+                            <FolderPlus size={16} /> {t('addChapter')}
+                          </button>}
+                          </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+                </ScrollReveal>
+                )}
+                </SortableItemWrapper>
+              );
+            })}
+          </div>
+          </AnimatePresence>
+          </SortableContext>
+        </DndContext>
+        )}
+
+        {subjects.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-16 text-muted-foreground"
+          >
+            <BookOpen size={48} className="mx-auto mb-4 opacity-30" />
+            <p className="font-semibold text-lg opacity-60">{t('addSubject')}</p>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Add / Edit Modal */}
+      <Modal
+        isOpen={modal === 'add' || modal === 'edit'}
+        onClose={closeModal}
+        title={modalTitle}
+        align="bottom"
+        icon={ModalIcon}
+      >
+        <div className="space-y-5">
+          <Input
+            placeholder={t('title')}
+            value={formTitle}
+            onChange={e => setFormTitle(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSave()}
+            autoFocus
+          />
+
+          {/* Days — for subject add OR subject edit */}
+          {activePath.level === 'subject' && (
+            <div>
+              <Input
+                type="number"
+                placeholder={t('optionalDays')}
+                value={formDays}
+                onChange={e => setFormDays(e.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground mt-1 px-1">{t('autoCalcHint')}</p>
+            </div>
+          )}
+
+          {/* Difficulty selector — for all levels except subject */}
+          {activePath.level !== 'subject' && (modal === 'add' || modal === 'edit') && (
+            <div>
+              <p className="text-xs font-bold text-foreground mb-2">{t('difficultyLabel')}</p>
+              <div className="flex gap-2">
+                {(['easy', 'medium', 'hard'] as const).map(level => (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => setFormDifficulty(level)}
+                    className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold border transition-all ${
+                      formDifficulty === level
+                        ? level === 'easy'   ? 'bg-green-500 text-white border-green-500'
+                        : level === 'medium' ? 'bg-amber-500 text-white border-amber-500'
+                        :                     'bg-red-500 text-white border-red-500'
+                        : 'bg-secondary text-muted-foreground border-border/50 hover:bg-secondary/80'
+                    }`}
+                  >
+                    {level === 'easy' ? t('easy') : level === 'medium' ? t('medium') : t('hard')}
+                    <span className="block text-[9px] font-medium opacity-75 mt-0.5">
+                      {level === 'easy' ? '1×' : level === 'medium' ? '1.5×' : '2×'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1.5 px-1">{t('difficultyHint')}</p>
+            </div>
+          )}
+
+          {/* Time Sliders — for add (not point, not subject), and for edit (not subject, not point) */}
+          {showTimePicker && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-foreground">{t('estimatedTime')}</p>
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${totalMins > 0 ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'}`}>
+                  {formatTotalTime(totalMins, t)}
+                </span>
+              </div>
+              <TimeSlider label={t('months')} value={sliderMonths} max={12} onChange={setSliderMonths} unit={t('months')} />
+              <TimeSlider label={t('days')} value={sliderDays} max={30} onChange={setSliderDays} unit={t('days')} />
+              <TimeSlider label={t('hoursLabel')} value={sliderHours} max={23} onChange={setSliderHours} unit={t('hoursLabel')} />
+              <TimeSlider label={t('minutesLabel')} value={sliderMins} max={59} onChange={setSliderMins} unit={t('minutesLabel')} />
+              {totalMins === 0 && (
+                <p className="text-[10px] text-muted-foreground text-center">{t('autoCalcHint')}</p>
+              )}
+            </div>
+          )}
+
+          <Button className="w-full py-3.5" onClick={handleSave}>{modal === 'edit' ? t('saveChanges') : t('save')}</Button>
+        </div>
+      </Modal>
+
+      {/* Days modal (subject days allocation) */}
+      <Modal isOpen={modal === 'days'} onClose={closeModal} title={t('setDays')} align="bottom">
+        <div className="space-y-4">
+          <Input type="number" placeholder="Days" value={formDays} onChange={e => setFormDays(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} />
+          <Button className="w-full mt-2" onClick={handleSave}>{t('save')}</Button>
+        </div>
+      </Modal>
+
+      {/* Delete confirm */}
+      <ConfirmModal
+        isOpen={modal === 'delete'}
+        onClose={closeModal}
+        onConfirm={handleDelete}
+        title={t(deleteTitleKey[activePath.level] as any)}
+        message={t('deleteConfirmMsg')}
+        confirmText={t('delete')}
+        cancelText={t('cancel')}
+        isDanger={true}
+      />
+
+      {/* Note editor — permissions are enforced for shared courses */}
+      <NoteEditorModal
+        isOpen={!!notePath}
+        onClose={closeNote}
+        title={t('editNote')}
+        notePath={notePath}
+        icon={StickyNote}
+        value={noteDraft}
+        onChange={setNoteDraft}
+        onClear={() => setNoteDraft('')}
+        onSave={saveNote}
+        placeholder={t('notePlaceholder')}
+        clearLabel={t('clearNote')}
+        saveLabel={t('saveNote')}
+        hideCompiler
+        editAllowed={!activeSharedMeta || activeSharedMeta.permissions.editNotes}
+        downloadAllowed={!activeSharedMeta || activeSharedMeta.permissions.downloadNotes}
+        copyAllowed={!activeSharedMeta || activeSharedMeta.permissions.copyNotes}
+        pdfUserEmail={user?.email ?? ''}
+        pdfIsAdmin={isAdmin}
+        pdfIsShared={!!activeSharedMeta}
+        pdfWhatsApp={appContact.whatsapp}
+        pdfWebsite={appContact.website}
+      />
+
+      {/* Reset subject progress confirm */}
+      <ConfirmModal
+        isOpen={!!resetConfirmSubjId}
+        onClose={() => setResetConfirmSubjId(null)}
+        onConfirm={() => {
+          if (resetConfirmSubjId) {
+            resetSubjectProgress(resetConfirmSubjId);
+          }
+          setResetConfirmSubjId(null);
+        }}
+        title={t('resetSubjectTitle')}
+        message={t('resetSubjectConfirm')}
+        confirmText={t('resetSubject')}
+        cancelText={t('cancel')}
+        isDanger={true}
+      />
+
+    </Layout>
+  );
+}

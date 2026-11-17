@@ -1,0 +1,24 @@
+- [Note page write queue](note-page-write-queue.md) — saveNotePage uses a dedup queue + tombstone set; deleteNotePage routes through same queue.
+- [pnpm install workaround](pnpm-install.md) — protobufjs blocked by package firewall; use --registry https://registry.npmjs.org to install.
+- [Firestore 1MB note separation](firestore-note-separation.md) — subject/tempNote rich-text content moved to separate courseNotes doc to stay under 1MB limit.
+- [StudyTrack artifact conversion](studytrack-artifact-conversion.md) — runs as 3 separate artifact workflows now, not one "Start application" workflow.
+- [Firestore cache switch to memory](firestore-memory-cache.md) — switched from persistentLocalCache to memoryLocalCache to fix accumulated-cache silent write failures.
+- [StudyTrack Today-page sync bugs](studytrack-today-sync-bugs.md) — cross-device clock-skew savedAt comparisons, UTC-seeded daily plan RNG, and non-atomic multi-field writes all caused sync/flicker bugs.
+- [StudyTrack granular overall-progress metric](studytrack-granular-progress.md) — every node at every level counts equally toward "Overall Progress"; use computeGranularProgress, don't reinvent the ratio.
+- [Course share accept flow](course-share-accept-flow.md) — snapshot embedded in shareRequest at send-time; copied to user's own collections on accept; permissions enforced via sharedCourses subcollection.
+- [Course share lifecycle features](course-share-lifecycle-features.md) — auto-expiry is always hard-delete, trash is manual-delete-only, partial-subject sharing filters flat notes map by id.
+- [StudyTrack notes-empty-write guard](studytrack-notes-empty-write-guard.md) — the empty-notes safety net must only fire on the first flush of a course session, or it silently blocks real deletes.
+- [StudyTrack subjects-empty guard](studytrack-subjects-empty-guard.md) — blanket "subjects.length===0 -> skip save" blocked notePagesIndex/tempNotes/settings saves too; scope it to first-flush-only like the notes guard.
+- [StudyTrack first-save guards must never block](studytrack-clear-note-first-save.md) — "looks empty on first flush of session" guards must only log, never skip the write — they broke a real user's first clear-note-and-save action.
+- [StudyTrack shared-note PDF + subject-share defaults](studytrack-shared-note-pdf-and-subject-share-defaults.md) — PDF footer needs pdf* props at every NoteEditorModal call site; subject share picker must default to empty, not select-all.
+- [A4 note cross-device sync](a4-note-cross-device-sync.md) — separate note-page docs need a live parent snapshot and chunk re-read; local “Saved” should wait for the queued Firestore write.
+- [StudyTrack share permissions must gate every NoteEditorModal call site](studytrack-share-permissions-every-callsite.md) — editNotes/downloadNotes/copyNotes only work where each page explicitly wires editAllowed/downloadAllowed/copyAllowed + a save-time guard; missed sites silently ignore admin permissions.
+- [Admin expiry and expiryTick ordering](admin-expiry-ordering.md) — expiryTick useState must be declared BEFORE all const computed values that depend on it (adminEmails, visibleAdmins, etc.); declaring it after causes a duplicate-const crash.
+- [Auth and Firestore separation](auth-firestore-separation.md) — auth state must settle independently from optional Firestore profile/data listeners, especially on mobile reconnects.
+- [Personal test privacy](personal-test-privacy.md) — personal test cards use a separate course subcollection and never enter course-share snapshots or admin relays.
+- [Mockup production builds](mockup-build-env.md) — standalone mockup builds need PORT and BASE_PATH defaults because artifact env is injected only by the dev workflow.
+- [Offline reachability checks](offline-reachability.md) — navigator.onLine can be true without internet; verify external reachability before starting auth/data loading.
+- [Course-notes partial commits](course-notes-partial-commits.md) — a fresh courseNotes sidecar can be committed before studyData.hasNotesDoc; recover it by savedAt, not only the marker.
+- [Global save-status tracking](firestore-save-status.md) — user-triggered Firestore writes must use the shared tracker so progress and persistent failures cover every screen.
+- [Fast-close recovery](studytrack-fast-close-recovery.md) — persist the local draft and unsynced marker before debounce/network work; unload hooks are only a backup.
+- [Cross-browser recovery baselines](cross-browser-recovery-baselines.md) — compare pending local content with its original cloud baseline; a later remote edit to the same item resolves stale recovery.

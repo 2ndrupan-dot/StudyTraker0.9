@@ -1,0 +1,4328 @@
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { Subject, Chapter, Topic, Subtopic, Concept, Point, CourseSettings, MarkLevel, MarkPath, TempNoteItem, NotePage, NoteElement } from '@/lib/types';
+import { useAuth } from './AuthContext';
+import { useCourse } from './CourseContext';
+import { addDays, formatISO } from 'date-fns';
+import { nowIST, addDaysIST, toDateStrIST } from '@/lib/istTime';
+import { doc, getDoc, getDocFromServer, getDocs, onSnapshot, collection, query, where, type CollectionReference, type DocumentReference } from 'firebase/firestore';
+import {
+  setDoc, deleteDoc, writeBatch, updateDoc,
+  setDocQuietly,
+} from '@/lib/saveStatus';
+import { db } from '@/lib/firebase';
+import { collectAllIds, filterSubjectsByIds, filterNotesMapByIds } from '@/lib/courseShare';
+import { readLocalCourseSnapshot, writeLocalCourseSnapshot } from '@/lib/localStudyCache';
+
+// Firestore document size limit — documents above this are split across a
+// "chunks" subcollection instead of relying on Firebase Storage (which
+// requires the paid Blaze plan; this app targets the free Spark plan).
+const FIRESTORE_NOTE_LIMIT = 800_000; // 800 KB (Firestore hard limit is 1 MB)
+
+/** Real UTF-8 byte length, reused below for bin-packing chunk sizes. */
+// (byteSize is defined further below; declared here only in comments to avoid
+// forward-reference confusion — see the real definition near the other helpers.)
+
+/** Delete every document in a "chunks" subcollection. Used both to clean up
+ *  stale chunks when data shrinks back under the size limit, and as the first
+ *  step before writing a fresh set of chunks (indices may not line up 1:1
+ *  between saves as content grows/shrinks). */
+async function clearChunks(colRef: CollectionReference, keepGeneration?: string): Promise<void> {
+  const snap = await getDocs(colRef);
+  if (snap.empty) return;
+  const obsolete = snap.docs.filter(d => !keepGeneration || d.data().generation !== keepGeneration);
+  for (let start = 0; start < obsolete.length; start += 400) {
+    const batch = writeBatch(db);
+    obsolete.slice(start, start + 400).forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+}
+
+/** Split a string value that alone exceeds `limit` bytes into ordered parts.
+ *  Encodes each part's key as `${key}\u0001${index}\u0001${total}` so the
+ *  reader can group and reassemble them in order. Values under the limit are
+ *  returned as a single untouched [key, value] pair. */
+function splitLargeValue(key: string, value: string, limit: number): Array<[string, string]> {
+  if (byteSize(value) <= limit) return [[key, value]];
+  const parts: string[] = [];
+  let start = 0;
+  while (start < value.length) {
+    let end = Math.min(value.length, start + limit);
+    while (end > start && byteSize(value.slice(start, end)) > limit) {
+      end = start + Math.max(1, Math.floor((end - start) / 2));
+    }
+    parts.push(value.slice(start, end));
+    start = end;
+  }
+  return parts.map((p, i) => [`${key}\u0001${i}\u0001${parts.length}`, p]);
+}
+
+/** Greedily bin-pack [key, value] string entries into chunk objects that each
+ *  stay under `limit` bytes when JSON-serialised. */
+function packEntries(entries: Array<[string, string]>, limit: number): Array<Record<string, string>> {
+  const chunks: Array<Record<string, string>> = [];
+  let current: Record<string, string> = {};
+  let currentSize = 2; // "{}"
+  for (const [k, v] of entries) {
+    const entrySize = byteSize(JSON.stringify(k)) + byteSize(JSON.stringify(v)) + 1;
+    if (Object.keys(current).length > 0 && currentSize + entrySize > limit) {
+      chunks.push(current);
+      current = {};
+      currentSize = 2;
+    }
+    current[k] = v;
+    currentSize += entrySize;
+  }
+  if (Object.keys(current).length > 0) chunks.push(current);
+  return chunks;
+}
+
+/** Reverse of splitLargeValue + packEntries: merges all chunk entries back
+ *  into a single flat map, rejoining any split values in order. */
+function reassembleEntries(entries: Array<[string, string]>): Record<string, string> {
+  const groups = new Map<string, Array<{ index: number; value: string }>>();
+  const direct: Record<string, string> = {};
+  for (const [k, v] of entries) {
+    const parts = k.split('\u0001');
+    if (parts.length === 3) {
+      const base = parts[0];
+      if (!groups.has(base)) groups.set(base, []);
+      groups.get(base)!.push({ index: Number(parts[1]), value: v });
+    } else {
+      direct[k] = v;
+    }
+  }
+  groups.forEach((parts, base) => {
+    parts.sort((a, b) => a.index - b.index);
+    direct[base] = parts.map(p => p.value).join('');
+  });
+  return direct;
+}
+
+/** Write a set of pre-packed chunk objects to `colRef`, replacing whatever was
+ *  there before (so a shrinking chunk count never leaves stale trailing docs).
+ *
+ *  Entries are stored as an ARRAY of {k, v} pairs rather than a map keyed by
+ *  the raw entry key. Firestore rejects any field name (at any nesting level,
+ *  including map keys) matching `__.*__` as reserved — and some note keys
+ *  (e.g. an "overall notes" entry keyed literally "__overall__") collide with
+ *  that pattern. Arrays have no such restriction since entries aren't field
+ *  names, so this sidesteps the problem entirely regardless of what the key
+ *  looks like. */
+async function writeChunks(colRef: CollectionReference, chunks: Array<Record<string, string>>): Promise<string> {
+  const generation = doc(colRef).id;
+  for (let start = 0; start < chunks.length; start += 400) {
+    const batch = writeBatch(db);
+    chunks.slice(start, start + 400).forEach((data, offset) => {
+      const index = start + offset;
+      const pairs = Object.entries(data).map(([k, v]) => ({ k, v }));
+      batch.set(doc(colRef, `${generation}_${index}`), { generation, data: pairs });
+    });
+    await batch.commit();
+  }
+  return generation;
+}
+
+/** Read a selected generation, or legacy numeric chunk docs, and flatten entries. */
+async function readChunkEntries(
+  colRef: CollectionReference,
+  generation?: string,
+  chunkCount?: number,
+): Promise<Array<[string, string]>> {
+  const snap = generation
+    ? await getDocs(query(colRef, where('generation', '==', generation)))
+    : await getDocs(colRef);
+  const sorted = snap.docs.slice().sort((a, b) => {
+    const index = (id: string) => Number(id.slice(id.lastIndexOf('_') + 1));
+    return generation ? index(a.id) - index(b.id) : Number(a.id) - Number(b.id);
+  });
+  const entries: Array<[string, string]> = [];
+  for (const d of sorted) {
+    const raw = d.data().data;
+    if (Array.isArray(raw)) {
+      // New array-based format: [{k, v}, ...].
+      for (const pair of raw as Array<{ k: string; v: string }>) entries.push([pair.k, pair.v]);
+    } else if (raw && typeof raw === 'object') {
+      // Legacy map-based format from before this fix — still readable so
+      // previously saved chunks don't break.
+      entries.push(...Object.entries(raw as Record<string, string>));
+    }
+  }
+  if (generation && chunkCount && sorted.length !== chunkCount) {
+    throw new Error(`Incomplete note backup: expected ${chunkCount} chunks, received ${sorted.length}`);
+  }
+  return entries;
+}
+
+/** Read the complete companion note document, including chunked note maps. */
+async function readCourseNotes(
+  notesDocRef: DocumentReference,
+): Promise<{ exists: boolean; overallNote: string; notes: Record<string, string> }> {
+  const snap = await getDoc(notesDocRef);
+  if (!snap.exists()) return { exists: false, overallNote: '', notes: {} };
+  const data = snap.data() as {
+    overallNote?: string;
+    notes?: Record<string, string>;
+    chunked?: boolean;
+    chunkGeneration?: string;
+    chunkCount?: number;
+  };
+  if (!data.chunked) {
+    return {
+      exists: true,
+      overallNote: data.overallNote || '',
+      notes: data.notes || {},
+    };
+  }
+  const entries = await readChunkEntries(collection(notesDocRef, 'chunks'), data.chunkGeneration, data.chunkCount);
+  const merged = reassembleEntries(entries);
+  const overallNote = merged['__overall__'] || '';
+  delete merged['__overall__'];
+  return { exists: true, overallNote, notes: merged };
+}
+
+/** Publish a complete note snapshot by staging chunks first and switching the
+ *  parent pointer only after every chunk is present. */
+async function writeCourseNotesSnapshot(
+  notesDocRef: DocumentReference,
+  notesData: { overallNote: string; notes: Record<string, string> },
+  savedAt: number,
+): Promise<void> {
+  const chunksRef = collection(notesDocRef, 'chunks');
+  const dataSize = byteSize(JSON.stringify(notesData));
+  let payload: Record<string, unknown>;
+  if (dataSize > FIRESTORE_NOTE_LIMIT) {
+    const entries: Array<[string, string]> = [];
+    if (notesData.overallNote) entries.push(['__overall__', notesData.overallNote]);
+    for (const [key, value] of Object.entries(notesData.notes)) {
+      if (value) entries.push([key, value]);
+    }
+    const split = entries.flatMap(([key, value]) => splitLargeValue(key, value, FIRESTORE_NOTE_LIMIT));
+    const chunks = packEntries(split, FIRESTORE_NOTE_LIMIT);
+    const chunkGeneration = await writeChunks(chunksRef, chunks);
+    payload = { savedAt, overallNote: '', notes: {}, chunked: true, chunkCount: chunks.length, chunkGeneration };
+  } else {
+    payload = JSON.parse(JSON.stringify({ savedAt, ...notesData, chunked: false }));
+  }
+
+  await setDoc(notesDocRef, payload, { merge: false });
+  await clearChunks(chunksRef, typeof payload.chunkGeneration === 'string' ? payload.chunkGeneration : undefined);
+}
+
+/** Bin-pack a NoteElement array into chunk arrays that each stay under `limit`
+ *  bytes when JSON-serialised (elements themselves are not split further). */
+function packElements(elements: NoteElement[], limit: number): NoteElement[][] {
+  const chunks: NoteElement[][] = [];
+  let current: NoteElement[] = [];
+  let currentSize = 2;
+  for (const el of elements) {
+    const elSize = byteSize(JSON.stringify(el)) + 1;
+    if (current.length > 0 && currentSize + elSize > limit) {
+      chunks.push(current);
+      current = [];
+      currentSize = 2;
+    }
+    current.push(el);
+    currentSize += elSize;
+  }
+  if (current.length > 0 || chunks.length === 0) chunks.push(current);
+  return chunks;
+}
+
+/** Stage a new element-chunk generation without touching the currently active one. */
+async function writeElementChunks(colRef: CollectionReference, chunks: NoteElement[][]): Promise<string> {
+  const generation = doc(colRef).id;
+  for (let start = 0; start < chunks.length; start += 400) {
+    const batch = writeBatch(db);
+    chunks.slice(start, start + 400).forEach((elements, offset) => {
+      const index = start + offset;
+      batch.set(doc(colRef, `${generation}_${index}`), { generation, elements });
+    });
+    await batch.commit();
+  }
+  return generation;
+}
+
+/** Read a selected generation, or legacy numeric chunks, and flatten elements. */
+async function readElementChunks(
+  colRef: CollectionReference,
+  generation?: string,
+  chunkCount?: number,
+): Promise<NoteElement[]> {
+  const snap = generation
+    ? await getDocs(query(colRef, where('generation', '==', generation)))
+    : await getDocs(colRef);
+  const sorted = snap.docs.slice().sort((a, b) => {
+    const index = (id: string) => Number(id.slice(id.lastIndexOf('_') + 1));
+    return generation ? index(a.id) - index(b.id) : Number(a.id) - Number(b.id);
+  });
+  const elements: NoteElement[] = [];
+  for (const d of sorted) elements.push(...((d.data().elements || []) as NoteElement[]));
+  if (generation && chunkCount && sorted.length !== chunkCount) {
+    throw new Error(`Incomplete note page backup: expected ${chunkCount} chunks, received ${sorted.length}`);
+  }
+  return elements;
+}
+
+/**
+ * Firestore rejects documents that contain `undefined` values or `NaN` numbers.
+ * This helper deep-cleans a NotePage so it's always safe to write.
+ */
+function sanitizeForFirestore(page: NotePage): NotePage {
+  const cleanNum = (v: number | undefined, fallback = 0): number =>
+    typeof v === 'number' && isFinite(v) ? v : fallback;
+
+  const cleanElements = (page.elements ?? []).map(el => {
+    const out: Record<string, unknown> = {
+      id: el.id,
+      type: el.type,
+      x: cleanNum(el.x),
+      y: cleanNum(el.y),
+      width: cleanNum(el.width, 100),
+      height: cleanNum(el.height, 40),
+    };
+    if (el.text !== undefined)       out.text       = el.text;
+    if (el.href !== undefined)       out.href       = el.href;
+    if (el.src !== undefined)        out.src        = el.src;
+    if (el.fontSize !== undefined)   out.fontSize   = cleanNum(el.fontSize, 14);
+    if (el.fontWeight !== undefined) out.fontWeight = el.fontWeight;
+    if (el.fontStyle !== undefined)  out.fontStyle  = el.fontStyle;
+    if (el.color !== undefined)      out.color      = el.color;
+    if (el.align !== undefined)      out.align      = el.align;
+    if (el.rotation !== undefined)   out.rotation   = cleanNum(el.rotation, 0);
+    return out;
+  });
+
+  const clean: Record<string, unknown> = {
+    id: page.id,
+    title: page.title ?? 'Untitled',
+    elements: cleanElements,
+    pageCount: cleanNum(page.pageCount, 1),
+    createdAt: cleanNum(page.createdAt, Date.now()),
+    updatedAt: cleanNum(page.updatedAt, Date.now()),
+  };
+  if (page.html !== undefined)   clean.html   = page.html;
+  if (page.chunked !== undefined) {
+    clean.chunked = page.chunked;
+    clean.chunkCount = page.chunkCount ?? 0;
+    if (page.chunkGeneration) clean.chunkGeneration = page.chunkGeneration;
+  }
+  return clean as unknown as NotePage;
+}
+import { applyTimeAdjustment, isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone } from '@/lib/timeEngine';
+import type { DifficultyLevel } from '@/lib/types';
+
+// ── Completion-map helpers for shared-course structural sync ─────────────────
+// When admin pushes a structure update to a user who already accepted the course,
+// we preserve the user's own completion progress and only apply structural changes.
+
+/** Walk the user's subjects tree and record id → completed for every node. */
+function buildCompletionMap(nodes: unknown[], map: Map<string, boolean> = new Map()): Map<string, boolean> {
+  const childKeys = ['chapters', 'topics', 'subtopics', 'concepts', 'points'];
+  for (const n of nodes as Record<string, unknown>[]) {
+    if (typeof n.id === 'string') map.set(n.id, !!n.completed);
+    for (const key of childKeys) {
+      if (Array.isArray(n[key])) buildCompletionMap(n[key] as unknown[], map);
+    }
+  }
+  return map;
+}
+
+/** Apply the completion map to admin's new structure.
+ *  Nodes that existed in the user's tree keep their completed status.
+ *  Brand-new nodes (not in the map) start as incomplete (false). */
+function applyCompletionMap(nodes: unknown[], map: Map<string, boolean>): unknown[] {
+  const childKeys = ['chapters', 'topics', 'subtopics', 'concepts', 'points'];
+  return (nodes as Record<string, unknown>[]).map(n => {
+    const result: Record<string, unknown> = {
+      ...n,
+      completed: map.has(n.id as string) ? map.get(n.id as string) : false,
+    };
+    for (const key of childKeys) {
+      if (Array.isArray(n[key])) result[key] = applyCompletionMap(n[key] as unknown[], map);
+    }
+    return result;
+  });
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+export const newId = uid;
+
+/** Real UTF-8 byte length of a string. Firestore's document size limit is
+ *  measured in bytes, but Bengali (and other non-Latin) text is 3 bytes per
+ *  character in UTF-8 while only 1 UTF-16 code unit in JS string `.length` —
+ *  using `.length` as a proxy for byte size silently undercounts by up to 3x
+ *  and lets oversized documents slip past the Storage-offload check. */
+const byteSize = (s: string): number => new TextEncoder().encode(s).length;
+
+// ─── Note-separation helpers ──────────────────────────────────────────────────
+// Rich-text note content can be very large (the HTML generated by Tiptap wraps
+// every run in <span style="font-size:…">, inflating a 900-word note to >100 KB).
+// Storing many notes inside one Firestore document easily exceeds the 1 MB limit,
+// causing silent "invalid-argument" failures.  We solve this by saving note HTML
+// to a separate "courseNotes/{courseId}" document and stripping it from the main
+// "studyData/{courseId}" document before every Firestore write.
+
+/** Remove all `note` fields from the subjects tree and temp-notes, collecting
+ *  them in a flat map keyed by the item's own id.  Returns the stripped copies
+ *  and the map — does NOT mutate the originals. */
+function extractNotes(
+  subjects: Subject[],
+  tempNotes: TempNoteItem[],
+): { subjects: Subject[]; tempNotes: TempNoteItem[]; notes: Record<string, string> } {
+  const notes: Record<string, string> = {};
+
+  const stripPt  = (pt:  Point):    Point    => { if (pt.note)  notes[`pt:${pt.id}`]  = pt.note;  return { ...pt,  note: undefined }; };
+  const stripCon = (con: Concept):  Concept  => { if (con.note) notes[`con:${con.id}`] = con.note; return { ...con, note: undefined, points:   (con.points   || []).map(stripPt) }; };
+  const stripST  = (st:  Subtopic): Subtopic => { if (st.note)  notes[`st:${st.id}`]  = st.note;  return { ...st,  note: undefined, concepts: (st.concepts  || []).map(stripCon) }; };
+  const stripT   = (t:   Topic):    Topic    => { if (t.note)   notes[`t:${t.id}`]    = t.note;   return { ...t,   note: undefined, subtopics:(t.subtopics  || []).map(stripST) }; };
+  const stripC   = (c:   Chapter):  Chapter  => { if (c.note)   notes[`c:${c.id}`]    = c.note;   return { ...c,   note: undefined, topics:   (c.topics    || []).map(stripT) }; };
+  const stripS   = (s:   Subject):  Subject  => { if (s.note)   notes[`s:${s.id}`]    = s.note;   return { ...s,   note: undefined, chapters: (s.chapters  || []).map(stripC) }; };
+
+  function stripTN(items: TempNoteItem[]): TempNoteItem[] {
+    return items.map(item => {
+      if (item.note) notes[`tn:${item.id}`] = item.note;
+      return { ...item, note: undefined, children: stripTN(item.children || []) };
+    });
+  }
+
+  return { subjects: subjects.map(stripS), tempNotes: stripTN(tempNotes), notes };
+}
+
+/** Merge note HTML back from a flat map into stripped subjects / temp-notes. */
+function mergeNotes(
+  subjects: Subject[],
+  tempNotes: TempNoteItem[],
+  notes: Record<string, string>,
+): { subjects: Subject[]; tempNotes: TempNoteItem[] } {
+  const g = (key: string, fallback?: string) => notes[key] ?? fallback;
+
+  const mergePt  = (pt:  Point):    Point    => ({ ...pt,  note: g(`pt:${pt.id}`,   pt.note)  });
+  const mergeCon = (con: Concept):  Concept  => ({ ...con, note: g(`con:${con.id}`, con.note), points:   (con.points   || []).map(mergePt) });
+  const mergeST  = (st:  Subtopic): Subtopic => ({ ...st,  note: g(`st:${st.id}`,  st.note),  concepts: (st.concepts  || []).map(mergeCon) });
+  const mergeT   = (t:   Topic):    Topic    => ({ ...t,   note: g(`t:${t.id}`,    t.note),   subtopics:(t.subtopics  || []).map(mergeST) });
+  const mergeC   = (c:   Chapter):  Chapter  => ({ ...c,   note: g(`c:${c.id}`,    c.note),   topics:   (c.topics    || []).map(mergeT) });
+  const mergeS   = (s:   Subject):  Subject  => ({ ...s,   note: g(`s:${s.id}`,    s.note),   chapters: (s.chapters  || []).map(mergeC) });
+
+  function mergeTN(items: TempNoteItem[]): TempNoteItem[] {
+    return items.map(item => ({ ...item, note: g(`tn:${item.id}`, item.note), children: mergeTN(item.children || []) }));
+  }
+
+  return { subjects: subjects.map(mergeS), tempNotes: mergeTN(tempNotes) };
+}
+
+/** Collect every note key represented by a node that the user explicitly
+ * removed.  We include keys even when the current device has no note content
+ * for them: another device may have saved that content meanwhile. */
+function collectDeletedNoteKeys(node: any, kind: string, out = new Set<string>()): Set<string> {
+  if (!node || typeof node !== 'object') return out;
+  if (node.id) out.add(`${kind}:${node.id}`);
+  const children: Record<string, [string, string]> = {
+    s: ['chapters', 'c'],
+    c: ['topics', 't'],
+    t: ['subtopics', 'st'],
+    st: ['concepts', 'con'],
+    con: ['points', 'pt'],
+    tn: ['children', 'tn'],
+  };
+  const child = children[kind];
+  if (child && Array.isArray(node[child[0]])) {
+    for (const item of node[child[0]]) collectDeletedNoteKeys(item, child[1], out);
+  }
+  return out;
+}
+
+function noteKeyForPath(path: MarkPath): string {
+  const ids: Record<string, string | undefined> = {
+    subject: path.subjectId,
+    chapter: path.chapterId,
+    topic: path.topicId,
+    subtopic: path.subtopicId,
+    concept: path.conceptId,
+    point: path.pointId,
+  };
+  const prefixes: Record<string, string> = {
+    subject: 's',
+    chapter: 'c',
+    topic: 't',
+    subtopic: 'st',
+    concept: 'con',
+    point: 'pt',
+  };
+  return `${prefixes[path.level]}:${ids[path.level]}`;
+}
+
+interface NotePageMeta {
+  id: string;
+  title: string;
+  pageCount: number;
+  /** When true this note was created via the subject-library compiler and is never synced to shared courses */
+  privateNote?: boolean;
+  /** Subject this note belongs to (optional — notes without subjectId are unscoped) */
+  subjectId?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface StudyData {
+  subjects: Subject[];
+  settings: CourseSettings;
+  tempNotes?: TempNoteItem[];
+  overallNote?: string;
+  notePagesIndex?: NotePageMeta[];
+  /** Personal notes index — private to each user, never synced to shared courses */
+  personalNotePagesIndex?: NotePageMeta[];
+  savedAt?: number;
+}
+
+function removeRecoveredNotes(data: StudyData, keys: ReadonlySet<string>): StudyData {
+  const clearNote = <T extends { id: string; note?: string }>(item: T, kind: string): T => ({
+    ...item,
+    note: keys.has(`${kind}:${item.id}`) ? undefined : item.note,
+  });
+  const clearPoint = (point: Point): Point => clearNote(point, 'pt');
+  const clearConcept = (concept: Concept): Concept => ({
+    ...clearNote(concept, 'con'),
+    points: (concept.points || []).map(clearPoint),
+  });
+  const clearSubtopic = (subtopic: Subtopic): Subtopic => ({
+    ...clearNote(subtopic, 'st'),
+    concepts: (subtopic.concepts || []).map(clearConcept),
+  });
+  const clearTopic = (topic: Topic): Topic => ({
+    ...clearNote(topic, 't'),
+    subtopics: (topic.subtopics || []).map(clearSubtopic),
+  });
+  const clearChapter = (chapter: Chapter): Chapter => ({
+    ...clearNote(chapter, 'c'),
+    topics: (chapter.topics || []).map(clearTopic),
+  });
+  const clearSubject = (subject: Subject): Subject => ({
+    ...clearNote(subject, 's'),
+    chapters: (subject.chapters || []).map(clearChapter),
+  });
+  const clearTempNote = (item: TempNoteItem): TempNoteItem => ({
+    ...clearNote(item, 'tn'),
+    children: (item.children || []).map(clearTempNote),
+  });
+
+  return {
+    ...data,
+    subjects: (data.subjects || []).map(clearSubject),
+    tempNotes: (data.tempNotes || []).map(clearTempNote),
+    overallNote: keys.has(OVERALL_NOTE_RECOVERY_KEY) ? '' : data.overallNote,
+  };
+}
+
+export interface LocalNotesRecoveryItem {
+  key: string;
+  title: string;
+  breadcrumb: string[];
+}
+
+type LocalNotePageSource = 'course-page' | 'personal-page' | 'prompt-page';
+
+interface LocalNotePageRecoveryRecord {
+  item: LocalNotesRecoveryItem;
+  page: NotePage;
+  source: LocalNotePageSource;
+  localKey: string;
+}
+
+interface StudyContextType {
+  subjects: Subject[];
+  settings: CourseSettings;
+  dataLoaded: boolean;
+  syncStatus: 'idle' | 'syncing' | 'success' | 'failed';
+  syncError: string | null;
+  clearSyncFailure: () => void;
+  online: boolean;
+  localNotesRecoveryCount: number;
+  localNotesRecoveryItems: LocalNotesRecoveryItem[];
+  restoreLocalNotes: (keys?: string[]) => Promise<boolean>;
+  dismissLocalNotesRecovery: (keys: string[]) => Promise<void>;
+  setNote: (path: MarkPath, note: string) => void;
+  toggleImportant: (path: MarkPath) => void;
+  toggleWeak: (path: MarkPath) => void;
+  setCourseTotalDays: (days: number) => void;
+  setDailyStudyHours: (hours: number) => void;
+  setCourseStartDate: (date: string) => void;
+  setTimezone: (tz: string) => void;
+  setGlobalNoteSize: (size: string) => void;
+  addSubject: (subject: Omit<Subject, 'id' | 'completed' | 'chapters'>) => void;
+  updateSubjectDays: (subjectId: string, days: number) => void;
+  deleteSubject: (subjectId: string) => void;
+  updateSubjectMeta: (subjectId: string, title: string) => void;
+  addChapter: (subjectId: string, chapter: Omit<Chapter, 'id' | 'completed' | 'topics'>) => void;
+  deleteChapter: (subjectId: string, chapterId: string) => void;
+  toggleChapterComplete: (subjectId: string, chapterId: string) => void;
+  updateChapterMeta: (subjectId: string, chapterId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => void;
+  addTopic: (subjectId: string, chapterId: string, topic: Omit<Topic, 'id' | 'completed' | 'subtopics'>) => void;
+  deleteTopic: (subjectId: string, chapterId: string, topicId: string) => void;
+  toggleTopicComplete: (subjectId: string, chapterId: string, topicId: string) => void;
+  updateTopicMeta: (subjectId: string, chapterId: string, topicId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => void;
+  addSubtopic: (subjectId: string, chapterId: string, topicId: string, subtopic: Omit<Subtopic, 'id' | 'completed' | 'concepts'>) => void;
+  deleteSubtopic: (subjectId: string, chapterId: string, topicId: string, subtopicId: string) => void;
+  toggleSubtopicComplete: (subjectId: string, chapterId: string, topicId: string, subtopicId: string) => void;
+  updateSubtopicMeta: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => void;
+  addConcept: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, concept: Omit<Concept, 'id' | 'completed' | 'points'>) => void;
+  deleteConcept: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string) => void;
+  toggleConceptComplete: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string) => void;
+  updateConceptMeta: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => void;
+  addPoint: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, point: Omit<Point, 'id' | 'completed'>) => void;
+  deletePoint: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, pointId: string) => void;
+  togglePointComplete: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, pointId: string) => void;
+  updatePointMeta: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, pointId: string, title: string, difficulty?: DifficultyLevel) => void;
+
+  resetSubjectProgress: (subjectId: string) => void;
+
+  reorderSubjects: (fromIdx: number, toIdx: number) => void;
+  reorderChapters: (subjectId: string, fromIdx: number, toIdx: number) => void;
+  reorderTopics: (subjectId: string, chapterId: string, fromIdx: number, toIdx: number) => void;
+  reorderSubtopics: (subjectId: string, chapterId: string, topicId: string, fromIdx: number, toIdx: number) => void;
+  reorderConcepts: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, fromIdx: number, toIdx: number) => void;
+  reorderPoints: (subjectId: string, chapterId: string, topicId: string, subtopicId: string, conceptId: string, fromIdx: number, toIdx: number) => void;
+
+  // Temp Notes (hierarchical to-do)
+  tempNotes: TempNoteItem[];
+  addTempNote: (text: string, parentId?: string | null, noteHtml?: string) => string;
+  updateTempNote: (id: string, text: string) => void;
+  updateTempNoteContent: (id: string, noteHtml: string) => void;
+  toggleTempNoteDone: (id: string) => void;
+  deleteTempNote: (id: string) => void;
+
+  // Overall Note (progress page)
+  overallNote: string;
+  setOverallNote: (note: string) => void;
+
+  // A4 Note pages (Course Notes — synced in shared courses)
+  notePagesIndex: NotePageMeta[];
+  createNotePage: (title?: string, privateNote?: boolean, subjectId?: string) => string;
+  renameNotePage: (id: string, title: string) => void;
+  deleteNotePage: (id: string) => Promise<void>;
+  loadNotePage: (id: string) => Promise<NotePage | null>;
+  subscribeNotePage: (id: string, onChange: (page: NotePage) => void) => () => void;
+  saveNotePage: (page: NotePage) => Promise<void>;
+  reorderNotePages: (fromIdx: number, toIdx: number) => void;
+
+  // Personal Note pages (private per user — never synced to shared courses)
+  personalNotePagesIndex: NotePageMeta[];
+  createPersonalNotePage: (title?: string, subjectId?: string) => string;
+  renamePersonalNotePage: (id: string, title: string) => void;
+  deletePersonalNotePage: (id: string) => Promise<void>;
+  loadPersonalNotePage: (id: string) => Promise<NotePage | null>;
+  savePersonalNotePage: (page: NotePage) => Promise<void>;
+  reorderPersonalNotePages: (fromIdx: number, toIdx: number) => void;
+
+  // Prompt Note pages (super-admin only — course-agnostic, never synced to any shared course)
+  promptNotePagesIndex: NotePageMeta[];
+  createPromptNotePage: (title?: string) => string;
+  renamePromptNotePage: (id: string, title: string) => void;
+  deletePromptNotePage: (id: string) => Promise<void>;
+  loadPromptNotePage: (id: string) => Promise<NotePage | null>;
+  savePromptNotePage: (page: NotePage) => Promise<void>;
+  reorderPromptNotePages: (fromIdx: number, toIdx: number) => void;
+}
+
+const StudyContext = createContext<StudyContextType | undefined>(undefined);
+
+function getLocalData(key: string) {
+  return readLocalCourseSnapshot<StudyData>(key);
+}
+
+function safeSetLocalStorage(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (error) {
+    console.warn('[StudyContext] localStorage write failed:', error);
+  }
+}
+
+function markLocalNotePageUnsynced(localKey: string | null, unsynced: boolean): void {
+  if (!localKey) return;
+  try {
+    const markerKey = `${localKey}__unsynced`;
+    if (unsynced) localStorage.setItem(markerKey, '1');
+    else {
+      localStorage.removeItem(markerKey);
+      localStorage.removeItem(`${localKey}__recovery_baseline`);
+    }
+  } catch (error) {
+    console.warn('[StudyContext] Could not update local note-page sync marker:', error);
+  }
+}
+
+interface RecoveryNotesBaseline {
+  notes: Record<string, string>;
+  overallNote: string;
+}
+
+interface CourseNoteRecoveryDraft {
+  notes: Record<string, string>;
+  overallNote?: string;
+}
+
+function courseNoteRecoveryDraftKey(userId: string, courseId: string): string {
+  return `@study_note_recovery_${userId}_${courseId}`;
+}
+
+function readCourseNoteRecoveryDraft(userId: string, courseId: string): CourseNoteRecoveryDraft | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(courseNoteRecoveryDraftKey(userId, courseId)) || 'null') as
+      CourseNoteRecoveryDraft | null;
+    if (!parsed || typeof parsed !== 'object' || !parsed.notes || typeof parsed.notes !== 'object') return null;
+    return {
+      notes: Object.fromEntries(
+        Object.entries(parsed.notes).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+      ),
+      ...(typeof parsed.overallNote === 'string' ? { overallNote: parsed.overallNote } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function applyCourseNoteRecoveryDraft(
+  data: StudyData,
+  draft: CourseNoteRecoveryDraft | null,
+): StudyData {
+  if (!draft) return data;
+  const merged = mergeNotes(data.subjects || [], data.tempNotes || [], draft.notes);
+  return {
+    ...data,
+    subjects: merged.subjects,
+    tempNotes: merged.tempNotes,
+    ...(draft.overallNote !== undefined ? { overallNote: draft.overallNote } : {}),
+  };
+}
+
+function clearCourseNoteRecoveryDraftIfSynced(
+  userId: string,
+  courseId: string,
+  syncedNotes: Record<string, string>,
+  syncedOverallNote: string,
+): void {
+  const key = courseNoteRecoveryDraftKey(userId, courseId);
+  const draft = readCourseNoteRecoveryDraft(userId, courseId);
+  if (!draft) return;
+  const allNotesMatch = Object.entries(draft.notes).every(([noteKey, value]) =>
+    (syncedNotes[noteKey] || '') === value,
+  );
+  const overallNoteMatches =
+    draft.overallNote === undefined || draft.overallNote === syncedOverallNote;
+  if (allNotesMatch && overallNoteMatches) {
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      console.warn('[StudyContext] Could not clear the synced local note recovery copy:', error);
+    }
+  }
+}
+
+function contentFingerprint(content: string): string {
+  let first = 0x811c9dc5;
+  let second = 0x9e3779b9;
+  for (let index = 0; index < content.length; index++) {
+    const code = content.charCodeAt(index);
+    first = Math.imul(first ^ code, 0x01000193);
+    second = Math.imul(second ^ (code + (index & 0xff)), 0x01000193);
+  }
+  return `${content.length}:${first >>> 0}:${second >>> 0}`;
+}
+
+function notePageFingerprint(page: NotePage): string {
+  return contentFingerprint(JSON.stringify({
+    id: page.id,
+    title: page.title,
+    pageCount: page.pageCount,
+    html: page.html,
+    privateNote: page.privateNote,
+    elements: page.elements || [],
+  }));
+}
+
+function recoveryNotesBaselineFromData(data: StudyData | null): RecoveryNotesBaseline | null {
+  if (!data) return null;
+  const notes = extractNotes(data.subjects || [], data.tempNotes || []).notes;
+  return {
+    notes: Object.fromEntries(
+      Object.entries(notes).map(([key, value]) => [key, contentFingerprint(value)]),
+    ),
+    overallNote: contentFingerprint(data.overallNote || ''),
+  };
+}
+
+function readRecoveryNotesBaseline(key: string): RecoveryNotesBaseline | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || 'null') as RecoveryNotesBaseline | null;
+    if (!parsed || typeof parsed !== 'object' || !parsed.notes || typeof parsed.overallNote !== 'string') {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveRecoveryNotesBaseline(
+  key: string,
+  notes: Record<string, string>,
+  overallNote: string,
+): void {
+  try {
+    if (localStorage.getItem(key)) return;
+    const baseline: RecoveryNotesBaseline = {
+      notes: Object.fromEntries(
+        Object.entries(notes).map(([noteKey, value]) => [noteKey, contentFingerprint(value)]),
+      ),
+      overallNote: contentFingerprint(overallNote),
+    };
+    localStorage.setItem(key, JSON.stringify(baseline));
+  } catch (error) {
+    console.warn('[StudyContext] Could not persist note recovery baseline:', error);
+  }
+}
+
+function clearRecoveryNotesBaseline(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Keep the local cache usable if browser storage is unavailable.
+  }
+}
+
+function saveLocalNotePageDraft(localKey: string | null, page: NotePage): void {
+  if (!localKey) return;
+  try {
+    const markerKey = `${localKey}__unsynced`;
+    if (localStorage.getItem(markerKey) !== '1') {
+      const previousRaw = localStorage.getItem(localKey);
+      const previous = previousRaw ? JSON.parse(previousRaw) as NotePage : null;
+      localStorage.setItem(
+        `${localKey}__recovery_baseline`,
+        previous ? notePageFingerprint(previous) : 'missing',
+      );
+    }
+  } catch (error) {
+    console.warn('[StudyContext] Could not save note-page recovery baseline:', error);
+  }
+  safeSetLocalStorage(localKey, JSON.stringify(page));
+  markLocalNotePageUnsynced(localKey, true);
+}
+
+function sameNotePageContent(a: NotePage, b: NotePage): boolean {
+  return a.id === b.id &&
+    a.title === b.title &&
+    a.pageCount === b.pageCount &&
+    a.html === b.html &&
+    a.privateNote === b.privateNote &&
+    JSON.stringify(a.elements || []) === JSON.stringify(b.elements || []);
+}
+
+function localNotePageMatches(localKey: string | null, page: NotePage): boolean {
+  if (!localKey) return false;
+  try {
+    const local = JSON.parse(localStorage.getItem(localKey) || 'null') as NotePage | null;
+    return !!local && sameNotePageContent(local, page);
+  } catch {
+    return false;
+  }
+}
+
+const OVERALL_NOTE_RECOVERY_KEY = 'overall-note';
+
+function getRecoverableNotes(
+  local: StudyData | null,
+  remote: StudyData | null,
+  localIsUnsynced = false,
+  recoveryBaseline: RecoveryNotesBaseline | null = null,
+): LocalNotesRecoveryItem[] {
+  if (!local) return [];
+  const localNotes = extractNotes(local.subjects || [], local.tempNotes || []).notes;
+  const remoteNotes = remote
+    ? extractNotes(remote.subjects || [], remote.tempNotes || []).notes
+    : {};
+  const items: LocalNotesRecoveryItem[] = [];
+  const add = (key: string, title: string, breadcrumb: string[]) => {
+    const localValue = localNotes[key]?.trim() ?? '';
+    const remoteValue = remoteNotes[key]?.trim() ?? '';
+    if (!localValue) return;
+
+    if (localIsUnsynced) {
+      const baselineFingerprint = recoveryBaseline?.notes[key] ?? contentFingerprint('');
+      const cloudChangedSinceRecovery = !!remote &&
+        contentFingerprint(remoteValue) !== baselineFingerprint;
+      // Keep a local edit recoverable only while Firestore still has its
+      // original value. If another browser has since saved or removed this
+      // same note, the stale local recovery item is no longer pending.
+      if (localValue !== remoteValue && !cloudChangedSinceRecovery) {
+        items.push({ key, title: title || 'Untitled', breadcrumb });
+      }
+      return;
+    }
+
+    if (!remoteValue) items.push({ key, title: title || 'Untitled', breadcrumb });
+  };
+
+  const walkPoint = (point: Point, path: string[]) => add(`pt:${point.id}`, point.title, path);
+  const walkConcept = (concept: Concept, path: string[]) => {
+    const next = [...path, concept.title];
+    add(`con:${concept.id}`, concept.title, path);
+    (concept.points || []).forEach(point => walkPoint(point, next));
+  };
+  const walkSubtopic = (subtopic: Subtopic, path: string[]) => {
+    const next = [...path, subtopic.title];
+    add(`st:${subtopic.id}`, subtopic.title, path);
+    (subtopic.concepts || []).forEach(concept => walkConcept(concept, next));
+  };
+  const walkTopic = (topic: Topic, path: string[]) => {
+    const next = [...path, topic.title];
+    add(`t:${topic.id}`, topic.title, path);
+    (topic.subtopics || []).forEach(subtopic => walkSubtopic(subtopic, next));
+  };
+  const walkChapter = (chapter: Chapter, path: string[]) => {
+    const next = [...path, chapter.title];
+    add(`c:${chapter.id}`, chapter.title, path);
+    (chapter.topics || []).forEach(topic => walkTopic(topic, next));
+  };
+  (local.subjects || []).forEach(subject => {
+    const next = [subject.title];
+    add(`s:${subject.id}`, subject.title, []);
+    (subject.chapters || []).forEach(chapter => walkChapter(chapter, next));
+  });
+
+  const walkTempNotes = (notes: TempNoteItem[], path: string[]) => {
+    notes.forEach(note => {
+      const next = [...path, note.text];
+      add(`tn:${note.id}`, note.text, path);
+      walkTempNotes(note.children || [], next);
+    });
+  };
+  walkTempNotes(local.tempNotes || [], []);
+
+  const localOverallNote = local.overallNote?.trim() ?? '';
+  const remoteOverallNote = remote?.overallNote?.trim() ?? '';
+  if (localOverallNote) {
+    if (localIsUnsynced) {
+      const baselineOverallNote = recoveryBaseline?.overallNote ?? contentFingerprint('');
+      const cloudChangedSinceRecovery = !!remote &&
+        contentFingerprint(remoteOverallNote) !== baselineOverallNote;
+      if (localOverallNote !== remoteOverallNote && !cloudChangedSinceRecovery) {
+        items.push({ key: OVERALL_NOTE_RECOVERY_KEY, title: '', breadcrumb: [] });
+      }
+    } else if (!remoteOverallNote) {
+      items.push({ key: OVERALL_NOTE_RECOVERY_KEY, title: '', breadcrumb: [] });
+    }
+  }
+  return items;
+}
+
+function doResetProgress(subjs: Subject[], currentSettings: CourseSettings, userEmail: string | undefined, courseId?: string): { subjects: Subject[]; settings: CourseSettings } {
+  const resetSubjects = subjs.map(s => ({
+    ...s,
+    completed: false,
+    chapters: s.chapters.map(ch => ({
+      ...ch,
+      completed: false,
+      topics: ch.topics.map(t => ({
+        ...t,
+        completed: false,
+        subtopics: t.subtopics.map(sub => ({
+          ...sub,
+          completed: false,
+          concepts: sub.concepts.map(c => ({
+            ...c,
+            completed: false,
+            points: c.points.map(p => ({ ...p, completed: false })),
+          })),
+        })),
+      })),
+    })),
+  }));
+  const resetSettings: CourseSettings = { ...currentSettings, resetScheduled: false };
+  if (userEmail) {
+    try {
+      // Clear current-format keys (course-specific)
+      if (courseId) {
+        localStorage.removeItem(`@study_today_plan_v3_${userEmail}_${courseId}`);
+        localStorage.setItem(`@study_pending_v3_${userEmail}_${courseId}`, '[]');
+        localStorage.setItem(`@study_revisions_v2_${userEmail}_${courseId}`, '[]');
+      }
+      // Also clear old-format keys for backward compatibility
+      ['today_plan_v2', 'pending_v2', 'revisions_v1'].forEach(k => {
+        localStorage.removeItem(`@study_${k}_${userEmail}`);
+      });
+    } catch { /* ignore */ }
+  }
+  return { subjects: resetSubjects, settings: resetSettings };
+}
+
+// NOTE: this used to compare `firestore.savedAt` against `local.savedAt` with
+// plain `>` — but those two timestamps can come from the clocks of two
+// *different* devices (Firestore's value was written by whichever device
+// saved last; local's value was written by THIS device). Client clocks drift
+// (minutes to hours) across phones/browsers, so that comparison would
+// silently keep serving a stale local cache forever on a device whose clock
+// merely lags another device's — which is exactly the "completed on the app
+// but not showing on the website" symptom. We now decide using
+// `preferLocal` (whether THIS device has a local edit it knows Firestore
+// hasn't confirmed yet — see `hasUnsyncedEditRef` / the `*_unsynced` flag),
+// never by comparing two devices' clocks against each other.
+function pickNewerData(firestore: StudyData | null, local: StudyData | null, preferLocal: boolean): StudyData | null {
+  if (!firestore && !local) return null;
+  if (!firestore) return local;
+  if (!local) return firestore;
+  return preferLocal ? local : firestore;
+}
+
+export function StudyProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const { activeCourseId } = useCourse();
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [settings, setSettings] = useState<CourseSettings>({ courseTotalDays: null, dailyStudyHours: 3 });
+  const [tempNotes, setTempNotes] = useState<TempNoteItem[]>([]);
+  const [overallNote, setOverallNoteState] = useState<string>('');
+  const [notePagesIndex, setNotePagesIndex] = useState<NotePageMeta[]>([]);
+  const [personalNotePagesIndex, setPersonalNotePagesIndex] = useState<NotePageMeta[]>([]);
+  const [promptNotePagesIndex, setPromptNotePagesIndex] = useState<NotePageMeta[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'failed'>('idle');
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [localNotesRecoveryItems, setLocalNotesRecoveryItems] = useState<LocalNotesRecoveryItem[]>([]);
+  const [localNotePageRecoveryItems, setLocalNotePageRecoveryItems] = useState<LocalNotesRecoveryItem[]>([]);
+  const localNotePageRecoveryRef = useRef<Map<string, LocalNotePageRecoveryRecord>>(new Map());
+  const localNotePageRecoveryUnsubscribersRef = useRef<Map<string, () => void>>(new Map());
+  const clearLocalNotePageRecovery = (source: LocalNotePageSource, pageId: string) => {
+    const key = `note-page:${source}:${pageId}`;
+    localNotePageRecoveryRef.current.delete(key);
+    localNotePageRecoveryUnsubscribersRef.current.get(key)?.();
+    localNotePageRecoveryUnsubscribersRef.current.delete(key);
+    setLocalNotePageRecoveryItems([...localNotePageRecoveryRef.current.values()].map(record => record.item));
+  };
+  const localNotesRecoveryRef = useRef<{
+    data: StudyData;
+    baseline: StudyData | null;
+    recoveryBaseline: RecoveryNotesBaseline | null;
+    unsynced: boolean;
+  } | null>(null);
+
+  // Track online / offline transitions
+  useEffect(() => {
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitialLoad = useRef(true);
+  const lastSavedAt = useRef<number>(0);
+  // Prevents the save-useEffect from echo-saving data that just arrived from a
+  // remote onSnapshot. Without this, every incoming remote update would be
+  // immediately re-saved to Firestore with a new timestamp, creating a sync loop.
+  const skipNextSaveRef = useRef(false);
+  // True while this device has a local edit not yet confirmed written to
+  // Firestore (mirrors the `${lsKey}__unsynced` localStorage flag, kept as a
+  // ref too for synchronous checks inside the onSnapshot callback).
+  const hasUnsyncedEditRef = useRef(false);
+  // Snapshot of the note map that this device actually loaded.  A note absent
+  // from this device's stale state is not a deletion and must not be removed
+  // from the remote companion document on the next save.
+  const loadedNotesRef = useRef<Record<string, string>>({});
+  const loadedOverallNoteRef = useRef('');
+  const courseSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  // Always-current refs so flushSave never captures stale closures
+  const userRef = useRef(user);
+  const activeCourseIdRef = useRef(activeCourseId);
+  useEffect(() => { userRef.current = user; }, [user]);
+  useEffect(() => { activeCourseIdRef.current = activeCourseId; }, [activeCourseId]);
+
+  const recoveryDismissalScopeRef = useRef('');
+  const recoveryDismissalsRef = useRef<Set<string>>(new Set());
+  const recoveryDismissalKey = (userId: string, courseId: string) =>
+    `@study_restore_dismissed_${userId}_${courseId}`;
+  const recoveryNotesBaselineKey = (userId: string, courseId: string) =>
+    `@study_recovery_notes_${userId}_${courseId}`;
+  const setRecoveryCandidate = (
+    data: StudyData | null,
+    baseline: StudyData | null,
+    userId: string,
+    courseId: string,
+    unsynced = false,
+    recoveryBaseline?: RecoveryNotesBaseline | null,
+  ) => {
+    const scope = recoveryDismissalKey(userId, courseId);
+    if (recoveryDismissalScopeRef.current !== scope) {
+      recoveryDismissalScopeRef.current = scope;
+      try {
+        const saved = JSON.parse(localStorage.getItem(scope) || '[]');
+        recoveryDismissalsRef.current = new Set(Array.isArray(saved) ? saved.filter((key): key is string => typeof key === 'string') : []);
+      } catch {
+        recoveryDismissalsRef.current = new Set();
+      }
+    }
+    const stableRecoveryBaseline = recoveryBaseline === undefined
+      ? (unsynced
+          ? readRecoveryNotesBaseline(recoveryNotesBaselineKey(userId, courseId)) ??
+            recoveryNotesBaselineFromData(baseline)
+          : recoveryNotesBaselineFromData(baseline))
+      : recoveryBaseline;
+    const candidates = getRecoverableNotes(data, baseline, unsynced, stableRecoveryBaseline);
+    localNotesRecoveryRef.current = candidates.length > 0 && data
+      ? { data, baseline, recoveryBaseline: stableRecoveryBaseline, unsynced }
+      : null;
+    setLocalNotesRecoveryItems(candidates.filter(item => !recoveryDismissalsRef.current.has(item.key)));
+  };
+
+  const dismissLocalNotesRecovery = async (keys: string[]) => {
+    const currentUser = userRef.current;
+    const currentCourseId = activeCourseIdRef.current;
+    if (!currentUser || !currentCourseId || keys.length === 0) return;
+    const courseNoteKeys: string[] = [];
+    for (const key of keys) {
+      const pageRecord = localNotePageRecoveryRef.current.get(key);
+      if (!pageRecord) {
+        courseNoteKeys.push(key);
+        continue;
+      }
+      try {
+        localStorage.removeItem(pageRecord.localKey);
+        markLocalNotePageUnsynced(pageRecord.localKey, false);
+      } catch {
+        // Keep dismissal active for this session if local storage is unavailable.
+      }
+      localNotePageRecoveryRef.current.delete(key);
+    }
+    setLocalNotePageRecoveryItems([...localNotePageRecoveryRef.current.values()].map(record => record.item));
+    if (courseNoteKeys.length === 0) return;
+    const recoverySnapshot = localNotesRecoveryRef.current?.data ?? null;
+    const scope = recoveryDismissalKey(currentUser.id, currentCourseId);
+    if (recoveryDismissalScopeRef.current !== scope) {
+      recoveryDismissalScopeRef.current = scope;
+      try {
+        const saved = JSON.parse(localStorage.getItem(scope) || '[]');
+        recoveryDismissalsRef.current = new Set(Array.isArray(saved) ? saved.filter((key): key is string => typeof key === 'string') : []);
+      } catch {
+        recoveryDismissalsRef.current = new Set();
+      }
+    }
+    courseNoteKeys.forEach(key => recoveryDismissalsRef.current.add(key));
+    try {
+      localStorage.setItem(scope, JSON.stringify([...recoveryDismissalsRef.current]));
+    } catch {
+      // Keep the dismissal active for the current session if storage is unavailable.
+    }
+    setLocalNotesRecoveryItems(items => items.filter(item => !courseNoteKeys.includes(item.key)));
+
+    // Finish any already-debounced course save before editing the local snapshot,
+    // so it cannot write the dismissed note back into localStorage or IndexedDB.
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      const pending = pendingSaveRef.current;
+      if (pending) {
+        flushSave(
+          pending.subjects,
+          pending.settings,
+          pending.tempNotes,
+          pending.overallNote,
+          pending.notePagesIndex,
+          pending.personalNotePagesIndex,
+        );
+      }
+    }
+    await courseSaveQueueRef.current.catch(() => {});
+
+    // Delete only the selected note contents, preserving the rest of this
+    // course's browser cache. The cache helper writes both localStorage and IDB.
+    const cacheKey = `@study_data_${currentCourseId}_${currentUser.email}`;
+    const cached = await readLocalCourseSnapshot<StudyData>(cacheKey);
+    const localData = cached?.data ?? recoverySnapshot;
+    if (!localData) return;
+    await writeLocalCourseSnapshot(
+      cacheKey,
+      removeRecoveredNotes(localData, new Set(courseNoteKeys)),
+      cached?.unsynced ?? false,
+    );
+  };
+
+  const recoveryItems = [...localNotesRecoveryItems, ...localNotePageRecoveryItems];
+  const localNotesRecoveryCount = recoveryItems.length;
+
+  const localKey = (suffix: string) => (user && activeCourseId) ? `@study_${suffix}_${activeCourseId}_${user.email}` : null;
+
+  // Listen for instant live-sync events dispatched by AdminContext when the admin
+  // pushes an update to a shared course.  This bypasses the Firestore onSnapshot
+  // round-trip (which has a hasPendingWrites guard that delays the update by one
+  // server round-trip) and updates the UI immediately.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        shareId: string;
+        subjects?: unknown[];
+        settings?: Record<string, unknown>;
+        tempNotes?: unknown[];
+        overallNote?: string;
+        notePagesIndex?: unknown[];
+        notesMap?: Record<string, string>;
+      };
+      // Only apply if the active course is the one that was synced
+      if (detail.shareId !== activeCourseIdRef.current) return;
+      // Prevent the save-useEffect from echoing this update back to Firestore
+      skipNextSaveRef.current = true;
+      // `detail.subjects`/`detail.tempNotes` are "structural only" — note content
+      // for a shared course lives in the separate courseNotes doc, not embedded
+      // in the synced subjects tree. Merge `notesMap` back in here (mirrors the
+      // withNotesDoc/mergeNotes path used on the normal Firestore-load path) so
+      // this instant event never wipes out a note that was just added — without
+      // this, the note would flash in briefly (from the Firestore onSnapshot
+      // merge) and then disappear again the moment this event applied.
+      let nextSubjects = detail.subjects as Subject[] | undefined;
+      let nextTempNotes = detail.tempNotes as TempNoteItem[] | undefined;
+      if (detail.notesMap && (nextSubjects || nextTempNotes)) {
+        const merged = mergeNotes(nextSubjects || [], nextTempNotes || [], detail.notesMap);
+        if (nextSubjects) nextSubjects = merged.subjects;
+        if (nextTempNotes) nextTempNotes = merged.tempNotes;
+      }
+      if (detail.notesMap) {
+        loadedNotesRef.current = { ...detail.notesMap };
+      }
+      if (detail.overallNote !== undefined) loadedOverallNoteRef.current = detail.overallNote;
+      if (nextSubjects)          setSubjects(nextSubjects);
+      if (detail.settings)       setSettings(prev => ({ ...prev, ...detail.settings }));
+      if (nextTempNotes)         setTempNotes(nextTempNotes);
+      if (detail.overallNote !== undefined) setOverallNoteState(detail.overallNote);
+      if (detail.notePagesIndex) setNotePagesIndex(detail.notePagesIndex as NotePage[]);
+    };
+    window.addEventListener('study-livesync', handler);
+    return () => window.removeEventListener('study-livesync', handler);
+  }, []); // eslint-disable-line — uses activeCourseIdRef (always-current ref) and stable setters
+
+  // Load data from Firestore and listen for real-time changes from other devices
+  useEffect(() => {
+    if (!user || !activeCourseId) {
+      setSubjects([]);
+      setSettings({ courseTotalDays: null, dailyStudyHours: 3 });
+      setTempNotes([]);
+      setOverallNoteState('');
+      setNotePagesIndex([]);
+      setPersonalNotePagesIndex([]);
+      setDataLoaded(false);
+      localNotesRecoveryRef.current = null;
+      setLocalNotesRecoveryItems([]);
+      isInitialLoad.current = true;
+      notesGuardArmedRef.current = true;
+      subjectsGuardArmedRef.current = true;
+      return;
+    }
+
+    isInitialLoad.current = true;
+    setSubjects([]);
+    setSettings({ courseTotalDays: null, dailyStudyHours: 3 });
+    setTempNotes([]);
+    setOverallNoteState('');
+    setNotePagesIndex([]);
+    setPersonalNotePagesIndex([]);
+    setDataLoaded(false);
+    localNotesRecoveryRef.current = null;
+    setLocalNotesRecoveryItems([]);
+    notesGuardArmedRef.current = true;
+    subjectsGuardArmedRef.current = true;
+    loadedNotesRef.current = {};
+    loadedOverallNoteRef.current = '';
+
+    const docRef = doc(db, 'users', user.id, 'studyData', activeCourseId);
+    const notesDocRef = doc(db, 'users', user.id, 'courseNotes', activeCourseId);
+    let isFirstSnapshot = true;
+
+    // Lifecycle guard: once the effect cleans up (course/user change or unmount),
+    // any in-flight async work that resolves later must not apply state.
+    let active = true;
+    // Monotonic counter: each snapshot increments this; async continuations check
+    // that their seq is still the latest before applying state, so out-of-order
+    // resolutions from slow Firestore reads are discarded automatically.
+    let seq = 0;
+    let recoveryNotesSeq = 0;
+
+    // ── Cold-start safety net ────────────────────────────────────────────────
+    // On a freshly opened app (especially mobile, right after the device's
+    // network/radio reconnects), Firestore's realtime channel can take a long
+    // time to establish before it fires either the success or the error
+    // callback below — the UI would otherwise show the loading skeleton
+    // indefinitely until the user manually refreshes. If neither callback has
+    // resolved the first load within a short window, fall back to whatever we
+    // already have in localStorage so the app always becomes usable; the
+    // onSnapshot listener keeps running in the background and will silently
+    // reconcile with Firestore the moment it does connect.
+    const staleLoadTimer = setTimeout(() => {
+      if (!active || !isFirstSnapshot) return;
+      isFirstSnapshot = false;
+      const lsRaw = localKey('data');
+      void (async () => {
+        const localSnapshot = lsRaw ? await getLocalData(lsRaw) : null;
+        if (!active) return;
+        const localData = localSnapshot?.data ?? null;
+        const recoveryDraft = readCourseNoteRecoveryDraft(user.id, activeCourseId);
+        const localUnsynced = !!localSnapshot?.unsynced || !!recoveryDraft;
+        const recoveryData = localData && recoveryDraft
+          ? applyCourseNoteRecoveryDraft(localData, recoveryDraft)
+          : localData;
+        if (recoveryData) {
+          setSubjects(recoveryData.subjects || []);
+          setSettings(prev => ({ ...prev, ...recoveryData.settings }));
+          setTempNotes(recoveryData.tempNotes || []);
+          setOverallNoteState(recoveryData.overallNote || '');
+          setNotePagesIndex(recoveryData.notePagesIndex || []);
+          lastSavedAt.current = recoveryData.savedAt ?? 0;
+          loadedNotesRef.current = extractNotes(localData?.subjects || [], localData?.tempNotes || []).notes;
+          loadedOverallNoteRef.current = localData?.overallNote || '';
+          hasUnsyncedEditRef.current = localUnsynced;
+          setRecoveryCandidate(recoveryData, null, user.id, activeCourseId, localUnsynced);
+        }
+        setDataLoaded(true);
+        setTimeout(() => { isInitialLoad.current = false; }, 200);
+      })();
+    }, 6000);
+
+    /** Fetch the companion "courseNotes" document and merge its note content
+     *  back into the given StudyData.  If the doc doesn't exist (old-format data
+     *  that was saved before the note-separation change), the subjects already
+     *  carry embedded notes and are returned unchanged. */
+    // Notes recovered from the companion doc (and/or the legacy "main" self-heal
+    // fallback) for the CURRENT snapshot. Populated by withNotesDoc and re-applied
+    // after picking the freshest data source (see below) so a stale localStorage
+    // cache — saved back when this course's notes were still missing — can never
+    // silently discard notes that were just recovered from Firestore.
+    let recoveredNotesMap: Record<string, string> | null = null;
+    let recoveredOverallNote: string | null = null;
+
+    const withNotesDoc = async (data: StudyData): Promise<StudyData> => {
+      const hasNotesDoc = !!(data as any).hasNotesDoc;
+      try {
+        let notesSnap = await getDoc(notesDocRef);
+        let sourceIsLegacyMain = false;
+
+        // Self-heal path: courses created via the old single-course → multi-course
+        // migration copied "studyData/main" to "studyData/{newCourseId}" (with
+        // hasNotesDoc: true carried over) but historically did NOT copy the
+        // companion "courseNotes/main" document to "courseNotes/{newCourseId}".
+        // If that happened, the notes doc for THIS course id is missing even
+        // though the real note content still exists, untouched, under the old
+        // "main" id. Fall back to it, and copy it forward so this only needs
+        // to self-heal once per course.
+        if (!notesSnap.exists() && activeCourseId !== 'main') {
+          const legacyNotesRef = doc(db, 'users', user.id, 'courseNotes', 'main');
+          const legacySnap = await getDoc(legacyNotesRef);
+          if (legacySnap.exists()) {
+            notesSnap = legacySnap;
+            sourceIsLegacyMain = true;
+          }
+        }
+
+        if (!notesSnap.exists()) return data;
+        const nd = notesSnap.data() as {
+          savedAt?: number;
+          overallNote?: string;
+          notes?: Record<string, string>;
+          chunked?: boolean;
+          chunkGeneration?: string;
+          chunkCount?: number;
+        };
+
+        // Course notes are committed before studyData is updated. If the app
+        // closes (or the second Firestore write fails) between those writes,
+        // the notes document can be newer than the main document and the latter
+        // will still have hasNotesDoc=false. Treat a same/newer companion as a
+        // completed note snapshot instead of silently ignoring it. A stale
+        // companion without the marker must not replace notes embedded in an
+        // older-format main document.
+        const companionIsCurrent =
+          typeof data.savedAt !== 'number' ||
+          (typeof nd.savedAt === 'number' && nd.savedAt >= data.savedAt);
+        if (!hasNotesDoc && !sourceIsLegacyMain && !companionIsCurrent) {
+          return data;
+        }
+
+        let notesMap = nd.notes || {};
+        let overallNoteVal = nd.overallNote || '';
+        const sourceChunksColRef = sourceIsLegacyMain
+          ? collection(doc(db, 'users', user.id, 'courseNotes', 'main'), 'chunks')
+          : collection(notesDocRef, 'chunks');
+        // Once the flat notes map itself outgrows the Firestore document limit,
+        // it's split across a "chunks" subcollection — read and reassemble it.
+        if (nd.chunked) {
+          const entries = await readChunkEntries(sourceChunksColRef, nd.chunkGeneration, nd.chunkCount);
+          const merged = reassembleEntries(entries);
+          overallNoteVal = merged['__overall__'] || '';
+          delete merged['__overall__'];
+          notesMap = merged;
+        }
+
+        // Copy the recovered legacy doc (and its chunks, if any) forward onto
+        // this course's own notesDocRef so the fallback above is only needed
+        // once — subsequent loads read it directly, no legacy lookup required.
+        if (sourceIsLegacyMain) {
+          setDocQuietly(notesDocRef, nd).catch(() => {});
+          if (nd.chunked) {
+            (async () => {
+              try {
+                const entries = await getDocs(sourceChunksColRef);
+                for (const chunkDoc of entries.docs) {
+                  await setDocQuietly(doc(collection(notesDocRef, 'chunks'), chunkDoc.id), chunkDoc.data());
+                }
+              } catch { /* best-effort self-heal; fallback path still works next time */ }
+            })();
+          }
+        }
+
+        recoveredNotesMap = notesMap;
+        recoveredOverallNote = overallNoteVal;
+
+        // When a fresh companion exists but the marker write did not finish,
+        // the old main document may still contain the previous embedded note
+        // values. Start from its structure without those values so a deliberate
+        // clear in the newer companion is not undone by the legacy fallback.
+        const mergeBase = !hasNotesDoc && !sourceIsLegacyMain
+          ? extractNotes(data.subjects || [], data.tempNotes || [])
+          : { subjects: data.subjects, tempNotes: data.tempNotes || [] };
+        const { subjects, tempNotes } = mergeNotes(
+          mergeBase.subjects,
+          mergeBase.tempNotes,
+          notesMap,
+        );
+        return { ...data, subjects, tempNotes, overallNote: overallNoteVal };
+      } catch {
+        return data; // offline — return what we have; notes will load from localStorage
+      }
+    };
+
+    // ── Real-time listener — fires immediately on mount (initial load)
+    //    and again whenever any device writes to this document ──
+    // The callback itself is kept SYNCHRONOUS so Firestore can handle errors
+    // normally.  Async work (fetching the notes companion doc) is delegated to
+    // an inner async function guarded by `active` + `seq` so out-of-order
+    // resolutions and post-cleanup state updates are both safe to discard.
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snap) => {
+        const mySeq = ++seq; // capture snapshot's position before any await
+
+        const snapData = snap.data();
+        const fsDataRaw: (StudyData & { hasNotesDoc?: boolean }) | null =
+          snap.exists() && snapData
+            ? {
+                subjects: snapData.subjects || [],
+                settings: snapData.settings || {},
+                tempNotes: snapData.tempNotes || [],
+                overallNote: snapData.overallNote || '',
+                notePagesIndex: snapData.notePagesIndex || [],
+                personalNotePagesIndex: snapData.personalNotePagesIndex || [],
+                savedAt: snapData.savedAt,
+                hasNotesDoc: snapData.hasNotesDoc || false,
+              }
+            : null;
+
+        if (isFirstSnapshot) {
+          // ── Initial load: pick the freshest between Firestore and localStorage ──
+          isFirstSnapshot = false;
+          clearTimeout(staleLoadTimer);
+
+          if (!fsDataRaw) {
+            if (active) {
+              const lsRaw = localKey('data');
+              void (async () => {
+                const localSnapshot = lsRaw ? await getLocalData(lsRaw) : null;
+                if (!active || mySeq !== seq) return;
+                const localData = localSnapshot?.data ?? null;
+                const recoveryDraft = readCourseNoteRecoveryDraft(user.id, activeCourseId);
+                const localUnsynced = !!localSnapshot?.unsynced || !!recoveryDraft;
+                const recoveryData = localData && recoveryDraft
+                  ? applyCourseNoteRecoveryDraft(localData, recoveryDraft)
+                  : localData;
+                let remoteNotes = { exists: false, overallNote: '', notes: {} as Record<string, string> };
+                try {
+                  remoteNotes = await readCourseNotes(notesDocRef);
+                } catch { /* offline: use the browser snapshot if available */ }
+                if (!active || mySeq !== seq) return;
+                loadedNotesRef.current = {};
+                loadedOverallNoteRef.current = remoteNotes.overallNote;
+                if (recoveryData) {
+                  // Keep two views: the displayed data should retain browser-only
+                  // notes, but the recovery comparison must contain only notes
+                  // actually read from Firestore. mergeNotes falls back to the
+                  // source tree when a cloud key is absent, so using its result
+                  // directly as the baseline would make unsynced local notes look
+                  // as if they were already in the cloud.
+                  const merged = mergeNotes(recoveryData.subjects || [], recoveryData.tempNotes || [], remoteNotes.notes);
+                  const strippedLocal = extractNotes(recoveryData.subjects || [], recoveryData.tempNotes || []);
+                  const remoteOnly = mergeNotes(
+                    strippedLocal.subjects,
+                    strippedLocal.tempNotes,
+                    remoteNotes.notes,
+                  );
+                  loadedNotesRef.current = extractNotes(merged.subjects, merged.tempNotes).notes;
+                  const remoteForComparison: StudyData = {
+                    ...recoveryData,
+                    subjects: remoteOnly.subjects,
+                    tempNotes: remoteOnly.tempNotes,
+                    overallNote: remoteNotes.overallNote,
+                  };
+                  setSubjects(merged.subjects);
+                  setSettings(prev => ({ ...prev, ...recoveryData.settings }));
+                  setTempNotes(merged.tempNotes);
+                  setOverallNoteState(recoveryData.overallNote || remoteNotes.overallNote || '');
+                  setNotePagesIndex(recoveryData.notePagesIndex || []);
+                  setPersonalNotePagesIndex(recoveryData.personalNotePagesIndex || []);
+                  lastSavedAt.current = recoveryData.savedAt ?? 0;
+                  hasUnsyncedEditRef.current = localUnsynced;
+                  setRecoveryCandidate(
+                    recoveryData,
+                    remoteForComparison,
+                    user.id,
+                    activeCourseId,
+                    localUnsynced,
+                  );
+                }
+                setDataLoaded(true);
+                setTimeout(() => { isInitialLoad.current = false; }, 200);
+              })();
+            }
+            return;
+          }
+
+          // Kick off async notes-doc merge; guard with active + seq before applying.
+          (async () => {
+            const fsData = await withNotesDoc(fsDataRaw);
+            if (!active || mySeq !== seq) return; // stale or unmounted — discard
+            // This is the remote baseline.  If this device has an unsynced
+            // local edit, comparing against the remote state lets the merge
+            // preserve both that edit and untouched notes from Firestore.
+            loadedNotesRef.current = extractNotes(
+              fsData.subjects || [],
+              fsData.tempNotes || [],
+            ).notes;
+            loadedOverallNoteRef.current = fsData.overallNote || '';
+
+            const lsRaw = localKey('data');
+            const localSnapshot = lsRaw ? await getLocalData(lsRaw) : null;
+            if (!active || mySeq !== seq) return;
+            const localData = localSnapshot?.data ?? null;
+            const recoveryDraft = readCourseNoteRecoveryDraft(user.id, activeCourseId);
+            const hasPendingNoteRecovery = !!recoveryDraft;
+            const recoveryData = applyCourseNoteRecoveryDraft(localData ?? fsData, recoveryDraft);
+            // Did THIS device make an edit that was never confirmed written to
+            // Firestore (app closed mid-debounce, or while offline)? Only in
+            // that case should the local cache be allowed to win over Firestore.
+            const localUnsynced = !!localSnapshot?.unsynced;
+            hasUnsyncedEditRef.current = localUnsynced || hasPendingNoteRecovery;
+
+            setRecoveryCandidate(
+              recoveryData,
+              fsData,
+              user.id,
+              activeCourseId,
+              localUnsynced || hasPendingNoteRecovery,
+            );
+
+            let legacySubjects: Subject[] | null = null;
+            let legacySettings: CourseSettings | null = null;
+            if (!localData) {
+              try {
+                const ls = localStorage.getItem(`@study_subjects_${user.email}`);
+                const lc = localStorage.getItem(`@study_course_${user.email}`);
+                if (ls) legacySubjects = JSON.parse(ls);
+                if (lc) legacySettings = JSON.parse(lc);
+              } catch { /* ignore */ }
+            }
+
+            let best = pickNewerData(fsData, localData, localUnsynced);
+
+            // If a companion-doc / legacy-main self-heal recovered notes above,
+            // re-apply them onto whichever source won the freshness comparison.
+            // This matters because a stale localStorage cache — saved back when
+            // this course's notes doc was still missing — carries a `savedAt`
+            // that can be newer than (or equal to) Firestore's, so it can win
+            // `pickNewerData` and would otherwise silently discard notes that
+            // were just recovered from the legacy "courseNotes/main" doc.
+            // mergeNotes only fills in blanks (falls back to the existing note
+            // when a key is absent), so this never clobbers newer local edits.
+            if (best && recoveredNotesMap) {
+              const { subjects, tempNotes } = mergeNotes(
+                best.subjects || [],
+                best.tempNotes || [],
+                recoveredNotesMap,
+              );
+              best = {
+                ...best,
+                subjects,
+                tempNotes,
+                overallNote: best.overallNote || recoveredOverallNote || '',
+              };
+            }
+
+            // Anchor lastSavedAt to the freshest timestamp we know about.
+            // The save-useEffect will push this forward immediately whenever
+            // the user makes an edit, so server snapshots arriving before our
+            // own save is acknowledged can never overwrite user-added data.
+            lastSavedAt.current = best?.savedAt ?? fsData.savedAt ?? 0;
+
+            if (best) {
+              const loadedSettings = { ...best.settings } as CourseSettings;
+              let loadedSubjects = best.subjects || [];
+              if (loadedSettings.resetScheduled && loadedSettings.courseStartDate) {
+                const startDate = new Date(loadedSettings.courseStartDate);
+                startDate.setHours(0, 0, 0, 0);
+                if (new Date() >= startDate) {
+                  const resetResult = doResetProgress(loadedSubjects, loadedSettings, user?.email, activeCourseId);
+                  loadedSubjects = resetResult.subjects;
+                  loadedSettings.resetScheduled = false;
+                }
+              }
+              setSubjects(loadedSubjects);
+              setSettings(prev => ({ ...prev, ...loadedSettings }));
+              setTempNotes(best.tempNotes || []);
+              setOverallNoteState(best.overallNote || '');
+              setNotePagesIndex(best.notePagesIndex || []);
+              setPersonalNotePagesIndex(best.personalNotePagesIndex || []);
+              loadedNotesRef.current = extractNotes(loadedSubjects, best.tempNotes || []).notes;
+              loadedOverallNoteRef.current = best.overallNote || '';
+            } else if (legacySubjects) {
+              const migrated = legacySubjects.map((s: any) => ({
+                ...s,
+                chapters: (s.topics || s.chapters || []).map((ch: any) => ({
+                  id: ch.id,
+                  title: ch.title,
+                  totalMinutes: ch.totalMinutes || 0,
+                  completed: ch.completed || false,
+                  topics: (ch.subtopics || ch.topics || []).map((t: any) => ({
+                    id: t.id,
+                    title: t.title,
+                    totalMinutes: 0,
+                    completed: t.completed || false,
+                    subtopics: t.subtopics || [],
+                  })),
+                })),
+              }));
+              setSubjects(migrated);
+              if (legacySettings) setSettings(prev => ({ ...prev, ...legacySettings }));
+            }
+
+            setDataLoaded(true);
+            // Delay so React finishes batching all setState calls above before
+            // the save-useEffect can run (prevents saving empty [] subjects on load)
+            setTimeout(() => { isInitialLoad.current = false; }, 200);
+          })();
+        } else {
+          // ── Real-time update from another device ──
+          // Skip if it's our own pending write, or if THIS device has a local
+          // edit that hasn't been confirmed written to Firestore yet (in the
+          // ~400ms debounce window before flushSave even starts). We used to
+          // also skip whenever `fsDataRaw.savedAt <= lastSavedAt.current` —
+          // but those two timestamps can be Date.now() from two *different*
+          // devices' clocks, so any clock drift made this device permanently
+          // ignore a genuinely newer remote update (e.g. a chapter completed
+          // on another device never showing up here). Gate purely on this
+          // device's own state instead.
+          if (!fsDataRaw) return;
+          if (snap.metadata.hasPendingWrites) return;
+          if (hasUnsyncedEditRef.current) {
+            // Local edits still win for the visible study state, but they must
+            // not prevent the recovery list from checking whether another
+            // browser has since saved this same note to Firestore.
+            void (async () => {
+              const fsData = await withNotesDoc(fsDataRaw);
+              if (!active || mySeq !== seq) return;
+              const recoveryCandidate = localNotesRecoveryRef.current;
+              if (recoveryCandidate) {
+                setRecoveryCandidate(
+                  recoveryCandidate.data,
+                  fsData,
+                  user.id,
+                  activeCourseId,
+                  recoveryCandidate.unsynced,
+                  recoveryCandidate.recoveryBaseline,
+                );
+              }
+            })();
+            return;
+          }
+
+          // Kick off async notes-doc merge; guard with active + seq before applying.
+          (async () => {
+            const fsData = await withNotesDoc(fsDataRaw);
+            if (!active || mySeq !== seq) return; // stale or unmounted — discard
+            const recoveryCandidate = localNotesRecoveryRef.current;
+            if (recoveryCandidate) {
+              setRecoveryCandidate(
+                recoveryCandidate.data,
+                fsData,
+                user.id,
+                activeCourseId,
+                recoveryCandidate.unsynced,
+                recoveryCandidate.recoveryBaseline,
+              );
+            }
+
+            // Mark that the next save-useEffect run should NOT echo this back to
+            // Firestore — applying remote data must never create a save loop.
+            // Also update lastSavedAt to the remote timestamp so any stale server
+            // snapshots arriving after this are ignored.
+            lastSavedAt.current = fsData.savedAt ?? 0;
+            skipNextSaveRef.current = true;
+            loadedNotesRef.current = extractNotes(
+              fsData.subjects || [],
+              fsData.tempNotes || [],
+            ).notes;
+            loadedOverallNoteRef.current = fsData.overallNote || '';
+
+            setSubjects(fsData.subjects || []);
+            setSettings(prev => ({ ...prev, ...fsData.settings }));
+            setTempNotes(fsData.tempNotes || []);
+            setOverallNoteState(fsData.overallNote || '');
+            setNotePagesIndex(fsData.notePagesIndex || []);
+            setPersonalNotePagesIndex(fsData.personalNotePagesIndex || []);
+          })();
+        }
+      },
+      () => {
+        // Firestore error (offline / permission denied) — fall back to localStorage
+        if (!isFirstSnapshot) return;
+        isFirstSnapshot = false;
+        clearTimeout(staleLoadTimer);
+        if (!active) return;
+        const lsRaw = localKey('data');
+        void (async () => {
+          const localSnapshot = lsRaw ? await getLocalData(lsRaw) : null;
+          if (!active) return;
+          const localData = localSnapshot?.data ?? null;
+          const recoveryDraft = readCourseNoteRecoveryDraft(user.id, activeCourseId);
+          const localUnsynced = !!localSnapshot?.unsynced || !!recoveryDraft;
+          const recoveryData = localData && recoveryDraft
+            ? applyCourseNoteRecoveryDraft(localData, recoveryDraft)
+            : localData;
+          if (recoveryData) {
+            setSubjects(recoveryData.subjects || []);
+            setSettings(prev => ({ ...prev, ...recoveryData.settings }));
+            setTempNotes(recoveryData.tempNotes || []);
+            setOverallNoteState(recoveryData.overallNote || '');
+            setNotePagesIndex(recoveryData.notePagesIndex || []);
+            setPersonalNotePagesIndex(recoveryData.personalNotePagesIndex || []);
+            loadedNotesRef.current = extractNotes(localData?.subjects || [], localData?.tempNotes || []).notes;
+            loadedOverallNoteRef.current = localData?.overallNote || '';
+            lastSavedAt.current = recoveryData.savedAt ?? 0;
+            hasUnsyncedEditRef.current = localUnsynced;
+            setRecoveryCandidate(recoveryData, null, user.id, activeCourseId, localUnsynced);
+          }
+          setDataLoaded(true);
+          setTimeout(() => { isInitialLoad.current = false; }, 200);
+        })();
+      },
+    );
+    const unsubscribeCourseNotes = onSnapshot(
+      notesDocRef,
+      snapshot => {
+        if (!active || !snapshot.exists() || snapshot.metadata.hasPendingWrites) return;
+        const recoverySeq = ++recoveryNotesSeq;
+        void (async () => {
+          const remoteNotes = await readCourseNotes(notesDocRef);
+          if (!active || recoverySeq !== recoveryNotesSeq || !remoteNotes.exists) return;
+          const candidate = localNotesRecoveryRef.current;
+          if (!candidate) return;
+          const stripped = extractNotes(
+            candidate.data.subjects || [],
+            candidate.data.tempNotes || [],
+          );
+          const remoteMerged = mergeNotes(stripped.subjects, stripped.tempNotes, remoteNotes.notes);
+          const remoteForComparison: StudyData = {
+            ...candidate.data,
+            subjects: remoteMerged.subjects,
+            tempNotes: remoteMerged.tempNotes,
+            overallNote: remoteNotes.overallNote,
+          };
+          setRecoveryCandidate(
+            candidate.data,
+            remoteForComparison,
+            user.id,
+            activeCourseId,
+            candidate.unsynced,
+            candidate.recoveryBaseline,
+          );
+        })().catch(error => {
+          console.warn('[StudyContext] Could not refresh note recovery from Firestore:', error);
+        });
+      },
+      error => console.warn('[StudyContext] Live note-recovery listener failed:', error),
+    );
+
+    return () => {
+      active = false; // prevent any in-flight async work from applying state
+      recoveryNotesSeq++;
+      clearTimeout(staleLoadTimer);
+      unsubscribe();
+      unsubscribeCourseNotes();
+    };
+  }, [user, activeCourseId]);
+
+  // ─── Prompt Notes: course-agnostic, super-admin only ──────────────────
+  // Index stored at users/{uid}/promptData/index (NOT inside studyData/{courseId})
+  // so the same notes appear regardless of which course is active.
+  const promptInitialLoadDoneRef = useRef(false);
+  const promptIndexSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const promptIndexLastSyncedJsonRef = useRef<string | null>(null);
+  const promptIndexStateRef = useRef(promptNotePagesIndex);
+  promptIndexStateRef.current = promptNotePagesIndex;
+  const [promptIndexReady, setPromptIndexReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!user) {
+      setPromptNotePagesIndex([]);
+      promptInitialLoadDoneRef.current = false;
+      promptIndexLastSyncedJsonRef.current = null;
+      setPromptIndexReady(false);
+      return () => { active = false; };
+    }
+    promptInitialLoadDoneRef.current = false;
+    setPromptIndexReady(false);
+    promptIndexLastSyncedJsonRef.current = null;
+    const lk = `@study_promptindex_${user.email}`;
+    let localIndex: NotePageMeta[] = [];
+    try {
+      const raw = localStorage.getItem(lk);
+      if (raw) {
+        localIndex = JSON.parse(raw) as NotePageMeta[];
+        setPromptNotePagesIndex(localIndex);
+      }
+    } catch { /* ignore */ }
+    const indexRef = doc(db, 'users', user.id, 'promptData', 'index');
+    getDoc(indexRef).then(snap => {
+      if (!active) return;
+      if (snap.exists()) {
+        const idx = (snap.data().promptNotePagesIndex || []) as NotePageMeta[];
+        promptIndexLastSyncedJsonRef.current = JSON.stringify(idx);
+        // If the user changed prompt notes while the first read was in flight,
+        // keep their newer local state and let the normal save effect write it.
+        if (JSON.stringify(promptIndexStateRef.current) === JSON.stringify(localIndex)) {
+          setPromptNotePagesIndex(idx);
+          safeSetLocalStorage(lk, JSON.stringify(idx));
+        }
+      } else {
+        // A local index may be the only copy after an offline session. Seed the
+        // cloud quietly; this is startup recovery, not a user-initiated save.
+        const localSnapshot = promptIndexStateRef.current;
+        promptIndexLastSyncedJsonRef.current = JSON.stringify(localSnapshot);
+        if (localSnapshot.length > 0) {
+          void setDocQuietly(indexRef, { promptNotePagesIndex: localSnapshot }, { merge: false })
+            .catch(() => {});
+        }
+      }
+      promptInitialLoadDoneRef.current = true;
+      setPromptIndexReady(true);
+    }).catch(() => {
+      if (!active) return;
+      const localSnapshot = promptIndexStateRef.current;
+      promptIndexLastSyncedJsonRef.current = JSON.stringify(localSnapshot);
+      if (localSnapshot.length > 0) {
+        void setDocQuietly(indexRef, { promptNotePagesIndex: localSnapshot }, { merge: false })
+          .catch(() => {});
+      }
+      promptInitialLoadDoneRef.current = true;
+      setPromptIndexReady(true);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { active = false; };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user || !promptIndexReady || !promptInitialLoadDoneRef.current) return;
+    const lk = `@study_promptindex_${user.email}`;
+    safeSetLocalStorage(lk, JSON.stringify(promptNotePagesIndex));
+    const snapshotJson = JSON.stringify(promptNotePagesIndex);
+    if (snapshotJson === promptIndexLastSyncedJsonRef.current) return;
+    if (promptIndexSaveTimerRef.current) clearTimeout(promptIndexSaveTimerRef.current);
+    const uid_ = user.id;
+    const indexRef = doc(db, 'users', uid_, 'promptData', 'index');
+    const snapshot = promptNotePagesIndex;
+    promptIndexSaveTimerRef.current = setTimeout(() => {
+      setDoc(indexRef, { promptNotePagesIndex: snapshot }, { merge: false })
+        .then(() => { promptIndexLastSyncedJsonRef.current = snapshotJson; })
+        .catch(() => {});
+    }, 1500);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [promptNotePagesIndex, user?.id, promptIndexReady]);
+
+  // Save data (debounced for Firestore, immediate for localStorage)
+  const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; overallNote: string; notePagesIndex: NotePageMeta[]; personalNotePagesIndex: NotePageMeta[] } | null>(null);
+
+  // NOTE: this used to also gate a "skip the write" safety net for the very
+  // first flushSave of a course session (see studytrack-clear-note-first-save
+  // memory for why that was removed) — a real user's first action after
+  // loading is very often exactly "open a note, clear it, save", and that is
+  // indistinguishable from the stale-state bug the guard was trying to catch.
+  // Since isInitialLoad already prevents the load itself from ever triggering
+  // a save, every flushSave call past that point reflects a genuine, live,
+  // user-controlled state change, so an "empty" result must always be honored
+  // as a real intentional clear/delete. This ref is kept only so the one-time
+  // diagnostic warning below still fires just once per session instead of on
+  // every keystroke.
+  const notesGuardArmedRef = useRef(true);
+
+  // Diagnostic-only counterpart to notesGuardArmedRef, for an empty subjects
+  // array. Never blocks the write (see notesGuardArmedRef comment for why a
+  // blocking version breaks a real user's first intentional clear/delete of
+  // the session) — only logs once per session so an unexpected empty-subjects
+  // save is still visible in the console if it ever happens.
+  const subjectsGuardArmedRef = useRef(true);
+
+  const flushSaveNow = async (
+    subjectsToSave: Subject[],
+    settingsToSave: CourseSettings,
+    tempNotesToSave: TempNoteItem[],
+    overallNoteToSave: string,
+    notePagesIndexToSave: NotePageMeta[],
+    personalNotePagesIndexToSave: NotePageMeta[],
+  ) => {
+    // Use refs so this always has the latest user/courseId regardless of closure age
+    const currentUser = userRef.current;
+    const currentCourseId = activeCourseIdRef.current;
+    if (!currentUser || !currentCourseId) return;
+
+    const docRef = doc(db, 'users', currentUser.id, 'studyData', currentCourseId);
+    const notesDocRef = doc(db, 'users', currentUser.id, 'courseNotes', currentCourseId);
+    const matchesPendingSave = (pending: typeof pendingSaveRef.current) =>
+      !pending || (
+        pending.subjects === subjectsToSave &&
+        pending.settings === settingsToSave &&
+        pending.tempNotes === tempNotesToSave &&
+        pending.overallNote === overallNoteToSave &&
+        pending.notePagesIndex === notePagesIndexToSave &&
+        pending.personalNotePagesIndex === personalNotePagesIndexToSave
+      );
+
+    if (subjectsToSave.length === 0 && subjectsGuardArmedRef.current) {
+      console.info(
+        '[StudyContext] First save of this session has an empty subjects array — saving as-is ' +
+        '(this is expected when the user just deleted their last subject).',
+      );
+    }
+    subjectsGuardArmedRef.current = false;
+
+    const savedAt = Math.max(Date.now(), lastSavedAt.current + 1);
+    lastSavedAt.current = savedAt;
+    const lsKey = `@study_data_${currentCourseId}_${currentUser.email}`;
+    const payload: StudyData = {
+      subjects: subjectsToSave,
+      settings: settingsToSave,
+      tempNotes: tempNotesToSave,
+      overallNote: overallNoteToSave,
+      notePagesIndex: notePagesIndexToSave,
+      personalNotePagesIndex: personalNotePagesIndexToSave,
+      savedAt,
+    };
+    // Browser caches are best-effort only. A localStorage quota error must
+    // never prevent the Firestore write below. Do not let a stale queued save
+    // replace a newer snapshot written directly by a Save click.
+    if (matchesPendingSave(pendingSaveRef.current)) {
+      void writeLocalCourseSnapshot(lsKey, payload, true);
+    }
+    try {
+      // Extract all rich-text note content from subjects and tempNotes so the main
+      // Firestore document stays well under the 1 MB limit.  The notes are saved to
+      // a separate "courseNotes/{courseId}" document and merged back on load.
+      const { subjects: strippedSubjects, tempNotes: strippedTempNotes, notes } =
+        extractNotes(subjectsToSave, tempNotesToSave);
+
+      const mainPayload = JSON.parse(JSON.stringify({
+        subjects: strippedSubjects,
+        settings: settingsToSave,
+        tempNotes: strippedTempNotes,
+        overallNote: '',          // moved to the notes doc
+        notePagesIndex: notePagesIndexToSave,
+        // personalNotePagesIndex is stored locally only — it is stripped from all
+        // sync relay payloads so it never reaches shared-course recipients.
+        personalNotePagesIndex: personalNotePagesIndexToSave,
+        savedAt,
+        hasNotesDoc: true,        // tells the loader to fetch the companion doc
+      }));
+
+      // The flat notes map can itself grow past Firestore's 1 MB document limit;
+      // writeCourseNotesSnapshot stages it in a new chunk generation before
+      // switching the parent document, keeping the old generation available.
+      // Merge against the latest remote companion document before writing.
+      // The current UI state may have been produced from a stale snapshot on
+      // this device.  Only keys that changed relative to the loaded baseline
+      // are local mutations; untouched remote keys must survive this save.
+      let notesToSave = notes;
+      let overallNoteToSaveMerged = overallNoteToSave;
+      try {
+        const remoteNotes = await readCourseNotes(notesDocRef);
+        if (remoteNotes.exists) {
+          const baseline = loadedNotesRef.current;
+          const mergedNotes: Record<string, string> = { ...remoteNotes.notes };
+          const allKeys = new Set([
+            ...Object.keys(remoteNotes.notes),
+            ...Object.keys(baseline),
+            ...Object.keys(notes),
+          ]);
+          for (const key of allKeys) {
+            const before = baseline[key];
+            const current = notes[key];
+            // Equal means this device did not touch the note.  Preserve the
+            // newest remote value (or its existence) in that case.
+            if (current === before) continue;
+            if (current) mergedNotes[key] = current;
+            else delete mergedNotes[key]; // explicit local clear/delete
+          }
+          notesToSave = mergedNotes;
+          overallNoteToSaveMerged =
+            overallNoteToSave === loadedOverallNoteRef.current
+              ? remoteNotes.overallNote
+              : overallNoteToSave;
+        }
+      } catch (err) {
+        // The main save can still proceed when the companion read is offline.
+        // In that case the local payload is retained and will be retried by
+        // the normal unsynced marker flow.
+        console.warn('[StudyContext] Could not merge remote notes before save:', err);
+      }
+      const notesData = { overallNote: overallNoteToSaveMerged, notes: notesToSave };
+
+      // Diagnostic only (does NOT block the write — see notesGuardArmedRef
+      // comment above for why blocking here breaks legitimate first-clears).
+      // Still useful in logs to distinguish "user really cleared everything"
+      // from "something upstream produced an unexpectedly empty state".
+      if (notesGuardArmedRef.current) {
+        const incomingHasNotes =
+          !!notesData.overallNote || Object.values(notesData.notes).some((v) => !!v);
+        if (!incomingHasNotes) {
+          console.info(
+            '[StudyContext] First save of this session has empty notes — saving as-is ' +
+            '(this is expected when the user just cleared/deleted their last note).',
+          );
+        }
+        notesGuardArmedRef.current = false;
+      }
+
+      // Write courseNotes FIRST, then studyData.  Sequential (not concurrent) so
+      // another device that receives the main snapshot can fetch a complete note
+      // generation. Previous chunks remain readable until this parent write lands.
+      await writeCourseNotesSnapshot(notesDocRef, notesData, savedAt);
+      await setDoc(docRef, mainPayload, { merge: false });
+
+      // ── Live-sync: relay update through shareRequests ────────────────────
+      // Security rules prevent the admin from writing directly to another user's
+      // studyData/courseNotes collections.  Instead, we write the updated course
+      // data into each accepted shareRequests document (admin CAN write those
+      // because fromAdminUid == auth.uid).  The recipient's client has an
+      // onSnapshot on shareRequests and will detect the new syncedAt timestamp,
+      // then apply the data to their own collections themselves.
+      //
+      // Query only by fromAdminUid (single equality → no composite index needed).
+      try {
+        const sharesQ = query(
+          collection(db, 'shareRequests'),
+          where('fromAdminUid', '==', currentUser.id),
+        );
+        const sharesSnap = await getDocs(sharesQ);
+        console.log(`[LiveSync] Admin save for course "${currentCourseId}" — found ${sharesSnap.size} sent share(s) total`);
+        const syncedAt = Date.now();
+        let syncCount = 0;
+        for (const shareDoc of sharesSnap.docs) {
+          const shareData = shareDoc.data();
+          if (shareData.courseId !== currentCourseId) continue;
+          if (shareData.status !== 'accepted') continue;
+          syncCount++;
+
+          // Partial-subject shares must keep being filtered on every re-sync,
+          // not just at the initial share — otherwise the very next edit the
+          // admin makes pushes the FULL course back over the top of the
+          // recipient's restricted subset (previously reported as "all
+          // subjects come back after accepting a partial course share").
+          const sharedSubjectIds = shareData.sharedSubjectIds as string[] | undefined;
+          let syncSubjects = mainPayload.subjects as unknown[];
+          let syncNotes = notesData.notes;
+          if (sharedSubjectIds && Array.isArray(mainPayload.subjects)) {
+            syncSubjects = filterSubjectsByIds(mainPayload.subjects as unknown[], sharedSubjectIds);
+            const idSet = collectAllIds(syncSubjects);
+            syncNotes = filterNotesMapByIds(notesData.notes, idSet);
+          }
+          // Strip library-compiler notes (privateNote=true) — they are admin-only
+          // and must never appear in a shared course copy.
+          const syncNotePagesIndex = (mainPayload.notePagesIndex as NotePageMeta[] | undefined)
+            ?.filter(p => !p.privateNote) ?? [];
+          // Strip tempNotes and personalNotePagesIndex — both are private to each user
+          // and must never reach shared-course recipients.
+          const { tempNotes: _stripAdminTempNotes, personalNotePagesIndex: _stripPersonalIdx, ...syncStudyDataPayload } = {
+            ...mainPayload,
+            subjects: syncSubjects,
+            notePagesIndex: syncNotePagesIndex,
+          };
+          const syncNotesDataPayload = { ...notesData, notes: syncNotes };
+
+          // Fetch test decks for this course so they are relayed to the recipient.
+          // Apply the same subject-level filter as subjects/notes above.
+          let testDecksMap: Record<string, unknown[]> = {};
+          try {
+            const decksColRef = collection(db, 'users', currentUser.id, 'courses', currentCourseId, 'testDecks');
+            const decksSnap = await getDocs(decksColRef);
+            decksSnap.forEach(d => {
+              const data = d.data();
+              const cards: unknown[] = Array.isArray(data.cards) ? data.cards : [];
+              if (!sharedSubjectIds || sharedSubjectIds.includes(d.id)) {
+                testDecksMap[d.id] = cards;
+              }
+            });
+          } catch { /* best-effort — missing decks are not fatal */ }
+
+          // Overwrite courseSnapshot.studyData in-place (dot-notation).
+          // notesJson and testDecksJson are written to separate sub-documents
+          // under shareRequests/{shareId}/syncPayloads/notes and /testDecks
+          // so that the main shareRequests document never exceeds Firestore's
+          // 1 MB per-document limit (a large course with many notes easily
+          // breaches it when everything is packed into one document).
+          const shareDocRef = doc(db, 'shareRequests', shareDoc.id);
+          const syncPayload: Record<string, unknown> = {
+            'courseSnapshot.studyData': syncStudyDataPayload,
+            // Clear legacy inline fields so old clients don't read stale data
+            'courseSnapshot.notesJson': '',
+            'courseSnapshot.testDecksJson': '',
+            syncedAt,
+          };
+          // Write large payloads into sub-documents (no size limit per collection)
+          const syncPayloadsCol = collection(db, 'shareRequests', shareDoc.id, 'syncPayloads');
+          await Promise.all([
+            setDoc(doc(syncPayloadsCol, 'notes'), {
+              notesJson: JSON.stringify(syncNotesDataPayload),
+              syncedAt,
+            }),
+            setDoc(doc(syncPayloadsCol, 'testDecks'), {
+              testDecksJson: JSON.stringify(testDecksMap),
+              syncedAt,
+            }),
+          ]);
+          await updateDoc(shareDocRef, syncPayload);
+          console.log(`[LiveSync] ✅ Relay pushed to shareRequest "${shareDoc.id}" — syncedAt=${syncedAt}`);
+        }
+        if (syncCount === 0) console.warn(`[LiveSync] ⚠️ No accepted shares found for course "${currentCourseId}"`);
+      } catch (syncErr) {
+        console.error('[LiveSync] ❌ Relay write failed:', syncErr);
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
+      // Firestore now has this edit — clear the "unsynced" marker so a future
+      // load on this device trusts Firestore instead of this local cache.
+      loadedNotesRef.current = notesToSave;
+      loadedOverallNoteRef.current = overallNoteToSaveMerged;
+      const pending = pendingSaveRef.current;
+      const thisIsLatestPendingSave = matchesPendingSave(pending);
+      if (thisIsLatestPendingSave) {
+        const lsKeyForFlag = localKey('data');
+        if (lsKeyForFlag) await writeLocalCourseSnapshot(lsKeyForFlag, payload, false);
+        clearCourseNoteRecoveryDraftIfSynced(
+          currentUser.id,
+          currentCourseId,
+          notesToSave,
+          overallNoteToSaveMerged,
+        );
+        const remainingNoteDraft = readCourseNoteRecoveryDraft(currentUser.id, currentCourseId);
+        if (remainingNoteDraft) {
+          hasUnsyncedEditRef.current = true;
+          setRecoveryCandidate(
+            applyCourseNoteRecoveryDraft(payload, remainingNoteDraft),
+            payload,
+            currentUser.id,
+            currentCourseId,
+            true,
+          );
+        } else {
+          clearRecoveryNotesBaseline(recoveryNotesBaselineKey(currentUser.id, currentCourseId));
+          hasUnsyncedEditRef.current = false;
+          setRecoveryCandidate(payload, payload, currentUser.id, currentCourseId, false);
+        }
+      } else {
+        // A newer edit may have been saved locally while this Firestore write
+        // was in flight. Keep its recovery marker; this older acknowledgement
+        // must not make the newer local snapshot look synced.
+        hasUnsyncedEditRef.current = true;
+      }
+      if (thisIsLatestPendingSave && pending) {
+        pendingSaveRef.current = null;
+      }
+      if (thisIsLatestPendingSave) {
+        setSyncStatus('success');
+        setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
+      }
+    } catch (err) {
+      console.error('[StudyContext] Firestore save failed:', err);
+      setSyncStatus('failed');
+      const failure = err as { code?: string; message?: string };
+      setSyncError(failure.code || failure.message || 'unknown');
+    }
+  };
+
+  // Serialize course-level saves. Without this, two devices (or two rapid
+  // local edits) can both read the same companion notes document and the
+  // slower write can put an older note map back over the newer one.
+  const flushSave = (
+    subjectsToSave: Subject[],
+    settingsToSave: CourseSettings,
+    tempNotesToSave: TempNoteItem[],
+    overallNoteToSave: string,
+    notePagesIndexToSave: NotePageMeta[],
+    personalNotePagesIndexToSave: NotePageMeta[],
+  ) => {
+    const targetUserId = userRef.current?.id;
+    const targetCourseId = activeCourseIdRef.current;
+    courseSaveQueueRef.current = courseSaveQueueRef.current
+      .catch(() => {})
+      .then(() => {
+        // A queued write must never follow the user into a different course.
+        // This is especially important during login/course switching, when
+        // the old debounce can finish after the new course is active.
+        if (
+          !targetUserId ||
+          !targetCourseId ||
+          userRef.current?.id !== targetUserId ||
+          activeCourseIdRef.current !== targetCourseId
+        ) return;
+        return flushSaveNow(
+          subjectsToSave,
+          settingsToSave,
+          tempNotesToSave,
+          overallNoteToSave,
+          notePagesIndexToSave,
+          personalNotePagesIndexToSave,
+        );
+      });
+  };
+
+  // Persist note-modal saves in the click handler, before the next React
+  // render/effect. A user can close the tab immediately after Save, so the
+  // debounced effect and unload handler cannot be the first durable copy.
+  const persistCourseNoteDraftImmediately = (
+    nextSubjects: Subject[],
+    nextOverallNote: string,
+  ) => {
+    if (!user || !activeCourseId || !dataLoaded) return;
+    const savedAt = Math.max(Date.now(), lastSavedAt.current + 1);
+    const payload: StudyData = {
+      subjects: nextSubjects,
+      settings,
+      tempNotes,
+      overallNote: nextOverallNote,
+      notePagesIndex,
+      personalNotePagesIndex,
+      savedAt,
+    };
+    const cacheKey = `@study_data_${activeCourseId}_${user.email}`;
+    const baselineKey = recoveryNotesBaselineKey(user.id, activeCourseId);
+
+    if (!hasUnsyncedEditRef.current) {
+      saveRecoveryNotesBaseline(
+        baselineKey,
+        loadedNotesRef.current,
+        loadedOverallNoteRef.current,
+      );
+    }
+    // Keep a compact, synchronous copy of note changes separately from the
+    // full course cache. The full snapshot can exceed localStorage's quota and
+    // fall back to asynchronous IndexedDB; a tab closed immediately after Save
+    // may close before that IndexedDB transaction completes.
+    let baseline = readRecoveryNotesBaseline(baselineKey);
+    if (!baseline) {
+      baseline = {
+        notes: Object.fromEntries(
+          Object.entries(loadedNotesRef.current).map(([key, value]) => [key, contentFingerprint(value)]),
+        ),
+        overallNote: contentFingerprint(loadedOverallNoteRef.current),
+      };
+      try {
+        localStorage.setItem(baselineKey, JSON.stringify(baseline));
+      } catch (error) {
+        console.warn('[StudyContext] Could not persist note recovery baseline:', error);
+      }
+    }
+    const nextNoteMap = extractNotes(nextSubjects, tempNotes).notes;
+    const changedNotes: Record<string, string> = {};
+    const noteKeys = new Set([...Object.keys(baseline.notes), ...Object.keys(nextNoteMap)]);
+    for (const key of noteKeys) {
+      const value = nextNoteMap[key] || '';
+      const baselineFingerprint = baseline.notes[key] ?? contentFingerprint('');
+      if (contentFingerprint(value) !== baselineFingerprint) changedNotes[key] = value;
+    }
+    const draft: CourseNoteRecoveryDraft = { notes: changedNotes };
+    if (contentFingerprint(nextOverallNote) !== baseline.overallNote) {
+      draft.overallNote = nextOverallNote;
+    }
+    try {
+      const recoveryKey = courseNoteRecoveryDraftKey(user.id, activeCourseId);
+      if (Object.keys(draft.notes).length > 0 || draft.overallNote !== undefined) {
+        localStorage.setItem(recoveryKey, JSON.stringify(draft));
+      } else {
+        localStorage.removeItem(recoveryKey);
+      }
+    } catch (error) {
+      console.warn('[StudyContext] Could not persist the compact note recovery copy:', error);
+    }
+
+    hasUnsyncedEditRef.current = true;
+    lastSavedAt.current = savedAt;
+    pendingSaveRef.current = {
+      subjects: nextSubjects,
+      settings,
+      tempNotes,
+      overallNote: nextOverallNote,
+      notePagesIndex,
+      personalNotePagesIndex,
+    };
+    setSyncStatus('syncing');
+    void writeLocalCourseSnapshot(cacheKey, payload, true);
+  };
+
+  const restoreLocalNotes = async (keys?: string[]): Promise<boolean> => {
+    const requestedKeys = new Set(keys ?? recoveryItems.map(item => item.key));
+    if (requestedKeys.size === 0) return false;
+    setSyncStatus('syncing');
+    setSyncError(null);
+
+    let restoredPageCount = 0;
+    for (const key of [...requestedKeys]) {
+      const pageRecord = localNotePageRecoveryRef.current.get(key);
+      if (!pageRecord) continue;
+      try {
+        if (pageRecord.source === 'course-page') await saveNotePage(pageRecord.page);
+        else if (pageRecord.source === 'personal-page') await savePersonalNotePage(pageRecord.page);
+        else await savePromptNotePage(pageRecord.page);
+
+        if (localStorage.getItem(`${pageRecord.localKey}__unsynced`) === '1') {
+          throw new Error('The note page is still waiting for Firestore confirmation.');
+        }
+        localNotePageRecoveryRef.current.delete(key);
+        requestedKeys.delete(key);
+        restoredPageCount++;
+      } catch (error) {
+        console.error('[StudyContext] Could not restore local note page:', error);
+        setLocalNotePageRecoveryItems([...localNotePageRecoveryRef.current.values()].map(record => record.item));
+        setSyncStatus('failed');
+        setSyncError('note-page-restore-failed');
+        return false;
+      }
+    }
+    if (restoredPageCount > 0) {
+      setLocalNotePageRecoveryItems([...localNotePageRecoveryRef.current.values()].map(record => record.item));
+    }
+
+    const courseKeys = new Set([...requestedKeys].filter(key =>
+      localNotesRecoveryItems.some(item => item.key === key),
+    ));
+    if (courseKeys.size === 0) {
+      if (restoredPageCount > 0) {
+        setSyncStatus('success');
+        setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
+        return true;
+      }
+      return false;
+    }
+
+    const candidate = localNotesRecoveryRef.current;
+    const source = candidate?.data;
+    const baseline = candidate?.baseline;
+    const currentUser = userRef.current;
+    const currentCourseId = activeCourseIdRef.current;
+    if (!source || !currentUser || !currentCourseId) return false;
+    const keysToRestore = courseKeys;
+
+    // Finish any already-debounced edit before merging the recovery copy.
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      const pending = pendingSaveRef.current;
+      if (pending) {
+        flushSave(
+          pending.subjects,
+          pending.settings,
+          pending.tempNotes,
+          pending.overallNote,
+          pending.notePagesIndex,
+          pending.personalNotePagesIndex,
+        );
+      }
+    }
+    await courseSaveQueueRef.current.catch(() => {});
+
+    try {
+      const notesDocRef = doc(db, 'users', currentUser.id, 'courseNotes', currentCourseId);
+      const remoteNotes = await readCourseNotes(notesDocRef);
+      const mergedNotes = {
+        ...loadedNotesRef.current,
+        ...remoteNotes.notes,
+      };
+      const browserNotes = extractNotes(source.subjects || [], source.tempNotes || []).notes;
+      const baselineNotes = baseline
+        ? extractNotes(baseline.subjects || [], baseline.tempNotes || []).notes
+        : null;
+      for (const [key, value] of Object.entries(browserNotes)) {
+        if (
+          keysToRestore.has(key) &&
+          value &&
+          (
+            !baselineNotes ||
+            (mergedNotes[key] || '') === (baselineNotes[key] || '')
+          )
+        ) {
+          mergedNotes[key] = value;
+        }
+      }
+      const remoteOverall = remoteNotes.exists ? remoteNotes.overallNote : loadedOverallNoteRef.current;
+      const baselineOverall = baseline?.overallNote || '';
+      const mergedOverall = keysToRestore.has(OVERALL_NOTE_RECOVERY_KEY) &&
+        source.overallNote &&
+        (!baselineNotes || remoteOverall === baselineOverall)
+        ? source.overallNote
+        : remoteOverall;
+      const savedAt = Date.now();
+
+      // Write the union directly. This keeps every cloud-only note, including
+      // notes whose old subject no longer exists in the current tree.
+      await writeCourseNotesSnapshot(notesDocRef, { overallNote: mergedOverall, notes: mergedNotes }, savedAt);
+
+      const studyDocRef = doc(db, 'users', currentUser.id, 'studyData', currentCourseId);
+      const studySnap = await getDoc(studyDocRef);
+      if (studySnap.exists()) {
+        await updateDoc(studyDocRef, { savedAt, hasNotesDoc: true });
+      } else {
+        const stripped = extractNotes(subjects, tempNotes);
+        await setDoc(studyDocRef, {
+          subjects: stripped.subjects,
+          settings,
+          tempNotes: stripped.tempNotes,
+          overallNote: '',
+          notePagesIndex,
+          personalNotePagesIndex,
+          savedAt,
+          hasNotesDoc: true,
+        });
+      }
+
+      const merged = mergeNotes(subjects, tempNotes, mergedNotes);
+      const payload: StudyData = {
+        subjects: merged.subjects,
+        settings,
+        tempNotes: merged.tempNotes,
+        overallNote: mergedOverall,
+        notePagesIndex,
+        personalNotePagesIndex,
+        savedAt,
+      };
+      loadedNotesRef.current = extractNotes(merged.subjects, merged.tempNotes).notes;
+      loadedOverallNoteRef.current = mergedOverall;
+      lastSavedAt.current = savedAt;
+      hasUnsyncedEditRef.current = false;
+      const updatedBaseline: StudyData = {
+        ...(baseline || source),
+        subjects: merged.subjects,
+        tempNotes: merged.tempNotes,
+        overallNote: mergedOverall,
+      };
+      setRecoveryCandidate(source, updatedBaseline, currentUser.id, currentCourseId, candidate?.unsynced);
+      skipNextSaveRef.current = true;
+      setSubjects(merged.subjects);
+      setTempNotes(merged.tempNotes);
+      setOverallNoteState(mergedOverall);
+      await writeLocalCourseSnapshot(
+        `@study_data_${currentCourseId}_${currentUser.email}`,
+        payload,
+        false,
+      );
+      clearRecoveryNotesBaseline(recoveryNotesBaselineKey(currentUser.id, currentCourseId));
+      setSyncStatus('success');
+      setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
+      return true;
+    } catch (error) {
+      const failure = error as { code?: string; message?: string };
+      setSyncStatus('failed');
+      setSyncError(failure.code || failure.message?.slice(0, 80) || 'unknown');
+      // Leave the browser snapshot available so the user can retry.
+      setRecoveryCandidate(source, baseline || null, currentUser.id, currentCourseId, candidate?.unsynced);
+      console.error('[StudyContext] Local note recovery failed:', error);
+      return false;
+    }
+  };
+
+  React.useLayoutEffect(() => {
+    if (!user || !dataLoaded) return;
+    if (isInitialLoad.current) {
+      // The save-effect can't run yet, but a server snapshot may have set
+      // skipNextSaveRef during the boot window. Clear it here so the very
+      // first user edit after load isn't silently swallowed.
+      skipNextSaveRef.current = false;
+      return;
+    }
+    // Note: this used to bail out entirely whenever `subjects.length === 0`,
+    // which also blocked notePagesIndex/tempNotes/settings from ever being
+    // saved for a course that genuinely has zero subjects (e.g. one used only
+    // for the standalone Notes section) — deletes there looked like they
+    // silently "reverted" on reload. The empty-subjects protection now lives
+    // in flushSave's `subjectsGuardArmedRef` check, which only skips the
+    // subjects field itself (once, on the session's first flush) instead of
+    // blocking every other field forever.
+
+    // Remote update arrived via onSnapshot — persist to localStorage so it
+    // survives a reload, but do NOT echo it back to Firestore (that would
+    // create an infinite save loop between devices).
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      const lsKey = localKey('data');
+      // Use lastSavedAt.current (= the remote savedAt, set in onSnapshot) so the
+      // localStorage entry keeps the original timestamp — not a fresh Date.now().
+      const remotePayload: StudyData = { subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex, savedAt: lastSavedAt.current };
+      if (lsKey) void writeLocalCourseSnapshot(lsKey, remotePayload, hasUnsyncedEditRef.current);
+      if (user && activeCourseId && !hasUnsyncedEditRef.current) {
+        clearRecoveryNotesBaseline(recoveryNotesBaselineKey(user.id, activeCourseId));
+      }
+      return;
+    }
+
+    // User-initiated change — save to localStorage immediately, then debounce
+    // the Firestore write.  Push lastSavedAt forward right now so any stale
+    // server snapshot arriving during the 400 ms debounce window is ignored.
+    const payload: StudyData = {
+      subjects,
+      settings,
+      tempNotes,
+      overallNote,
+      notePagesIndex,
+      personalNotePagesIndex,
+      savedAt: Math.max(Date.now(), lastSavedAt.current + 1),
+    };
+    const lsKey = localKey('data');
+    if (lsKey) {
+      if (!hasUnsyncedEditRef.current && activeCourseId) {
+        saveRecoveryNotesBaseline(
+          recoveryNotesBaselineKey(user.id, activeCourseId),
+          loadedNotesRef.current,
+          loadedOverallNoteRef.current,
+        );
+      }
+      // Save locally when possible, but always queue Firestore independently.
+      // IndexedDB carries large snapshots when localStorage is full.
+      void writeLocalCourseSnapshot(lsKey, payload, true);
+    }
+    lastSavedAt.current = payload.savedAt!;
+    hasUnsyncedEditRef.current = true;
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setSyncStatus('syncing');
+    pendingSaveRef.current = { subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex };
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      const pending = pendingSaveRef.current;
+      if (pending) flushSave(pending.subjects, pending.settings, pending.tempNotes, pending.overallNote, pending.notePagesIndex, pending.personalNotePagesIndex);
+    }, 400);
+  }, [subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex, user, dataLoaded, activeCourseId]);
+
+  // Flush save immediately before page unload
+  useEffect(() => {
+    const handleUnload = () => {
+      if (pendingSaveRef.current && user && activeCourseId) {
+        const { subjects: s, settings: st, tempNotes: tn, overallNote: on, notePagesIndex: np, personalNotePagesIndex: pnp } = pendingSaveRef.current;
+        const payload: StudyData = { subjects: s, settings: st, tempNotes: tn, overallNote: on, notePagesIndex: np, personalNotePagesIndex: pnp, savedAt: Date.now() };
+        const lsKey = `@study_data_${activeCourseId}_${user.email}`;
+        try {
+          saveRecoveryNotesBaseline(
+            recoveryNotesBaselineKey(user.id, activeCourseId),
+            loadedNotesRef.current,
+            loadedOverallNoteRef.current,
+          );
+          localStorage.setItem(lsKey, JSON.stringify(payload));
+          localStorage.setItem(`${lsKey}__unsynced`, '1');
+        } catch (error) {
+          console.warn('[StudyContext] Could not persist unload snapshot in localStorage:', error);
+        }
+      }
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    window.addEventListener('pagehide', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      window.removeEventListener('pagehide', handleUnload);
+    };
+  }, [user, activeCourseId]);
+
+  // ─── Calculation helpers ───────────────────────────────────────────────
+  const calculateWeight = (subj: Subject) => {
+    if (!subj.chapters || subj.chapters.length === 0) return 1;
+    let w = 0;
+    subj.chapters.forEach(ch => {
+      w += 1;
+      ch.topics.forEach(t => {
+        w += 0.5;
+        t.subtopics.forEach(sub => {
+          w += 0.25;
+          sub.concepts.forEach(() => { w += 0.1; });
+        });
+      });
+    });
+    return w;
+  };
+
+  const redistributeDays = (curr: Subject[], courseDays: number | null): Subject[] => {
+    if (!courseDays) return curr;
+    const today = new Date();
+    let manualSum = 0, autoWeightSum = 0;
+    curr.forEach(s => {
+      if (s.manualDays) manualSum += s.allocatedDays;
+      else autoWeightSum += calculateWeight(s);
+    });
+    const pool = Math.max(0, courseDays - manualSum);
+    return curr.map(s => {
+      if (s.manualDays) return { ...s, deadline: formatISO(addDays(today, s.allocatedDays)) };
+      const w = calculateWeight(s);
+      const allocated = autoWeightSum > 0 ? Math.round((w / autoWeightSum) * pool) : 0;
+      return { ...s, allocatedDays: allocated, deadline: formatISO(addDays(today, allocated)) };
+    });
+  };
+
+  const redistributeMinutes = (subj: Subject): Subject => {
+    if (!subj.chapters || subj.chapters.length === 0) return subj;
+    const totalW = calculateWeight(subj);
+    const updatedChapters = subj.chapters.map(ch => {
+      const chW = 1 + ch.topics.length * 0.5;
+      return { ...ch, totalMinutes: Math.round((chW / totalW) * subj.totalMinutes) };
+    });
+    return { ...subj, chapters: updatedChapters };
+  };
+
+  const checkSubjectCompletion = (s: Subject): Subject => ({
+    ...s,
+    completed: s.chapters.length > 0 && s.chapters.every(ch => isChapterContentDone(ch)),
+  });
+
+  // ─── Immutable update helpers ──────────────────────────────────────────
+  const updateSubjectFn = (subjId: string, updater: (s: Subject) => Subject) =>
+    (prev: Subject[]) => prev.map(s => s.id === subjId ? updater(s) : s);
+
+  const updateChapterFn = (subjId: string, chId: string, updater: (ch: Chapter) => Chapter) =>
+    updateSubjectFn(subjId, s => ({ ...s, chapters: s.chapters.map(ch => ch.id === chId ? updater(ch) : ch) }));
+
+  const updateTopicFn = (subjId: string, chId: string, tId: string, updater: (t: Topic) => Topic) =>
+    updateChapterFn(subjId, chId, ch => ({ ...ch, topics: ch.topics.map(t => t.id === tId ? updater(t) : t) }));
+
+  const updateSubtopicFn = (subjId: string, chId: string, tId: string, subId: string, updater: (sub: Subtopic) => Subtopic) =>
+    updateTopicFn(subjId, chId, tId, t => ({ ...t, subtopics: t.subtopics.map(sub => sub.id === subId ? updater(sub) : sub) }));
+
+  const updateConceptFn = (subjId: string, chId: string, tId: string, subId: string, cId: string, updater: (c: Concept) => Concept) =>
+    updateSubtopicFn(subjId, chId, tId, subId, sub => ({ ...sub, concepts: sub.concepts.map(c => c.id === cId ? updater(c) : c) }));
+
+  // ─── Subject methods ───────────────────────────────────────────────────
+  const setCourseTotalDays = (days: number) => {
+    setSettings(prev => ({ ...prev, courseTotalDays: days }));
+    setSubjects(curr => {
+      const redistributed = redistributeDays(curr, days);
+      return applyTimeAdjustment(redistributed, settings.dailyStudyHours, days);
+    });
+  };
+
+  const setDailyStudyHours = (hours: number) => {
+    setSettings(prev => ({ ...prev, dailyStudyHours: hours }));
+    setSubjects(curr => applyTimeAdjustment(curr, hours, settings.courseTotalDays));
+  };
+
+  const setTimezone = (tz: string) => {
+    setSettings(prev => ({ ...prev, timezone: tz }));
+  };
+
+  const setGlobalNoteSize = (size: string) => {
+    setSettings(prev => ({ ...prev, globalNoteSize: size }));
+  };
+
+  const setCourseStartDate = (date: string) => {
+    // Immediately reset all subjects and clear today/pending/revision data
+    setSubjects(prev => {
+      const { subjects: resetSubjs } = doResetProgress(prev, settings, user?.email ?? undefined, activeCourseId ?? undefined);
+      return resetSubjs;
+    });
+    setSettings(prev => ({ ...prev, courseStartDate: date, resetScheduled: false }));
+
+    // Sync cleared today data to Firestore so other devices also reset
+    if (user?.id && activeCourseId) {
+      setDoc(
+        doc(db, 'users', user.id, 'todayData', activeCourseId),
+        { plan: { date: '', tasks: [] }, pending: [], revisions: [] },
+        { merge: false },
+      ).catch(e => console.warn('[setCourseStartDate] Firestore todayData reset failed:', e));
+
+      // Wipe activity snapshots so the chart starts fresh after reset.
+      // Use setDoc({snaps:{}}) instead of deleteDoc — more reliable because it
+      // explicitly overwrites the snaps map to empty in one atomic write.
+      // deleteDoc can race with a subsequent fsSave (which used merge:true and
+      // would re-add old keys); an explicit empty-write wins regardless of order.
+      setDoc(
+        doc(db, 'users', user.id, 'activitySnapshots', activeCourseId),
+        { snaps: {} },
+      ).catch(e => console.warn('[setCourseStartDate] activitySnapshots clear failed:', e));
+      try {
+        localStorage.removeItem(`@study_activity_snap_${user.id}_${activeCourseId}`);
+      } catch { /* ignore */ }
+    }
+  };
+
+  const addSubject = (data: Omit<Subject, 'id' | 'completed' | 'chapters'>) => {
+    const newSubject: Subject = { ...data, id: uid(), completed: false, chapters: [] };
+    setSubjects(prev => redistributeDays([...prev, newSubject], settings.courseTotalDays));
+  };
+
+  const updateSubjectDays = (subjId: string, days: number) => {
+    setSubjects(prev => redistributeDays(
+      prev.map(s => s.id === subjId ? { ...s, allocatedDays: days, manualDays: true } : s),
+      settings.courseTotalDays
+    ));
+  };
+
+  // ─── Revision helpers ──────────────────────────────────────────────────
+  const purgeRevisions = (prefix: string) => {
+    if (!user?.email || !activeCourseId) return;
+    const email = user.email;
+    const courseId = activeCourseId;
+    const revK = `@study_revisions_v2_${email}_${courseId}`;
+    let filtered: any[] = [];
+    try {
+      const raw = localStorage.getItem(revK);
+      const all: any[] = raw ? JSON.parse(raw) : [];
+      filtered = all.filter((r: any) => {
+        const key = String(r.taskKey ?? '');
+        return key !== prefix && !key.startsWith(prefix + '|');
+      });
+      localStorage.setItem(revK, JSON.stringify(filtered));
+    } catch { return; }
+    if (user?.id) {
+      setDoc(
+        doc(db, 'users', user.id, 'todayData', courseId),
+        { revisions: filtered },
+        { merge: true },
+      ).catch(e => console.warn('[purgeRevisions] Firestore sync failed:', e));
+    }
+  };
+
+  const patchRevisions = (updateFn: (r: any) => any) => {
+    if (!user?.email || !activeCourseId) return;
+    const email = user.email;
+    const courseId = activeCourseId;
+    const revK = `@study_revisions_v2_${email}_${courseId}`;
+    let updated: any[] = [];
+    try {
+      const raw = localStorage.getItem(revK);
+      const all: any[] = raw ? JSON.parse(raw) : [];
+      updated = all.map(updateFn);
+      localStorage.setItem(revK, JSON.stringify(updated));
+    } catch { return; }
+    if (user?.id) {
+      setDoc(
+        doc(db, 'users', user.id, 'todayData', courseId),
+        { revisions: updated },
+        { merge: true },
+      ).catch(e => console.warn('[patchRevisions] Firestore sync failed:', e));
+    }
+  };
+
+  // ─── Revision scheduling from Subject section ──────────────────────────
+  // Called when a completion checkbox is toggled in the Subject tree.
+  // Mirrors the same localStorage + Firestore dual-write pattern used by
+  // purgeRevisions / patchRevisions above, so Today.tsx picks up the change
+  // immediately via its onSnapshot listener.
+  const SUBJECT_REVISION_DAYS = 5; // days until first revision after completing
+  const SUBJECT_MIN_MINS = 3;       // minimum revisionMins
+
+  const addRevisionFromSubject = (
+    taskKey: string,
+    mainTitle: string,
+    subjectTitle: string,
+    subjectColor: string,
+    breadcrumb: string[],
+    level: string,
+    estimatedMins: number,
+  ) => {
+    if (!user?.email || !activeCourseId) return;
+    const email = user.email;
+    const courseId = activeCourseId;
+    const revK = `@study_revisions_v2_${email}_${courseId}`;
+    const scheduledDate = toDateStrIST(addDaysIST(nowIST(settings.timezone), SUBJECT_REVISION_DAYS));
+    const id = `${taskKey}_rev_s0_${scheduledDate}`;
+    let entries: any[] = [];
+    try {
+      const raw = localStorage.getItem(revK);
+      entries = raw ? JSON.parse(raw) : [];
+    } catch { return; }
+    // Don't duplicate an existing active revision for this key
+    if (entries.some((r: any) => r.taskKey === taskKey && !r.done)) return;
+    if (entries.some((r: any) => r.id === id)) return;
+    const entry = {
+      id, taskKey, mainTitle, subjectTitle, subjectColor, breadcrumb, level,
+      scheduledDate,
+      revisionMins: Math.max(Math.round(estimatedMins * 0.5), SUBJECT_MIN_MINS),
+      stage: 0,
+      done: false,
+    };
+    const merged = [...entries, entry];
+    try { localStorage.setItem(revK, JSON.stringify(merged)); } catch { return; }
+    if (user?.id) {
+      const sanitized = JSON.parse(JSON.stringify({ revisions: merged }));
+      setDoc(doc(db, 'users', user.id, 'todayData', courseId), sanitized, { merge: true })
+        .catch(e => console.warn('[addRevisionFromSubject] Firestore sync failed:', e));
+    }
+  };
+
+  const removeRevisionFromSubject = (taskKey: string) => {
+    if (!user?.email || !activeCourseId) return;
+    const email = user.email;
+    const courseId = activeCourseId;
+    const revK = `@study_revisions_v2_${email}_${courseId}`;
+    let entries: any[] = [];
+    try {
+      const raw = localStorage.getItem(revK);
+      entries = raw ? JSON.parse(raw) : [];
+    } catch { return; }
+    // Remove only non-done revisions for this exact taskKey
+    const filtered = entries.filter((r: any) => !(r.taskKey === taskKey && !r.done));
+    if (filtered.length === entries.length) return; // nothing changed
+    try { localStorage.setItem(revK, JSON.stringify(filtered)); } catch { return; }
+    if (user?.id) {
+      const sanitized = JSON.parse(JSON.stringify({ revisions: filtered }));
+      setDoc(doc(db, 'users', user.id, 'todayData', courseId), sanitized, { merge: true })
+        .catch(e => console.warn('[removeRevisionFromSubject] Firestore sync failed:', e));
+    }
+  };
+
+  const deleteSubject = (subjId: string) => {
+    setSubjects(prev => redistributeDays(prev.filter(s => s.id !== subjId), settings.courseTotalDays));
+    purgeRevisions(subjId);
+  };
+
+  const updateSubjectMeta = (subjId: string, title: string) => {
+    setSubjects(prev => prev.map(s => s.id === subjId ? { ...s, title } : s));
+    patchRevisions(r => {
+      const key = String(r.taskKey ?? '');
+      if (!key.startsWith(subjId + '|')) return r;
+      return { ...r, subjectTitle: title };
+    });
+  };
+
+  const resetSubjectProgress = (subjId: string) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      return {
+        ...s,
+        completed: false,
+        chapters: s.chapters.map(ch => ({
+          ...ch,
+          completed: false,
+          topics: ch.topics.map(t => ({
+            ...t,
+            completed: false,
+            subtopics: t.subtopics.map(sub => ({
+              ...sub,
+              completed: false,
+              concepts: sub.concepts.map(c => ({
+                ...c,
+                completed: false,
+                points: c.points.map(p => ({ ...p, completed: false })),
+              })),
+            })),
+          })),
+        })),
+      };
+    }));
+
+    // Clear / filter today plan, pending, and revisions for this subject
+    // using the current course-specific localStorage keys, then sync to Firestore
+    if (user?.email && activeCourseId) {
+      const email = user.email;
+      const courseId = activeCourseId;
+      const pKey   = `@study_today_plan_v3_${email}_${courseId}`;
+      const pendK  = `@study_pending_v3_${email}_${courseId}`;
+      const revK   = `@study_revisions_v2_${email}_${courseId}`;
+
+      let filteredPlanTasks: any[] = [];
+      let planDate = '';
+      let filteredPend: any[] = [];
+      let filteredRev: any[] = [];
+
+      try {
+        // Filter today's plan — remove tasks belonging to this subject
+        const planRaw = localStorage.getItem(pKey);
+        if (planRaw) {
+          const parsed = JSON.parse(planRaw) as { date: string; tasks: any[] };
+          planDate = parsed.date ?? '';
+          filteredPlanTasks = Array.isArray(parsed.tasks)
+            ? parsed.tasks.filter((t: any) => t.subjectId !== subjId)
+            : [];
+          localStorage.setItem(pKey, JSON.stringify({ date: planDate, tasks: filteredPlanTasks }));
+        }
+
+        // Filter pending items belonging to this subject
+        const pendRaw = localStorage.getItem(pendK);
+        filteredPend = pendRaw
+          ? (JSON.parse(pendRaw) as any[]).filter((t: any) => t.task?.subjectId !== subjId)
+          : [];
+        localStorage.setItem(pendK, JSON.stringify(filteredPend));
+
+        // Filter revisions belonging to this subject
+        // RevisionEntry.id format: "${task.key}_rev_${days}" where task.key starts with "${subjectId}|"
+        const revRaw = localStorage.getItem(revK);
+        filteredRev = revRaw
+          ? (JSON.parse(revRaw) as any[]).filter(
+              (r: any) => !String(r.id ?? '').startsWith(subjId + '|'),
+            )
+          : [];
+        localStorage.setItem(revK, JSON.stringify(filteredRev));
+      } catch { /* ignore */ }
+
+      // Sync to Firestore so other devices also reflect the reset immediately
+      if (user?.id) {
+        setDoc(
+          doc(db, 'users', user.id, 'todayData', courseId),
+          {
+            plan: { date: planDate, tasks: filteredPlanTasks },
+            pending: filteredPend,
+            revisions: filteredRev,
+          },
+          { merge: false },
+        ).catch(e => console.warn('[resetSubjectProgress] Firestore todayData sync failed:', e));
+      }
+    }
+  };
+
+  const reorderNotePages = (fromIdx: number, toIdx: number) => {
+    setNotePagesIndex(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  };
+
+  // ─── Personal Note Pages (private per user — never synced) ─────────────
+  // Stored in users/{uid}/personalNotePages/{id}. The index lives in
+  // studyData.personalNotePagesIndex but is always stripped from shared-
+  // course sync payloads so other users never see these notes.
+  const personalNoteWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const personalNoteWritePendingRef = useRef<Map<string, NotePage>>(new Map());
+  const deletedPersonalNotePageIds = useRef<Set<string>>(new Set());
+
+  const personalNotePageDocRef = (id: string) =>
+    user ? doc(db, 'users', user.id, 'personalNotePages', id) : null;
+
+  const localPersonalPageKey = (id: string) =>
+    user ? `@study_personalpage_${user.email}_${id}` : null;
+
+  const createPersonalNotePage = (title?: string, subjectId?: string): string => {
+    const id = uid();
+    const now = Date.now();
+    const meta: NotePageMeta = {
+      id,
+      title: title?.trim() || 'Untitled page',
+      pageCount: 1,
+      ...(subjectId ? { subjectId } : {}),
+      createdAt: now,
+      updatedAt: now,
+    };
+    setPersonalNotePagesIndex(prev => [meta, ...prev]);
+    const emptyPage: NotePage = { ...meta, elements: [] };
+    const lk = localPersonalPageKey(id);
+    if (lk) safeSetLocalStorage(lk, JSON.stringify(emptyPage));
+    const ref = personalNotePageDocRef(id);
+    if (ref) setDoc(ref, emptyPage).catch(() => {});
+    return id;
+  };
+
+  const renamePersonalNotePage = (id: string, title: string) => {
+    const trimmed = title.trim() || 'Untitled page';
+    setPersonalNotePagesIndex(prev => prev.map(p =>
+      p.id === id ? { ...p, title: trimmed, updatedAt: Date.now() } : p
+    ));
+    const lk = localPersonalPageKey(id);
+    if (lk) {
+      try {
+        const cur = JSON.parse(localStorage.getItem(lk) || 'null') as NotePage | null;
+        if (cur) safeSetLocalStorage(lk, JSON.stringify({ ...cur, title: trimmed, updatedAt: Date.now() }));
+      } catch {}
+    }
+    const ref = personalNotePageDocRef(id);
+    if (ref) setDoc(ref, { title: trimmed, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+  };
+
+  const deletePersonalNotePage = async (id: string): Promise<void> => {
+    deletedPersonalNotePageIds.current.add(id);
+    setPersonalNotePagesIndex(prev => prev.filter(p => p.id !== id));
+    const lk = localPersonalPageKey(id);
+    if (lk) {
+      try { localStorage.removeItem(lk); } catch { /* ignore storage failures */ }
+      markLocalNotePageUnsynced(lk, false);
+    }
+    personalNoteWriteQueueRef.current = personalNoteWriteQueueRef.current.then(async () => {
+      const ref = personalNotePageDocRef(id);
+      if (ref) {
+        try { await deleteDoc(ref); } catch { /* ignore offline */ }
+      }
+      deletedPersonalNotePageIds.current.delete(id);
+    });
+  };
+
+  const loadPersonalNotePage = async (id: string): Promise<NotePage | null> => {
+    const lk = localPersonalPageKey(id);
+    let local: NotePage | null = null;
+    if (lk) {
+      try { local = JSON.parse(localStorage.getItem(lk) || 'null'); } catch { local = null; }
+    }
+    const ref = personalNotePageDocRef(id);
+    if (!ref) return local;
+    try {
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const d = snap.data() as NotePage;
+        let elements = d.elements || [];
+        if (d.chunked) {
+          elements = await readElementChunks(collection(ref, 'chunks'), d.chunkGeneration, d.chunkCount);
+        }
+        const remote: NotePage = {
+          id: d.id ?? id,
+          title: d.title ?? 'Untitled page',
+          elements,
+          pageCount: d.pageCount ?? 1,
+          html: d.html,
+          chunked: d.chunked,
+          chunkCount: d.chunkCount,
+          chunkGeneration: d.chunkGeneration,
+          createdAt: d.createdAt ?? Date.now(),
+          updatedAt: d.updatedAt ?? Date.now(),
+        };
+        if (!local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0)) {
+          if (lk) safeSetLocalStorage(lk, JSON.stringify(remote));
+          return remote;
+        }
+        return local;
+      }
+    } catch { /* offline */ }
+    return local;
+  };
+
+  const savePersonalNotePage = async (page: NotePage): Promise<void> => {
+    const updated: NotePage = { ...page, updatedAt: Date.now() };
+    const pageId = page.id;
+
+    const lk = localPersonalPageKey(pageId);
+    if (lk) {
+      saveLocalNotePageDraft(lk, updated);
+    }
+
+    setPersonalNotePagesIndex(prev => prev.map(p =>
+      p.id === pageId
+        ? { ...p, title: updated.title, pageCount: updated.pageCount, updatedAt: updated.updatedAt }
+        : p
+    ));
+
+    const ref = personalNotePageDocRef(pageId);
+    if (!ref) return;
+
+    const alreadyPending = personalNoteWritePendingRef.current.has(pageId);
+    personalNoteWritePendingRef.current.set(pageId, updated);
+
+    if (!alreadyPending) {
+      personalNoteWriteQueueRef.current = personalNoteWriteQueueRef.current.then(async () => {
+        const latestData = personalNoteWritePendingRef.current.get(pageId);
+        personalNoteWritePendingRef.current.delete(pageId);
+        if (!latestData) return;
+        if (deletedPersonalNotePageIds.current.has(pageId)) return;
+
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const cleaned = sanitizeForFirestore(latestData);
+            console.info('[saveNotePage] payload size', Math.round(byteSize(JSON.stringify(cleaned))/1024), 'KB');
+            const serialised = JSON.stringify(cleaned);
+            const serialisedSize = byteSize(serialised);
+            const pageChunksRef = collection(ref, 'chunks');
+            let firestorePayload: NotePage;
+            if (serialisedSize > FIRESTORE_NOTE_LIMIT) {
+              const chunks = packElements(cleaned.elements || [], FIRESTORE_NOTE_LIMIT);
+              const chunkGeneration = await writeElementChunks(pageChunksRef, chunks);
+              firestorePayload = sanitizeForFirestore({ ...cleaned, chunked: true, chunkCount: chunks.length, chunkGeneration, elements: [] });
+            } else {
+              firestorePayload = { ...cleaned, chunked: false };
+            }
+            await setDoc(ref, firestorePayload);
+            await clearChunks(pageChunksRef, firestorePayload.chunkGeneration);
+            if (localNotePageMatches(localPersonalPageKey(pageId), latestData)) {
+              markLocalNotePageUnsynced(localPersonalPageKey(pageId), false);
+              clearLocalNotePageRecovery('personal-page', pageId);
+            }
+            return;
+          } catch {
+            if (attempt < 3) {
+              await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt - 1)));
+            }
+          }
+        }
+      });
+    }
+    await personalNoteWriteQueueRef.current;
+  };
+
+  const reorderPersonalNotePages = (fromIdx: number, toIdx: number) => {
+    setPersonalNotePagesIndex(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  };
+
+  // ─── Prompt Note Pages (super-admin only — course-agnostic, never synced) ─
+  // Pages stored in users/{uid}/promptNotes/{id}
+  // Index stored separately in users/{uid}/promptData/index (see useEffect above)
+  const promptNoteWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const promptNoteWritePendingRef = useRef<Map<string, NotePage>>(new Map());
+  const deletedPromptNotePageIds = useRef<Set<string>>(new Set());
+
+  const promptNotePageDocRef = (id: string) =>
+    user ? doc(db, 'users', user.id, 'promptNotes', id) : null;
+
+  const localPromptPageKey = (id: string) =>
+    user ? `@study_promptpage_${user.email}_${id}` : null;
+
+  const createPromptNotePage = (title?: string): string => {
+    const id = uid();
+    const now = Date.now();
+    const meta: NotePageMeta = {
+      id,
+      title: title?.trim() || 'Untitled prompt',
+      pageCount: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setPromptNotePagesIndex(prev => [meta, ...prev]);
+    const emptyPage: NotePage = { ...meta, elements: [] };
+    const lk = localPromptPageKey(id);
+    if (lk) safeSetLocalStorage(lk, JSON.stringify(emptyPage));
+    const ref = promptNotePageDocRef(id);
+    if (ref) setDoc(ref, emptyPage).catch(() => {});
+    return id;
+  };
+
+  const renamePromptNotePage = (id: string, title: string) => {
+    const trimmed = title.trim() || 'Untitled prompt';
+    setPromptNotePagesIndex(prev => prev.map(p =>
+      p.id === id ? { ...p, title: trimmed, updatedAt: Date.now() } : p
+    ));
+    const lk = localPromptPageKey(id);
+    if (lk) {
+      try {
+        const cur = JSON.parse(localStorage.getItem(lk) || 'null') as NotePage | null;
+        if (cur) safeSetLocalStorage(lk, JSON.stringify({ ...cur, title: trimmed, updatedAt: Date.now() }));
+      } catch {}
+    }
+    const ref = promptNotePageDocRef(id);
+    if (ref) setDoc(ref, { title: trimmed, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+  };
+
+  const deletePromptNotePage = async (id: string): Promise<void> => {
+    deletedPromptNotePageIds.current.add(id);
+    setPromptNotePagesIndex(prev => prev.filter(p => p.id !== id));
+    const lk = localPromptPageKey(id);
+    if (lk) {
+      try { localStorage.removeItem(lk); } catch { /* ignore storage failures */ }
+      markLocalNotePageUnsynced(lk, false);
+    }
+    promptNoteWriteQueueRef.current = promptNoteWriteQueueRef.current.then(async () => {
+      const ref = promptNotePageDocRef(id);
+      if (ref) {
+        try { await deleteDoc(ref); } catch { /* ignore offline */ }
+      }
+      deletedPromptNotePageIds.current.delete(id);
+    });
+  };
+
+  const loadPromptNotePage = async (id: string): Promise<NotePage | null> => {
+    const lk = localPromptPageKey(id);
+    let local: NotePage | null = null;
+    if (lk) {
+      try { local = JSON.parse(localStorage.getItem(lk) || 'null'); } catch { local = null; }
+    }
+    const ref = promptNotePageDocRef(id);
+    if (!ref) return local;
+    try {
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const d = snap.data() as NotePage;
+        let elements = d.elements || [];
+        if (d.chunked) {
+          elements = await readElementChunks(collection(ref, 'chunks'), d.chunkGeneration, d.chunkCount);
+        }
+        const remote: NotePage = {
+          id: d.id ?? id,
+          title: d.title ?? 'Untitled prompt',
+          elements,
+          pageCount: d.pageCount ?? 1,
+          html: d.html,
+          chunked: d.chunked,
+          chunkCount: d.chunkCount,
+          chunkGeneration: d.chunkGeneration,
+          createdAt: d.createdAt ?? Date.now(),
+          updatedAt: d.updatedAt ?? Date.now(),
+        };
+        if (!local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0)) {
+          if (lk) safeSetLocalStorage(lk, JSON.stringify(remote));
+          return remote;
+        }
+        return local;
+      }
+    } catch { /* offline */ }
+    return local;
+  };
+
+  const savePromptNotePage = async (page: NotePage): Promise<void> => {
+    const updated: NotePage = { ...page, updatedAt: Date.now() };
+    const pageId = page.id;
+
+    const lk = localPromptPageKey(pageId);
+    if (lk) {
+      saveLocalNotePageDraft(lk, updated);
+    }
+
+    setPromptNotePagesIndex(prev => prev.map(p =>
+      p.id === pageId
+        ? { ...p, title: updated.title, pageCount: updated.pageCount, updatedAt: updated.updatedAt }
+        : p
+    ));
+
+    const ref = promptNotePageDocRef(pageId);
+    if (!ref) return;
+
+    const alreadyPending = promptNoteWritePendingRef.current.has(pageId);
+    promptNoteWritePendingRef.current.set(pageId, updated);
+
+    if (!alreadyPending) {
+      promptNoteWriteQueueRef.current = promptNoteWriteQueueRef.current.then(async () => {
+        const latestData = promptNoteWritePendingRef.current.get(pageId);
+        promptNoteWritePendingRef.current.delete(pageId);
+        if (!latestData) return;
+        if (deletedPromptNotePageIds.current.has(pageId)) return;
+
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const cleaned = sanitizeForFirestore(latestData);
+            console.info('[saveNotePage] payload size', Math.round(byteSize(JSON.stringify(cleaned))/1024), 'KB');
+            const serialised = JSON.stringify(cleaned);
+            const serialisedSize = byteSize(serialised);
+            const pageChunksRef = collection(ref, 'chunks');
+            let firestorePayload: NotePage;
+            if (serialisedSize > FIRESTORE_NOTE_LIMIT) {
+              const chunks = packElements(cleaned.elements || [], FIRESTORE_NOTE_LIMIT);
+              const chunkGeneration = await writeElementChunks(pageChunksRef, chunks);
+              firestorePayload = sanitizeForFirestore({ ...cleaned, chunked: true, chunkCount: chunks.length, chunkGeneration, elements: [] });
+            } else {
+              firestorePayload = { ...cleaned, chunked: false };
+            }
+            await setDoc(ref, firestorePayload);
+            await clearChunks(pageChunksRef, firestorePayload.chunkGeneration);
+            if (localNotePageMatches(localPromptPageKey(pageId), latestData)) {
+              markLocalNotePageUnsynced(localPromptPageKey(pageId), false);
+              clearLocalNotePageRecovery('prompt-page', pageId);
+            }
+            return;
+          } catch {
+            if (attempt < 3) {
+              await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt - 1)));
+            }
+          }
+        }
+      });
+    }
+    await promptNoteWriteQueueRef.current;
+  };
+
+  const reorderPromptNotePages = (fromIdx: number, toIdx: number) => {
+    setPromptNotePagesIndex(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  };
+
+  // ─── Reorder methods ───────────────────────────────────────────────────
+  const reorderSubjects = (fromIdx: number, toIdx: number) => {
+    setSubjects(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  };
+
+  const reorderChapters = (subjId: string, fromIdx: number, toIdx: number) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      const chs = [...s.chapters];
+      const [moved] = chs.splice(fromIdx, 1);
+      chs.splice(toIdx, 0, moved);
+      return { ...s, chapters: chs };
+    }));
+  };
+
+  const reorderTopics = (subjId: string, chId: string, fromIdx: number, toIdx: number) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      return { ...s, chapters: s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        const tops = [...ch.topics];
+        const [moved] = tops.splice(fromIdx, 1);
+        tops.splice(toIdx, 0, moved);
+        return { ...ch, topics: tops };
+      }) };
+    }));
+  };
+
+  const reorderSubtopics = (subjId: string, chId: string, tId: string, fromIdx: number, toIdx: number) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      return { ...s, chapters: s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        return { ...ch, topics: ch.topics.map(t => {
+          if (t.id !== tId) return t;
+          const subs = [...t.subtopics];
+          const [moved] = subs.splice(fromIdx, 1);
+          subs.splice(toIdx, 0, moved);
+          return { ...t, subtopics: subs };
+        }) };
+      }) };
+    }));
+  };
+
+  const reorderConcepts = (subjId: string, chId: string, tId: string, subId: string, fromIdx: number, toIdx: number) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      return { ...s, chapters: s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        return { ...ch, topics: ch.topics.map(t => {
+          if (t.id !== tId) return t;
+          return { ...t, subtopics: t.subtopics.map(sub => {
+            if (sub.id !== subId) return sub;
+            const cons = [...sub.concepts];
+            const [moved] = cons.splice(fromIdx, 1);
+            cons.splice(toIdx, 0, moved);
+            return { ...sub, concepts: cons };
+          }) };
+        }) };
+      }) };
+    }));
+  };
+
+  const reorderPoints = (subjId: string, chId: string, tId: string, subId: string, cId: string, fromIdx: number, toIdx: number) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      return { ...s, chapters: s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        return { ...ch, topics: ch.topics.map(t => {
+          if (t.id !== tId) return t;
+          return { ...t, subtopics: t.subtopics.map(sub => {
+            if (sub.id !== subId) return sub;
+            return { ...sub, concepts: sub.concepts.map(c => {
+              if (c.id !== cId) return c;
+              const pts = [...c.points];
+              const [moved] = pts.splice(fromIdx, 1);
+              pts.splice(toIdx, 0, moved);
+              return { ...c, points: pts };
+            }) };
+          }) };
+        }) };
+      }) };
+    }));
+  };
+
+  // ─── Chapter methods ───────────────────────────────────────────────────
+  const addChapter = (subjId: string, data: Omit<Chapter, 'id' | 'completed' | 'topics'>) => {
+    setSubjects(prev => {
+      const updated = prev.map(s => {
+        if (s.id !== subjId) return s;
+        const newChapter: Chapter = { ...data, id: uid(), completed: false, topics: [] };
+        return redistributeMinutes({ ...s, completed: false, chapters: [...s.chapters, newChapter] });
+      });
+      return redistributeDays(updated, settings.courseTotalDays);
+    });
+  };
+
+  const deleteChapter = (subjId: string, chId: string) => {
+    setSubjects(prev => {
+      const updated = prev.map(s => {
+        if (s.id !== subjId) return s;
+        return checkSubjectCompletion(redistributeMinutes({ ...s, chapters: s.chapters.filter(ch => ch.id !== chId) }));
+      });
+      return redistributeDays(updated, settings.courseTotalDays);
+    });
+    purgeRevisions(`${subjId}|${chId}`);
+  };
+
+  const toggleChapterComplete = (subjId: string, chId: string) => {
+    const subj = subjects.find(s => s.id === subjId);
+    const ch = subj?.chapters.find(c => c.id === chId);
+    const wasComplete = ch?.completed ?? false;
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      const updatedChapters = s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        // Manual completion: only toggle this chapter, do NOT cascade to children
+        return { ...ch, completed: !ch.completed };
+      });
+      return checkSubjectCompletion({ ...s, chapters: updatedChapters });
+    }));
+    if (subj && ch) {
+      const taskKey = `${subjId}|${chId}`;
+      if (!wasComplete) {
+        addRevisionFromSubject(taskKey, ch.title, subj.title, subj.color, [], 'chapter',
+          ch.adjustedMinutes ?? ch.estimatedMinutes ?? ch.totalMinutes ?? 0);
+      } else {
+        removeRevisionFromSubject(taskKey);
+      }
+    }
+  };
+
+  const updateChapterMeta = (subjId: string, chId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => {
+    setSubjects(updateChapterFn(subjId, chId, ch => ({
+      ...ch, title,
+      ...(estimatedMinutes !== undefined ? { estimatedMinutes } : {}),
+      ...(difficulty !== undefined ? { difficulty } : {}),
+    })));
+    const chapterKey = `${subjId}|${chId}`;
+    patchRevisions(r => {
+      const key = String(r.taskKey ?? '');
+      if (key === chapterKey) return { ...r, mainTitle: title };
+      if (key.startsWith(chapterKey + '|')) {
+        const bc = Array.isArray(r.breadcrumb) ? [...r.breadcrumb] : [];
+        bc[0] = title;
+        return { ...r, breadcrumb: bc };
+      }
+      return r;
+    });
+  };
+
+  // ─── Topic methods ─────────────────────────────────────────────────────
+  const addTopic = (subjId: string, chId: string, data: Omit<Topic, 'id' | 'completed' | 'subtopics'>) => {
+    setSubjects(prev => {
+      const updated = prev.map(s => {
+        if (s.id !== subjId) return s;
+        const newChapters = s.chapters.map(ch => {
+          if (ch.id !== chId) return ch;
+          const newTopic: Topic = { ...data, id: uid(), completed: false, subtopics: [] };
+          return { ...ch, completed: false, topics: [...ch.topics, newTopic] };
+        });
+        return redistributeMinutes({ ...s, completed: false, chapters: newChapters });
+      });
+      return redistributeDays(updated, settings.courseTotalDays);
+    });
+  };
+
+  const deleteTopic = (subjId: string, chId: string, tId: string) => {
+    setSubjects(prev => {
+      const updated = prev.map(s => {
+        if (s.id !== subjId) return s;
+        const newChapters = s.chapters.map(ch => {
+          if (ch.id !== chId) return ch;
+          const newTopics = ch.topics.filter(t => t.id !== tId);
+          return { ...ch, topics: newTopics };
+        });
+        return checkSubjectCompletion(redistributeMinutes({ ...s, chapters: newChapters }));
+      });
+      return redistributeDays(updated, settings.courseTotalDays);
+    });
+    purgeRevisions(`${subjId}|${chId}|${tId}`);
+  };
+
+  const toggleTopicComplete = (subjId: string, chId: string, tId: string) => {
+    const subj = subjects.find(s => s.id === subjId);
+    const ch = subj?.chapters.find(c => c.id === chId);
+    const topic = ch?.topics.find(t => t.id === tId);
+    const wasComplete = topic?.completed ?? false;
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      const newChapters = s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        const newTopics = ch.topics.map(t => {
+          if (t.id !== tId) return t;
+          // Manual completion: only toggle this topic, do NOT cascade to subtopics (Topic-First rule)
+          return { ...t, completed: !t.completed };
+        });
+        // ch.completed = chapter overview flag (manual only, not auto-set from topics)
+        return { ...ch, topics: newTopics };
+      });
+      return checkSubjectCompletion({ ...s, chapters: newChapters });
+    }));
+    if (subj && ch && topic) {
+      const taskKey = `${subjId}|${chId}|${tId}`;
+      if (!wasComplete) {
+        addRevisionFromSubject(taskKey, topic.title, subj.title, subj.color, [ch.title], 'topic',
+          topic.adjustedMinutes ?? topic.estimatedMinutes ?? topic.totalMinutes ?? 0);
+      } else {
+        removeRevisionFromSubject(taskKey);
+      }
+    }
+  };
+
+  const updateTopicMeta = (subjId: string, chId: string, tId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => {
+    setSubjects(updateTopicFn(subjId, chId, tId, t => ({
+      ...t, title,
+      ...(estimatedMinutes !== undefined ? { estimatedMinutes } : {}),
+      ...(difficulty !== undefined ? { difficulty } : {}),
+    })));
+    const topicKey = `${subjId}|${chId}|${tId}`;
+    patchRevisions(r => {
+      const key = String(r.taskKey ?? '');
+      if (key === topicKey) return { ...r, mainTitle: title };
+      if (key.startsWith(topicKey + '|')) {
+        const bc = Array.isArray(r.breadcrumb) ? [...r.breadcrumb] : [];
+        bc[1] = title;
+        return { ...r, breadcrumb: bc };
+      }
+      return r;
+    });
+  };
+
+  // ─── Subtopic methods ──────────────────────────────────────────────────
+  const addSubtopic = (subjId: string, chId: string, tId: string, data: Omit<Subtopic, 'id' | 'completed' | 'concepts'>) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      const newChapters = s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        return {
+          ...ch, completed: false,
+          topics: ch.topics.map(t => {
+            if (t.id !== tId) return t;
+            const newSub: Subtopic = { ...data, id: uid(), completed: false, concepts: [] };
+            return { ...t, completed: false, subtopics: [...t.subtopics, newSub] };
+          })
+        };
+      });
+      return redistributeMinutes({ ...s, completed: false, chapters: newChapters });
+    }));
+  };
+
+  const deleteSubtopic = (subjId: string, chId: string, tId: string, subId: string) => {
+    setSubjects(updateSubjectFn(subjId, s => {
+      const newChapters = s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        return { ...ch, topics: ch.topics.map(t => {
+          if (t.id !== tId) return t;
+          const newSubs = t.subtopics.filter(sub => sub.id !== subId);
+          return { ...t, subtopics: newSubs, completed: t.completed };
+        })};
+      });
+      return checkSubjectCompletion({ ...s, chapters: newChapters });
+    }));
+    purgeRevisions(`${subjId}|${chId}|${tId}|${subId}`);
+  };
+
+  const toggleSubtopicComplete = (subjId: string, chId: string, tId: string, subId: string) => {
+    const subj = subjects.find(s => s.id === subjId);
+    const ch = subj?.chapters.find(c => c.id === chId);
+    const topic = ch?.topics.find(t => t.id === tId);
+    const sub = topic?.subtopics.find(s => s.id === subId);
+    const wasComplete = sub?.completed ?? false;
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      const newChapters = s.chapters.map(ch => {
+        if (ch.id !== chId) return ch;
+        const newTopics = ch.topics.map(t => {
+          if (t.id !== tId) return t;
+          const newSubs = t.subtopics.map(sub => {
+            if (sub.id !== subId) return sub;
+            // Manual completion: only toggle this subtopic, do NOT cascade to concepts
+            return { ...sub, completed: !sub.completed };
+          });
+          return { ...t, subtopics: newSubs, completed: t.completed };
+        });
+        // ch.completed = chapter overview flag (manual only)
+        return { ...ch, topics: newTopics };
+      });
+      return checkSubjectCompletion({ ...s, chapters: newChapters });
+    }));
+    if (subj && ch && topic && sub) {
+      const taskKey = `${subjId}|${chId}|${tId}|${subId}`;
+      if (!wasComplete) {
+        addRevisionFromSubject(taskKey, sub.title, subj.title, subj.color, [ch.title, topic.title], 'subtopic',
+          sub.adjustedMinutes ?? sub.estimatedMinutes ?? 0);
+      } else {
+        removeRevisionFromSubject(taskKey);
+      }
+    }
+  };
+
+  const updateSubtopicMeta = (subjId: string, chId: string, tId: string, subId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => {
+    setSubjects(updateSubtopicFn(subjId, chId, tId, subId, sub => ({
+      ...sub, title,
+      ...(estimatedMinutes !== undefined ? { estimatedMinutes } : {}),
+      ...(difficulty !== undefined ? { difficulty } : {}),
+    })));
+    const subtopicKey = `${subjId}|${chId}|${tId}|${subId}`;
+    patchRevisions(r => {
+      const key = String(r.taskKey ?? '');
+      if (key === subtopicKey) return { ...r, mainTitle: title };
+      if (key.startsWith(subtopicKey + '|')) {
+        const bc = Array.isArray(r.breadcrumb) ? [...r.breadcrumb] : [];
+        bc[2] = title;
+        return { ...r, breadcrumb: bc };
+      }
+      return r;
+    });
+  };
+
+  // ─── Concept methods ───────────────────────────────────────────────────
+  const addConcept = (subjId: string, chId: string, tId: string, subId: string, data: Omit<Concept, 'id' | 'completed' | 'points'>) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      return {
+        ...s, completed: false,
+        chapters: s.chapters.map(ch => {
+          if (ch.id !== chId) return ch;
+          return {
+            ...ch, completed: false,
+            topics: ch.topics.map(t => {
+              if (t.id !== tId) return t;
+              return {
+                ...t, completed: false,
+                subtopics: t.subtopics.map(sub => {
+                  if (sub.id !== subId) return sub;
+                  const newConcept: Concept = { ...data, id: uid(), completed: false, points: [] };
+                  return { ...sub, completed: false, concepts: [...sub.concepts, newConcept] };
+                })
+              };
+            })
+          };
+        })
+      };
+    }));
+  };
+
+  const deleteConcept = (subjId: string, chId: string, tId: string, subId: string, cId: string) => {
+    setSubjects(updateSubtopicFn(subjId, chId, tId, subId, sub => {
+      const newConcepts = sub.concepts.filter(c => c.id !== cId);
+      return { ...sub, concepts: newConcepts, completed: sub.completed };
+    }));
+    purgeRevisions(`${subjId}|${chId}|${tId}|${subId}|${cId}`);
+  };
+
+  const toggleConceptComplete = (subjId: string, chId: string, tId: string, subId: string, cId: string) => {
+    const subj = subjects.find(s => s.id === subjId);
+    const ch = subj?.chapters.find(c => c.id === chId);
+    const topic = ch?.topics.find(t => t.id === tId);
+    const sub = topic?.subtopics.find(s => s.id === subId);
+    const concept = sub?.concepts.find(c => c.id === cId);
+    const wasComplete = concept?.completed ?? false;
+    setSubjects(updateSubtopicFn(subjId, chId, tId, subId, sub => {
+      const newConcepts = sub.concepts.map(c => {
+        if (c.id !== cId) return c;
+        // Manual completion: only toggle this concept, do NOT cascade to points
+        return { ...c, completed: !c.completed };
+      });
+      return { ...sub, concepts: newConcepts, completed: sub.completed };
+    }));
+    if (subj && ch && topic && sub && concept) {
+      const taskKey = `${subjId}|${chId}|${tId}|${subId}|${cId}`;
+      if (!wasComplete) {
+        addRevisionFromSubject(taskKey, concept.title, subj.title, subj.color, [ch.title, topic.title, sub.title], 'concept',
+          concept.adjustedMinutes ?? concept.estimatedMinutes ?? 0);
+      } else {
+        removeRevisionFromSubject(taskKey);
+      }
+    }
+  };
+
+  const updateConceptMeta = (subjId: string, chId: string, tId: string, subId: string, cId: string, title: string, estimatedMinutes?: number, difficulty?: DifficultyLevel) => {
+    setSubjects(updateConceptFn(subjId, chId, tId, subId, cId, c => ({
+      ...c, title,
+      ...(estimatedMinutes !== undefined ? { estimatedMinutes } : {}),
+      ...(difficulty !== undefined ? { difficulty } : {}),
+    })));
+    const conceptKey = `${subjId}|${chId}|${tId}|${subId}|${cId}`;
+    patchRevisions(r => {
+      const key = String(r.taskKey ?? '');
+      if (key === conceptKey) return { ...r, mainTitle: title };
+      if (key.startsWith(conceptKey + '|')) {
+        const bc = Array.isArray(r.breadcrumb) ? [...r.breadcrumb] : [];
+        bc[3] = title;
+        return { ...r, breadcrumb: bc };
+      }
+      return r;
+    });
+  };
+
+  // ─── Point methods ─────────────────────────────────────────────────────
+  const addPoint = (subjId: string, chId: string, tId: string, subId: string, cId: string, data: Omit<Point, 'id' | 'completed'>) => {
+    setSubjects(prev => prev.map(s => {
+      if (s.id !== subjId) return s;
+      return {
+        ...s, completed: false,
+        chapters: s.chapters.map(ch => {
+          if (ch.id !== chId) return ch;
+          return {
+            ...ch, completed: false,
+            topics: ch.topics.map(t => {
+              if (t.id !== tId) return t;
+              return {
+                ...t, completed: false,
+                subtopics: t.subtopics.map(sub => {
+                  if (sub.id !== subId) return sub;
+                  return {
+                    ...sub, completed: false,
+                    concepts: sub.concepts.map(c => {
+                      if (c.id !== cId) return c;
+                      const newPoint: Point = { ...data, id: uid(), completed: false };
+                      return { ...c, completed: false, points: [...c.points, newPoint] };
+                    })
+                  };
+                })
+              };
+            })
+          };
+        })
+      };
+    }));
+  };
+
+  const deletePoint = (subjId: string, chId: string, tId: string, subId: string, cId: string, pId: string) => {
+    setSubjects(updateConceptFn(subjId, chId, tId, subId, cId, c => {
+      const newPoints = c.points.filter(p => p.id !== pId);
+      return { ...c, points: newPoints, completed: c.completed };
+    }));
+    purgeRevisions(`${subjId}|${chId}|${tId}|${subId}|${cId}|${pId}`);
+  };
+
+  const togglePointComplete = (subjId: string, chId: string, tId: string, subId: string, cId: string, pId: string) => {
+    const subj = subjects.find(s => s.id === subjId);
+    const ch = subj?.chapters.find(c => c.id === chId);
+    const topic = ch?.topics.find(t => t.id === tId);
+    const sub = topic?.subtopics.find(s => s.id === subId);
+    const concept = sub?.concepts.find(c => c.id === cId);
+    const point = concept?.points.find(p => p.id === pId);
+    const wasComplete = point?.completed ?? false;
+    setSubjects(updateConceptFn(subjId, chId, tId, subId, cId, c => {
+      const newPoints = c.points.map(p => p.id === pId ? { ...p, completed: !p.completed } : p);
+      return { ...c, points: newPoints, completed: c.completed };
+    }));
+    if (subj && ch && topic && sub && concept && point) {
+      const taskKey = `${subjId}|${chId}|${tId}|${subId}|${cId}|${pId}`;
+      if (!wasComplete) {
+        addRevisionFromSubject(taskKey, point.title, subj.title, subj.color,
+          [ch.title, topic.title, sub.title, concept.title], 'point',
+          point.adjustedMinutes ?? point.estimatedMinutes ?? 0);
+      } else {
+        removeRevisionFromSubject(taskKey);
+      }
+    }
+  };
+
+  const updatePointMeta = (subjId: string, chId: string, tId: string, subId: string, cId: string, pId: string, title: string, difficulty?: DifficultyLevel) => {
+    setSubjects(updateConceptFn(subjId, chId, tId, subId, cId, c => ({
+      ...c, points: c.points.map(p => p.id === pId ? { ...p, title, ...(difficulty !== undefined ? { difficulty } : {}) } : p)
+    })));
+    const pointKey = `${subjId}|${chId}|${tId}|${subId}|${cId}|${pId}`;
+    patchRevisions(r => {
+      if (String(r.taskKey ?? '') === pointKey) return { ...r, mainTitle: title };
+      return r;
+    });
+  };
+
+  // ─── Note / Important / Weak ───────────────────────────────────────────
+  // Generic patcher: mutates only the targeted node based on path.level
+  const applyMarkPatch = (
+    path: MarkPath,
+    patch: Partial<{ note: string; important: boolean; weak: boolean }>,
+    returnUpdatedSubjects = false,
+  ): Subject[] | null => {
+    const sId = path.subjectId;
+    const cleanedPatch: any = {};
+    for (const k of Object.keys(patch) as (keyof typeof patch)[]) {
+      const v = patch[k];
+      // Drop empty notes, drop false flags so the doc stays small
+      if (k === 'note') {
+        if (v && (v as string).trim().length > 0) cleanedPatch.note = (v as string).trim();
+        else cleanedPatch.note = undefined;
+      } else {
+        if (v) cleanedPatch[k] = true;
+        else cleanedPatch[k] = undefined;
+      }
+    }
+    const merge = <T extends object>(o: T): T => {
+      const out: any = { ...o };
+      for (const k of Object.keys(cleanedPatch)) {
+        if (cleanedPatch[k] === undefined) delete out[k];
+        else out[k] = cleanedPatch[k];
+      }
+      return out as T;
+    };
+
+    let update: ((previous: Subject[]) => Subject[]) | null = null;
+    if (path.level === 'subject') {
+      update = updateSubjectFn(sId, s => merge(s));
+    } else if (path.level === 'chapter' && path.chapterId) {
+      update = updateChapterFn(sId, path.chapterId, ch => merge(ch));
+    } else if (path.level === 'topic' && path.chapterId && path.topicId) {
+      update = updateTopicFn(sId, path.chapterId, path.topicId, t => merge(t));
+    } else if (path.level === 'subtopic' && path.chapterId && path.topicId && path.subtopicId) {
+      update = updateSubtopicFn(sId, path.chapterId, path.topicId, path.subtopicId, sub => merge(sub));
+    } else if (path.level === 'concept' && path.chapterId && path.topicId && path.subtopicId && path.conceptId) {
+      update = updateConceptFn(sId, path.chapterId, path.topicId, path.subtopicId, path.conceptId, c => merge(c));
+    } else if (path.level === 'point' && path.chapterId && path.topicId && path.subtopicId && path.conceptId && path.pointId) {
+      update = updateConceptFn(sId, path.chapterId, path.topicId, path.subtopicId, path.conceptId, c => ({
+        ...c,
+        points: c.points.map(p => p.id === path.pointId ? merge(p) : p),
+      }));
+    }
+    if (!update) return null;
+    if (!returnUpdatedSubjects) {
+      setSubjects(update);
+      return null;
+    }
+    const updatedSubjects = update(subjects);
+    setSubjects(updatedSubjects);
+    return updatedSubjects;
+  };
+
+  const getMarkable = (path: MarkPath): { note?: string; important?: boolean; weak?: boolean } | null => {
+    const subj = subjects.find(s => s.id === path.subjectId);
+    if (!subj) return null;
+    if (path.level === 'subject') return subj;
+    const ch = subj.chapters.find(c => c.id === path.chapterId);
+    if (!ch) return null;
+    if (path.level === 'chapter') return ch;
+    const tp = ch.topics.find(t => t.id === path.topicId);
+    if (!tp) return null;
+    if (path.level === 'topic') return tp;
+    const sub = tp.subtopics.find(s => s.id === path.subtopicId);
+    if (!sub) return null;
+    if (path.level === 'subtopic') return sub;
+    const con = sub.concepts.find(c => c.id === path.conceptId);
+    if (!con) return null;
+    if (path.level === 'concept') return con;
+    const pt = con.points.find(p => p.id === path.pointId);
+    return pt ?? null;
+  };
+
+  const setNote = (path: MarkPath, note: string) => {
+    const updatedSubjects = applyMarkPatch(path, { note }, true);
+    if (updatedSubjects) {
+      persistCourseNoteDraftImmediately(updatedSubjects, overallNote);
+    }
+  };
+  const toggleImportant = (path: MarkPath) => {
+    const cur = getMarkable(path);
+    applyMarkPatch(path, { important: !cur?.important });
+  };
+  const toggleWeak = (path: MarkPath) => {
+    const cur = getMarkable(path);
+    applyMarkPatch(path, { weak: !cur?.weak });
+  };
+
+  // ─── Temp Notes (hierarchical to-do, not synced to Today plan) ───────
+  const mapTempTree = (
+    items: TempNoteItem[],
+    fn: (n: TempNoteItem) => TempNoteItem | null,
+  ): TempNoteItem[] => {
+    const out: TempNoteItem[] = [];
+    for (const it of items) {
+      const mapped = fn({ ...it, children: mapTempTree(it.children || [], fn) });
+      if (mapped) out.push(mapped);
+    }
+    return out;
+  };
+
+  const addTempNote = (text: string, parentId?: string | null, noteHtml?: string): string => {
+    const id = uid();
+    const newNote: TempNoteItem = {
+      id,
+      text: text.trim(),
+      ...(noteHtml ? { note: noteHtml } : {}),
+      done: false,
+      createdAt: Date.now(),
+      children: [],
+    };
+    if (!newNote.text) return '';
+    if (!parentId) {
+      setTempNotes(prev => [newNote, ...prev]);
+      return id;
+    }
+    setTempNotes(prev => mapTempTree(prev, n =>
+      n.id === parentId ? { ...n, children: [newNote, ...(n.children || [])] } : n
+    ));
+    return id;
+  };
+
+  const updateTempNoteContent = (id: string, noteHtml: string) => {
+    setTempNotes(prev => mapTempTree(prev, n =>
+      n.id === id ? { ...n, note: noteHtml } : n
+    ));
+  };
+
+  const updateTempNote = (id: string, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setTempNotes(prev => mapTempTree(prev, n =>
+      n.id === id ? { ...n, text: trimmed } : n
+    ));
+  };
+
+  const toggleTempNoteDone = (id: string) => {
+    setTempNotes(prev => mapTempTree(prev, n =>
+      n.id === id ? { ...n, done: !n.done } : n
+    ));
+  };
+
+  const deleteTempNote = (id: string) => {
+    setTempNotes(prev => mapTempTree(prev, n => n.id === id ? null : n));
+  };
+
+  // ─── Overall Note (Progress page) ───────────────────────────────────────
+  const setOverallNote = (note: string) => {
+    setOverallNoteState(note);
+    persistCourseNoteDraftImmediately(subjects, note);
+  };
+
+  // ─── A4 Note Pages (each page stored as a separate Firestore doc) ────
+  // Serial write queue — ensures notePages Firestore writes happen one at a time,
+  // preventing a large note's pending write from blocking a subsequent note's write.
+  // Serial write queue — all notePages Firestore writes run one at a time.
+  const noteWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  // Latest pending data per page. When a save is already queued for a page,
+  // subsequent saves just update this map instead of adding another queue entry.
+  // The queued job reads from here at execution time, so it always writes the
+  // most recent version and the queue never accumulates duplicate writes.
+  const noteWritePendingRef = useRef<Map<string, NotePage>>(new Map());
+  // Pages deleted while a save was queued — those saves are skipped.
+  const deletedNotePageIds = useRef<Set<string>>(new Set());
+
+  const notePageDocRef = (id: string) =>
+    user ? doc(db, 'users', user.id, 'notePages', id) : null;
+
+  const localPageKey = (id: string) =>
+    user ? `@study_notepage_${user.email}_${id}` : null;
+
+  const createNotePage = (title?: string, privateNote?: boolean, subjectId?: string): string => {
+    const id = uid();
+    const now = Date.now();
+    const meta: NotePageMeta = {
+      id,
+      title: title?.trim() || 'Untitled page',
+      pageCount: 1,
+      ...(privateNote ? { privateNote: true } : {}),
+      ...(subjectId ? { subjectId } : {}),
+      createdAt: now,
+      updatedAt: now,
+    };
+    setNotePagesIndex(prev => [meta, ...prev]);
+    // Save empty page doc
+    const emptyPage: NotePage = { ...meta, elements: [] };
+    const lk = localPageKey(id);
+    if (lk) safeSetLocalStorage(lk, JSON.stringify(emptyPage));
+    const ref = notePageDocRef(id);
+    if (ref) setDoc(ref, emptyPage).catch(() => {});
+    return id;
+  };
+
+  const renameNotePage = (id: string, title: string) => {
+    const trimmed = title.trim() || 'Untitled page';
+    setNotePagesIndex(prev => prev.map(p =>
+      p.id === id ? { ...p, title: trimmed, updatedAt: Date.now() } : p
+    ));
+    // Update doc title
+    const lk = localPageKey(id);
+    if (lk) {
+      try {
+        const cur = JSON.parse(localStorage.getItem(lk) || 'null') as NotePage | null;
+        if (cur) safeSetLocalStorage(lk, JSON.stringify({ ...cur, title: trimmed, updatedAt: Date.now() }));
+      } catch {}
+    }
+    const ref = notePageDocRef(id);
+    if (ref) setDoc(ref, { title: trimmed, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+  };
+
+  const deleteNotePage = async (id: string): Promise<void> => {
+    // Mark deleted immediately so any queued save for this page is skipped.
+    deletedNotePageIds.current.add(id);
+    setNotePagesIndex(prev => prev.filter(p => p.id !== id));
+    const lk = localPageKey(id);
+    if (lk) {
+      try { localStorage.removeItem(lk); } catch { /* ignore storage failures */ }
+      markLocalNotePageUnsynced(lk, false);
+    }
+    // Route the Firestore delete through the same queue so it is strictly ordered
+    // after any in-progress write for this page, preventing a resurrection race.
+    noteWriteQueueRef.current = noteWriteQueueRef.current.then(async () => {
+      const ref = notePageDocRef(id);
+      if (ref) {
+        try { await deleteDoc(ref); } catch { /* ignore offline */ }
+      }
+      // Clean up the tombstone once the delete has been processed.
+      deletedNotePageIds.current.delete(id);
+    });
+  };
+
+  const loadNotePage = async (id: string): Promise<NotePage | null> => {
+    const lk = localPageKey(id);
+    let local: NotePage | null = null;
+    if (lk) {
+      try { local = JSON.parse(localStorage.getItem(lk) || 'null'); } catch { local = null; }
+    }
+    const ref = notePageDocRef(id);
+    if (!ref) return local;
+    try {
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const d = snap.data() as NotePage;
+        let elements = d.elements || [];
+        // If elements were split across a "chunks" subcollection, reassemble them.
+        if (d.chunked) {
+          elements = await readElementChunks(collection(ref, 'chunks'), d.chunkGeneration, d.chunkCount);
+        }
+        const remote: NotePage = {
+          id: d.id ?? id,
+          title: d.title ?? 'Untitled page',
+          elements,
+          pageCount: d.pageCount ?? 1,
+          html: d.html,
+          chunked: d.chunked,
+          chunkCount: d.chunkCount,
+          chunkGeneration: d.chunkGeneration,
+          createdAt: d.createdAt ?? Date.now(),
+          updatedAt: d.updatedAt ?? Date.now(),
+        };
+        // Pick newest
+        if (!local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0)) {
+          if (lk) safeSetLocalStorage(lk, JSON.stringify(remote));
+          return remote;
+        }
+        return local;
+      }
+    } catch { /* offline */ }
+    return local;
+  };
+
+  const subscribeNotePage = (id: string, onChange: (page: NotePage) => void): (() => void) => {
+    const ref = notePageDocRef(id);
+    if (!ref) return () => {};
+
+    let sequence = 0;
+    return onSnapshot(
+      ref,
+      async snap => {
+        if (!snap.exists()) return;
+        const currentSequence = ++sequence;
+        const d = snap.data() as NotePage;
+        let elements = d.elements || [];
+        if (d.chunked) {
+          elements = await readElementChunks(collection(ref, 'chunks'), d.chunkGeneration, d.chunkCount);
+        }
+        // A newer parent snapshot can arrive while the chunk collection is
+        // still being read. Never deliver the older chunk result afterward.
+        if (currentSequence !== sequence) return;
+        onChange({
+          id: d.id ?? id,
+          title: d.title ?? 'Untitled page',
+          elements,
+          pageCount: d.pageCount ?? 1,
+          html: d.html,
+          privateNote: d.privateNote,
+          chunked: d.chunked,
+          chunkCount: d.chunkCount,
+          chunkGeneration: d.chunkGeneration,
+          createdAt: d.createdAt ?? Date.now(),
+          updatedAt: d.updatedAt ?? Date.now(),
+        });
+      },
+      error => console.warn('[subscribeNotePage] live update failed:', error),
+    );
+  };
+
+  const saveNotePage = async (page: NotePage): Promise<void> => {
+    const updated: NotePage = { ...page, updatedAt: Date.now() };
+    const pageId = page.id;
+
+    // 1. Save to localStorage immediately so the caller can show "Saved" right away.
+    const lk = localPageKey(pageId);
+    if (lk) {
+      saveLocalNotePageDraft(lk, updated);
+    }
+
+    // 2. Update in-memory index (also triggers the main studyData debounce save).
+    setNotePagesIndex(prev => prev.map(p =>
+      p.id === pageId
+        ? { ...p, title: updated.title, pageCount: updated.pageCount, updatedAt: updated.updatedAt }
+        : p
+    ));
+
+    const ref = notePageDocRef(pageId);
+    if (!ref) return;
+
+    // 3. Deduplicated queue: if a write for this page is already pending, just
+    //    update the pending data map — the already-queued job will pick up the
+    //    latest version at execution time.  This collapses rapid autosave calls
+    //    (every 600 ms while typing) into a single Firestore write per "burst",
+    //    preventing the queue from growing unbounded on large notes.
+    const alreadyPending = noteWritePendingRef.current.has(pageId);
+    noteWritePendingRef.current.set(pageId, updated);
+
+    if (!alreadyPending) {
+      noteWriteQueueRef.current = noteWriteQueueRef.current.then(async () => {
+        // Read the LATEST data at execution time (not the stale closure value).
+        const latestData = noteWritePendingRef.current.get(pageId);
+        noteWritePendingRef.current.delete(pageId);
+
+        if (!latestData) return;
+        if (deletedNotePageIds.current.has(pageId)) return;
+
+        setSyncStatus('syncing');
+        setSyncError(null);
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            // Sanitize before any size check — removes NaN/undefined that Firestore rejects.
+            const cleaned = sanitizeForFirestore(latestData);
+
+            // Check serialised size before writing to Firestore.
+            // If the document would exceed ~800 KB, split the elements array
+            // across a "chunks" subcollection instead (no Storage dependency).
+            console.info('[saveNotePage] payload size', Math.round(byteSize(JSON.stringify(cleaned))/1024), 'KB');
+            const serialised = JSON.stringify(cleaned);
+            const serialisedSize = byteSize(serialised);
+            const pageChunksRef = collection(ref, 'chunks');
+            let firestorePayload: NotePage;
+            if (serialisedSize > FIRESTORE_NOTE_LIMIT) {
+              console.info('[saveNotePage] Note too large for Firestore (%d KB), splitting into chunks', Math.round(serialisedSize / 1024));
+              const chunks = packElements(cleaned.elements || [], FIRESTORE_NOTE_LIMIT);
+              const chunkGeneration = await writeElementChunks(pageChunksRef, chunks);
+              firestorePayload = sanitizeForFirestore({
+                ...cleaned,
+                chunked: true,
+                chunkCount: chunks.length,
+                chunkGeneration,
+                elements: [],   // cleared from Firestore doc — stored in chunks subcollection
+              });
+            } else {
+              firestorePayload = { ...cleaned, chunked: false };
+            }
+            await setDoc(ref, firestorePayload);
+            await clearChunks(pageChunksRef, firestorePayload.chunkGeneration);
+            if (localNotePageMatches(localPageKey(pageId), latestData)) {
+              markLocalNotePageUnsynced(localPageKey(pageId), false);
+              clearLocalNotePageRecovery('course-page', pageId);
+            }
+            setSyncStatus('success');
+            setSyncError(null);
+            setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
+            return; // success
+          } catch (err: unknown) {
+            const code = (err as { code?: string })?.code ?? 'unknown';
+            const msg = (err as { message?: string })?.message ?? '';
+            if (attempt < 3) {
+              // Exponential backoff: 800 ms → 1 600 ms
+              await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt - 1)));
+            } else {
+              setSyncStatus('failed');
+              setSyncError(code !== 'unknown' ? code : (msg.slice(0, 60) || null));
+              console.error('[saveNotePage] Firestore write failed after 3 attempts', { pageId, code, msg, err });
+            }
+          }
+        }
+      });
+    }
+    // Keep the editor's Saved indicator tied to the queued Firestore write,
+    // not just to the immediate localStorage update/enqueue operation.
+    await noteWriteQueueRef.current;
+  };
+
+  useEffect(() => {
+    if (!user || !dataLoaded) {
+      localNotePageRecoveryRef.current.clear();
+      setLocalNotePageRecoveryItems([]);
+      return;
+    }
+
+    let active = true;
+    let scanGeneration = 0;
+    const scanLocalNotePages = async () => {
+      const generation = ++scanGeneration;
+      const pageGroups: Array<{
+        source: LocalNotePageSource;
+        collectionName: string;
+        pages: NotePageMeta[];
+        getLocalKey: (id: string) => string | null;
+      }> = [
+        { source: 'course-page', collectionName: 'notePages', pages: notePagesIndex, getLocalKey: localPageKey },
+        { source: 'personal-page', collectionName: 'personalNotePages', pages: personalNotePagesIndex, getLocalKey: localPersonalPageKey },
+        { source: 'prompt-page', collectionName: 'promptNotes', pages: promptNotePagesIndex, getLocalKey: localPromptPageKey },
+      ];
+      const candidates = new Map<string, LocalNotePageRecoveryRecord>();
+
+      for (const group of pageGroups) {
+        for (const meta of group.pages) {
+          const localKey = group.getLocalKey(meta.id);
+          if (!localKey) continue;
+          let localPage: NotePage | null = null;
+          try {
+            if (localStorage.getItem(`${localKey}__unsynced`) !== '1') continue;
+            localPage = JSON.parse(localStorage.getItem(localKey) || 'null') as NotePage | null;
+          } catch {
+            continue;
+          }
+          if (!localPage) continue;
+
+          let remotePage: NotePage | null = null;
+          try {
+            const remoteRef = doc(db, 'users', user.id, group.collectionName, meta.id);
+            const remoteSnap = await getDocFromServer(remoteRef);
+            if (remoteSnap.exists()) {
+              const remoteData = remoteSnap.data() as NotePage;
+              const elements = remoteData.chunked
+                ? await readElementChunks(
+                    collection(remoteRef, 'chunks'),
+                    remoteData.chunkGeneration,
+                    remoteData.chunkCount,
+                  )
+                : (remoteData.elements || []);
+              remotePage = {
+                ...remoteData,
+                id: remoteData.id ?? meta.id,
+                title: remoteData.title ?? meta.title,
+                elements,
+                pageCount: remoteData.pageCount ?? 1,
+              };
+            }
+          } catch {
+            // A server read that cannot be confirmed leaves the local copy
+            // recoverable; the user can retry once connectivity returns.
+          }
+          if (!active || generation !== scanGeneration) return;
+
+          try {
+            if (localStorage.getItem(`${localKey}__unsynced`) !== '1') continue;
+            const latestLocalPage = JSON.parse(localStorage.getItem(localKey) || 'null') as NotePage | null;
+            if (!latestLocalPage) continue;
+            localPage = latestLocalPage;
+          } catch {
+            continue;
+          }
+          if (remotePage && sameNotePageContent(localPage, remotePage)) {
+            markLocalNotePageUnsynced(localKey, false);
+            continue;
+          }
+
+          if (remotePage) {
+            let baselineFingerprint: string | null = null;
+            try {
+              baselineFingerprint = localStorage.getItem(`${localKey}__recovery_baseline`);
+            } catch {
+              // Older browsers or storage failures fall back to content equality.
+            }
+            const remoteChangedSinceRecovery = baselineFingerprint === 'missing' ||
+              (!!baselineFingerprint && notePageFingerprint(remotePage) !== baselineFingerprint);
+            if (remoteChangedSinceRecovery) {
+              // Another browser has saved this page since the local draft began.
+              // Prefer that confirmed cloud version and clear the obsolete
+              // recovery marker so this page no longer appears in the list.
+              safeSetLocalStorage(localKey, JSON.stringify(remotePage));
+              markLocalNotePageUnsynced(localKey, false);
+              continue;
+            }
+          }
+
+          const key = `note-page:${group.source}:${meta.id}`;
+          const item: LocalNotesRecoveryItem = {
+            key,
+            title: localPage.title || meta.title || 'Untitled page',
+            breadcrumb: group.source === 'personal-page'
+              ? ['Personal notes']
+              : group.source === 'prompt-page'
+                ? ['Prompt notes']
+                : ['Notes'],
+          };
+          candidates.set(key, { item, page: localPage, source: group.source, localKey });
+        }
+      }
+
+      if (!active || generation !== scanGeneration) return;
+      localNotePageRecoveryRef.current = candidates;
+      const pageListeners = localNotePageRecoveryUnsubscribersRef.current;
+      for (const [key, unsubscribe] of pageListeners) {
+        if (candidates.has(key)) continue;
+        unsubscribe();
+        pageListeners.delete(key);
+      }
+      for (const [key, record] of candidates) {
+        if (pageListeners.has(key)) continue;
+        const collectionName = record.source === 'course-page'
+          ? 'notePages'
+          : record.source === 'personal-page'
+            ? 'personalNotePages'
+            : 'promptNotes';
+        const pageRef = doc(db, 'users', user.id, collectionName, record.page.id);
+        pageListeners.set(key, onSnapshot(
+          pageRef,
+          snapshot => {
+            if (!active || snapshot.metadata.hasPendingWrites) return;
+            // Another browser may have saved this page. Re-read the full page
+            // (including chunks) and compare it with the recovery baseline.
+            void scanLocalNotePages();
+          },
+          error => console.warn('[StudyContext] Live note-page recovery listener failed:', error),
+        ));
+      }
+      setLocalNotePageRecoveryItems([...candidates.values()].map(record => record.item));
+    };
+
+    const refreshOnReturn = () => {
+      if (document.visibilityState === 'visible') void scanLocalNotePages();
+    };
+    window.addEventListener('focus', refreshOnReturn);
+    document.addEventListener('visibilitychange', refreshOnReturn);
+    void scanLocalNotePages();
+    return () => {
+      active = false;
+      scanGeneration++;
+      localNotePageRecoveryUnsubscribersRef.current.forEach(unsubscribe => unsubscribe());
+      localNotePageRecoveryUnsubscribersRef.current.clear();
+      window.removeEventListener('focus', refreshOnReturn);
+      document.removeEventListener('visibilitychange', refreshOnReturn);
+    };
+  }, [user?.id, user?.email, activeCourseId, dataLoaded, notePagesIndex, personalNotePagesIndex, promptNotePagesIndex]);
+
+  return (
+    <StudyContext.Provider value={{
+      subjects, settings, dataLoaded, syncStatus, syncError, online,
+      clearSyncFailure: () => { setSyncStatus('idle'); setSyncError(null); },
+      localNotesRecoveryCount, localNotesRecoveryItems: recoveryItems, restoreLocalNotes, dismissLocalNotesRecovery,
+      setNote, toggleImportant, toggleWeak,
+      setCourseTotalDays, setDailyStudyHours, setCourseStartDate, setTimezone, setGlobalNoteSize,
+      addSubject, updateSubjectDays, deleteSubject, updateSubjectMeta, resetSubjectProgress,
+      reorderSubjects, reorderChapters, reorderTopics, reorderSubtopics, reorderConcepts, reorderPoints,
+      addChapter, deleteChapter, toggleChapterComplete, updateChapterMeta,
+      addTopic, deleteTopic, toggleTopicComplete, updateTopicMeta,
+      addSubtopic, deleteSubtopic, toggleSubtopicComplete, updateSubtopicMeta,
+      addConcept, deleteConcept, toggleConceptComplete, updateConceptMeta,
+      addPoint, deletePoint, togglePointComplete, updatePointMeta,
+      tempNotes, addTempNote, updateTempNote, updateTempNoteContent, toggleTempNoteDone, deleteTempNote,
+      overallNote, setOverallNote,
+      notePagesIndex, createNotePage, renameNotePage, deleteNotePage, loadNotePage, subscribeNotePage, saveNotePage, reorderNotePages,
+      personalNotePagesIndex, createPersonalNotePage, renamePersonalNotePage, deletePersonalNotePage, loadPersonalNotePage, savePersonalNotePage, reorderPersonalNotePages,
+      promptNotePagesIndex, createPromptNotePage, renamePromptNotePage, deletePromptNotePage, loadPromptNotePage, savePromptNotePage, reorderPromptNotePages,
+    }}>
+      {children}
+    </StudyContext.Provider>
+  );
+}
+
+export function useStudy() {
+  const context = useContext(StudyContext);
+  if (!context) throw new Error('useStudy must be used within StudyProvider');
+  return context;
+}

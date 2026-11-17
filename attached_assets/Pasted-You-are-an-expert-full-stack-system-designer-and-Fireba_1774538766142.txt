@@ -1,0 +1,287 @@
+You are an expert full-stack system designer and Firebase architect.
+
+Build and optimize a complete AI-powered learning system using Firebase (Firestore, Cloud Functions, Authentication).
+
+-----------------------------------
+🔷 CORE SYSTEM OVERVIEW
+-----------------------------------
+
+The system has TWO MAIN PARTS:
+
+1. Subject Section (User-generated course builder)
+2. Daily Routine Section (AI-based study planner)
+
+-----------------------------------
+🔷 LEVEL SYSTEM (VERY IMPORTANT)
+-----------------------------------
+
+Define hierarchy using levels:
+
+- L1 = Subject
+- L2 = Chapter
+- L3 = Topic
+- L4 = Subtopic
+- L5 = Concept
+- L6 = Point
+
+Each item must store its level and display it in UI like:
+Title (L3)
+
+-----------------------------------
+🔷 PART 1: DYNAMIC CONTENT STRUCTURE
+-----------------------------------
+
+Structure:
+Subject (L1) → Chapter (L2) → Topic (L3) → Subtopic (L4) → Concept (L5) → Point (L6)
+
+Each item must include:
+- id
+- title
+- parent_id
+- subject_id
+- user_id
+- level (L1–L6)
+- order
+- type
+- estimated_time
+- adjusted_time
+- difficulty_level
+- is_unlocked
+
+-----------------------------------
+🔷 GUIDED LEARNING FLOW (STRICT)
+-----------------------------------
+
+Flow:
+Parent → Overview → Child → Next Child → Next Sibling
+
+Rules:
+- No skipping
+- One active branch only
+- Parent must unlock child
+
+-----------------------------------
+🔷 TOPIC-FIRST LEARNING
+-----------------------------------
+
+Topic (L3) must appear first in routine.
+
+- Treated as overview
+- Must be manually completed
+- Children unlock after completion
+
+-----------------------------------
+🔷 UNIVERSAL COMPLETION RULE
+-----------------------------------
+
+Applies to ALL levels (L1–L6):
+
+Manual Completion:
+- ONLY unlocks children
+- DOES NOT complete children
+
+Auto Completion:
+- ONLY when all children complete
+
+-----------------------------------
+🔷 PROGRESS VISIBILITY SYSTEM
+-----------------------------------
+
+System must show:
+
+- Overview completion
+- Full completion
+- Progress percentage
+- Child count
+
+Example:
+Subtopics: 2/5
+Concepts: 3/10
+Points: 5/20
+
+DO NOT show full check unless fully complete
+
+-----------------------------------
+🔷 DYNAMIC CONTENT UPDATE HANDLING
+-----------------------------------
+
+If new content is added under completed item:
+
+- Set parent auto_complete = false
+- Recalculate progress
+- Propagate upward recursively
+- Add new content to routine queue
+
+-----------------------------------
+🔷 PART 2: DAILY ROUTINE SYSTEM
+-----------------------------------
+
+User provides:
+- daily_time
+- target_days
+- max subjects = 3
+
+-----------------------------------
+🔷 ROUTINE GENERATION LOGIC
+-----------------------------------
+
+Every day:
+
+1. Fetch incomplete items
+2. Priority:
+   - In-progress
+   - Topic (L3)
+   - Then children
+
+3. Maintain strict order
+4. Fit within daily_time
+
+-----------------------------------
+🔷 MULTI-SUBJECT MANAGEMENT
+-----------------------------------
+
+- Max 3 subjects
+- Time distributed proportionally
+- No mixing of branches
+
+-----------------------------------
+🔷 TIME MANAGEMENT SYSTEM
+-----------------------------------
+
+1. total_content_time
+2. available_time = daily_time × target_days
+3. ratio = available / total
+4. adjusted_time = estimated × difficulty × ratio
+
+-----------------------------------
+🔷 GLOBAL GOAL ADAPTATION SYSTEM
+-----------------------------------
+
+When target_days changes:
+
+- Recalculate ratio
+- Update all adjusted_time
+- Recalculate subject durations
+- Update routines instantly
+
+-----------------------------------
+🔷 SUBJECT DAY NORMALIZATION SYSTEM
+-----------------------------------
+
+Ensure:
+SUM(subject_days) = target_days
+
+If overflow or underflow:
+- Apply ratio correction
+- Update all subjects proportionally
+
+-----------------------------------
+🔷 DIFFICULTY SYSTEM
+-----------------------------------
+
+- easy = 1x
+- medium = 1.5x
+- hard = 2x
+
+-----------------------------------
+🔷 REVISION SYSTEM
+-----------------------------------
+
+After completion:
+- Day 2
+- Day 5
+- Day 10
+
+Revision time = 50%
+
+-----------------------------------
+🔷 CONTEXT LOCK SYSTEM
+-----------------------------------
+
+- Only one branch active
+- No parallel topics
+
+-----------------------------------
+🔷 CONTINUE LEARNING
+-----------------------------------
+
+- Resume last item
+- Track last activity
+
+-----------------------------------
+🔷 UI/UX REQUIREMENTS
+-----------------------------------
+
+1. Accordion Behavior:
+- Only one subject open at a time
+- Others auto collapse
+
+2. Default View:
+- All subjects collapsed
+
+3. Completed Items:
+- Remove from routine list
+- Show in separate "Completed Section"
+
+4. Completed Section:
+- Group by subject
+- Only one subject expanded at a time
+
+5. Clean UI:
+- No clutter
+- Minimal design
+
+-----------------------------------
+🔷 LEVEL LABEL DISPLAY
+-----------------------------------
+
+Each item must display:
+
+Title (L1–L6)
+
+- Small font
+- Muted color
+- Inline with title
+
+-----------------------------------
+🔷 FIREBASE ARCHITECTURE
+-----------------------------------
+
+Use:
+- Firestore
+- Authentication
+- Cloud Functions
+- Messaging
+
+Collections:
+- subjects
+- content_items
+- progress
+- routine
+- user_settings
+
+-----------------------------------
+🔷 CLOUD FUNCTIONS
+-----------------------------------
+
+1. Daily Routine Generator
+2. Time Adjustment Engine
+3. Progress Watcher
+4. Goal Change Handler
+5. Subject Normalization Handler
+
+-----------------------------------
+🔷 FINAL INSTRUCTION
+-----------------------------------
+
+System must be:
+- dynamic
+- adaptive
+- scalable
+- strictly rule-based
+
+If anything is missing:
+ASK USER
+
+Do NOT assume
+Do NOT skip logic

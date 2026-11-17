@@ -1,0 +1,1542 @@
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import {
+  collection, doc, getDoc, getDocs,
+  query, where, onSnapshot,
+} from 'firebase/firestore';
+import {
+  setDoc, addDoc, updateDoc, deleteDoc,
+  setDocQuietly, updateDocQuietly, deleteDocQuietly,
+} from '@/lib/saveStatus';
+import { db } from '@/lib/firebase';
+import { useAuth } from './AuthContext';
+import { collectAllIds, filterSubjectsByIds, filterNotesMapByIds } from '@/lib/courseShare';
+
+// Super admins from env var (cannot be removed)
+const SUPER_ADMIN_EMAILS: string[] = (import.meta.env.VITE_ADMIN_EMAILS || '')
+  .split(',')
+  .map((e: string) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+export interface NoteShareItem {
+  title: string;
+  html: string;
+  breadcrumb: string[];
+}
+
+export interface SharePermissions {
+  editNotes: boolean;
+  deleteNotes: boolean;
+  downloadNotes: boolean;
+  copyNotes: boolean;
+  // Structural permissions (course-level)
+  renameCourse: boolean;  // can the user rename this shared course?
+  addItems: boolean;      // can the user add subjects/chapters/topics/etc.?
+  // Device-level content protection while viewing this shared course.
+  takeScreenshot: boolean;  // can the user take screenshots / screen-record?
+  selectCopyText: boolean;  // can the user select & copy text on the page?
+}
+
+// ── Admin Role Permissions ────────────────────────────────────────────────────
+// Per-admin permission flags stored alongside each admin record in Firestore.
+// Super admins (from env) always have all permissions implicitly.
+
+export interface AdminRolePermissions {
+  canShareReceivedContent: boolean; // can re-share courses/notes received from another admin
+  canEditContacts: boolean;         // can edit contact info in the admin panel
+  canViewOtherAdmins: boolean;      // can see other admins' emails (beyond super admin + self)
+  canAddAdmins: boolean;            // can add (and manage) other admins
+}
+
+export const DEFAULT_ADMIN_ROLE_PERMISSIONS: AdminRolePermissions = {
+  canShareReceivedContent: false,
+  canEditContacts: false,
+  canViewOtherAdmins: false,
+  canAddAdmins: false,
+};
+
+export interface AdminRecord {
+  email: string;
+  addedBy: string;   // email of the admin who added this one ('' for migrated legacy entries)
+  addedAt: number;   // unix ms timestamp
+  permissions: AdminRolePermissions;
+  expiresAt?: number; // unix ms; undefined = never expires
+}
+
+// Snapshot of a course's data embedded in the shareRequest at send-time so the
+// recipient can copy it to their own account when they accept.
+interface CourseSnapshot {
+  studyData: Record<string, unknown>;
+  notesJson: string; // JSON.stringify({ notes: Record<string,string>, overallNote: string })
+  testDecksJson?: string; // JSON.stringify(Record<subjectId, TestCard[]>)
+}
+
+export interface ShareRequest {
+  id: string;
+  fromAdminUid: string;
+  fromAdminEmail: string;
+  fromAdminName: string;
+  toEmail: string;
+  type: 'course' | 'note' | 'message' | 'testcard';
+  // Course share
+  courseId?: string;
+  courseName?: string;
+  // Embedded course data (set by sendShare, read by acceptShare)
+  courseSnapshot?: CourseSnapshot;
+  // Subject-level selection for course shares. When the course has subjects,
+  // only the ids listed here are included in courseSnapshot. Absent/undefined
+  // means "whole course" (courses with no subjects, or shares created before
+  // this field existed).
+  sharedSubjectIds?: string[];
+  // Note share (single note — legacy field set, still written for the
+  // first note so old display code / old records keep working)
+  noteTitle?: string;
+  noteHtml?: string;
+  noteBreadcrumb?: string[];
+  // Note share — one or more notes selected together and sent as one card.
+  // When present (length >= 1) this is the source of truth for note shares;
+  // the singular noteTitle/noteHtml/noteBreadcrumb above are kept in sync
+  // with notes[0] for backward compatibility with older display code.
+  notes?: NoteShareItem[];
+  // Plain admin -> user message
+  messageText?: string;
+  // Test card share
+  testCardId?: string;
+  testCardTitle?: string;
+  testCardSubjectId?: string;
+  testCardSubjectTitle?: string;
+  testCardQuestion?: string;
+  testCardAnswer?: string;
+  // Common
+  permissions: SharePermissions;
+  durationValue: number;
+  durationUnit: 'minutes' | 'hours' | 'days' | 'months';
+  status: 'pending' | 'accepted' | 'declined' | 'trashed';
+  sentAt: number;
+  pendingExpiresAt: number; // auto-expire the pending notification
+  acceptedAt?: number;
+  actualExpiresAt?: number; // when access expires after acceptance
+  acceptedByUid?: string; // recipient's uid, set once they accept
+  seenAt?: number; // when the recipient opened/interacted with this notification
+  syncedAt?: number;
+  // Manual-delete trash (admin only). Only set when the admin explicitly
+  // deletes a card — never set by automatic expiry, which just removes the
+  // document outright.
+  trashedAt?: number;
+  trashedFromStatus?: 'pending' | 'accepted' | 'declined';
+  // Set when the sending admin is removed while the share is still active.
+  // The share doc is kept (not deleted) so it reappears when the admin is
+  // re-added. The timer is frozen and a "Resend" button is shown.
+  adminRevoked?: boolean;
+  revokedAt?: number;
+  // When a revoked share is resent, this holds the milliseconds that were
+  // remaining on the clock at the moment of revocation. acceptShare uses it
+  // so the timer continues from the frozen point instead of restarting fresh.
+  resendRemainingMs?: number;
+  // Set when the recipient deletes the accepted shared course from their side.
+  recipientDeleted?: boolean;
+  recipientDeletedAt?: number;
+  // Set when ANY recipient action causes the card to move to Trash (decline,
+  // note-opened, or accepted→then-deleted). Lets the admin distinguish
+  // recipient-driven trash from admin-manually-trashed cards.
+  trashedByRecipient?: boolean;
+  // How the recipient acted: 'declined' = rejected from notification,
+  // 'opened' = note/message opened (auto-delivered), 'accepted_then_deleted' = accepted + later deleted.
+  recipientAction?: 'declined' | 'opened' | 'accepted_then_deleted' | 'completed';
+}
+
+interface AdminContextType {
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
+  adminEmails: string[];
+  adminRecords: AdminRecord[];       // full records (Firestore admins only, not super admins)
+  visibleAdmins: VisibleAdminEntry[]; // what the current admin is allowed to see
+  currentAdminPermissions: AdminRolePermissions | null; // null = super admin (all perms)
+  loadingAdmins: boolean;
+  addAdmin: (email: string, permissions?: AdminRolePermissions, durationValue?: number, durationUnit?: 'minutes' | 'hours' | 'days' | 'months') => Promise<void>;
+  removeAdmin: (email: string) => Promise<void>;
+  updateAdminPermissions: (email: string, permissions: AdminRolePermissions) => Promise<void>;
+  updateAdminDuration: (email: string, addValue: number, addUnit: 'minutes' | 'hours' | 'days' | 'months') => Promise<void>;
+  makeAdminPermanent: (email: string) => Promise<void>;
+  sendShare: (params: SendShareParams) => Promise<void>;
+  sentShares: ShareRequest[];
+  trashedShares: ShareRequest[];
+  loadingSentShares: boolean;
+  updateSharePermissions: (shareId: string, permissions: SharePermissions) => Promise<void>;
+  cancelShare: (shareId: string) => Promise<void>;
+  pendingShares: ShareRequest[];
+  acceptShare: (shareId: string) => Promise<void>;
+  declineShare: (shareId: string) => Promise<void>;
+  acceptedShares: ShareRequest[];
+  markSeen: (shareId: string) => Promise<void>;
+  extendShare: (shareId: string, addValue: number, addUnit: 'minutes' | 'hours' | 'days' | 'months') => Promise<void>;
+  getCourseSubjectsForShare: (courseId: string) => Promise<{ id: string; title: string }[]>;
+  addSubjectsToShare: (shareId: string, additionalSubjectIds: string[]) => Promise<void>;
+  removeSubjectsFromShare: (shareId: string, removeSubjectIds: string[]) => Promise<void>;
+  trashShare: (shareId: string) => Promise<void>;
+  restoreShare: (shareId: string) => Promise<void>;
+  permanentlyDeleteShare: (shareId: string) => Promise<void>;
+  resendShare: (shareId: string) => Promise<void>;
+  completeShareTest: (shareId: string) => Promise<void>;
+  appContact: AppContact;
+  saveContactSettings: (c: Partial<AppContact>) => Promise<void>;
+}
+
+export type SendShareParams = Pick<ShareRequest,
+  'toEmail' | 'type' | 'courseId' | 'courseName' | 'noteTitle' | 'noteHtml' | 'noteBreadcrumb' |
+  'notes' | 'messageText' | 'permissions' | 'durationValue' | 'durationUnit' | 'sharedSubjectIds' |
+  'testCardId' | 'testCardTitle' | 'testCardSubjectId' | 'testCardSubjectTitle' | 'testCardQuestion' | 'testCardAnswer'
+>;
+
+export interface AppContact {
+  whatsapp: string;
+  website: string;
+  supportLink: string;
+}
+
+// An entry in the visible admin list shown to the current admin.
+// Super admins appear with isSuperAdminMember:true and synthetic permissions.
+export interface VisibleAdminEntry {
+  email: string;
+  isSuperAdminMember: boolean; // true = comes from VITE_ADMIN_EMAILS env
+  addedBy: string;
+  addedAt: number;
+  permissions: AdminRolePermissions;
+  expiresAt?: number; // unix ms; undefined = never expires
+}
+
+const AdminContext = createContext<AdminContextType | undefined>(undefined);
+
+function durationToMs(value: number, unit: 'minutes' | 'hours' | 'days' | 'months'): number {
+  if (unit === 'minutes') return value * 60 * 1000;
+  if (unit === 'hours') return value * 60 * 60 * 1000;
+  if (unit === 'days') return value * 24 * 60 * 60 * 1000;
+  return value * 30 * 24 * 60 * 60 * 1000;
+}
+
+// ─── Chunk helpers (mirrors the pattern in StudyContext) ──────────────────────
+/** Read all chunk docs from a chunks subcollection and flatten into [k,v] entries. */
+async function readChunkEntries(
+  chunksColRef: ReturnType<typeof collection>
+): Promise<Array<[string, string]>> {
+  const snap = await getDocs(chunksColRef);
+  const sorted = snap.docs.slice().sort((a, b) => Number(a.id) - Number(b.id));
+  const entries: Array<[string, string]> = [];
+  for (const d of sorted) {
+    const raw = d.data().data;
+    if (Array.isArray(raw)) {
+      for (const pair of raw as Array<{ k: string; v: string }>) entries.push([pair.k, pair.v]);
+    } else if (raw && typeof raw === 'object') {
+      entries.push(...Object.entries(raw as Record<string, string>));
+    }
+  }
+  return entries;
+}
+
+/** Reassemble split/chunked entries back into a single flat map. */
+function reassembleEntries(entries: Array<[string, string]>): Record<string, string> {
+  const groups = new Map<string, Array<{ index: number; value: string }>>();
+  const direct: Record<string, string> = {};
+  for (const [k, v] of entries) {
+    const parts = k.split('\u0001');
+    if (parts.length === 3) {
+      const base = parts[0];
+      if (!groups.has(base)) groups.set(base, []);
+      groups.get(base)!.push({ index: Number(parts[1]), value: v });
+    } else {
+      direct[k] = v;
+    }
+  }
+  groups.forEach((parts, base) => {
+    parts.sort((a, b) => a.index - b.index);
+    direct[base] = parts.map(p => p.value).join('');
+  });
+  return direct;
+}
+
+// ── Progress-stripping helper ─────────────────────────────────────────────────
+// Recursively sets completed:false on every node in the subjects tree so the
+// share recipient always starts with zero progress regardless of what the admin
+// had already studied before sending the share.
+function stripProgress(nodes: unknown[]): unknown[] {
+  const childKeys = ['chapters', 'topics', 'subtopics', 'concepts', 'points'];
+  return (nodes as Record<string, unknown>[]).map(n => {
+    const result: Record<string, unknown> = { ...n, completed: false };
+    for (const key of childKeys) {
+      if (Array.isArray(n[key])) result[key] = stripProgress(n[key] as unknown[]);
+    }
+    return result;
+  });
+}
+// ── Completion-map helpers (mirrors StudyContext) ─────────────────────────────
+// Used by the live-sync receiver to preserve the user's own progress when the
+// admin pushes a structural update.
+
+function buildCompletionMap(nodes: unknown[], map: Map<string, boolean> = new Map()): Map<string, boolean> {
+  const childKeys = ['chapters', 'topics', 'subtopics', 'concepts', 'points'];
+  for (const n of nodes as Record<string, unknown>[]) {
+    if (n.id) map.set(n.id as string, !!(n.completed));
+    for (const key of childKeys) {
+      if (Array.isArray(n[key])) buildCompletionMap(n[key] as unknown[], map);
+    }
+  }
+  return map;
+}
+
+function applyCompletionMap(nodes: unknown[], map: Map<string, boolean>): unknown[] {
+  const childKeys = ['chapters', 'topics', 'subtopics', 'concepts', 'points'];
+  return (nodes as Record<string, unknown>[]).map(n => {
+    const result: Record<string, unknown> = {
+      ...n,
+      completed: n.id ? (map.get(n.id as string) ?? false) : false,
+    };
+    for (const key of childKeys) {
+      if (Array.isArray(n[key])) result[key] = applyCompletionMap(n[key] as unknown[], map);
+    }
+    return result;
+  });
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
+export function AdminProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const userEmail = user?.email?.toLowerCase() || '';
+  const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(userEmail);
+
+  const [firestoreAdminRecords, setFirestoreAdminRecords] = useState<AdminRecord[]>([]);
+  const [loadingAdmins, setLoadingAdmins] = useState(true);
+  const adminMigratedRef = useRef(false);
+  const [allSentShares, setAllSentShares] = useState<ShareRequest[]>([]);
+  const [loadingSentShares, setLoadingSentShares] = useState(false);
+  const [allReceivedShares, setAllReceivedShares] = useState<ShareRequest[]>([]);
+  const [appContact, setAppContact] = useState<AppContact>({ whatsapp: '', website: '', supportLink: '' });
+
+  // Track which syncedAt timestamps we've already applied so we don't re-run
+  // the same sync on every snapshot update.
+  const processedSyncRef = useRef<Map<string, number>>(new Map());
+
+  // Track last-applied permissions per shareId so we detect changes and relay
+  // them into the user's own sharedCourses doc (security rules block the admin
+  // from writing there directly, so the relay runs client-side like the content sync).
+  const processedPermissionsRef = useRef<Map<string, string>>(new Map());
+
+  // Tracks accepted course shares by shareId so we can detect when admin
+  // permanently deletes one and cascade-clean the user's own course collections.
+  // Key = shareId, Value = share type ('course' | 'note' | 'message').
+  const acceptedSharesTrackingRef = useRef<Map<string, string>>(new Map());
+
+  // Ticks every 30 s — re-evaluates expiry filters (admin rows and share rows
+  // manage their own per-second countdown; this is just enough to drop expired
+  // items from lists without re-rendering everything every second).
+  const [expiryTick, setExpiryTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setExpiryTick(v => v + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Single "now" snapshot for this render — freshly evaluated every 30 s via expiryTick.
+  const now = Date.now();
+  void expiryTick; // keeps the linter happy about the expiryTick dependency
+
+  // ── Active (non-expired) admin records — used for access checks ──────────
+  const activeFirestoreAdmins = firestoreAdminRecords.filter(r => !r.expiresAt || r.expiresAt > now);
+
+  const adminEmails = [...new Set([...SUPER_ADMIN_EMAILS, ...activeFirestoreAdmins.map(r => r.email)])];
+  const isAdmin = adminEmails.includes(userEmail);
+  // Stable string key for adminEmails — used as a useEffect dependency so the
+  // shared-course revocation effect only re-runs when the admin list actually changes.
+  const adminEmailsKey = adminEmails.slice().sort().join(',');
+
+  // Permissions for the currently logged-in admin (null = super admin, has everything).
+  const currentAdminPermissions: AdminRolePermissions | null = isSuperAdmin
+    ? null
+    : (activeFirestoreAdmins.find(r => r.email === userEmail)?.permissions ?? { ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
+
+  // All super admins as synthetic VisibleAdminEntry records.
+  const superAdminEntries: VisibleAdminEntry[] = SUPER_ADMIN_EMAILS.map(email => ({
+    email,
+    isSuperAdminMember: true,
+    addedBy: '',
+    addedAt: 0,
+    permissions: { canShareReceivedContent: true, canEditContacts: true, canViewOtherAdmins: true, canAddAdmins: true },
+  }));
+
+  // Which admins the current user is allowed to see in the admin list.
+  // Shows ALL Firestore records (including expired) to those with management rights
+  // so they can see and renew expired admins. Access is still gated by activeFirestoreAdmins.
+  const visibleAdmins: VisibleAdminEntry[] = (() => {
+    const firestoreEntries: VisibleAdminEntry[] = firestoreAdminRecords.map(r => ({
+      ...r,
+      isSuperAdminMember: false,
+    }));
+
+    if (isSuperAdmin) {
+      return [...superAdminEntries, ...firestoreEntries];
+    }
+
+    const canViewOthers = currentAdminPermissions?.canViewOtherAdmins ?? false;
+    const canAddAdmins = currentAdminPermissions?.canAddAdmins ?? false;
+
+    if (canViewOthers) {
+      return [...superAdminEntries, ...firestoreEntries];
+    }
+
+    const visible: VisibleAdminEntry[] = [
+      ...superAdminEntries,
+      ...firestoreEntries.filter(r => r.email === userEmail),
+    ];
+
+    if (canAddAdmins) {
+      const addedByMe = firestoreEntries.filter(r => r.addedBy === userEmail && r.email !== userEmail);
+      visible.push(...addedByMe);
+    }
+
+    return visible;
+  })();
+
+  // ── Share expiry lists ───────────────────────────────────────────────────
+  const pendingShares = allReceivedShares
+    .filter(s => s.status === 'pending' && s.pendingExpiresAt > now && !s.adminRevoked)
+    .sort((a, b) => b.sentAt - a.sentAt); // newest first
+  const acceptedShares = allReceivedShares.filter(
+    s => s.status === 'accepted' && (!s.actualExpiresAt || s.actualExpiresAt > now) && !s.adminRevoked
+  );
+  const sentShares = allSentShares.filter(s => s.status !== 'trashed');
+  const trashedShares = allSentShares.filter(s => s.status === 'trashed');
+
+  // ── Auto-expiry purge ────────────────────────────────────────────────────
+  // Automatic expiry is a hard delete (never goes to trash — that's reserved
+  // for admin-initiated manual deletes). Runs from both sides (admin's sent
+  // list and the recipient's received list) so a share is cleaned up whether
+  // or not the admin is currently online; deletes are best-effort/idempotent.
+  useEffect(() => {
+    const nowMs = Date.now();
+    for (const s of allSentShares) {
+      if (s.status === 'trashed') continue;
+      if (s.adminRevoked) continue; // frozen — timer stopped when admin was removed
+      const expired = (s.status === 'pending' && s.pendingExpiresAt <= nowMs)
+        || (s.status === 'accepted' && s.actualExpiresAt !== undefined && s.actualExpiresAt <= nowMs);
+      if (expired) deleteDocQuietly(doc(db, 'shareRequests', s.id)).catch(() => {});
+    }
+  }, [allSentShares, expiryTick]);
+
+  useEffect(() => {
+    const nowMs = Date.now();
+    for (const s of allReceivedShares) {
+      if (s.status === 'trashed') continue;
+      if (s.adminRevoked) continue; // hidden from recipient; skip expiry delete
+      const expired = (s.status === 'pending' && s.pendingExpiresAt <= nowMs)
+        || (s.status === 'accepted' && s.actualExpiresAt !== undefined && s.actualExpiresAt <= nowMs);
+      if (expired) deleteDocQuietly(doc(db, 'shareRequests', s.id)).catch(() => {});
+    }
+  }, [allReceivedShares, expiryTick]);
+
+  // ── Auto-expiry purge for admin records ──────────────────────────────────
+  // Hard-delete expired admin records from Firestore. Any logged-in user can
+  // trigger this (it's idempotent — just filters the array). The access check
+  // above already excludes them; this is the cleanup so they don't accumulate.
+  // Also deletes all share requests sent by expired admins — the recipient's
+  // onSnapshot listener cascades the deletion to their cloned course/note data.
+  useEffect(() => {
+    const nowMs = Date.now();
+    const expiredRecords = firestoreAdminRecords.filter(r => r.expiresAt && r.expiresAt <= nowMs);
+    if (expiredRecords.length === 0) return;
+    const ref = doc(db, 'adminConfig', 'adminList');
+    getDoc(ref).then(async snap => {
+      if (!snap.exists()) return;
+      const records: AdminRecord[] = snap.data().admins || [];
+      const filtered = records.filter(r => !r.expiresAt || r.expiresAt > nowMs);
+      setDocQuietly(ref, { admins: filtered }, { merge: true }).catch(() => {});
+      // Mark share requests as revoked for every admin whose term just expired
+      // (same pattern as manual removeAdmin — keeps cards visible when re-added).
+      const revokedAt = Date.now();
+      for (const expired of expiredRecords) {
+        getDocs(query(collection(db, 'shareRequests'), where('fromAdminEmail', '==', expired.email)))
+          .then(sharesSnap => {
+            sharesSnap.docs
+              .filter(d => !d.data().adminRevoked)
+              .forEach(d => updateDocQuietly(d.ref, { adminRevoked: true, revokedAt }).catch(() => {}));
+          }).catch(() => {});
+      }
+    }).catch(() => {});
+  }, [firestoreAdminRecords, expiryTick]); // eslint-disable-line
+
+  // Load contact settings from Firestore (live, updates all users in real-time)
+  useEffect(() => {
+    const ref = doc(db, 'adminConfig', 'contactInfo');
+    const unsub = onSnapshot(ref, snap => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setAppContact({ whatsapp: d.whatsapp || '', website: d.website || '', supportLink: d.supportLink || '' });
+      }
+    }, () => {});
+    return () => unsub();
+  }, []);
+
+  // Load admin list from Firestore (with automatic migration from legacy email-only format)
+  useEffect(() => {
+    const ref = doc(db, 'adminConfig', 'adminList');
+    const unsub = onSnapshot(ref, async snap => {
+      if (!snap.exists()) {
+        setFirestoreAdminRecords([]);
+        setLoadingAdmins(false);
+        return;
+      }
+      const data = snap.data();
+      // Migration: legacy format stored { emails: string[] } with no permissions.
+      // Auto-convert once to the new { admins: AdminRecord[] } format.
+      if (Array.isArray(data.emails) && !Array.isArray(data.admins) && !adminMigratedRef.current) {
+        adminMigratedRef.current = true;
+        const migrated: AdminRecord[] = (data.emails as string[]).map(em => ({
+          email: em.toLowerCase(),
+          addedBy: '',
+          addedAt: 0,
+          permissions: { ...DEFAULT_ADMIN_ROLE_PERMISSIONS },
+        }));
+        // Write back — will trigger another snapshot which takes the else branch
+        await setDocQuietly(ref, { admins: migrated }, { merge: true });
+        setFirestoreAdminRecords(migrated);
+      } else {
+        const admins: AdminRecord[] = ((data.admins || []) as AdminRecord[]).map(r => ({
+          email: (r.email || '').toLowerCase(),
+          addedBy: r.addedBy || '',
+          addedAt: r.addedAt || 0,
+          permissions: { ...DEFAULT_ADMIN_ROLE_PERMISSIONS, ...(r.permissions || {}) },
+          ...(r.expiresAt !== undefined ? { expiresAt: r.expiresAt } : {}),
+        }));
+        setFirestoreAdminRecords(admins);
+      }
+      setLoadingAdmins(false);
+    }, () => setLoadingAdmins(false));
+    return () => unsub();
+  }, []); // eslint-disable-line
+
+  // Load sent shares (admin)
+  useEffect(() => {
+    if (!user || !isAdmin) { setAllSentShares([]); return; }
+    setLoadingSentShares(true);
+    const q = query(collection(db, 'shareRequests'), where('fromAdminUid', '==', user.id));
+    const unsub = onSnapshot(q, snap => {
+      const shares = snap.docs.map(d => ({ id: d.id, ...d.data() } as ShareRequest));
+      setAllSentShares(shares.sort((a, b) => b.sentAt - a.sentAt));
+      setLoadingSentShares(false);
+    }, () => setLoadingSentShares(false));
+    return () => unsub();
+  }, [user?.id, isAdmin]); // eslint-disable-line
+
+  // Self-revocation: when an admin is re-added after being removed, removeAdmin's
+  // batch-updateDoc may have been blocked by Firestore security rules (only the
+  // doc owner, fromAdminUid, can write their own shareRequests). This effect runs
+  // as the share owner and catches any share whose sentAt predates the admin's
+  // current addedAt — meaning it was sent during a previous admin stint and should
+  // be frozen with a Resend button. Super admins are excluded (addedAt: 0 synthetic
+  // entries). Runs whenever allSentShares or the admin list reloads; idempotent.
+  useEffect(() => {
+    if (!user?.id || isSuperAdmin || loadingAdmins || !isAdmin) return;
+    const ownRecord = activeFirestoreAdmins.find(r => r.email === userEmail);
+    if (!ownRecord?.addedAt) return; // no real addedAt — nothing to reconcile
+
+    const toRevoke = allSentShares.filter(
+      s => !s.adminRevoked && s.sentAt < ownRecord.addedAt
+    );
+    if (toRevoke.length === 0) return;
+
+    // revokedAt = addedAt (re-addition time) — closest timestamp to the removal
+    // we have. The frozen timer will show time-remaining as of re-addition.
+    const revokedAt = ownRecord.addedAt;
+    for (const s of toRevoke) {
+      updateDocQuietly(doc(db, 'shareRequests', s.id), { adminRevoked: true, revokedAt })
+        .catch(() => {}); // best-effort; next reload will retry if it fails
+    }
+  }, [allSentShares, firestoreAdminRecords, isAdmin, loadingAdmins]); // eslint-disable-line
+
+  // Load received shares (user as recipient) + apply live-sync updates from admin
+  useEffect(() => {
+    if (!user?.email || !user?.id) { setAllReceivedShares([]); return; }
+    const uid = user.id;
+    const q = query(collection(db, 'shareRequests'), where('toEmail', '==', user.email.toLowerCase()));
+    const unsub = onSnapshot(q, snap => {
+      // 1. Update UI state
+      setAllReceivedShares(snap.docs.map(d => ({ id: d.id, ...d.data() } as ShareRequest)));
+
+      // 1b. Cascade cleanup: when admin permanently deletes a shareRequest that the
+      //     user had already accepted, the doc disappears from this snapshot. We
+      //     detect the disappearance here (user has write permission to their own
+      //     sub-collections) and delete the cloned course data. A page reload is
+      //     triggered so the course immediately disappears from My Courses — the
+      //     same UX as accepting a share (which also reloads). This also covers
+      //     auto-expiry, since expiry deletes the shareRequest doc the same way.
+      const tracking = acceptedSharesTrackingRef.current;
+      const currentIds = new Set(snap.docs.map(d => d.id));
+      let courseWasRemoved = false;
+      for (const [trackedShareId, trackedType] of tracking) {
+        if (!currentIds.has(trackedShareId)) {
+          // Share was deleted by admin (or expired) — remove user's copy of the course data.
+          if (trackedType === 'course') {
+            deleteDocQuietly(doc(db, 'users', uid, 'courses', trackedShareId)).catch(() => {});
+            deleteDocQuietly(doc(db, 'users', uid, 'studyData', trackedShareId)).catch(() => {});
+            deleteDocQuietly(doc(db, 'users', uid, 'courseNotes', trackedShareId)).catch(() => {});
+            deleteDocQuietly(doc(db, 'users', uid, 'sharedCourses', trackedShareId)).catch(() => {});
+            courseWasRemoved = true;
+          }
+          tracking.delete(trackedShareId);
+        }
+      }
+      // Reload the page once (after a short delay so Firestore writes can settle)
+      // so the removed course disappears from My Courses immediately — mirrors
+      // the reload that happens when a share is accepted.
+      if (courseWasRemoved) {
+        setTimeout(() => window.location.reload(), 800);
+      }
+      // Update tracking map: record any share the user has ever accepted so that
+      // future snapshots can detect permanent deletion and trigger cleanup.
+      // We track by acceptedByUid (not status) so that trashed shares — which were
+      // accepted before being moved to trash — stay in the map and trigger cleanup
+      // when the admin permanently deletes them from the Trash list.
+      for (const shareDoc of snap.docs) {
+        const data = shareDoc.data() as ShareRequest;
+        if (data.acceptedByUid) {
+          tracking.set(shareDoc.id, data.type);
+        }
+        // Never remove from tracking here — removal only happens above when the
+        // doc is confirmed gone (which triggers the actual cleanup).
+      }
+
+      // 2. Process any pending live-sync updates from the admin.
+      //    Content updates: courseSnapshot.studyData + syncedAt written by admin into
+      //    the shareRequest (admin can write there; user cannot write to admin's
+      //    studyData directly due to security rules).
+      //    Permission updates: permissions field in the same shareRequest doc; admin
+      //    cannot write to user's sharedCourses directly, so the relay runs here.
+      const processedMap = processedSyncRef.current;
+      const permissionsMap = processedPermissionsRef.current;
+
+      for (const shareDoc of snap.docs) {
+        const data = shareDoc.data() as Record<string, unknown>;
+        if (data.status !== 'accepted') continue;
+
+        // ── Permission relay ──────────────────────────────────────────────────
+        // Admin writes permissions to shareRequests (allowed). We mirror them to
+        // the user's own sharedCourses doc so CourseContext's onSnapshot picks up
+        // the change immediately.
+        const newPermissions = data.permissions as Record<string, unknown> | undefined;
+        if (newPermissions) {
+          const newPermJson = JSON.stringify(newPermissions);
+          const lastPermJson = permissionsMap.get(shareDoc.id) ?? null;
+          if (lastPermJson !== newPermJson) {
+            permissionsMap.set(shareDoc.id, newPermJson);
+            // Intentionally fire-and-forget; failure is safe (will retry next snapshot)
+            setDocQuietly(
+              doc(db, 'users', uid, 'sharedCourses', shareDoc.id),
+              { permissions: newPermissions },
+              { merge: true },
+            ).catch(() => {});
+          }
+        }
+
+        // ── Content relay ─────────────────────────────────────────────────────
+        const syncedAt = data.syncedAt as number | undefined;
+        if (!syncedAt) continue;
+        const lastProcessed = processedMap.get(shareDoc.id) ?? 0;
+        if (syncedAt <= lastProcessed) continue;
+
+        // Mark as processed immediately to prevent double-processing
+        processedMap.set(shareDoc.id, syncedAt);
+
+        // Admin overwrites courseSnapshot.studyData in-place (dot-notation update).
+        // notesJson and testDecksJson are now stored in separate sub-documents
+        // (shareRequests/{shareId}/syncPayloads/notes and /testDecks) to avoid
+        // exceeding Firestore's 1 MB per-document limit.  For backward
+        // compatibility, we fall back to the legacy inline fields if the
+        // sub-documents are absent.
+        const courseSnapshot = data.courseSnapshot as { studyData?: Record<string, unknown>; notesJson?: string; testDecksJson?: string } | undefined;
+        const syncStudyData = courseSnapshot?.studyData;
+        if (!syncStudyData) continue;
+
+        // Run async in the background — do not block the snapshot handler
+        (async () => {
+          try {
+            const shareId = shareDoc.id;
+
+            // Read large payloads from sub-documents; fall back to legacy inline fields.
+            let syncNotesJson: string | undefined = courseSnapshot?.notesJson || undefined;
+            let syncTestDecksJson: string | undefined = courseSnapshot?.testDecksJson || undefined;
+            try {
+              const syncPayloadsCol = collection(db, 'shareRequests', shareId, 'syncPayloads');
+              const [notesSnap, testDecksSnap] = await Promise.all([
+                getDoc(doc(syncPayloadsCol, 'notes')),
+                getDoc(doc(syncPayloadsCol, 'testDecks')),
+              ]);
+              if (notesSnap.exists()) syncNotesJson = (notesSnap.data().notesJson as string) || syncNotesJson;
+              if (testDecksSnap.exists()) syncTestDecksJson = (testDecksSnap.data().testDecksJson as string) || syncTestDecksJson;
+            } catch { /* network error — fall back to legacy inline data */ }
+
+            // Fetch the user's current studyData to preserve their progress
+            const userDataSnap = await getDoc(doc(db, 'users', uid, 'studyData', shareId));
+            const userSubjects: unknown[] = userDataSnap.exists()
+              ? ((userDataSnap.data().subjects as unknown[] | undefined) ?? [])
+              : [];
+
+            // Merge: keep the admin's new structure but restore user's completed flags
+            const completionMap = buildCompletionMap(userSubjects);
+            const mergedSubjects = applyCompletionMap(
+              (syncStudyData.subjects as unknown[] | undefined) ?? [],
+              completionMap,
+            );
+
+            // Preserve the recipient's own tempNotes — they are personal and must
+            // never be overwritten by the admin's sync payload.
+            const userTempNotes: unknown[] = userDataSnap.exists()
+              ? ((userDataSnap.data().tempNotes as unknown[] | undefined) ?? [])
+              : [];
+
+            // Write merged studyData to user's own collection (persists across refreshes).
+            // Exclude tempNotes from syncStudyData (admin stripped them before sending,
+            // but guard here too) and restore the user's own tempNotes instead.
+            const { tempNotes: _ignored, ...syncStudyDataWithoutTemp } = syncStudyData as Record<string, unknown>;
+            await setDocQuietly(
+              doc(db, 'users', uid, 'studyData', shareId),
+              { ...syncStudyDataWithoutTemp, subjects: mergedSubjects, tempNotes: userTempNotes, savedAt: Date.now() },
+              { merge: false },
+            );
+
+            // Write notes if provided
+            let liveSyncNotesMap: Record<string, string> | undefined;
+            let liveSyncOverallNote: string | undefined = syncStudyData.overallNote as string | undefined;
+            if (syncNotesJson) {
+              try {
+                const notesData = JSON.parse(syncNotesJson) as { overallNote: string; notes: Record<string, string> };
+                await setDocQuietly(
+                  doc(db, 'users', uid, 'courseNotes', shareId),
+                  { savedAt: Date.now(), overallNote: notesData.overallNote || '', notes: notesData.notes || {}, chunked: false },
+                  { merge: false },
+                );
+                // Keep the note map so the CustomEvent below can merge it into the
+                // subjects tree before applying — the studyData snapshot alone is
+                // "structural only" (notes live in the separate courseNotes doc),
+                // so without this the UI would briefly flash the newly synced note
+                // (from the Firestore onSnapshot merge) and then wipe it out again
+                // (from this event applying note-less subjects on top).
+                liveSyncNotesMap = notesData.notes || {};
+                liveSyncOverallNote = notesData.overallNote || liveSyncOverallNote;
+              } catch { /* malformed JSON — skip notes */ }
+            }
+
+            // Write test decks if provided — overwrite each deck doc so the user
+            // always sees the admin's latest cards. New decks are added, removed
+            // decks are left in place (harmless orphans) to avoid losing data.
+            if (syncTestDecksJson) {
+              try {
+                const testDecksMap = JSON.parse(syncTestDecksJson) as Record<string, unknown[]>;
+                const deckWritePromises = Object.entries(testDecksMap).map(([subjectId, cards]) =>
+                  setDocQuietly(
+                    doc(db, 'users', uid, 'courses', shareId, 'testDecks', subjectId),
+                    { cards, updatedAt: Date.now() },
+                  )
+                );
+                await Promise.all(deckWritePromises);
+                // Dispatch instant UI update — same pattern as study-livesync but for
+                // test decks. TestContext listens for this to update state immediately
+                // without waiting for the Firestore onSnapshot round-trip.
+                window.dispatchEvent(new CustomEvent('test-livesync', {
+                  detail: { shareId, testDecksMap },
+                }));
+              } catch { /* best-effort — test deck sync failure is non-fatal */ }
+            }
+
+            // Also dispatch a synchronous window event so StudyContext can update
+            // the UI instantly without waiting for the Firestore onSnapshot chain
+            // (which has a hasPendingWrites guard that adds a round-trip delay).
+            // tempNotes intentionally excluded — each user's temp notes are personal
+            // and must not be overwritten by the admin's live-sync payload.
+            window.dispatchEvent(new CustomEvent('study-livesync', {
+              detail: {
+                shareId,
+                subjects: mergedSubjects,
+                settings: syncStudyData.settings,
+                overallNote: liveSyncOverallNote,
+                notePagesIndex: syncStudyData.notePagesIndex,
+                notesMap: liveSyncNotesMap,
+              },
+            }));
+
+            console.log('[AdminContext] Live-sync applied for share', shareId, 'syncedAt', syncedAt);
+          } catch (err) {
+            console.error('[AdminContext] Failed to apply live-sync for share', shareDoc.id, err);
+            // Reset so we retry on next snapshot
+            processedMap.delete(shareDoc.id);
+          }
+        })();
+      }
+    }, () => {});
+    return () => unsub();
+  }, [user?.email, user?.id]); // eslint-disable-line
+
+  // Startup reconciliation: runs once per login session to catch orphaned shared
+  // courses. If Admin 3 is removed while the recipient's app is closed, the
+  // shareRequests doc is deleted but the recipient's onSnapshot tracking map is
+  // empty (new session), so the cascade cleanup never fires. This effect loads
+  // every sharedCourses entry and checks whether the corresponding shareRequests
+  // doc still exists. Any entry whose shareRequest is gone is cleaned up and the
+  // page is reloaded — same UX as the live cascade cleanup above.
+  useEffect(() => {
+    if (!user?.id) return;
+    const uid = user.id;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const sharedSnap = await getDocs(collection(db, 'users', uid, 'sharedCourses'));
+        if (cancelled || sharedSnap.empty) return;
+
+        const orphanedIds: string[] = [];
+        await Promise.all(sharedSnap.docs.map(async sharedDoc => {
+          // Document ID equals shareId (acceptShare sets newCourseId = shareId)
+          const shareId = sharedDoc.id;
+          const shareReqSnap = await getDoc(doc(db, 'shareRequests', shareId));
+          if (!shareReqSnap.exists()) {
+            orphanedIds.push(shareId);
+          }
+        }));
+
+        if (cancelled || orphanedIds.length === 0) return;
+
+        console.log('[AdminContext] Startup reconciliation: removing', orphanedIds.length, 'orphaned shared course(s)');
+        await Promise.all(orphanedIds.flatMap(courseId => [
+          deleteDocQuietly(doc(db, 'users', uid, 'courses', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'studyData', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'courseNotes', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'sharedCourses', courseId)).catch(() => {}),
+        ]));
+
+        if (!cancelled) {
+          setTimeout(() => window.location.reload(), 800);
+        }
+      } catch { /* non-fatal — worst case user sees stale data until next refresh */ }
+    })();
+
+    return () => { cancelled = true; };
+  }, [user?.id]); // eslint-disable-line
+
+  // Admin-list revocation: when the active admin list changes (an admin is removed
+  // or expires), check whether any of the current user's sharedCourses were shared
+  // by that admin. If so, delete the cloned data and reload the page.
+  //
+  // This is the PRIMARY revocation path. It works even when the removing admin
+  // cannot delete the original shareRequests doc (Firestore rules may prevent it).
+  // It fires in real-time for online users AND on next login for offline users,
+  // because adminEmailsKey re-evaluates every time firestoreAdminRecords updates.
+  //
+  // Only runs after the admin list has finished loading (loadingAdmins === false)
+  // to avoid false-positives when firestoreAdminRecords is still empty.
+  useEffect(() => {
+    if (loadingAdmins) return;
+    if (!user?.id) return;
+    const uid = user.id;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const sharedSnap = await getDocs(collection(db, 'users', uid, 'sharedCourses'));
+        if (cancelled || sharedSnap.empty) return;
+
+        // Build the set of currently active admin emails (lower-cased for comparison).
+        // adminEmailsKey already reflects only non-expired admins + super admins.
+        const activeSet = new Set(adminEmails.map(e => e.toLowerCase()));
+
+        const orphanedIds: string[] = [];
+        for (const sharedDoc of sharedSnap.docs) {
+          const data = sharedDoc.data();
+          const sharerEmail = ((data.fromAdminEmail as string) || '').toLowerCase();
+          // If the sharer is no longer an active admin, this share is revoked.
+          if (sharerEmail && !activeSet.has(sharerEmail)) {
+            orphanedIds.push(sharedDoc.id);
+          }
+        }
+
+        if (cancelled || orphanedIds.length === 0) return;
+
+        console.log('[AdminContext] Admin-list revocation: removing', orphanedIds.length, 'shared course(s) from removed admin');
+        await Promise.all(orphanedIds.flatMap(courseId => [
+          deleteDocQuietly(doc(db, 'users', uid, 'courses', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'studyData', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'courseNotes', courseId)).catch(() => {}),
+          deleteDocQuietly(doc(db, 'users', uid, 'sharedCourses', courseId)).catch(() => {}),
+        ]));
+
+        if (!cancelled) {
+          setTimeout(() => window.location.reload(), 800);
+        }
+      } catch { /* non-fatal */ }
+    })();
+
+    return () => { cancelled = true; };
+  }, [loadingAdmins, adminEmailsKey, user?.id]); // eslint-disable-line
+
+  const addAdmin = async (
+    email: string,
+    permissions: AdminRolePermissions = { ...DEFAULT_ADMIN_ROLE_PERMISSIONS },
+    durationValue?: number,
+    durationUnit?: 'minutes' | 'hours' | 'days' | 'months',
+  ) => {
+    const e = email.trim().toLowerCase();
+    const ref = doc(db, 'adminConfig', 'adminList');
+    const snap = await getDoc(ref);
+    const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
+    if (!existing.find(r => r.email === e)) {
+      const expiresAt = durationValue && durationUnit
+        ? Date.now() + durationToMs(durationValue, durationUnit)
+        : undefined;
+      const newRecord: AdminRecord = {
+        email: e, addedBy: userEmail, addedAt: Date.now(), permissions,
+        ...(expiresAt !== undefined ? { expiresAt } : {}),
+      };
+      await setDoc(ref, { admins: [...existing, newRecord] }, { merge: true });
+    }
+  };
+
+  // Extends or reduces the expiry of an admin. Positive addValue = extend,
+  // negative = reduce. Extension adds to the current expiresAt (or now if
+  // already expired). Reduction never sets expiresAt to earlier than 60 s
+  // from now so you can't accidentally immediately expire someone.
+  const updateAdminDuration = async (email: string, addValue: number, addUnit: 'minutes' | 'hours' | 'days' | 'months') => {
+    const e = email.trim().toLowerCase();
+    if (SUPER_ADMIN_EMAILS.includes(e)) return; // super admins never expire
+    const ref = doc(db, 'adminConfig', 'adminList');
+    const snap = await getDoc(ref);
+    const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
+    const nowMs = Date.now();
+    const updated = existing.map(r => {
+      if (r.email !== e) return r;
+      const base = r.expiresAt && r.expiresAt > nowMs ? r.expiresAt : nowMs;
+      const delta = durationToMs(Math.abs(addValue), addUnit);
+      const newExpiresAt = addValue >= 0
+        ? base + delta
+        : Math.max(nowMs + 60_000, base - delta); // never push to the past
+      return { ...r, expiresAt: newExpiresAt };
+    });
+    await setDoc(ref, { admins: updated }, { merge: true });
+  };
+
+  const updateAdminPermissions = async (email: string, permissions: AdminRolePermissions) => {
+    const e = email.trim().toLowerCase();
+    if (SUPER_ADMIN_EMAILS.includes(e)) return; // super admin permissions are immutable
+    const ref = doc(db, 'adminConfig', 'adminList');
+    const snap = await getDoc(ref);
+    const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
+    const updated = existing.map(r => r.email === e ? { ...r, permissions } : r);
+    await setDoc(ref, { admins: updated }, { merge: true });
+  };
+
+  // Removes the expiresAt field from an admin record, making them permanent.
+  const makeAdminPermanent = async (email: string) => {
+    const e = email.trim().toLowerCase();
+    if (SUPER_ADMIN_EMAILS.includes(e)) return; // super admins are always permanent
+    const ref = doc(db, 'adminConfig', 'adminList');
+    const snap = await getDoc(ref);
+    const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
+    const updated = existing.map(r => {
+      if (r.email !== e) return r;
+      // Omit expiresAt to make permanent
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { expiresAt: _removed, ...rest } = r;
+      return rest as AdminRecord;
+    });
+    await setDoc(ref, { admins: updated }, { merge: true });
+  };
+
+  const saveContactSettings = async (c: Partial<AppContact>) => {
+    await setDoc(doc(db, 'adminConfig', 'contactInfo'), c, { merge: true });
+  };
+
+  const removeAdmin = async (email: string) => {
+    const e = email.trim().toLowerCase();
+    if (SUPER_ADMIN_EMAILS.includes(e)) return;
+    const ref = doc(db, 'adminConfig', 'adminList');
+    const snap = await getDoc(ref);
+    const existing: AdminRecord[] = snap.exists() ? (snap.data().admins || []) : [];
+    await setDoc(ref, { admins: existing.filter(r => r.email !== e) }, { merge: true });
+    // Mark all share requests from this admin as revoked rather than deleting
+    // them. This keeps the cards visible in "Sent Shares" when the admin is
+    // re-added, with a frozen timer and a "Resend" button.
+    // Recipients' course data is cleaned up by the admin-list revocation effect
+    // (which fires because adminEmailsKey just changed) — no explicit delete needed.
+    const sharesSnap = await getDocs(query(collection(db, 'shareRequests'), where('fromAdminEmail', '==', e)));
+    const revokedAt = Date.now();
+    await Promise.all(
+      sharesSnap.docs
+        .filter(d => !d.data().adminRevoked) // skip already-revoked
+        .map(d => updateDoc(d.ref, { adminRevoked: true, revokedAt }))
+    );
+  };
+
+  const sendShare = async (params: SendShareParams) => {
+    if (!user) return;
+    const ts = Date.now();
+    const pendingExpiresAt = ts + durationToMs(params.durationValue, params.durationUnit);
+    const payload: Record<string, unknown> = {
+      ...params,
+      toEmail: params.toEmail.toLowerCase(),
+      fromAdminUid: user.id,
+      fromAdminEmail: user.email.toLowerCase(),
+      fromAdminName: user.name,
+      status: 'pending',
+      sentAt: ts,
+      pendingExpiresAt,
+    };
+
+    // When a note share carries a `notes` array, mirror the first entry into
+    // the legacy singular fields so any older display code that still reads
+    // noteTitle/noteHtml/noteBreadcrumb keeps working.
+    if (params.type === 'note' && params.notes && params.notes.length > 0) {
+      payload.noteTitle = params.notes[0].title;
+      payload.noteHtml = params.notes[0].html;
+      payload.noteBreadcrumb = params.notes[0].breadcrumb;
+    }
+
+    // For course shares: embed a snapshot of the course data so the recipient
+    // can copy it to their own account when they accept. Best-effort — the share
+    // still goes through even if reading the snapshot fails.
+    if (params.type === 'course' && params.courseId) {
+      try {
+        const sdRef = doc(db, 'users', user.id, 'studyData', params.courseId);
+        const sdSnap = await getDoc(sdRef);
+        const rawSd = sdSnap.exists() ? sdSnap.data() : {};
+
+        // Read courseNotes (handles both chunked and non-chunked formats)
+        let notesMap: Record<string, string> = {};
+        let overallNote = '';
+        if (rawSd.hasNotesDoc) {
+          const ndRef = doc(db, 'users', user.id, 'courseNotes', params.courseId);
+          const ndSnap = await getDoc(ndRef);
+          if (ndSnap.exists()) {
+            const nd = ndSnap.data() as {
+              overallNote?: string;
+              notes?: Record<string, string>;
+              chunked?: boolean;
+            };
+            if (nd.chunked) {
+              const chunksCol = collection(
+                db, 'users', user.id, 'courseNotes', params.courseId, 'chunks'
+              );
+              const entries = await readChunkEntries(chunksCol);
+              const merged = reassembleEntries(entries);
+              overallNote = merged['__overall__'] || '';
+              delete merged['__overall__'];
+              notesMap = merged;
+            } else {
+              notesMap = nd.notes || {};
+              overallNote = nd.overallNote || '';
+            }
+          }
+        }
+
+        // Subject-level selection: if the admin picked specific subjects
+        // (course has subjects and didn't choose "select all"), narrow both
+        // the subjects tree and the notes map down to just those ids before
+        // embedding the snapshot.
+        let studyDataForSnapshot = rawSd as Record<string, unknown>;
+        if (params.sharedSubjectIds && Array.isArray(rawSd.subjects)) {
+          const filteredSubjects = filterSubjectsByIds(rawSd.subjects as unknown[], params.sharedSubjectIds);
+          const idSet = collectAllIds(filteredSubjects);
+          studyDataForSnapshot = { ...rawSd, subjects: filteredSubjects };
+          notesMap = filterNotesMapByIds(notesMap, idSet);
+        }
+
+        // Strip library-compiler notes (privateNote=true) before embedding the
+        // snapshot — they are admin-only and must never reach shared courses.
+        if (Array.isArray(studyDataForSnapshot.notePagesIndex)) {
+          studyDataForSnapshot = {
+            ...studyDataForSnapshot,
+            notePagesIndex: (studyDataForSnapshot.notePagesIndex as Array<{ privateNote?: boolean }>)
+              .filter(p => !p.privateNote),
+          };
+        }
+
+        // Read test decks for the course (subcollection: courses/{courseId}/testDecks)
+        let testDecksMap: Record<string, unknown[]> = {};
+        try {
+          const decksColRef = collection(db, 'users', user.id, 'courses', params.courseId, 'testDecks');
+          const decksSnap = await getDocs(decksColRef);
+          decksSnap.forEach(d => {
+            const data = d.data();
+            const cards: unknown[] = Array.isArray(data.cards) ? data.cards : [];
+            // If subject-level filtering is active, only include decks for selected subjects
+            if (!params.sharedSubjectIds || params.sharedSubjectIds.includes(d.id)) {
+              testDecksMap[d.id] = cards;
+            }
+          });
+        } catch { /* best-effort — missing test decks are not fatal */ }
+
+        // Strip admin's tempNotes before embedding in the snapshot — temp notes are
+        // personal to each user and must never be shared or disclosed to recipients.
+        const { tempNotes: _stripSendTempNotes, ...studyDataForSnapshotNoTemp } = studyDataForSnapshot;
+
+        // Deep-strip undefined values from studyData before embedding in the
+        // snapshot. Firestore rejects `undefined` anywhere in a nested object
+        // ("Property courseSnapshot contains an invalid nested entity"), even
+        // when top-level undefined keys are already removed. JSON round-trip
+        // silently drops undefined keys at every depth level, which is exactly
+        // what we need.
+        const cleanStudyData = JSON.parse(JSON.stringify(studyDataForSnapshotNoTemp)) as Record<string, unknown>;
+
+        const snapshot: CourseSnapshot = {
+          studyData: cleanStudyData,
+          notesJson: JSON.stringify({ notes: notesMap, overallNote }),
+          testDecksJson: JSON.stringify(testDecksMap),
+        };
+        payload.courseSnapshot = snapshot;
+      } catch {
+        // Best-effort — the share is still sent without the snapshot
+      }
+    }
+
+    // Firestore rejects `undefined` field values — strip them out.
+    for (const key of Object.keys(payload)) {
+      if (payload[key] === undefined) delete payload[key];
+    }
+    await addDoc(collection(db, 'shareRequests'), payload);
+  };
+
+  const updateSharePermissions = async (shareId: string, permissions: SharePermissions) => {
+    await updateDoc(doc(db, 'shareRequests', shareId), { permissions });
+    // Also propagate to the recipient's sharedCourses doc so the live
+    // onSnapshot listener in CourseContext picks up the change immediately.
+    try {
+      const snap = await getDoc(doc(db, 'shareRequests', shareId));
+      const acceptedByUid = snap.data()?.acceptedByUid as string | undefined;
+      if (acceptedByUid) {
+        await updateDoc(
+          doc(db, 'users', acceptedByUid, 'sharedCourses', shareId),
+          { permissions },
+        );
+      }
+    } catch { /* best-effort — don't block the admin UI */ }
+  };
+
+  const cancelShare = async (shareId: string) => {
+    await updateDoc(doc(db, 'shareRequests', shareId), { status: 'declined' });
+  };
+
+  // ── Extend or reduce duration (admin only, before expiry) ─────────────────
+  // `deltaValue` may be negative to reduce the remaining time instead of
+  // extending it. The result is clamped so it never drops below "now" —
+  // reducing far enough simply expires the share immediately.
+  const extendShare = async (shareId: string, deltaValue: number, deltaUnit: 'minutes' | 'hours' | 'days' | 'months') => {
+    const share = allSentShares.find(s => s.id === shareId);
+    if (!share) return;
+    const deltaMs = durationToMs(Math.abs(deltaValue), deltaUnit) * (deltaValue < 0 ? -1 : 1);
+    if (share.status === 'accepted' && share.actualExpiresAt) {
+      const newExpiry = Math.max(Date.now(), share.actualExpiresAt + deltaMs);
+      await updateDoc(doc(db, 'shareRequests', shareId), { actualExpiresAt: newExpiry });
+      if (share.acceptedByUid) {
+        await setDoc(
+          doc(db, 'users', share.acceptedByUid, 'sharedCourses', shareId),
+          { actualExpiresAt: newExpiry },
+          { merge: true },
+        ).catch(() => {});
+      }
+    } else if (share.status === 'pending') {
+      const newExpiry = Math.max(Date.now(), share.pendingExpiresAt + deltaMs);
+      await updateDoc(doc(db, 'shareRequests', shareId), { pendingExpiresAt: newExpiry });
+    }
+  };
+
+  // ── Subject-level incremental sharing ─────────────────────────────────────
+  /** Fetch the top-level subjects (id + title) for one of the admin's own
+   *  courses, used to render the subject-picker in the Share wizard. */
+  const getCourseSubjectsForShare = async (courseId: string): Promise<{ id: string; title: string }[]> => {
+    if (!user) return [];
+    try {
+      const sdSnap = await getDoc(doc(db, 'users', user.id, 'studyData', courseId));
+      if (!sdSnap.exists()) return [];
+      const subjects = (sdSnap.data().subjects as Array<{ id: string; title: string }> | undefined) || [];
+      return subjects.map(s => ({ id: s.id, title: s.title }));
+    } catch {
+      return [];
+    }
+  };
+
+  /** Add more subjects to an already-sent (still-active) course share. Reuses
+   *  the existing content-sync channel (courseSnapshot + syncedAt) so the
+   *  recipient picks up the addition through the same live-sync path used for
+   *  ordinary note/structure edits — no separate propagation code needed. */
+  const addSubjectsToShare = async (shareId: string, additionalSubjectIds: string[]) => {
+    if (!user) return;
+    const share = allSentShares.find(s => s.id === shareId);
+    if (!share || share.type !== 'course' || !share.courseId) return;
+
+    const mergedIds = Array.from(new Set([...(share.sharedSubjectIds || []), ...additionalSubjectIds]));
+
+    const sdSnap = await getDoc(doc(db, 'users', user.id, 'studyData', share.courseId));
+    if (!sdSnap.exists()) return;
+    const rawSd = sdSnap.data();
+    const filteredSubjects = filterSubjectsByIds((rawSd.subjects as unknown[]) || [], mergedIds);
+    const idSet = collectAllIds(filteredSubjects);
+
+    let notesMap: Record<string, string> = {};
+    let overallNote = '';
+    if (rawSd.hasNotesDoc) {
+      const ndSnap = await getDoc(doc(db, 'users', user.id, 'courseNotes', share.courseId));
+      if (ndSnap.exists()) {
+        const nd = ndSnap.data() as { overallNote?: string; notes?: Record<string, string>; chunked?: boolean };
+        if (nd.chunked) {
+          const entries = await readChunkEntries(collection(db, 'users', user.id, 'courseNotes', share.courseId, 'chunks'));
+          const merged = reassembleEntries(entries);
+          overallNote = merged['__overall__'] || '';
+          delete merged['__overall__'];
+          notesMap = merged;
+        } else {
+          notesMap = nd.notes || {};
+          overallNote = nd.overallNote || '';
+        }
+      }
+    }
+    notesMap = filterNotesMapByIds(notesMap, idSet);
+
+    // Strip tempNotes — admin's personal temp notes must never reach recipients.
+    const { tempNotes: _stripAddSubjectsTempNotes, ...rawSdNoTemp } = rawSd as Record<string, unknown>;
+    const studyDataForSnapshot = { ...rawSdNoTemp, subjects: filteredSubjects };
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      sharedSubjectIds: mergedIds,
+      courseSnapshot: {
+        studyData: studyDataForSnapshot,
+        notesJson: JSON.stringify({ notes: notesMap, overallNote }),
+      },
+      syncedAt: Date.now(),
+    });
+  };
+
+  /** Remove specific subjects from an already-sent course share. Re-snapshots the
+   *  course with the narrowed subject list so the recipient loses access to the
+   *  removed subjects on next sync. */
+  const removeSubjectsFromShare = async (shareId: string, removeSubjectIds: string[]) => {
+    if (!user || removeSubjectIds.length === 0) return;
+    const share = allSentShares.find(s => s.id === shareId);
+    if (!share || share.type !== 'course' || !share.courseId) return;
+
+    const removeSet = new Set(removeSubjectIds);
+    const remainingIds = (share.sharedSubjectIds || []).filter(id => !removeSet.has(id));
+
+    const sdSnap = await getDoc(doc(db, 'users', user.id, 'studyData', share.courseId));
+    if (!sdSnap.exists()) return;
+    const rawSd = sdSnap.data();
+
+    const filteredSubjects = remainingIds.length > 0
+      ? filterSubjectsByIds((rawSd.subjects as unknown[]) || [], remainingIds)
+      : [];
+    const idSet = collectAllIds(filteredSubjects);
+
+    let notesMap: Record<string, string> = {};
+    let overallNote = '';
+    if (rawSd.hasNotesDoc) {
+      const ndSnap = await getDoc(doc(db, 'users', user.id, 'courseNotes', share.courseId));
+      if (ndSnap.exists()) {
+        const nd = ndSnap.data() as { overallNote?: string; notes?: Record<string, string>; chunked?: boolean };
+        if (nd.chunked) {
+          const entries = await readChunkEntries(collection(db, 'users', user.id, 'courseNotes', share.courseId, 'chunks'));
+          const merged = reassembleEntries(entries);
+          overallNote = merged['__overall__'] || '';
+          delete merged['__overall__'];
+          notesMap = merged;
+        } else {
+          notesMap = nd.notes || {};
+          overallNote = nd.overallNote || '';
+        }
+      }
+    }
+    notesMap = filterNotesMapByIds(notesMap, idSet);
+
+    const { tempNotes: _strip, ...rawSdNoTemp } = rawSd as Record<string, unknown>;
+    const studyDataForSnapshot = { ...rawSdNoTemp, subjects: filteredSubjects };
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      sharedSubjectIds: remainingIds.length > 0 ? remainingIds : null,
+      courseSnapshot: {
+        studyData: studyDataForSnapshot,
+        notesJson: JSON.stringify({ notes: notesMap, overallNote }),
+      },
+      syncedAt: Date.now(),
+    });
+  };
+
+  // ── Manual delete → trash → restore / permanent delete ────────────────────
+  const trashShare = async (shareId: string) => {
+    const share = allSentShares.find(s => s.id === shareId);
+    if (!share) return;
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      status: 'trashed',
+      trashedAt: Date.now(),
+      trashedFromStatus: share.status === 'accepted' ? 'accepted'
+        : share.status === 'declined' ? 'declined'
+        : 'pending',
+    });
+  };
+
+  const restoreShare = async (shareId: string) => {
+    const share = allSentShares.find(s => s.id === shareId);
+    if (!share || share.status !== 'trashed') return;
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      status: share.trashedFromStatus || 'declined',
+      trashedAt: null,
+      trashedFromStatus: null,
+      // Clear recipient-side fields so the notification is truly fresh:
+      // markSeen guards on seenAt, so leaving it set would silently block
+      // the second open/start after a restore.
+      seenAt: null,
+      trashedByRecipient: null,
+      recipientAction: null,
+    });
+  };
+
+  const permanentlyDeleteShare = async (shareId: string) => {
+    // Always delete the shareRequest document first — this is the source of truth
+    // for notifications (pending) and is what the admin has write permission to.
+    // User-side cleanup (courses, studyData, etc.) is handled by the recipient's
+    // own onSnapshot listener (see "cascade cleanup" block below) which fires when
+    // it detects the shareRequest has disappeared from their received-shares query.
+    await deleteDoc(doc(db, 'shareRequests', shareId));
+  };
+
+  // Resend a previously revoked share. Creates a new shareRequest with fresh
+  // timestamps (reusing the original snapshot/content), then deletes the old
+  // revoked doc so it no longer appears in the sent list.
+  // The timer continues from the frozen point: we calculate how many ms were
+  // left at revocation and store it as resendRemainingMs. acceptShare reads
+  // this field so actualExpiresAt = acceptedAt + frozenRemaining, not a fresh
+  // full duration. pendingExpiresAt also uses the same remaining window.
+  const resendShare = async (shareId: string) => {
+    const share = allSentShares.find(s => s.id === shareId);
+    if (!share || !share.adminRevoked || !user) return;
+
+    const ts = Date.now();
+
+    // Remaining time on the clock at the moment of revocation.
+    // Use actualExpiresAt for accepted shares, pendingExpiresAt for pending ones.
+    const countdownTarget = share.status === 'accepted'
+      ? share.actualExpiresAt
+      : share.pendingExpiresAt;
+    const frozenRemainingMs = (countdownTarget && share.revokedAt)
+      ? Math.max(0, countdownTarget - share.revokedAt)
+      : durationToMs(share.durationValue, share.durationUnit); // fallback to full duration
+
+    const pendingExpiresAt = ts + frozenRemainingMs;
+
+    const payload: Record<string, unknown> = {
+      fromAdminUid: user.id,
+      fromAdminEmail: user.email.toLowerCase(),
+      fromAdminName: user.name,
+      toEmail: share.toEmail,
+      type: share.type,
+      permissions: share.permissions,
+      durationValue: share.durationValue,
+      durationUnit: share.durationUnit,
+      status: 'pending',
+      sentAt: ts,
+      pendingExpiresAt,
+      resendRemainingMs: frozenRemainingMs,
+    };
+
+    if (share.type === 'course') {
+      if (share.courseId) payload.courseId = share.courseId;
+      if (share.courseName) payload.courseName = share.courseName;
+      if (share.courseSnapshot) payload.courseSnapshot = share.courseSnapshot;
+      if (share.sharedSubjectIds) payload.sharedSubjectIds = share.sharedSubjectIds;
+    } else if (share.type === 'note') {
+      if (share.notes) payload.notes = share.notes;
+      if (share.noteTitle) payload.noteTitle = share.noteTitle;
+      if (share.noteHtml) payload.noteHtml = share.noteHtml;
+      if (share.noteBreadcrumb) payload.noteBreadcrumb = share.noteBreadcrumb;
+    } else if (share.type === 'message') {
+      if (share.messageText) payload.messageText = share.messageText;
+    } else if (share.type === 'testcard') {
+      if (share.testCardId) payload.testCardId = share.testCardId;
+      if (share.testCardTitle) payload.testCardTitle = share.testCardTitle;
+      if (share.testCardSubjectId) payload.testCardSubjectId = share.testCardSubjectId;
+      if (share.testCardSubjectTitle) payload.testCardSubjectTitle = share.testCardSubjectTitle;
+      if (share.testCardQuestion) payload.testCardQuestion = share.testCardQuestion;
+      if (share.testCardAnswer) payload.testCardAnswer = share.testCardAnswer;
+    }
+
+    // Strip undefined values (Firestore rejects them)
+    for (const key of Object.keys(payload)) {
+      if (payload[key] === undefined) delete payload[key];
+    }
+
+    await addDoc(collection(db, 'shareRequests'), payload);
+    // Remove the old revoked record — the new one replaces it.
+    await deleteDoc(doc(db, 'shareRequests', shareId));
+  };
+
+  const acceptShare = async (shareId: string) => {
+    const share = pendingShares.find(s => s.id === shareId);
+    if (!share || !user) return;
+    const ts = Date.now();
+    // If this share was resent after a revocation, continue the timer from the
+    // frozen point rather than restarting the full original duration.
+    const actualExpiresAt = ts + (share.resendRemainingMs ?? durationToMs(share.durationValue, share.durationUnit));
+
+    // For course shares with an embedded snapshot: copy the course data into the
+    // user's own Firestore collections so it appears in their course list and they
+    // can study it just like any other course.
+    if (share.type === 'course' && share.courseId && share.courseSnapshot) {
+      try {
+        const snapshot = share.courseSnapshot;
+        // Use the shareId as the new courseId so it is always unique and traceable
+        const newCourseId = shareId;
+        const courseName = share.courseName || 'Shared Course';
+
+        // 1. Write the course entry (appears in course switcher)
+        //    Append "(Shared)" so it's visually distinct if a same-named course exists.
+        const displayName = courseName.endsWith(' (Shared)') ? courseName : `${courseName} (Shared)`;
+        await setDoc(doc(db, 'users', user.id, 'courses', newCourseId), {
+          id: newCourseId,
+          name: displayName,
+          createdAt: ts,
+        });
+
+        // 2. Write the study data (subjects tree without note HTML)
+        //    Always set hasNotesDoc: true so StudyContext loads notes from courseNotes.
+        //    Strip tempNotes (defense-in-depth): they are personal to each user and must
+        //    never be written to a recipient's doc, even if a legacy snapshot contains them.
+        const { tempNotes: _stripAcceptTempNotes, ...snapshotSdWithoutTemp } = snapshot.studyData as Record<string, unknown>;
+        const sdToWrite: Record<string, unknown> = {
+          ...snapshotSdWithoutTemp,
+          // Strip the admin's completion progress so the recipient always
+          // receives a fresh course with zero progress of their own.
+          subjects: stripProgress((snapshotSdWithoutTemp.subjects as unknown[] | undefined) ?? []),
+          // Recipients start with empty temp notes — personal to each user.
+          tempNotes: [],
+          hasNotesDoc: true,
+          savedAt: ts,
+        };
+        await setDoc(doc(db, 'users', user.id, 'studyData', newCourseId), sdToWrite);
+
+        // 3. Write the notes (HTML content for every item)
+        let parsedNotes: { notes: Record<string, string>; overallNote: string } = {
+          notes: {},
+          overallNote: '',
+        };
+        if (snapshot.notesJson) {
+          try {
+            parsedNotes = JSON.parse(snapshot.notesJson);
+          } catch { /* keep empty */ }
+        }
+        await setDoc(doc(db, 'users', user.id, 'courseNotes', newCourseId), {
+          notes: parsedNotes.notes || {},
+          overallNote: parsedNotes.overallNote || '',
+        });
+
+        // 4. Write test decks (MCQ/quiz cards) so the Test section is available
+        if (snapshot.testDecksJson) {
+          try {
+            const testDecksMap = JSON.parse(snapshot.testDecksJson) as Record<string, unknown[]>;
+            const deckWritePromises = Object.entries(testDecksMap).map(([subjectId, cards]) =>
+              setDoc(
+                doc(db, 'users', user.id, 'courses', newCourseId, 'testDecks', subjectId),
+                { cards, updatedAt: ts },
+              )
+            );
+            await Promise.all(deckWritePromises);
+          } catch { /* best-effort — test decks not critical for course access */ }
+        }
+
+        // 5. Write shared-course metadata so permission checks can find it later
+        await setDoc(doc(db, 'users', user.id, 'sharedCourses', newCourseId), {
+          shareId,
+          courseId: newCourseId,
+          originalCourseId: share.courseId,
+          courseName,
+          fromAdminName: share.fromAdminName,
+          fromAdminEmail: share.fromAdminEmail,
+          permissions: share.permissions,
+          acceptedAt: ts,
+          actualExpiresAt,
+        });
+
+        // 6. Auto-select the newly accepted course. NotificationBell reloads the
+        //    page after acceptShare resolves; CourseContext reads the active course
+        //    id from this localStorage key on startup, so setting it here causes
+        //    the shared course to be selected automatically after the reload.
+        try {
+          localStorage.setItem(`@study_activeCourse_${user.email}`, newCourseId);
+        } catch { /* ignore storage errors */ }
+      } catch {
+        // If the course copy fails, still mark the share accepted — the user
+        // at least acknowledges the notification. They can re-request if needed.
+      }
+    }
+
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      status: 'accepted',
+      acceptedAt: ts,
+      actualExpiresAt,
+      acceptedByUid: user.id,   // stored so admin can later push permission/data updates
+    });
+  };
+
+  const declineShare = async (shareId: string) => {
+    const share = allReceivedShares.find(s => s.id === shareId);
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      status: 'trashed',
+      trashedAt: Date.now(),
+      trashedFromStatus: share?.status ?? 'pending',
+      trashedByRecipient: true,
+      recipientAction: 'declined',
+    });
+  };
+
+  const completeShareTest = async (shareId: string) => {
+    const share = allReceivedShares.find(s => s.id === shareId);
+    await updateDoc(doc(db, 'shareRequests', shareId), {
+      status: 'trashed',
+      trashedAt: Date.now(),
+      trashedFromStatus: share?.status ?? 'pending',
+      trashedByRecipient: true,
+      recipientAction: 'completed',
+    });
+  };
+
+  const markSeen = async (shareId: string) => {
+    const share = allReceivedShares.find(s => s.id === shareId);
+    if (!share || share.seenAt) return; // already seen, avoid redundant writes
+
+    // For note/message shares there is no explicit accept step — opening the
+    // notification IS the delivery. Move the card to the admin's Trash so it
+    // clears out of the Active list automatically (timer remains visible there).
+    if (share.type === 'note' || share.type === 'message') {
+      await updateDoc(doc(db, 'shareRequests', shareId), {
+        seenAt: Date.now(),
+        status: 'trashed',
+        trashedAt: Date.now(),
+        trashedFromStatus: share.status,
+        trashedByRecipient: true,
+        recipientAction: 'opened',
+      });
+    } else {
+      await updateDoc(doc(db, 'shareRequests', shareId), { seenAt: Date.now() });
+    }
+  };
+
+  return (
+    <AdminContext.Provider value={{
+      isAdmin, isSuperAdmin, adminEmails, adminRecords: firestoreAdminRecords,
+      visibleAdmins, currentAdminPermissions,
+      loadingAdmins,
+      addAdmin, removeAdmin, updateAdminPermissions, updateAdminDuration, makeAdminPermanent,
+      sendShare, sentShares, trashedShares, loadingSentShares,
+      updateSharePermissions, cancelShare,
+      pendingShares, acceptShare, declineShare,
+      acceptedShares, markSeen,
+      extendShare, getCourseSubjectsForShare, addSubjectsToShare, removeSubjectsFromShare,
+      trashShare, restoreShare, permanentlyDeleteShare, resendShare, completeShareTest,
+      appContact, saveContactSettings,
+    }}>
+      {children}
+    </AdminContext.Provider>
+  );
+}
+
+export function useAdmin() {
+  const ctx = useContext(AdminContext);
+  if (!ctx) throw new Error('useAdmin must be used within AdminProvider');
+  return ctx;
+}

@@ -1,0 +1,3029 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useStudy } from '@/context/StudyContext';
+import { useAuth } from '@/context/AuthContext';
+import { useLang } from '@/context/LangContext';
+import { Layout } from '@/components/Layout';
+import {
+  Target, CheckCircle2, Clock, CalendarDays, Edit3, BookOpen,
+  Layers, Zap, Sun, ChevronRight, AlarmClock, Hash, Lightbulb, List,
+  ChevronDown, AlertTriangle, X, RotateCcw, TrendingUp, PlayCircle,
+  Lock, Flame, ThumbsUp, RefreshCw, Plus, StickyNote, Star, AlertOctagon,
+  Download, Share2, Check, GraduationCap,
+} from 'lucide-react';
+import { FaWhatsapp } from 'react-icons/fa';
+import { usePWAInstall } from '@/context/PWAInstallContext';
+import { differenceInDays, parseISO } from 'date-fns';
+import { todayIST, nowIST, toDateStrIST, addDaysIST, formatTodayDisplayIST, msUntilISTMidnight } from '@/lib/istTime';
+import { Modal, Input, Button, NoteEditorModal } from '@/components/ui';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ScrollReveal } from '@/components/ScrollReveal';
+import type { Subject, MarkPath, MarkLevel } from '@/lib/types';
+import { ItemActions } from '@/components/ItemActions';
+import { doc, onSnapshot, getDoc, arrayUnion } from 'firebase/firestore';
+import { setDoc, setDocQuietly } from '@/lib/saveStatus';
+import { db } from '@/lib/firebase';
+import { useCourse } from '@/context/CourseContext';
+import { useAdmin } from '@/context/AdminContext';
+import {
+  adjPoint, adjConcept, adjSubtopic, adjTopic, adjChapter,
+  findNextItem, calculateAdaptivePressure,
+  totalContentMinutes, totalAdjustedMinutes,
+  isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone,
+  computeGranularProgress, formatProgressPercent,
+} from '@/lib/timeEngine';
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+export type PlanLevel = 'chapter' | 'topic' | 'subtopic' | 'concept' | 'point';
+
+export interface PlanTask {
+  key: string;
+  subjectId: string; chapterId: string;
+  topicId?: string; subtopicId?: string; conceptId?: string; pointId?: string;
+  subjectTitle: string; subjectColor: string;
+  breadcrumb: string[];
+  mainTitle: string;
+  level: PlanLevel;
+  estimatedMins: number;
+  daysLeft: number;
+  urgency: 'high' | 'medium' | 'low';
+  urgencyScore: number;
+  isInProgress?: boolean;
+  loadedFrom?: string;
+}
+
+export interface PendingItem {
+  task: PlanTask;
+  plannedDate: string;
+  addedDate?: string;
+}
+
+// Revision entry: spaced-repetition schedule (stage-based, adaptive intervals)
+export interface RevisionEntry {
+  id: string;
+  taskKey: string;
+  mainTitle: string;
+  subjectTitle: string;
+  subjectColor: string;
+  breadcrumb: string[];
+  level: PlanLevel;
+  scheduledDate: string; // yyyy-MM-dd
+  revisionMins: number;  // 50% of original
+  stage: number;         // 0=first revision, increments on each completion
+  done: boolean;
+  firstCompletedDate?: string;  // yyyy-MM-dd: when the original task was first completed
+  origin?: 'regular' | 'snoozed' | 'dismissed'; // why this revision appeared
+}
+
+const PENDING_EXPIRY_DAYS = 2;
+const INITIAL_REVISION_DAYS = 5;   // task complete → first revision after N days
+const DISMISS_DAYS = 5;             // dismissed/missed → same stage, N days later
+// Days to next stage after completing stage N (index = current stage, fallback = 15)
+const STAGE_NEXT_DAYS = [10, 15, 20, 15];
+const MIN_POINT = 3, MIN_CONCEPT = 5, MIN_SUBTOPIC = 7;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function formatMins(mins: number, h: string, m: string) {
+  if (mins < 60) return `${mins} ${m}`;
+  const hh = Math.floor(mins / 60), mm = mins % 60;
+  return mm > 0 ? `${hh} ${h} ${mm} ${m}` : `${hh} ${h}`;
+}
+
+function getRevisionStageLabel(stage: number, isBn: boolean): string {
+  const ordinalsBn = ['১ম', '২য়', '৩য়', '৪র্থ', '৫ম'];
+  const ordinalsEn = ['1st', '2nd', '3rd', '4th', '5th'];
+  const totalStages = STAGE_NEXT_DAYS.length; // 4
+  const current = Math.min((stage ?? 0) + 1, totalStages);
+  const curIdx = Math.min(current - 1, ordinalsEn.length - 1);
+  const totIdx = Math.min(totalStages - 1, ordinalsEn.length - 1);
+  return isBn
+    ? `${ordinalsBn[totIdx]} স্টেজের ${ordinalsBn[curIdx]}`
+    : `${ordinalsEn[curIdx]} of ${ordinalsEn[totIdx]} stage`;
+}
+
+function getAllItemIds(subjects: Subject[]): Set<string> {
+  const ids = new Set<string>();
+  for (const s of subjects) {
+    ids.add(s.id);
+    for (const ch of s.chapters) {
+      ids.add(ch.id);
+      for (const t of ch.topics) {
+        ids.add(t.id);
+        for (const sub of t.subtopics) {
+          ids.add(sub.id);
+          for (const c of sub.concepts) {
+            ids.add(c.id);
+            for (const p of c.points) ids.add(p.id);
+          }
+        }
+      }
+    }
+  }
+  return ids;
+}
+
+function pendingDaysLeft(item: PendingItem, todayStr: string): number {
+  const from = item.addedDate ?? item.plannedDate;
+  try {
+    const elapsed = differenceInDays(parseISO(todayStr), parseISO(from));
+    return PENDING_EXPIRY_DAYS - elapsed;
+  } catch { return PENDING_EXPIRY_DAYS; }
+}
+
+function PendingCountdown({ item, isBn }: { item: PendingItem; isBn: boolean }) {
+  const getMs = () => {
+    const from = item.addedDate ?? item.plannedDate;
+    try {
+      const [y, mo, d] = from.split('-').map(Number);
+      // Expiry = midnight (local) at from + PENDING_EXPIRY_DAYS days
+      const expiry = new Date(y, mo - 1, d + PENDING_EXPIRY_DAYS);
+      return Math.max(0, expiry.getTime() - Date.now());
+    } catch { return 0; }
+  };
+
+  const [ms, setMs] = useState<number>(() => getMs());
+
+  useEffect(() => {
+    const id = setInterval(() => setMs(getMs()), 1000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.addedDate, item.plannedDate]);
+
+  const totalSec = Math.floor(ms / 1000);
+  const s  = totalSec % 60;
+  const totalMin = Math.floor(totalSec / 60);
+  const m  = totalMin % 60;
+  const totalHr  = Math.floor(totalMin / 60);
+  const h  = totalHr  % 24;
+  const dd = Math.floor(totalHr  / 24);
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  const label = `${dd}d : ${pad(h)}h : ${pad(m)}m : ${pad(s)}s`;
+
+  return (
+    <span className="text-[10px] text-orange-500 font-bold bg-orange-500/10 px-2 py-0.5 rounded-full tabular-nums">
+      ⏱ {label}
+    </span>
+  );
+}
+
+// Counts down to midnight tonight — all "due today" revisions expire then
+function RevisionCountdown({ isBn }: { isBn: boolean }) {
+  const getMsUntilMidnight = () => {
+    const now = new Date();
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
+    return Math.max(0, midnight.getTime() - now.getTime());
+  };
+
+  const [ms, setMs] = useState<number>(() => getMsUntilMidnight());
+
+  useEffect(() => {
+    const id = setInterval(() => setMs(getMsUntilMidnight()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const totalSec = Math.floor(ms / 1000);
+  const s  = totalSec % 60;
+  const totalMin = Math.floor(totalSec / 60);
+  const m  = totalMin % 60;
+  const h  = Math.floor(totalMin / 60);
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  const label = isBn
+    ? `${pad(h)}ঘ : ${pad(m)}মি : ${pad(s)}স`
+    : `${pad(h)}h : ${pad(m)}m : ${pad(s)}s`;
+
+  return (
+    <span className="text-[10px] text-purple-500 font-bold bg-purple-500/10 px-2 py-0.5 rounded-full tabular-nums">
+      ⏱ {label}
+    </span>
+  );
+}
+
+function doesTaskExist(subjects: Subject[], task: PlanTask): boolean {
+  const subj = subjects.find(s => s.id === task.subjectId);
+  if (!subj) return false;
+  const ch = subj.chapters.find(c => c.id === task.chapterId);
+  if (!ch) return false;
+  if (task.level === 'chapter') return true;
+  const t = ch.topics.find(t => t.id === task.topicId);
+  if (!t) return false;
+  if (task.level === 'topic') return true;
+  const sub = t.subtopics.find(s => s.id === task.subtopicId);
+  if (!sub) return false;
+  if (task.level === 'subtopic') return true;
+  const c = sub.concepts.find(c => c.id === task.conceptId);
+  if (!c) return false;
+  if (task.level === 'concept') return true;
+  return c.points.some(p => p.id === task.pointId);
+}
+
+function getTaskDetailedStatus(subjects: Subject[], task: PlanTask): {
+  isStarted: boolean;
+  isPartial: boolean;
+  isFullDone: boolean;
+} {
+  const subj = subjects.find(s => s.id === task.subjectId);
+  if (!subj) return { isStarted: false, isPartial: false, isFullDone: false };
+  const ch = subj.chapters.find(c => c.id === task.chapterId);
+  if (!ch) return { isStarted: false, isPartial: false, isFullDone: false };
+
+  if (task.level === 'chapter') {
+    if (!ch.completed) return { isStarted: false, isPartial: false, isFullDone: false };
+    if (ch.topics.length === 0) return { isStarted: true, isPartial: false, isFullDone: true };
+    const full = isChapterContentDone(ch);
+    return { isStarted: true, isPartial: !full, isFullDone: full };
+  }
+
+  const t = ch.topics.find(t => t.id === task.topicId);
+  if (!t) return { isStarted: false, isPartial: false, isFullDone: false };
+  if (task.level === 'topic') {
+    if (!t.completed) return { isStarted: false, isPartial: false, isFullDone: false };
+    if (t.subtopics.length === 0) return { isStarted: true, isPartial: false, isFullDone: true };
+    const full = isTopicContentDone(t);
+    return { isStarted: true, isPartial: !full, isFullDone: full };
+  }
+
+  const sub = t.subtopics.find(s => s.id === task.subtopicId);
+  if (!sub) return { isStarted: false, isPartial: false, isFullDone: false };
+  if (task.level === 'subtopic') {
+    if (!sub.completed) return { isStarted: false, isPartial: false, isFullDone: false };
+    if (sub.concepts.length === 0) return { isStarted: true, isPartial: false, isFullDone: true };
+    const full = isSubtopicContentDone(sub);
+    return { isStarted: true, isPartial: !full, isFullDone: full };
+  }
+
+  const c = sub.concepts.find(c => c.id === task.conceptId);
+  if (!c) return { isStarted: false, isPartial: false, isFullDone: false };
+  if (task.level === 'concept') {
+    if (!c.completed) return { isStarted: false, isPartial: false, isFullDone: false };
+    if (c.points.length === 0) return { isStarted: true, isPartial: false, isFullDone: true };
+    const full = isConceptContentDone(c);
+    return { isStarted: true, isPartial: !full, isFullDone: full };
+  }
+
+  const p = c.points.find(p => p.id === task.pointId);
+  const done = p?.completed ?? false;
+  return { isStarted: done, isPartial: false, isFullDone: done };
+}
+
+function isTaskCompleted(subjects: Subject[], task: PlanTask): boolean {
+  return getTaskDetailedStatus(subjects, task).isStarted;
+}
+
+// ─── Seeded RNG (LCG) for deterministic daily rotation ───────────────────────
+function lcgRandom(seed: number) {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(1664525, s) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+// ─── Smart plan generator ────────────────────────────────────────────────────
+// Rules:
+// 1. Up to 3 subjects per day (1 if budget < 90 min), selected by weighted rotation
+// 2. Selection weights = urgencyScore = f(completionPct, deadline)
+//    → less complete + tighter deadline → appears more often across days
+// 3. Rotation: date-seeded weighted random ensures all subjects are covered
+//    proportionally to their remaining work and urgency
+// 4. Topic-First: topic appears as overview before subtopics
+// 5. In-progress items always included first
+// 6. Pending re-scheduled items have priority
+function generateSmartPlan(
+  subjects: Subject[],
+  dailyBudgetMinutes: number,
+  pendingItems: PendingItem[],
+  todayStr: string
+): PlanTask[] {
+  interface SubjectCandidate {
+    subj: Subject;
+    daysLeft: number;
+    urgencyScore: number;
+    urgency: 'high' | 'medium' | 'low';
+    hasInProgress: boolean;
+  }
+
+  const subjCandidates: SubjectCandidate[] = [];
+
+  for (const subj of subjects) {
+    if (subj.completed) continue;
+    const hasAnyIncomplete = subj.chapters.some(ch => !isChapterContentDone(ch));
+    if (!hasAnyIncomplete) continue;
+
+    const daysLeft = Math.max(0, differenceInDays(parseISO(subj.deadline), parseISO(todayStr)));
+
+    let total = 0, incomplete = 0, hasInProgress = false;
+    for (const ch of subj.chapters) {
+      if (ch.topics.length === 0) { total++; if (!ch.completed) { incomplete++; } continue; }
+      for (const t of ch.topics) {
+        total++;
+        if (!t.completed) { incomplete++; }
+        if (t.subtopics.length === 0) continue;
+        for (const sub of t.subtopics) {
+          if (sub.concepts.length === 0) { total++; if (!sub.completed) incomplete++; continue; }
+          for (const c of sub.concepts) {
+            if (c.points.length === 0) { total++; if (!c.completed) incomplete++; continue; }
+            for (const p of c.points) { total++; if (!p.completed) incomplete++; }
+          }
+        }
+      }
+    }
+    if (total === 0) continue;
+
+    // urgencyScore: higher = less complete + closer deadline → needs more study days
+    const completionPct = (total - incomplete) / total; // 0=nothing done, 1=all done
+    const urgencyScore = daysLeft === 0
+      ? 10000
+      : ((1 - completionPct) * 100) / Math.sqrt(daysLeft + 1);
+    const urgency: 'high' | 'medium' | 'low' = urgencyScore > 25 ? 'high' : urgencyScore > 8 ? 'medium' : 'low';
+    subjCandidates.push({ subj, daysLeft, urgencyScore, urgency, hasInProgress });
+  }
+
+  // Max subjects per session based on available time
+  const maxSubjects = dailyBudgetMinutes < 90 ? 1 : 2;
+  const n = subjCandidates.length;
+
+  let selected: SubjectCandidate[];
+
+  if (n <= maxSubjects) {
+    // All subjects fit — sort by urgency
+    selected = [...subjCandidates].sort((a, b) => {
+      if (a.hasInProgress !== b.hasInProgress) return a.hasInProgress ? -1 : 1;
+      return b.urgencyScore - a.urgencyScore;
+    });
+  } else {
+    // Weighted random selection seeded by today's date
+    // Over many days, each subject appears proportional to its urgencyScore
+    // → less complete subjects with tighter deadlines appear more often
+    // IMPORTANT: seed from `todayStr` (the app's IST calendar date), NOT
+    // Date.now(). Date.now()/86400000 ticks over at UTC midnight, which is
+    // 5:30 AM IST — so a plan regenerated (e.g. by the "new structural item"
+    // effect, or an hours-setting change) later in the same IST day used to
+    // get a DIFFERENT random seed and could silently pick different subjects,
+    // looking exactly like "Load More" fired on its own.
+    const dayIndex = Math.floor(parseISO(todayStr).getTime() / (1000 * 60 * 60 * 24));
+    const rand = lcgRandom(dayIndex * 31337 + 12345);
+
+    const pool = [...subjCandidates];
+    selected = [];
+
+    // Always include in-progress subjects first
+    for (let i = pool.length - 1; i >= 0; i--) {
+      if (pool[i].hasInProgress && selected.length < maxSubjects) {
+        selected.push(...pool.splice(i, 1));
+      }
+    }
+
+    // Fill remaining slots with urgency-weighted random selection
+    while (selected.length < maxSubjects && pool.length > 0) {
+      const totalW = pool.reduce((s, c) => s + Math.max(c.urgencyScore, 1), 0);
+      let r = rand() * totalW;
+      let chosen = pool.length - 1;
+      for (let i = 0; i < pool.length; i++) {
+        r -= Math.max(pool[i].urgencyScore, 1);
+        if (r <= 0) { chosen = i; break; }
+      }
+      selected.push(...pool.splice(chosen, 1));
+    }
+  }
+
+  const perSubjectBudget = selected.length > 0 ? Math.floor(dailyBudgetMinutes / selected.length) : dailyBudgetMinutes;
+
+  const pendingKeys = new Set(pendingItems.filter(p => pendingDaysLeft(p, todayStr) > 0).map(p => p.task.key));
+
+  const result: PlanTask[] = [];
+
+  for (const { subj, daysLeft, urgency, urgencyScore } of selected) {
+    let remaining = perSubjectBudget;
+    const base = {
+      subjectId: subj.id, chapterId: '', subjectTitle: subj.title,
+      subjectColor: subj.color, daysLeft, urgency, urgencyScore
+    };
+
+    const firstCh = subj.chapters.find(ch => !isChapterContentDone(ch));
+    if (!firstCh) continue;
+
+    const chBase = { ...base, chapterId: firstCh.id };
+
+    // Only one task item is shown per subject per day — mirrors the
+    // Subjects page, where the next chapter/topic/etc. unlocks one at a
+    // time. Forcing `remaining` to 0 after any push makes every existing
+    // `remaining <= 0` guard below (continue/break outer) stop the loop
+    // from adding a second item for this subject.
+    //
+    // "Load More" doesn't add extra depth here — it just re-runs this same
+    // generator. Since `firstCh`/`t`/etc. are derived from real completion
+    // state (`isChapterContentDone`, `.completed`), the "next item" for a
+    // subject only changes once its current item is actually marked done.
+    // So re-running naturally reveals a subject's next item only when it's
+    // ready, and leaves subjects with an unfinished item unchanged.
+    const pushTask = (key: string, extra: Partial<PlanTask>, mins: number) => {
+      if (pendingKeys.has(key)) return;
+      const clampedMins = Math.min(mins, remaining);
+      if (clampedMins <= 0) return;
+      result.push({ ...chBase, ...extra, key, estimatedMins: clampedMins } as PlanTask);
+      remaining = 0;
+    };
+
+    if (firstCh.topics.length === 0) {
+      if (!firstCh.completed) {
+        const mins = adjChapter(firstCh);
+        pushTask(`${subj.id}|${firstCh.id}`, { breadcrumb: [], mainTitle: firstCh.title, level: 'chapter' }, mins);
+      }
+      continue;
+    }
+
+    // Chapter-First: if chapter overview not done, show chapter first
+    if (!firstCh.completed) {
+      const overviewMins = Math.max(firstCh.estimatedMinutes ?? 0, 20);
+      pushTask(`${subj.id}|${firstCh.id}`,
+        { breadcrumb: [], mainTitle: firstCh.topics.length > 0 ? `[Overview] ${firstCh.title}` : firstCh.title, level: 'chapter' }, overviewMins);
+      continue;
+    }
+
+    outer: for (const t of firstCh.topics) {
+      if (isTopicContentDone(t) || remaining <= 0) continue;
+
+      if (!t.completed) {
+        const mins = Math.max(adjTopic(t), MIN_SUBTOPIC);
+        pushTask(`${subj.id}|${firstCh.id}|${t.id}`,
+          { topicId: t.id, breadcrumb: [firstCh.title], mainTitle: t.subtopics.length > 0 ? `[Overview] ${t.title}` : t.title, level: 'topic' }, mins);
+        break outer;
+      }
+
+      for (const sub of t.subtopics) {
+        if (isSubtopicContentDone(sub) || remaining <= 0) continue;
+
+        if (!sub.completed) {
+          const mins = Math.max(adjSubtopic(sub), MIN_SUBTOPIC);
+          pushTask(`${subj.id}|${firstCh.id}|${t.id}|${sub.id}`,
+            { topicId: t.id, subtopicId: sub.id, breadcrumb: [firstCh.title, t.title], mainTitle: sub.concepts.length > 0 ? `[Overview] ${sub.title}` : sub.title, level: 'subtopic' }, mins);
+          break outer;
+        }
+
+        for (const c of sub.concepts) {
+          if (isConceptContentDone(c) || remaining <= 0) continue;
+
+          if (!c.completed) {
+            const mins = Math.max(adjConcept(c), MIN_CONCEPT);
+            pushTask(`${subj.id}|${firstCh.id}|${t.id}|${sub.id}|${c.id}`,
+              { topicId: t.id, subtopicId: sub.id, conceptId: c.id, breadcrumb: [firstCh.title, t.title, sub.title], mainTitle: c.points.length > 0 ? `[Overview] ${c.title}` : c.title, level: 'concept' }, mins);
+            break outer;
+          }
+
+          for (const pt of c.points) {
+            if (pt.completed || remaining <= 0) continue;
+            const mins = Math.max(adjPoint(pt), MIN_POINT);
+            pushTask(`${subj.id}|${firstCh.id}|${t.id}|${sub.id}|${c.id}|${pt.id}`,
+              { topicId: t.id, subtopicId: sub.id, conceptId: c.id, pointId: pt.id, breadcrumb: [firstCh.title, t.title, sub.title, c.title], mainTitle: pt.title, level: 'point' }, mins);
+            break outer;
+          }
+          if (remaining <= 0) break outer;
+        }
+        if (remaining <= 0) break outer;
+      }
+      if (remaining <= 0) break outer;
+    }
+  }
+
+  return result;
+}
+
+// ─── UI Constants ─────────────────────────────────────────────────────────
+const LEVEL_META: Record<PlanLevel, { Icon: React.ElementType; en: string; bn: string; color: string; levelNum: string }> = {
+  chapter:  { Icon: BookOpen,  en: 'Chapter',  bn: 'চ্যাপ্টার', color: 'text-blue-600 bg-blue-500/10 border-blue-200',   levelNum: 'L2' },
+  topic:    { Icon: Layers,    en: 'Topic',    bn: 'টপিক',      color: 'text-violet-600 bg-violet-500/10 border-violet-200', levelNum: 'L3' },
+  subtopic: { Icon: List,      en: 'Subtopic', bn: 'সাবটপিক',  color: 'text-cyan-600 bg-cyan-500/10 border-cyan-200',   levelNum: 'L4' },
+  concept:  { Icon: Lightbulb, en: 'Concept',  bn: 'কনসেপ্ট',  color: 'text-amber-600 bg-amber-500/10 border-amber-200', levelNum: 'L5' },
+  point:    { Icon: Hash,      en: 'Point',    bn: 'পয়েন্ট',   color: 'text-green-600 bg-green-500/10 border-green-200', levelNum: 'L6' },
+};
+
+const URGENCY_COLORS: Record<'high' | 'medium' | 'low', string> = {
+  high:   'bg-red-500/10   text-red-600   border-red-200',
+  medium: 'bg-amber-500/10 text-amber-600 border-amber-200',
+  low:    'bg-secondary    text-muted-foreground border-border/50',
+};
+
+const PRESSURE_COLORS: Record<string, string> = {
+  critical: 'bg-red-500/10 border-red-300 text-red-700',
+  behind:   'bg-orange-500/10 border-orange-300 text-orange-700',
+  ontrack:  'bg-green-500/10 border-green-300 text-green-700',
+  ahead:    'bg-blue-500/10 border-blue-300 text-blue-700',
+};
+
+// localStorage keys — course-specific so each course has its own isolated cache
+const planKey     = (email: string, courseId: string) => `@study_today_plan_v3_${email}_${courseId}`;
+const pendKey     = (email: string, courseId: string) => `@study_pending_v3_${email}_${courseId}`;
+const revisionKey = (email: string, courseId: string) => `@study_revisions_v2_${email}_${courseId}`;
+
+function loadStoredPlan(email: string, courseId: string): { date: string; tasks: PlanTask[] } | null {
+  try { return JSON.parse(localStorage.getItem(planKey(email, courseId)) ?? 'null'); } catch { return null; }
+}
+function savePlan(email: string, courseId: string, date: string, tasks: PlanTask[]) {
+  localStorage.setItem(planKey(email, courseId), JSON.stringify({ date, tasks }));
+}
+function loadPending(email: string, courseId: string): PendingItem[] {
+  try { return JSON.parse(localStorage.getItem(pendKey(email, courseId)) ?? '[]'); } catch { return []; }
+}
+function savePending(email: string, courseId: string, items: PendingItem[]) {
+  localStorage.setItem(pendKey(email, courseId), JSON.stringify(items));
+}
+function loadRevisions(email: string, courseId: string): RevisionEntry[] {
+  try { return JSON.parse(localStorage.getItem(revisionKey(email, courseId)) ?? '[]'); } catch { return []; }
+}
+function saveRevisions(email: string, courseId: string, entries: RevisionEntry[]) {
+  localStorage.setItem(revisionKey(email, courseId), JSON.stringify(entries));
+}
+
+// ─── Dismissed-keys localStorage helpers ─────────────────────────────────────
+// These track which pending task keys / revision IDs have been explicitly dismissed
+// by the user on any device, so that offline devices don't re-add them on next load.
+const dismissedPKeyLS = (email: string, courseId: string) => `@study_dismissed_pkeys_v1_${email}_${courseId}`;
+const dismissedRIdLS  = (email: string, courseId: string) => `@study_dismissed_rids_v1_${email}_${courseId}`;
+function loadDismissedPendingKeys(email: string, courseId: string): string[] {
+  try { return JSON.parse(localStorage.getItem(dismissedPKeyLS(email, courseId)) ?? '[]'); } catch { return []; }
+}
+function saveDismissedPendingKeys(email: string, courseId: string, keys: string[]) {
+  localStorage.setItem(dismissedPKeyLS(email, courseId), JSON.stringify(keys));
+}
+function loadDismissedRevisionIds(email: string, courseId: string): string[] {
+  try { return JSON.parse(localStorage.getItem(dismissedRIdLS(email, courseId)) ?? '[]'); } catch { return []; }
+}
+function saveDismissedRevisionIds(email: string, courseId: string, ids: string[]) {
+  localStorage.setItem(dismissedRIdLS(email, courseId), JSON.stringify(ids));
+}
+
+// ─── useTreeTrunk: dynamic vertical trunk line (stops at midpoint of last item)
+function useTreeTrunk() {
+  const observerRef = React.useRef<ResizeObserver | null>(null);
+  const cleanupsRef = React.useRef<Map<HTMLElement, { mo: MutationObserver; lastObserved: HTMLElement | null }>>(new Map());
+
+  const findOwnLastItem = React.useCallback((root: HTMLElement): HTMLElement | null => {
+    const candidates = root.querySelectorAll('[data-last-item="true"]');
+    for (let i = 0; i < candidates.length; i++) {
+      const el = candidates[i] as HTMLElement;
+      const nearestRoot = el.parentElement?.closest('[data-trunk-root]');
+      if (nearestRoot === root) return el;
+    }
+    return null;
+  }, []);
+
+  const sync = React.useCallback((container: HTMLElement) => {
+    const trunk = container.querySelector('[data-trunk]') as HTMLElement | null;
+    if (!trunk) return;
+    const lastItem = findOwnLastItem(container);
+    if (!lastItem) { trunk.style.height = '0px'; return; }
+    const contTop = container.getBoundingClientRect().top;
+    const rect = lastItem.getBoundingClientRect();
+    trunk.style.height = `${Math.max(0, rect.top - contTop + rect.height / 2)}px`;
+  }, [findOwnLastItem]);
+
+  const registerRoot = React.useCallback((el: HTMLDivElement | null) => {
+    const existing = cleanupsRef.current;
+    if (!el) return;
+    if (!observerRef.current) {
+      observerRef.current = new ResizeObserver((entries) => {
+        entries.forEach((entry) => {
+          const root = (entry.target as HTMLElement).closest('[data-trunk-root]') as HTMLElement | null;
+          if (root) sync(root);
+        });
+      });
+    }
+    el.setAttribute('data-trunk-root', 'true');
+    const reobserve = () => {
+      sync(el);
+      observerRef.current!.observe(el);
+      const entry = existing.get(el);
+      const lastItem = findOwnLastItem(el);
+      if (entry?.lastObserved && entry.lastObserved !== lastItem) {
+        observerRef.current!.unobserve(entry.lastObserved);
+      }
+      if (lastItem) observerRef.current!.observe(lastItem);
+      existing.set(el, { mo: existing.get(el)?.mo ?? mo, lastObserved: lastItem });
+    };
+    const mo = new MutationObserver(() => reobserve());
+    mo.observe(el, { childList: true, subtree: true });
+    existing.set(el, { mo, lastObserved: null });
+    reobserve();
+
+    return () => {
+      const entry = existing.get(el);
+      if (entry) {
+        entry.mo.disconnect();
+        if (entry.lastObserved) observerRef.current?.unobserve(entry.lastObserved);
+      }
+      observerRef.current?.unobserve(el);
+      existing.delete(el);
+    };
+  }, [sync, findOwnLastItem]);
+
+  React.useEffect(() => {
+    return () => {
+      cleanupsRef.current.forEach(({ mo }) => mo.disconnect());
+      cleanupsRef.current.clear();
+      observerRef.current?.disconnect();
+      observerRef.current = null;
+    };
+  }, []);
+
+  return registerRoot;
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
+export function Today() {
+  const {
+    subjects, settings, dataLoaded,
+    setCourseTotalDays, setDailyStudyHours,
+    toggleChapterComplete, toggleTopicComplete,
+    toggleSubtopicComplete, toggleConceptComplete, togglePointComplete,
+    setNote,
+  } = useStudy();
+  const { user } = useAuth();
+  const { t, lang } = useLang();
+  const isBn = lang === 'bn';
+  const email = user?.email ?? 'guest';
+  const { activeCourseId, sharedCoursesMeta } = useCourse();
+  const { isAdmin: userIsAdmin, appContact } = useAdmin();
+  const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
+  const registerTrunkRoot = useTreeTrunk();
+
+  // PWA install — mobile browser only
+  const { canInstall, isInstalled, installApp } = usePWAInstall();
+  const [isMobileBrowser, setIsMobileBrowser] = useState(false);
+  const [showInstallMenu, setShowInstallMenu] = useState(false);
+  const [installCopied, setInstallCopied] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const update = () => setIsMobileBrowser(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  const handleInstallShare = async () => {
+    const url = window.location.origin;
+    try {
+      if (navigator.share) { await navigator.share({ title: 'Learning Sathi', url }); setShowInstallMenu(false); return; }
+      await navigator.clipboard.writeText(url);
+      setInstallCopied(true);
+      setTimeout(() => { setInstallCopied(false); setShowInstallMenu(false); }, 2000);
+    } catch { /* ignore */ }
+  };
+
+  const [isDaysModalOpen, setDaysModalOpen] = useState(false);
+  const [isHoursModalOpen, setHoursModalOpen] = useState(false);
+  const [isCompletedModalOpen, setCompletedModalOpen] = useState(false);
+  const [daysInput, setDaysInput] = useState(settings.courseTotalDays?.toString() || '');
+  const [hoursInput, setHoursInput] = useState(settings.dailyStudyHours?.toString() || '3');
+
+  // Accordion: single expanded subject at a time (null = all collapsed)
+  const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
+  // Completed section accordion (inside modal)
+  const [completedExpandedSubjId, setCompletedExpandedSubjId] = useState<string | null>(null);
+  const [isPendingCollapsed, setIsPendingCollapsed] = useState(true);
+  const [isRevisionCollapsed, setIsRevisionCollapsed] = useState(true);
+
+  // NEW: Clean UI state
+  const [showDetails, setShowDetails] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const firstIncompleteRef = useRef<HTMLDivElement>(null);
+  const [showRevisionPanel, setShowRevisionPanel] = useState(false);
+  const [showPendingPanel, setShowPendingPanel] = useState(false);
+
+  // Confirm dialog: { message, onConfirm }
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
+
+  const dailyBudgetMins = (settings.dailyStudyHours ?? 3) * 60;
+  const todayStr = todayIST(settings.timezone);
+
+  const prevHoursRef = useRef<number | null>(null);
+  const itemIdsRef = useRef<Set<string> | null>(null);
+
+  const [lockedPlan, setLockedPlan]     = useState<PlanTask[]>([]);
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
+  const [revisions, setRevisions]       = useState<RevisionEntry[]>([]);
+  const [planReady, setPlanReady]       = useState(false);
+  const [extraLoadedMins, setExtraLoadedMins] = useState(0);
+  const [loadMoreNotice, setLoadMoreNotice] = useState<string | null>(null);
+  const [reloadDay, setReloadDay] = useState(0);
+
+  // Ref to suppress onSnapshot echoes right after a local write
+  const lastWriteRef = useRef<number>(0);
+  const WRITE_GRACE_MS = 3000;
+  // Ref to know if planReady has been set (used in onSnapshot guard)
+  const planReadyRef = useRef(false);
+  useEffect(() => { planReadyRef.current = planReady; }, [planReady]);
+
+  // Store Firestore snapshots that arrive before planReady so they can be
+  // applied immediately after the initial load completes.
+  const pendingFSSnapRef = useRef<{
+    remPending: PendingItem[];
+    remRevisions: RevisionEntry[];
+    remPlan: { date: string; tasks: PlanTask[] } | null;
+    remDPKeys: string[];
+    remDRIds: string[];
+  } | null>(null);
+
+  // After planReady, apply any Firestore snapshot that arrived early (cross-device sync)
+  useEffect(() => {
+    if (!planReady) return;
+    const snap = pendingFSSnapRef.current;
+    if (!snap) return;
+    pendingFSSnapRef.current = null;
+    // Apply dismissed keys to filter current pending/revision state
+    if (snap.remDPKeys.length > 0) {
+      const dSet = new Set(snap.remDPKeys);
+      setPendingItems(prev => {
+        const filtered = prev.filter(p => !dSet.has(p.task.key));
+        return filtered.length !== prev.length ? filtered : prev;
+      });
+    }
+    if (snap.remDRIds.length > 0) {
+      const dSet = new Set(snap.remDRIds);
+      setRevisions(prev => {
+        const updated = prev.map(r => !r.done && dSet.has(r.id) ? { ...r, done: true } : r);
+        return updated.some((r, i) => r !== prev[i]) ? updated : prev;
+      });
+    }
+  }, [planReady]); // eslint-disable-line
+
+  // ── Firestore write helpers (fire-and-forget) ──────────────────────────────
+  const writePlan = useCallback(async (date: string, tasks: PlanTask[], showProgress = true) => {
+    if (!user?.id || !activeCourseId) return;
+    lastWriteRef.current = Date.now();
+    const save = showProgress ? setDoc : setDocQuietly;
+    const sanitized = JSON.parse(JSON.stringify({ plan: { date, tasks } }));
+    await save(doc(db, 'users', user.id, 'todayData', activeCourseId), sanitized, { merge: true })
+      .catch(e => console.warn('[todaySync] writePlan:', e));
+  }, [user?.id, activeCourseId]); // eslint-disable-line
+
+  const writePending = useCallback(async (items: PendingItem[], showProgress = true) => {
+    if (!user?.id || !activeCourseId) return;
+    lastWriteRef.current = Date.now();
+    const save = showProgress ? setDoc : setDocQuietly;
+    const sanitized = JSON.parse(JSON.stringify({ pending: items }));
+    await save(doc(db, 'users', user.id, 'todayData', activeCourseId), sanitized, { merge: true })
+      .catch(e => console.warn('[todaySync] writePending:', e));
+  }, [user?.id, activeCourseId]); // eslint-disable-line
+
+  const writeRevisions = useCallback(async (entries: RevisionEntry[], showProgress = true) => {
+    if (!user?.id || !activeCourseId) return;
+    lastWriteRef.current = Date.now();
+    const save = showProgress ? setDoc : setDocQuietly;
+    const sanitized = JSON.parse(JSON.stringify({ revisions: entries }));
+    await save(doc(db, 'users', user.id, 'todayData', activeCourseId), sanitized, { merge: true })
+      .catch(e => console.warn('[todaySync] writeRevisions:', e));
+  }, [user?.id, activeCourseId]); // eslint-disable-line
+
+  // Combined write for actions that change BOTH pending and revisions in one
+  // user action (e.g. completing a pending task: it leaves the pending list
+  // AND schedules a revision). Writing them as two separate setDoc calls used
+  // to make onSnapshot fire twice in a row, each time with only one of the
+  // two fields updated — the Pending/Revision panels would briefly flash the
+  // stale half-updated state before the second snapshot corrected it. One
+  // merged write means only one, fully-consistent snapshot is ever observed.
+  const writePendingAndRevisions = useCallback(async (
+    items: PendingItem[],
+    entries: RevisionEntry[],
+    showProgress = true,
+  ) => {
+    if (!user?.id || !activeCourseId) return;
+    lastWriteRef.current = Date.now();
+    const save = showProgress ? setDoc : setDocQuietly;
+    const sanitized = JSON.parse(JSON.stringify({ pending: items, revisions: entries }));
+    await save(doc(db, 'users', user.id, 'todayData', activeCourseId), sanitized, { merge: true })
+      .catch(e => console.warn('[todaySync] writePendingAndRevisions:', e));
+  }, [user?.id, activeCourseId]); // eslint-disable-line
+
+  // Append a dismissed pending key to Firestore (arrayUnion, no grace-period — doesn't
+  // touch pending/revision arrays so onSnapshot echoes are harmless).
+  const addDismissedPendingKey = useCallback(async (key: string) => {
+    if (!user?.id || !activeCourseId) return;
+    await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { dismissedPendingKeys: arrayUnion(key) }, { merge: true })
+      .catch(e => console.warn('[todaySync] addDismissedPendingKey:', e));
+  }, [user?.id, activeCourseId]); // eslint-disable-line
+
+  // Append a dismissed revision ID to Firestore (arrayUnion, no grace-period).
+  const addDismissedRevisionId = useCallback(async (id: string) => {
+    if (!user?.id || !activeCourseId) return;
+    await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { dismissedRevisionIds: arrayUnion(id) }, { merge: true })
+      .catch(e => console.warn('[todaySync] addDismissedRevisionId:', e));
+  }, [user?.id, activeCourseId]); // eslint-disable-line
+
+  // Dual-write: localStorage (instant/offline) + Firestore (cross-device sync)
+  const syncPlan = useCallback((date: string, tasks: PlanTask[], showProgress = true) => {
+    if (!activeCourseId) return;
+    savePlan(email, activeCourseId, date, tasks);
+    writePlan(date, tasks, showProgress);
+  }, [email, activeCourseId, writePlan]);
+
+  const syncPending = useCallback((items: PendingItem[], showProgress = true) => {
+    if (!activeCourseId) return;
+    savePending(email, activeCourseId, items);
+    writePending(items, showProgress);
+  }, [email, activeCourseId, writePending]);
+
+  const syncPendingAndRevisions = useCallback((
+    items: PendingItem[],
+    entries: RevisionEntry[],
+    showProgress = true,
+  ) => {
+    if (!activeCourseId) return;
+    savePending(email, activeCourseId, items);
+    saveRevisions(email, activeCourseId, entries);
+    writePendingAndRevisions(items, entries, showProgress);
+  }, [email, activeCourseId, writePendingAndRevisions]);
+
+  const syncRevisions = useCallback((entries: RevisionEntry[], showProgress = true) => {
+    if (!activeCourseId) return;
+    saveRevisions(email, activeCourseId, entries);
+    writeRevisions(entries, showProgress);
+  }, [email, activeCourseId, writeRevisions]);
+
+  // ── Midnight auto-refresh (IST — triggers at 12:00 AM IST) ────────────────
+  useEffect(() => {
+    const scheduleRefresh = () => {
+      return setTimeout(() => {
+        setReloadDay(d => d + 1);
+        scheduleRefresh(); // reschedule for next midnight in selected timezone
+      }, msUntilISTMidnight(settings.timezone));
+    };
+    const timer = scheduleRefresh();
+    return () => clearTimeout(timer);
+  }, [settings.timezone]);
+
+  // ── Real-time Firestore listener (cross-device sync) ──────────────────────
+  useEffect(() => {
+    if (!user?.id || !activeCourseId) return;
+    const todayDateStr = todayIST(settings.timezone);
+    const courseId = activeCourseId;
+    const unsubscribe = onSnapshot(
+      doc(db, 'users', user.id, 'todayData', courseId),
+      (snap) => {
+        if (!snap.exists()) return;
+        const d = snap.data();
+        const remPending: PendingItem[] = Array.isArray(d.pending) ? d.pending : [];
+        const remRevisions: RevisionEntry[] = Array.isArray(d.revisions) ? d.revisions : [];
+        const remPlan: { date: string; tasks: PlanTask[] } | null = d.plan ?? null;
+        const remDPKeys: string[] = Array.isArray(d.dismissedPendingKeys) ? d.dismissedPendingKeys : [];
+        const remDRIds: string[]  = Array.isArray(d.dismissedRevisionIds)  ? d.dismissedRevisionIds  : [];
+
+        // ALWAYS persist to localStorage — regardless of grace period or planReady.
+        // This ensures dismissed keys are available the next time the app opens,
+        // even if the device was killed right after this snapshot fired.
+        savePending(email, courseId, remPending);
+        saveRevisions(email, courseId, remRevisions);
+        if (remPlan) savePlan(email, courseId, remPlan.date, remPlan.tasks);
+        saveDismissedPendingKeys(email, courseId, remDPKeys);
+        saveDismissedRevisionIds(email, courseId, remDRIds);
+
+        // If the initial load hasn't finished yet, stash this snapshot.
+        // The planReady useEffect above will apply dismissed keys once init is done.
+        if (!planReadyRef.current) {
+          pendingFSSnapRef.current = { remPending, remRevisions, remPlan, remDPKeys, remDRIds };
+          return;
+        }
+
+        // Ignore full state update for our own write echoes — but still apply
+        // dismissed keys so cross-device dismissals propagate during the grace period.
+        if (Date.now() - lastWriteRef.current < WRITE_GRACE_MS) {
+          if (remDPKeys.length > 0) {
+            const dSet = new Set(remDPKeys);
+            setPendingItems(prev => {
+              const filtered = prev.filter(p => !dSet.has(p.task.key));
+              return filtered.length !== prev.length ? filtered : prev;
+            });
+          }
+          if (remDRIds.length > 0) {
+            const dSet = new Set(remDRIds);
+            setRevisions(prev => {
+              const updated = prev.map(r => !r.done && dSet.has(r.id) ? { ...r, done: true } : r);
+              return updated.some((r, i) => r !== prev[i]) ? updated : prev;
+            });
+          }
+          return;
+        }
+
+        // Remote update — replace state with authoritative Firestore data
+        setPendingItems(remPending);
+        setRevisions(remRevisions);
+        if (remPlan && remPlan.date === todayDateStr) {
+          setLockedPlan(remPlan.tasks);
+        }
+      },
+      (err) => console.warn('[todaySync] onSnapshot error:', err)
+    );
+    return unsubscribe;
+  }, [user?.id, activeCourseId, email]); // eslint-disable-line
+
+  const loadMore = () => {
+    const extraStep = 30;
+    const existingKeys = new Set(lockedPlan.map(p => p.key));
+    const pendingKeys = new Set(pendingItems.filter(p => pendingDaysLeft(p, todayStr) > 0).map(p => p.task.key));
+    const allExclude = new Set([...existingKeys, ...pendingKeys]);
+
+    const activeSubjIds = [...new Set(lockedPlan.map(p => p.subjectId))].slice(0, 2);
+    // Strict rule: Today plan only ever contains at most 2 subjects
+    let allowedSubjects = subjects.filter(s => activeSubjIds.includes(s.id));
+    if (allowedSubjects.length < 2) {
+      const remainingSlots = 2 - allowedSubjects.length;
+      const otherIncomplete = subjects.filter(s => !s.completed && !activeSubjIds.includes(s.id));
+      allowedSubjects = [...allowedSubjects, ...otherIncomplete.slice(0, remainingSlots)];
+    }
+
+    let additions: PlanTask[] = [];
+
+    for (const subj of allowedSubjects) {
+      if (subj.completed) continue;
+      const next = findNextItem([subj], allExclude);
+      if (next) {
+        let level: PlanLevel = 'chapter';
+        if (next.pointId) level = 'point';
+        else if (next.conceptId) level = 'concept';
+        else if (next.subtopicId) level = 'subtopic';
+        else if (next.topicId) level = 'topic';
+
+        const taskKey = [next.subjectId, next.chapterId, next.topicId, next.subtopicId, next.conceptId, next.pointId].filter(Boolean).join('|');
+        const daysLeft = Math.max(0, differenceInDays(parseISO(subj.deadline), parseISO(todayStr)));
+
+        additions.push({
+          key: taskKey,
+          subjectId: next.subjectId,
+          chapterId: next.chapterId,
+          topicId: next.topicId,
+          subtopicId: next.subtopicId,
+          conceptId: next.conceptId,
+          pointId: next.pointId,
+          subjectTitle: next.subjectTitle,
+          subjectColor: next.subjectColor,
+          mainTitle: next.title,
+          breadcrumb: next.breadcrumb,
+          estimatedMins: next.estimatedMins,
+          level,
+          daysLeft,
+          urgency: 'medium',
+          urgencyScore: 10,
+          loadedFrom: todayStr,
+        });
+        break;
+      }
+    }
+
+    if (additions.length === 0) {
+      setLoadMoreNotice(t('loadMoreNothing'));
+      setTimeout(() => setLoadMoreNotice(null), 2500);
+      return;
+    }
+    const merged = [...lockedPlan, ...additions];
+    setLockedPlan(merged);
+    syncPlan(todayStr, merged);
+    setExtraLoadedMins(prev => prev + extraStep);
+    setLoadMoreNotice(`${t('loadMoreAdded')} +${additions.length}`);
+    setTimeout(() => setLoadMoreNotice(null), 2500);
+  };
+
+  // Return a load-more-added task back to its original day (remove from today's locked plan).
+  // The task will simply re-appear naturally on the day the planner originally scheduled it.
+  const returnToOriginal = (task: PlanTask) => {
+    const next = lockedPlan.filter(p => p.key !== task.key);
+    setLockedPlan(next);
+    syncPlan(todayStr, next);
+    // Restore the borrowed minutes
+    setExtraLoadedMins(prev => Math.max(0, prev - task.estimatedMins));
+    setLoadMoreNotice(t('returnToOriginTitle'));
+    setTimeout(() => setLoadMoreNotice(null), 2200);
+  };
+
+  // Build a MarkPath from a PlanTask
+  const taskToMarkPath = (task: PlanTask): MarkPath => {
+    let level: MarkLevel = 'chapter';
+    if (task.pointId) level = 'point';
+    else if (task.conceptId) level = 'concept';
+    else if (task.subtopicId) level = 'subtopic';
+    else if (task.topicId) level = 'topic';
+    else level = 'chapter';
+    return {
+      level,
+      subjectId: task.subjectId,
+      chapterId: task.chapterId,
+      topicId: task.topicId,
+      subtopicId: task.subtopicId,
+      conceptId: task.conceptId,
+      pointId: task.pointId,
+    };
+  };
+
+  // ── Note modal state ──────────────────────────────────────────────────────
+  const [noteModal, setNoteModal] = useState<{ open: boolean; path: MarkPath | null; draft: string }>({
+    open: false, path: null, draft: '',
+  });
+  const openNoteModal = (path: MarkPath, currentNote: string) =>
+    setNoteModal({ open: true, path, draft: currentNote });
+  const closeNoteModal = () => setNoteModal({ open: false, path: null, draft: '' });
+  const submitNoteModal = () => {
+    if (noteModal.path) setNote(noteModal.path, noteModal.draft);
+    closeNoteModal();
+  };
+
+  // Build a MarkPath from a RevisionEntry's taskKey (format: subjectId|chapterId[|topicId[|subtopicId[|conceptId[|pointId]]]])
+  const revisionToMarkPath = (rev: RevisionEntry): MarkPath | null => {
+    const parts = rev.taskKey.split('|');
+    if (parts.length < 2) return null;
+    const [subjectId, chapterId, topicId, subtopicId, conceptId, pointId] = parts;
+    let level: MarkLevel = 'chapter';
+    if (pointId) level = 'point';
+    else if (conceptId) level = 'concept';
+    else if (subtopicId) level = 'subtopic';
+    else if (topicId) level = 'topic';
+    return { level, subjectId, chapterId, topicId, subtopicId, conceptId, pointId };
+  };
+
+  // Look up the note for a RevisionEntry
+  const getRevisionNote = (rev: RevisionEntry): string => {
+    const parts = rev.taskKey.split('|');
+    if (parts.length < 2) return '';
+    const [subjectId, chapterId, topicId, subtopicId, conceptId, pointId] = parts;
+    const subj = subjects.find(s => s.id === subjectId);
+    if (!subj) return '';
+    const ch = subj.chapters.find(c => c.id === chapterId);
+    if (!ch) return '';
+    if (!topicId) return ch.note ?? '';
+    const top = ch.topics.find(t => t.id === topicId);
+    if (!top) return '';
+    if (!subtopicId) return top.note ?? '';
+    const sub = top.subtopics.find(s => s.id === subtopicId);
+    if (!sub) return '';
+    if (!conceptId) return sub.note ?? '';
+    const con = sub.concepts.find(c => c.id === conceptId);
+    if (!con) return '';
+    if (!pointId) return con.note ?? '';
+    return con.points.find(p => p.id === pointId)?.note ?? '';
+  };
+
+  // Look up note/important/weak for a task by walking subjects tree
+  const getTaskMarks = (task: PlanTask): { note?: string; important?: boolean; weak?: boolean } => {
+    const subj = subjects.find(s => s.id === task.subjectId);
+    if (!subj) return {};
+    if (task.level === 'chapter' && !task.topicId) {
+      const ch = subj.chapters.find(c => c.id === task.chapterId);
+      return ch ? { note: ch.note, important: ch.important, weak: ch.weak } : {};
+    }
+    const ch = subj.chapters.find(c => c.id === task.chapterId);
+    if (!ch) return {};
+    const top = task.topicId ? ch.topics.find(t => t.id === task.topicId) : undefined;
+    if (task.level === 'topic') return top ? { note: top.note, important: top.important, weak: top.weak } : {};
+    const sub = top && task.subtopicId ? top.subtopics.find(s => s.id === task.subtopicId) : undefined;
+    if (task.level === 'subtopic') return sub ? { note: sub.note, important: sub.important, weak: sub.weak } : {};
+    const con = sub && task.conceptId ? sub.concepts.find(c => c.id === task.conceptId) : undefined;
+    if (task.level === 'concept') return con ? { note: con.note, important: con.important, weak: con.weak } : {};
+    const pt = con && task.pointId ? con.points.find(p => p.id === task.pointId) : undefined;
+    if (task.level === 'point') return pt ? { note: pt.note, important: pt.important, weak: pt.weak } : {};
+    return {};
+  };
+
+  // ── Reset state on course switch ───────────────────────────────────────────
+  const prevCourseIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevCourseIdRef.current !== null && prevCourseIdRef.current !== activeCourseId) {
+      setPlanReady(false);
+      planReadyRef.current = false;
+      setLockedPlan([]);
+      setPendingItems([]);
+      setRevisions([]);
+      setExtraLoadedMins(0);
+      setExpandedSubjectId(null);
+      itemIdsRef.current = null;
+      prevHoursRef.current = null;
+    }
+    prevCourseIdRef.current = activeCourseId;
+  }, [activeCourseId]);
+
+  // ── Initial load ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!dataLoaded || !activeCourseId) return;
+
+    const stored = loadStoredPlan(email, activeCourseId);
+    let currentPending = loadPending(email, activeCourseId);
+    let currentRevisions = loadRevisions(email, activeCourseId);
+
+    // ── Pending: apply dismissals from other devices first ───────────────────
+    // dismissedPendingKeys is synced to localStorage by onSnapshot whenever any
+    // device dismisses or completes a pending item.  Filtering here ensures that
+    // even a device that was offline for many days will not re-write stale items
+    // back to Firestore when it finally comes online.
+    // IMPORTANT: only update localStorage here — Firestore already has the correct
+    // state (without dismissed items), so writing back would pollute it.
+    const dismissedPKeysInit = new Set(loadDismissedPendingKeys(email, activeCourseId));
+    if (dismissedPKeysInit.size > 0) {
+      const beforeDismiss = currentPending.length;
+      currentPending = currentPending.filter(p => !dismissedPKeysInit.has(p.task.key));
+      if (currentPending.length !== beforeDismiss) {
+        savePending(email, activeCourseId, currentPending); // localStorage only, not Firestore
+      }
+    }
+
+    // Expire pending items older than 10 days.
+    // Only sync to Firestore if items were actually removed — writing back stale
+    // localStorage data (with a not-yet-dismissed item) would overwrite the remote
+    // dismissal and then block the onSnapshot update via the write-grace period.
+    const pendingCountBefore = currentPending.length;
+    currentPending = currentPending.filter(p => pendingDaysLeft(p, todayStr) > 0);
+    if (currentPending.length !== pendingCountBefore) syncPending(currentPending, false);
+
+    // ── Revisions: apply dismissals from other devices first ─────────────────
+    // dismissedRevisionIds is synced to localStorage by onSnapshot whenever any
+    // device completes or reschedules a revision.  Marking them done here ensures
+    // they are neither shown to the user nor auto-rescheduled, regardless of how
+    // long this device was offline.
+    const dismissedRevIds = new Set(loadDismissedRevisionIds(email, activeCourseId));
+    if (dismissedRevIds.size > 0) {
+      currentRevisions = currentRevisions.map(r =>
+        !r.done && dismissedRevIds.has(r.id) ? { ...r, done: true } : r
+      );
+    }
+
+    // Clean up completed revisions older than 30 days
+    const revisionsCountBefore = currentRevisions.length;
+    currentRevisions = currentRevisions.filter(r => {
+      if (!r.done) return true;
+      try {
+        const diff = differenceInDays(parseISO(todayStr), parseISO(r.scheduledDate));
+        return diff <= 30;
+      } catch { return true; }
+    });
+
+    // Auto-dismiss overdue revisions (scheduledDate < today → same stage, DISMISS_DAYS later)
+    // This runs at midnight: any revision not acted on is treated as dismissed.
+    const toAutoDismiss = currentRevisions.filter(r => {
+      if (r.done) return false;
+      try { return r.scheduledDate < todayStr; } catch { return false; }
+    });
+    if (toAutoDismiss.length > 0) {
+      toAutoDismiss.forEach(rev => {
+        const stage = rev.stage ?? 0;
+        const newScheduledDate = toDateStrIST(addDaysIST(nowIST(settings.timezone), DISMISS_DAYS));
+        const newId = `${rev.taskKey}_rev_s${stage}_${newScheduledDate}`;
+        currentRevisions = currentRevisions
+          .map(r => r.id === rev.id ? { ...r, done: true } : r)
+          .filter(r => r.id !== newId);
+        currentRevisions = [...currentRevisions, { ...rev, id: newId, stage, scheduledDate: newScheduledDate, done: false, origin: 'dismissed' as const }];
+      });
+    }
+
+    // Only write revisions to Firestore if something actually changed
+    if (currentRevisions.length !== revisionsCountBefore || toAutoDismiss.length > 0) {
+      syncRevisions(currentRevisions, false);
+    }
+
+    // ── New-day: clear stale pending items at midnight ────────────────────────
+    // Any pending item not acted on by midnight is cleared so it can be
+    // re-evaluated by the carry-over logic below.  We deliberately do NOT write
+    // these keys to dismissedPendingKeys — that would permanently block the
+    // carry-over from re-adding the same task as pending on the new day
+    // (because the carry-over checks dismissed keys when building the new list).
+    if (stored && stored.date !== todayStr && currentPending.length > 0) {
+      currentPending = [];
+    }
+
+    if (stored && stored.date === todayStr) {
+      // Same-day: preserve the stored plan as-is so that:
+      // 1. Completed tasks stay in lockedPlan → the "N completed" section
+      //    continues to render correctly after a refresh (generateSmartPlan
+      //    only returns incomplete items, so calling it here would drop them).
+      // 2. No new subjects auto-appear — generateSmartPlan considers all
+      //    eligible subjects and may select more than what was originally
+      //    planned for the day. The user must explicitly click "Load More"
+      //    to surface additional subjects or tasks.
+      //
+      // We only:
+      //   a) Drop tasks whose underlying item was deleted from the course.
+      //   b) Dedup: keep the first base task per subject (handles legacy plans
+      //      stored before the single-item-per-subject rule was enforced).
+      //   c) Keep all Load-More extras as-is.
+      const validTasks = stored.tasks.filter(t => doesTaskExist(subjects, t));
+      const seenSubjects = new Set<string>();
+      const repaired: PlanTask[] = [];
+      for (const t of validTasks) {
+        if (t.loadedFrom) { repaired.push(t); continue; } // always keep Load-More extras
+        if (!seenSubjects.has(t.subjectId)) {
+          seenSubjects.add(t.subjectId);
+          repaired.push(t);
+        }
+      }
+      setLockedPlan(repaired);
+      const changed = repaired.length !== stored.tasks.length ||
+        repaired.some((t, i) => t.key !== stored.tasks[i]?.key);
+      if (changed) syncPlan(todayStr, repaired, false);
+    } else {
+      if (stored && stored.date !== todayStr) {
+        const stillIncomplete = stored.tasks.filter(t => !isTaskCompleted(subjects, t));
+        // Regular tasks (not from Load More) → pending immediately
+        const regularIncomplete = stillIncomplete.filter(t => !t.loadedFrom);
+        if (regularIncomplete.length > 0) {
+          const capturedRegularIncomplete = regularIncomplete;
+          const capturedPlannedDate2 = stored.date;
+          const capturedTodayStr2 = todayStr;
+          const capturedUserId2 = user?.id;
+          const capturedCourseId2 = activeCourseId;
+          const capturedEmail2 = email;
+
+          // Optimistic local update — add all incomplete plan tasks that are not
+          // already in the pending list.  We intentionally skip the dismissed-keys
+          // filter here: dismissed-key filtering is for existing pending items
+          // (applied above at line ~882), not for newly carried-over plan tasks.
+          // Filtering carry-over tasks against dismissed keys was the root cause
+          // of incomplete tasks not showing up in pending the next day.
+          const existingKeys = new Set(currentPending.map(p => p.task.key));
+          const newPendingOptimistic: PendingItem[] = regularIncomplete
+            .filter(t => !existingKeys.has(t.key))
+            .map(task => ({ task, plannedDate: stored.date, addedDate: todayStr }));
+          currentPending = [...currentPending, ...newPendingOptimistic];
+          // Write to localStorage immediately (works offline, gives instant UI)
+          // but DO NOT write to Firestore yet — wait for onSnapshot to deliver the
+          // authoritative dismissed keys from other devices first.
+          savePending(email, activeCourseId, currentPending);
+
+          // After WRITE_GRACE_MS, onSnapshot should have arrived with the real
+          // Firestore state.  Fetch it directly, apply the correct dismissed keys,
+          // and write only genuinely new items — regardless of how long the device
+          // was offline (1 day, 15 days, or more).
+          setTimeout(async () => {
+            if (!capturedUserId2 || !capturedCourseId2) return;
+            try {
+              const snap = await getDoc(doc(db, 'users', capturedUserId2, 'todayData', capturedCourseId2));
+              const data = snap.exists() ? snap.data() : null;
+              const firestorePending: PendingItem[] = Array.isArray(data?.pending) ? data!.pending : [];
+              // Use Firestore pending as authoritative base and add only items that
+              // are genuinely new (not yet in Firestore).  We do not filter against
+              // firestoreDP here — that was blocking legitimate carry-over of
+              // incomplete plan tasks whose keys happened to be in dismissedPendingKeys.
+              const firestoreKeys = new Set(firestorePending.map(p => p.task.key));
+              const toAdd = capturedRegularIncomplete
+                .filter(t => !firestoreKeys.has(t.key))
+                .map(task => ({ task, plannedDate: capturedPlannedDate2, addedDate: capturedTodayStr2 }));
+              const merged = [...firestorePending, ...toAdd];
+              setPendingItems(merged);
+              syncPending(merged, false);
+            } catch {
+              // Offline: re-read localStorage dismissed keys (best effort)
+              const latestLocalDP = new Set(loadDismissedPendingKeys(capturedEmail2, capturedCourseId2 ?? ''));
+              setPendingItems(prev => {
+                const filtered = latestLocalDP.size > 0
+                  ? prev.filter(p => !latestLocalDP.has(p.task.key))
+                  : prev;
+                if (filtered.length !== prev.length) syncPending(filtered, false);
+                return filtered;
+              });
+            }
+          }, WRITE_GRACE_MS + 500);
+        }
+        // Load-More tasks: verify against Firestore before adding to pending.
+        // This prevents cross-device bug where a returned task appears in pending
+        // because another device had a stale localStorage plan.
+        const loadMoreIncomplete = stillIncomplete.filter(t => t.loadedFrom);
+        if (loadMoreIncomplete.length > 0) {
+          const capturedPlannedDate = stored.date;
+          const capturedUserId = user?.id;
+          const capturedCourseId = activeCourseId;
+          const capturedTodayStr = todayStr;
+          setTimeout(async () => {
+            if (!capturedUserId || !capturedCourseId) return;
+            try {
+              const snap = await getDoc(doc(db, 'users', capturedUserId, 'todayData', capturedCourseId));
+              const data = snap.exists() ? snap.data() : null;
+              const firestorePlan: { date: string; tasks: PlanTask[] } | null = data?.plan ?? null;
+              // Only confirm tasks still present in Firestore's plan for that date
+              const confirmedTasks = (firestorePlan?.date === capturedPlannedDate)
+                ? loadMoreIncomplete.filter(t => firestorePlan!.tasks.some(ft => ft.key === t.key))
+                : loadMoreIncomplete; // offline / no plan: trust local as fallback
+              // Also filter against dismissed keys: read directly from Firestore data
+              const fsDP = new Set<string>(Array.isArray(data?.dismissedPendingKeys) ? data!.dismissedPendingKeys : []);
+              setPendingItems(prev => {
+                const prevKeys = new Set(prev.map(p => p.task.key));
+                const toAdd = confirmedTasks
+                  .filter(t => !prevKeys.has(t.key) && !fsDP.has(t.key))
+                  .map(task => ({ task, plannedDate: capturedPlannedDate, addedDate: capturedTodayStr }));
+                if (toAdd.length === 0) return prev;
+                const next = [...prev, ...toAdd];
+                syncPending(next, false);
+                return next;
+              });
+            } catch {
+              // Network unavailable: fall back to localStorage dismissed keys
+              const localDP = new Set(loadDismissedPendingKeys(email, capturedCourseId ?? ''));
+              setPendingItems(prev => {
+                const prevKeys = new Set(prev.map(p => p.task.key));
+                const toAdd = loadMoreIncomplete
+                  .filter(t => !prevKeys.has(t.key) && !localDP.has(t.key))
+                  .map(task => ({ task, plannedDate: capturedPlannedDate, addedDate: capturedTodayStr }));
+                if (toAdd.length === 0) return prev;
+                const next = [...prev, ...toAdd];
+                syncPending(next, false);
+                return next;
+              });
+            }
+          }, WRITE_GRACE_MS + 500);
+        }
+      }
+      const fresh = generateSmartPlan(subjects, dailyBudgetMins, currentPending, todayStr);
+      setLockedPlan(fresh);
+      syncPlan(todayStr, fresh, false);
+      // New day → any "Load More" extra minutes from a previous day no longer apply.
+      setExtraLoadedMins(0);
+    }
+
+    itemIdsRef.current = getAllItemIds(subjects);
+    setPendingItems(currentPending);
+    setRevisions(currentRevisions);
+    setPlanReady(true);
+  }, [dataLoaded, email, activeCourseId, reloadDay]); // eslint-disable-line
+
+  // ── React to structural additions ──────────────────────────────────────────
+  useEffect(() => {
+    if (!planReady) return;
+
+    let currentPlan = lockedPlan;
+    let dirty = false;
+
+    const cleanedPlan = currentPlan.filter(t => doesTaskExist(subjects, t));
+    if (cleanedPlan.length !== currentPlan.length) { currentPlan = cleanedPlan; dirty = true; }
+
+    const cleanedPending = pendingItems.filter(
+      p => doesTaskExist(subjects, p.task) && pendingDaysLeft(p, todayStr) > 0
+    );
+    if (cleanedPending.length !== pendingItems.length) {
+      setPendingItems(cleanedPending);
+      syncPending(cleanedPending);
+    }
+
+    const currentIds = getAllItemIds(subjects);
+    const prevIds = itemIdsRef.current;
+    let hasNewItems = false;
+    if (prevIds !== null) {
+      for (const id of currentIds) { if (!prevIds.has(id)) { hasNewItems = true; break; } }
+    }
+    itemIdsRef.current = currentIds;
+
+    if (hasNewItems) {
+      const freshPlan = generateSmartPlan(subjects, dailyBudgetMins, pendingItems, todayStr);
+      setLockedPlan(freshPlan);
+      syncPlan(todayStr, freshPlan);
+      return;
+    }
+    if (dirty) { setLockedPlan(currentPlan); syncPlan(todayStr, currentPlan); }
+  }, [subjects, planReady]); // eslint-disable-line
+
+  // NOTE: there used to be an auto-scroll-to-first-incomplete-item effect here.
+  // It fired ~400ms after the plan loaded and silently scrolled the page down,
+  // which is what made the sticky header appear to "swallow" the pending/
+  // revision icons right after opening/refreshing the Today section — the
+  // page hadn't been scrolled by the user, it was scrolled by this effect.
+  // Removed so the page only scrolls when the user scrolls it themselves.
+
+  // ── Enforce max 2 subjects in Today plan ───────────────────────────────────
+  useEffect(() => {
+    if (!planReady || lockedPlan.length === 0) return;
+    const uniqueSubjs: string[] = [];
+    for (const t of lockedPlan) {
+      if (!uniqueSubjs.includes(t.subjectId)) {
+        uniqueSubjs.push(t.subjectId);
+      }
+    }
+    if (uniqueSubjs.length > 2) {
+      const allowed = new Set(uniqueSubjs.slice(0, 2));
+      const pruned = lockedPlan.filter(t => allowed.has(t.subjectId));
+      setLockedPlan(pruned);
+      syncPlan(todayStr, pruned);
+    }
+  }, [planReady, lockedPlan, todayStr, syncPlan]);
+
+  // ── Regenerate when hours change ───────────────────────────────────────────
+  useEffect(() => {
+    if (!planReady) return;
+    const currentHours = settings.dailyStudyHours ?? 3;
+    if (prevHoursRef.current === null) { prevHoursRef.current = currentHours; return; }
+    if (prevHoursRef.current === currentHours) return;
+    prevHoursRef.current = currentHours;
+
+    const fresh = generateSmartPlan(subjects, currentHours * 60, pendingItems, todayStr);
+    setLockedPlan(fresh);
+    syncPlan(todayStr, fresh);
+  }, [settings.dailyStudyHours, planReady]); // eslint-disable-line
+
+  const dismissPending = (key: string) => {
+    const updated = pendingItems.filter(p => p.task.key !== key);
+    setPendingItems(updated);
+    syncPending(updated);
+    // Persist the dismissal so any offline device that later comes online
+    // will not re-add this task to pending when it processes yesterday's plan.
+    if (activeCourseId) {
+      const existing = loadDismissedPendingKeys(email, activeCourseId);
+      if (!existing.includes(key)) {
+        saveDismissedPendingKeys(email, activeCourseId, [...existing, key]);
+      }
+      addDismissedPendingKey(key);
+    }
+  };
+
+  const confirmDismissPending = (key: string) => {
+    setConfirmDialog({
+      message: t('confirmDismissPending'),
+      onConfirm: () => { dismissPending(key); setConfirmDialog(null); },
+    });
+  };
+
+  const completePendingTask = (item: PendingItem) => {
+    const task = item.task;
+    const { subjectId: sId, chapterId: cId, topicId: tId, subtopicId: subId, conceptId: cId2, pointId: ptId } = task;
+    const wasCompleted = isTaskCompleted(subjects, task);
+    // Toggle underlying completion state (separate studyData doc/context —
+    // unrelated to the todayData pending/revisions write below).
+    if      (task.level === 'point'    && ptId && cId2 && subId && tId) togglePointComplete(sId, cId, tId, subId, cId2, ptId);
+    else if (task.level === 'concept'  && cId2 && subId && tId)         toggleConceptComplete(sId, cId, tId, subId, cId2);
+    else if (task.level === 'subtopic' && subId && tId)                 toggleSubtopicComplete(sId, cId, tId, subId);
+    else if (task.level === 'topic'    && tId)                          toggleTopicComplete(sId, cId, tId);
+    else                                                                 toggleChapterComplete(sId, cId);
+
+    // Build the updated pending + revisions arrays and write them together in
+    // ONE Firestore merge so the Pending/Revision panels never observe a
+    // half-updated intermediate state (see `writePendingAndRevisions`).
+    const updatedPending = pendingItems.filter(p => p.task.key !== task.key);
+    const updatedRevisions = wasCompleted ? revisions : buildScheduledRevisions(revisions, task);
+    setPendingItems(updatedPending);
+    setRevisions(updatedRevisions);
+    syncPendingAndRevisions(updatedPending, updatedRevisions);
+
+    // Persist the dismissal so any offline device that later comes online
+    // will not re-add this task to pending when it processes yesterday's plan.
+    if (activeCourseId) {
+      const existing = loadDismissedPendingKeys(email, activeCourseId);
+      if (!existing.includes(task.key)) {
+        saveDismissedPendingKeys(email, activeCourseId, [...existing, task.key]);
+      }
+      addDismissedPendingKey(task.key);
+    }
+  };
+
+  const confirmCompletePending = (item: PendingItem) => {
+    setConfirmDialog({
+      message: t('confirmCompletePending'),
+      onConfirm: () => { completePendingTask(item); setConfirmDialog(null); },
+    });
+  };
+
+  // Complete revision → mark done + schedule next stage
+  const completeRevision = (id: string) => {
+    const current = revisions.find(r => r.id === id);
+    if (!current) return;
+    const currentStage = current.stage ?? 0;
+    const nextStage = currentStage + 1;
+    const nextDays = STAGE_NEXT_DAYS[currentStage] ?? 15;
+    const nextScheduledDate = toDateStrIST(addDaysIST(nowIST(settings.timezone), nextDays));
+    const nextId = `${current.taskKey}_rev_s${nextStage}_${nextScheduledDate}`;
+    let updated = revisions.map(r => r.id === id ? { ...r, done: true } : r);
+    if (!updated.some(r => r.id === nextId)) {
+      updated = [...updated, { ...current, id: nextId, stage: nextStage, scheduledDate: nextScheduledDate, done: false, origin: 'regular' as const }];
+    }
+    setRevisions(updated);
+    syncRevisions(updated);
+    // Persist so offline devices don't auto-reschedule the completed entry
+    if (activeCourseId) {
+      const existing = loadDismissedRevisionIds(email, activeCourseId);
+      if (!existing.includes(id)) {
+        saveDismissedRevisionIds(email, activeCourseId, [...existing, id]);
+      }
+      addDismissedRevisionId(id);
+    }
+  };
+
+  // Dismiss revision → same stage, DISMISS_DAYS later (no progression)
+  const rescheduleRevision = (id: string) => {
+    const current = revisions.find(r => r.id === id);
+    if (!current) return;
+    const stage = current.stage ?? 0;
+    const newScheduledDate = toDateStrIST(addDaysIST(nowIST(settings.timezone), DISMISS_DAYS));
+    const newId = `${current.taskKey}_rev_s${stage}_${newScheduledDate}`;
+    let updated = revisions
+      .map(r => r.id === id ? { ...r, done: true } : r)
+      .filter(r => r.id !== newId);
+    updated = [...updated, { ...current, id: newId, stage, scheduledDate: newScheduledDate, done: false, origin: 'snoozed' as const }];
+    setRevisions(updated);
+    syncRevisions(updated);
+    // Persist the original ID as dismissed so offline devices don't reschedule it again
+    if (activeCourseId) {
+      const existing = loadDismissedRevisionIds(email, activeCourseId);
+      if (!existing.includes(id)) {
+        saveDismissedRevisionIds(email, activeCourseId, [...existing, id]);
+      }
+      addDismissedRevisionId(id);
+    }
+  };
+
+  // dismiss = same as reschedule (same stage, 5 days later)
+  const dismissRevision = rescheduleRevision;
+
+  const confirmCompleteRevision = (id: string) => {
+    setConfirmDialog({
+      message: t('confirmCompleteRevision'),
+      onConfirm: () => { completeRevision(id); setConfirmDialog(null); },
+    });
+  };
+
+  const confirmDismissRevision = (id: string) => {
+    setConfirmDialog({
+      message: t('confirmRescheduleRevision'),
+      onConfirm: () => { rescheduleRevision(id); setConfirmDialog(null); },
+    });
+  };
+
+  // Pure: compute the revisions array that results from scheduling the first
+  // revision for `task` (stage 0, INITIAL_REVISION_DAYS later). Returns the
+  // *same* array reference if nothing changed, so callers can cheaply check
+  // `result !== existing` to know whether a write is actually needed.
+  const buildScheduledRevisions = (existing: RevisionEntry[], task: PlanTask): RevisionEntry[] => {
+    // Don't create if an active (undone) revision for this task already exists
+    if (existing.some(r => r.taskKey === task.key && !r.done)) return existing;
+    const scheduledDate = toDateStrIST(addDaysIST(nowIST(settings.timezone), INITIAL_REVISION_DAYS));
+    const id = `${task.key}_rev_s0_${scheduledDate}`;
+    if (existing.some(r => r.id === id)) return existing;
+    const entry: RevisionEntry = {
+      id,
+      taskKey: task.key,
+      mainTitle: task.mainTitle,
+      subjectTitle: task.subjectTitle,
+      subjectColor: task.subjectColor,
+      breadcrumb: task.breadcrumb,
+      level: task.level,
+      scheduledDate,
+      revisionMins: Math.max(Math.round(task.estimatedMins * 0.5), MIN_POINT),
+      stage: 0,
+      done: false,
+      firstCompletedDate: todayIST(settings.timezone),
+      origin: 'regular',
+    };
+    return [...existing, entry];
+  };
+
+  // Schedule first revision when a task is marked complete (single-field
+  // write — used by call sites that don't also touch `pending` at the same
+  // time; see `completePendingTask` for the combined-write version).
+  const scheduleRevisions = (task: PlanTask) => {
+    const merged = buildScheduledRevisions(revisions, task);
+    if (merged === revisions) return;
+    setRevisions(merged);
+    syncRevisions(merged);
+  };
+
+  // ── Task status ───────────────────────────────────────────────────────────
+  const tasksWithStatus = lockedPlan
+    .filter(t => doesTaskExist(subjects, t))
+    .map(t => {
+      const detailed = getTaskDetailedStatus(subjects, t);
+      return {
+        ...t,
+        isCompleted: detailed.isStarted,
+        isPartial: detailed.isPartial,
+        isFullDone: detailed.isFullDone,
+      };
+    });
+  const incompleteTasks = tasksWithStatus.filter(t => !t.isCompleted);
+  const completedTasks  = tasksWithStatus.filter(t =>  t.isCompleted);
+
+  // ── Incomplete subject groups (main list) ─────────────────────────────────
+  interface SubjectGroup {
+    subjectId: string; subjectTitle: string; subjectColor: string;
+    daysLeft: number; urgency: 'high' | 'medium' | 'low';
+    incompleteTasks: typeof tasksWithStatus;
+  }
+  // Subject display order must stay stable through the day: a subject keeps
+  // the slot it first appeared in even after its shown task is completed and
+  // Load More reveals its next item (which gets appended at the end of
+  // `lockedPlan`). So the order is derived from EVERY task in today's plan
+  // (completed ones included) — a subject's now-completed task still marks
+  // its original slot — rather than from `incompleteTasks` alone, which
+  // would otherwise re-rank a subject to the bottom the moment Load More
+  // gives it a new task.
+  const subjectOrder: string[] = [];
+  const seenSubjectIds = new Set<string>();
+  for (const task of tasksWithStatus) {
+    if (!seenSubjectIds.has(task.subjectId)) {
+      seenSubjectIds.add(task.subjectId);
+      subjectOrder.push(task.subjectId);
+    }
+  }
+  const incompleteGroupsMap = new Map<string, SubjectGroup>();
+  for (const task of incompleteTasks) {
+    if (!incompleteGroupsMap.has(task.subjectId)) {
+      incompleteGroupsMap.set(task.subjectId, {
+        subjectId: task.subjectId, subjectTitle: task.subjectTitle,
+        subjectColor: task.subjectColor, daysLeft: task.daysLeft, urgency: task.urgency,
+        incompleteTasks: [],
+      });
+    }
+    incompleteGroupsMap.get(task.subjectId)!.incompleteTasks.push(task);
+  }
+  const incompleteSubjectGroups = subjectOrder
+    .filter(sid => incompleteGroupsMap.has(sid))
+    .map(sid => incompleteGroupsMap.get(sid)!);
+
+  // ── Completed subject groups (for modal) ──────────────────────────────────
+  interface CompletedGroup {
+    subjectId: string; subjectTitle: string; subjectColor: string;
+    tasks: typeof tasksWithStatus;
+  }
+  const completedGroupsMap = new Map<string, CompletedGroup>();
+  for (const task of completedTasks) {
+    if (!completedGroupsMap.has(task.subjectId)) {
+      completedGroupsMap.set(task.subjectId, {
+        subjectId: task.subjectId, subjectTitle: task.subjectTitle,
+        subjectColor: task.subjectColor, tasks: [],
+      });
+    }
+    completedGroupsMap.get(task.subjectId)!.tasks.push(task);
+  }
+  const completedSubjectGroups = Array.from(completedGroupsMap.values());
+
+  // Accordion toggle: only one subject open at a time
+  const toggleSubjectAccordion = (subjId: string) => {
+    setExpandedSubjectId(prev => prev === subjId ? null : subjId);
+  };
+
+  // ── Overall course progress ─────────────────────────────────────────────
+  // Every node at every level (subject/chapter/topic/subtopic/concept/point)
+  // counts as one equally-weighted unit, so completing anything anywhere
+  // nudges the percentage — not just fully finishing a leaf chain.
+  const { total: totalLeaves, completed: completedLeaves, percent: overallPercent } = computeGranularProgress(subjects);
+
+  // ── Today's progress ───────────────────────────────────────────────────────
+  const todayTotal = tasksWithStatus.length;
+  const todayDone = completedTasks.length;
+  const todayPercent = todayTotal === 0 ? 0 : Math.round((todayDone / todayTotal) * 100);
+  const todayMins = tasksWithStatus.reduce((s, t) => s + t.estimatedMins, 0);
+  const completedMins = completedTasks.reduce((s, t) => s + t.estimatedMins, 0);
+
+  // ── Adaptive pressure ──────────────────────────────────────────────────────
+  const pressure = calculateAdaptivePressure(completedMins, dailyBudgetMins, pendingItems.length);
+
+  // ── Time engine stats ──────────────────────────────────────────────────────
+  const totalContent = totalContentMinutes(subjects);
+  const availableTime = (settings.dailyStudyHours ?? 3) * 60 * (settings.courseTotalDays ?? 0);
+
+  // ── Next item (Continue Learning) ─────────────────────────────────────────
+  const nextItem = findNextItem(subjects);
+
+  // ── Revision tasks due today ──────────────────────────────────────────────
+  const dueRevisions = revisions.filter(r => !r.done && r.scheduledDate <= todayStr);
+  const futureRevisions = revisions.filter(r => !r.done && r.scheduledDate > todayStr);
+
+  // ── Mark complete ──────────────────────────────────────────────────────────
+  const markComplete = (task: PlanTask) => {
+    const { subjectId: sId, chapterId: cId, topicId: tId, subtopicId: subId, conceptId: cId2, pointId: ptId } = task;
+    const wasCompleted = isTaskCompleted(subjects, task);
+    if      (task.level === 'point'    && ptId && cId2 && subId && tId) togglePointComplete(sId, cId, tId, subId, cId2, ptId);
+    else if (task.level === 'concept'  && cId2 && subId && tId)         toggleConceptComplete(sId, cId, tId, subId, cId2);
+    else if (task.level === 'subtopic' && subId && tId)                 toggleSubtopicComplete(sId, cId, tId, subId);
+    else if (task.level === 'topic'    && tId)                          toggleTopicComplete(sId, cId, tId);
+    else                                                                 toggleChapterComplete(sId, cId);
+
+    if (!wasCompleted) {
+      // Marking complete → schedule revisions
+      scheduleRevisions(task);
+    } else {
+      // Undo complete → remove all undone revision entries for this task
+      const updated = revisions.filter(r => !(r.taskKey === task.key && !r.done));
+      setRevisions(updated);
+      syncRevisions(updated);
+    }
+  };
+
+  const handleSetDays = () => {
+    const d = parseInt(daysInput);
+    if (!isNaN(d) && d > 0) { setCourseTotalDays(d); setDaysModalOpen(false); }
+  };
+  const handleSetHours = () => {
+    const h = parseFloat(hoursInput);
+    if (!isNaN(h) && h > 0) { setDailyStudyHours(h); setHoursModalOpen(false); }
+  };
+
+  // ── Render task card ───────────────────────────────────────────────────────
+  const renderCard = (
+    task: typeof tasksWithStatus[0],
+    opts?: { pendingLabel?: string; pendingDLeft?: number; isRevision?: boolean; revisionId?: string }
+  ) => {
+    const { Icon, en, bn: bnLabel, levelNum } = LEVEL_META[task.level];
+    const levelLabel = isBn ? bnLabel : en;
+    const done = task.isCompleted;
+    const isPartial = (task as any).isPartial;
+    const isFullDone = (task as any).isFullDone;
+
+    return (
+      // Plain div (not ScrollReveal) — these cards render inside accordions that
+      // already animate height/opacity on open. Stacking ScrollReveal's own
+      // fade/slide-in on top of that caused a visible double-animation stutter,
+      // especially on mobile, when expanding a subject group.
+      <div
+        key={task.key}
+        className={`bg-card rounded-2xl border-2 relative overflow-hidden ${isFullDone ? 'opacity-55' : 'shadow-sm card-hover'}`} style={{ borderColor: isFullDone ? 'rgba(148,163,184,0.3)' : isPartial ? 'rgba(245,158,11,0.65)' : task.subjectColor + '99' }}
+      >
+        <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full" style={{ backgroundColor: task.subjectColor }} />
+        {isFullDone && <div className="absolute inset-0 bg-secondary/20 pointer-events-none" />}
+
+        <div className="pl-3.5 pr-4 pt-3 pb-3 relative">
+          {task.breadcrumb.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground font-medium mb-1.5 leading-relaxed">
+              {task.breadcrumb.map((crumb, i) => (
+                <React.Fragment key={i}>
+                  {i > 0 && <ChevronRight size={8} className="opacity-40 shrink-0" />}
+                  <span className="max-w-[130px] truncate">{crumb}</span>
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+
+          <div className="mb-2">
+            <h3 className={`font-bold text-sm leading-snug w-full ${isFullDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+              {task.mainTitle}
+              <span className="ml-1.5 text-[70%] text-muted-foreground/55 font-medium not-italic align-baseline">({levelNum})</span>
+            </h3>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className={`shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${LEVEL_META[task.level].color}`}>
+                <Icon size={9} /> {levelLabel}
+              </span>
+              {opts?.isRevision && (
+                <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border text-purple-600 bg-purple-500/10 border-purple-200">
+                  <RefreshCw size={9} /> {isBn ? 'রিভিশন' : 'Revision'}
+                </span>
+              )}
+              {task.loadedFrom && (
+                <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border text-indigo-600 bg-indigo-500/10 border-indigo-200">
+                  <Plus size={9} /> {t('loadedExtraBadge')}
+                </span>
+              )}
+              {!opts?.isRevision && (() => {
+                const marks = getTaskMarks(task);
+                return (
+                  <div className="ml-auto shrink-0">
+                    <ItemActions
+                      path={taskToMarkPath(task)}
+                      important={marks.important}
+                      weak={marks.weak}
+                      hasNote={!!marks.note}
+                      currentNote={marks.note}
+                      onOpenNote={openNoteModal}
+                      size="sm"
+                      alwaysVisible
+                    />
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          {(() => {
+            const marks = getTaskMarks(task);
+            const hasMarks = marks.important || marks.weak || marks.note;
+            if (!opts?.pendingLabel && !done && !hasMarks) return null;
+            // Keep every active badge on one line no matter how many are present
+            // (previously wrapped to a second line once 3-4 showed at once) —
+            // flex-nowrap + shrink + truncate lets each badge give up width
+            // before the row wraps, and the row scrolls as a last resort.
+            return (
+              <div className="flex items-center gap-1 mb-2 flex-nowrap overflow-x-auto no-scrollbar">
+                {opts?.pendingLabel && (
+                  <span className={`flex items-center gap-1 min-w-0 shrink text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded border whitespace-nowrap ${
+                    opts.pendingDLeft !== undefined && opts.pendingDLeft <= 3
+                      ? 'text-red-600 bg-red-500/10 border-red-200'
+                      : 'text-orange-600 bg-orange-500/10 border-orange-200'
+                  }`}>
+                    <AlertTriangle size={8} className="shrink-0" /> <span className="truncate">{opts.pendingLabel}</span>
+                  </span>
+                )}
+                {isFullDone && (
+                  <span className="flex items-center gap-1 min-w-0 shrink text-[9px] sm:text-[10px] font-bold text-green-600 bg-green-500/10 border border-green-200 px-1 sm:px-1.5 py-0.5 rounded whitespace-nowrap">
+                    <CheckCircle2 size={8} className="shrink-0" /> <span className="truncate">{isBn ? 'সম্পন্ন' : 'Done'}</span>
+                  </span>
+                )}
+                {isPartial && (
+                  <span className="flex items-center gap-1 min-w-0 shrink text-[9px] sm:text-[10px] font-bold text-amber-600 bg-amber-500/10 border border-amber-300 px-1 sm:px-1.5 py-0.5 rounded whitespace-nowrap">
+                    <CheckCircle2 size={8} className="shrink-0 text-amber-500" /> <span className="truncate">{isBn ? 'চলমান' : 'In-Progress'}</span>
+                  </span>
+                )}
+                {marks.important && (
+                  <span className="flex items-center gap-1 min-w-0 shrink text-[9px] sm:text-[10px] font-bold text-yellow-700 bg-yellow-500/15 border border-yellow-300 px-1 sm:px-1.5 py-0.5 rounded whitespace-nowrap">
+                    <Star size={8} className="fill-yellow-500 shrink-0" /> <span className="truncate">{t('important')}</span>
+                  </span>
+                )}
+                {marks.weak && (
+                  <span className="flex items-center gap-1 min-w-0 shrink text-[9px] sm:text-[10px] font-bold text-rose-700 bg-rose-500/15 border border-rose-300 px-1 sm:px-1.5 py-0.5 rounded whitespace-nowrap">
+                    <AlertOctagon size={8} className="shrink-0" /> <span className="truncate">{t('weak')}</span>
+                  </span>
+                )}
+                {marks.note && (
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); openNoteModal(taskToMarkPath(task), marks.note ?? ''); }}
+                    className="flex items-center gap-1 min-w-0 shrink text-[9px] sm:text-[10px] font-bold text-amber-700 bg-amber-500/15 border border-amber-300 px-1 sm:px-1.5 py-0.5 rounded hover:bg-amber-500/25 active:scale-95 transition-all whitespace-nowrap"
+                  >
+                    <StickyNote size={8} className="shrink-0" /> <span className="truncate">{t('note')}</span>
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
+          <div className="flex items-center justify-between gap-1 min-w-0">
+            {/* Left: info badges — shrink so right side always fits */}
+            <div className="flex items-center gap-1 min-w-0 shrink">
+              <div className="flex items-center gap-0.5 sm:gap-1 text-muted-foreground text-[9px] sm:text-[11px] font-semibold bg-secondary/70 px-1 sm:px-2 py-0.5 sm:py-1 rounded-lg whitespace-nowrap shrink-0">
+                <Clock size={9} className="shrink-0" /> ~{formatMins(task.estimatedMins, t('hour'), t('mins'))}
+              </div>
+              {!opts?.isRevision && (
+                <div className={`px-1 sm:px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-bold flex items-center gap-0.5 sm:gap-1 border whitespace-nowrap shrink-0 ${URGENCY_COLORS[task.urgency]}`}>
+                  {task.urgency === 'high' && <Zap size={7} className="shrink-0" />}
+                  <CalendarDays size={7} className="shrink-0" /> {task.daysLeft}d
+                </div>
+              )}
+            </div>
+            {/* Right: action buttons — always visible, never overflow */}
+            <div className="flex items-center gap-1 shrink-0">
+              {task.loadedFrom && !done && !opts?.isRevision && (
+                <button
+                  onClick={() => returnToOriginal(task)}
+                  title={t('returnToOriginTitle')}
+                  className="flex items-center justify-center gap-1 h-6 w-6 sm:h-7 sm:w-auto sm:px-2.5 rounded-xl border border-indigo-200 text-indigo-600 bg-indigo-500/5 text-[9px] sm:text-[11px] font-bold hover:bg-indigo-500/15 transition-all"
+                >
+                  <RotateCcw size={10} className="shrink-0" />
+                  <span className="hidden sm:inline">{t('returnToOrigin')}</span>
+                </button>
+              )}
+              {!done ? (
+                <span className="spin-border-wrap">
+                  <button
+                    onClick={() => markComplete(task)}
+                    className="spin-border-inner flex items-center gap-0.5 sm:gap-1 h-5 sm:h-7 px-1.5 sm:px-2.5 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white text-[9px] sm:text-[11px] font-bold transition-all whitespace-nowrap"
+                  >
+                    <CheckCircle2 size={9} className="shrink-0 sm:hidden" />
+                    <CheckCircle2 size={11} className="shrink-0 hidden sm:block" />
+                    {t('markComplete')}
+                  </button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => markComplete(task)}
+                  className="flex items-center gap-0.5 sm:gap-1 h-5 sm:h-6 px-1.5 sm:px-2 rounded-full bg-indigo-500/10 border border-indigo-400/40 text-indigo-600 dark:text-indigo-400 text-[9px] sm:text-[11px] font-semibold hover:bg-indigo-500/20 transition-all whitespace-nowrap"
+                >
+                  <RotateCcw size={9} className="shrink-0" />
+                  {isBn ? 'পূর্বাবস্থায় ফেরান' : 'Undo'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Render subject group (accordion, incomplete tasks only) ──────────────
+  const renderSubjectGroup = (group: SubjectGroup) => {
+    const isExpanded = expandedSubjectId === group.subjectId;
+    const groupTotal = group.incompleteTasks.length;
+    const groupMins = group.incompleteTasks.reduce((s, t) => s + t.estimatedMins, 0);
+
+    return (
+      <ScrollReveal
+        key={group.subjectId}
+        className="rounded-2xl border-2 border-border/50 overflow-hidden shadow-sm"
+      >
+        <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: group.subjectColor }} />
+        <button
+          onClick={() => toggleSubjectAccordion(group.subjectId)}
+          className="w-full flex items-center gap-3 pl-5 pr-4 py-3 text-left transition-colors bg-card hover:bg-secondary/30 active:bg-secondary/50"
+        >
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+              <span className="font-bold text-sm truncate" style={{ color: group.subjectColor }}>
+                {group.subjectTitle}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
+              <span>{groupTotal} {isBn ? 'টি কাজ বাকি' : 'tasks remaining'}</span>
+              <span>·</span>
+              <span className="flex items-center gap-0.5"><Clock size={9} /> {formatMins(groupMins, t('hour'), t('mins'))}</span>
+              <span>·</span>
+              <div className={`flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border ${URGENCY_COLORS[group.urgency]}`}>
+                {group.urgency === 'high' && <Zap size={8} />}
+                <CalendarDays size={8} /> {group.daysLeft}d
+              </div>
+            </div>
+          </div>
+          <ChevronDown
+            size={16}
+            className={`text-muted-foreground transition-transform duration-200 shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        <AnimatePresence initial={false}>
+          {isExpanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              style={{ willChange: 'height' }}
+              className="overflow-hidden"
+            >
+              <div className="relative pt-0 px-3 pl-4 ml-2.5 pb-2" ref={registerTrunkRoot}>
+                <div data-trunk className="absolute -left-[3px] top-0 w-[3px] pointer-events-none" style={{ backgroundColor: group.subjectColor + 'A6', height: 0 }} />
+                <div className="space-y-2">
+                  {group.incompleteTasks.map((task, taskIdx) => {
+                    const isLast = taskIdx === group.incompleteTasks.length - 1;
+                    return (
+                      <div key={task.key} className="relative" data-last-item={isLast ? 'true' : undefined}>
+                        <div className="absolute -left-[19px] top-1/2 -translate-y-full h-[24px] w-[19px] border-l-[3px] border-b-[2px] rounded-bl-[10px] pointer-events-none" style={{ borderColor: task.subjectColor + 'A6' }} />
+                        {renderCard({ ...task, isCompleted: false })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </ScrollReveal>
+    );
+  };
+
+  // ── Render completed section modal ────────────────────────────────────────
+  const renderCompletedModal = () => (
+    <Modal
+      isOpen={isCompletedModalOpen}
+      onClose={() => setCompletedModalOpen(false)}
+      title={isBn ? `সম্পন্ন কাজ (${completedTasks.length})` : `Completed (${completedTasks.length})`}
+    >
+      {completedSubjectGroups.length === 0 ? (
+        <div className="py-8 text-center text-muted-foreground text-sm">
+          {isBn ? 'এখনও কোনো কাজ সম্পন্ন হয়নি।' : 'No tasks completed yet.'}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {completedSubjectGroups.map(group => {
+            const isExpanded = completedExpandedSubjId === group.subjectId;
+            return (
+              <div key={group.subjectId} className="rounded-xl border border-border/50 overflow-hidden">
+                <button
+                  onClick={() => setCompletedExpandedSubjId(prev => prev === group.subjectId ? null : group.subjectId)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left bg-green-500/5 hover:bg-green-500/10 transition-colors"
+                >
+                  <div className="w-1 self-stretch rounded-full shrink-0" style={{ backgroundColor: group.subjectColor }} />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-bold text-sm" style={{ color: group.subjectColor }}>{group.subjectTitle}</span>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {group.tasks.length} {isBn ? 'টি সম্পন্ন' : 'completed'}
+                    </p>
+                  </div>
+                  <CheckCircle2 size={14} className="text-green-500 shrink-0" />
+                  <ChevronDown size={14} className={`text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                </button>
+                <AnimatePresence initial={false}>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      style={{ willChange: 'height' }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-2 pb-2 pt-1 space-y-1.5 bg-secondary/10">
+                        {group.tasks.map(task => renderCard({ ...task, isCompleted: true }))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
+  );
+
+  return (
+    <Layout>
+      {/* ── Colorful gradient header banner ──
+          NOTE: the sticky-positioning box and the overflow-hidden/rounded-corner
+          clipping box are deliberately two separate elements. Combining
+          `position: sticky` with `overflow: hidden` + `border-radius` on the
+          very same element is unreliable on mobile WebKit/Chrome — the sticky
+          box's containment can be computed before the element's final size
+          settles, which visually pulls the content below (the pending/revision
+          icon row) up into the banner until a scroll forces recalculation.
+          Splitting them keeps the sticky box simple (no clipping) and isolates
+          the decorative clipping/rounding to a plain, non-sticky child. */}
+      <div className="sticky top-0 z-20">
+        <div className="relative overflow-hidden rounded-b-2xl" style={{ background: 'linear-gradient(135deg, hsl(243 88% 62%) 0%, hsl(263 80% 58%) 50%, hsl(300 70% 58%) 100%)' }}>
+          <div className="absolute top-[-30px] right-[-30px] w-40 h-40 rounded-full bg-white/10 blur-2xl" />
+          <div className="absolute bottom-[-20px] left-[20%] w-32 h-32 rounded-full bg-black/10 blur-2xl" />
+          <div className="relative px-5 pt-5 pb-5">
+            {/* Title row */}
+            <div className="flex items-center gap-3 mb-3">
+              <button onClick={() => window.location.reload()} className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0 cursor-pointer hover:bg-white/30 transition-colors active:scale-95" title="Reload">
+                <GraduationCap size={22} className="text-white" strokeWidth={2.2} />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="text-white/70 text-[11px] font-semibold tracking-widest leading-none mb-1">{formatTodayDisplayIST(settings.timezone)}</p>
+                <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight break-words" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('todayPlan')}</h1>
+              </div>
+            </div>
+            {/* Stat pills row + action buttons, all in a single flex-wrap
+                container. Keeping the contact/install buttons as wrap items
+                alongside the pills (rather than a separate side column)
+                means that when the pills wrap onto two lines on mobile —
+                "Course Completion Target" first, "Daily Study Hours" second
+                — the contact button wraps down with them and lands on the
+                same row as "Daily Study Hours", instead of floating at the
+                top aligned with the first pill. */}
+            <div className="flex items-center gap-2 flex-wrap">
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => { setDaysInput(settings.courseTotalDays?.toString() || ''); setDaysModalOpen(true); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
+                >
+                  <Target size={12} className="text-white/80 shrink-0" />
+                  <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('courseCompletion')}:</span>
+                  <span className="text-white text-[12px] font-bold">{settings.courseTotalDays ? `${settings.courseTotalDays} Days` : '—'}</span>
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => { setHoursInput(settings.dailyStudyHours?.toString() || '3'); setHoursModalOpen(true); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
+                >
+                  <AlarmClock size={12} className="text-white/80 shrink-0" />
+                  <span className="text-white/80 text-[11px] font-medium whitespace-nowrap">{t('dailyStudyHours')}:</span>
+                  <span className="text-white text-[12px] font-bold">{settings.dailyStudyHours ?? 3} Hours</span>
+                </motion.button>
+
+              {/* Action buttons: contact (always) + install (mobile only, not installed) */}
+              {(appContact.supportLink || (isMobileBrowser && !isInstalled)) && (
+                <div className="shrink-0 flex items-center gap-1.5 flex-row">
+                  {/* Contact button — always shown when support link is configured */}
+                  {appContact.supportLink && (
+                    <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(263 80% 58%)' } as React.CSSProperties}>
+                      <motion.button
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => window.open(appContact.supportLink, '_blank', 'noopener,noreferrer')}
+                        className="spin-border-inner w-8 h-8 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
+                        aria-label="Contact Support"
+                      >
+                        <FaWhatsapp size={18} className="text-white" aria-hidden="true" />
+                      </motion.button>
+                    </span>
+                  )}
+                  {/* Install/share button — mobile browser only, when not yet installed */}
+                  {isMobileBrowser && !isInstalled && (
+                    <div className="relative shrink-0">
+                      <span className="spin-border-wrap spin-border-round" style={{ '--spin-mask': 'hsl(263 80% 58%)' } as React.CSSProperties}>
+                        <motion.button
+                          whileTap={{ scale: 0.9 }}
+                          onClick={() => setShowInstallMenu(v => !v)}
+                          className="spin-border-inner w-8 h-8 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
+                          aria-label={t('installApp')}
+                        >
+                          <Download size={14} className="text-white" />
+                        </motion.button>
+                      </span>
+                      <AnimatePresence>
+                        {showInstallMenu && (
+                          <>
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.9, y: 6 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.9, y: 6 }}
+                              className="absolute bottom-11 right-0 z-50 bg-card border border-border/60 rounded-2xl shadow-xl p-2 min-w-[185px]"
+                            >
+                              {canInstall && (
+                                <button
+                                  onClick={() => { installApp(); setShowInstallMenu(false); }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"
+                                >
+                                  <Download size={15} />
+                                  {t('installApp')}
+                                </button>
+                              )}
+                              <button
+                                onClick={handleInstallShare}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-foreground hover:bg-secondary transition-colors"
+                              >
+                                {installCopied ? <Check size={15} className="text-green-500" /> : <Share2 size={15} />}
+                                {installCopied ? t('linkCopied') : t('shareInstallLink')}
+                              </button>
+                            </motion.div>
+                            <div className="fixed inset-0 z-40" onClick={() => setShowInstallMenu(false)} />
+                          </>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4">
+        {/* ── Header action row ── */}
+        <header className="mb-5">
+          <div className="flex items-start justify-between mb-3">
+            <div />
+
+            {/* Right side icons */}
+            <div className="flex items-center gap-2" style={{ transform: 'translateZ(0)', WebkitBackfaceVisibility: 'hidden' }}>
+              {/* ── Pending notification icon (always visible when plan ready) ── */}
+              {planReady && (
+                <motion.button
+                  whileTap={{ scale: 0.88 }}
+                  onClick={() => setShowPendingPanel(true)}
+                  className="relative w-8 h-8 rounded-xl flex items-center justify-center border transition-all"
+                  style={pendingItems.length > 0
+                    ? { backgroundColor: 'rgb(249 115 22 / 0.1)', borderColor: 'rgb(249 115 22 / 0.35)', transform: 'translateZ(0)' }
+                    : { backgroundColor: 'var(--secondary)', borderColor: 'var(--border)', transform: 'translateZ(0)' }}
+                >
+                  <AlertTriangle size={14} className={pendingItems.length > 0 ? 'text-orange-500' : 'text-muted-foreground'} />
+                  {pendingItems.length > 0 && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 15 }}
+                      className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center shadow-sm"
+                    >
+                      {pendingItems.length}
+                    </motion.span>
+                  )}
+                </motion.button>
+              )}
+
+              {/* ── Revision notification icon (always visible) ── */}
+              {planReady && (
+                <motion.button
+                  whileTap={{ scale: 0.88 }}
+                  onClick={() => setShowRevisionPanel(true)}
+                  className="relative w-8 h-8 rounded-xl flex items-center justify-center border transition-all"
+                  style={dueRevisions.length > 0
+                    ? { backgroundColor: 'rgb(147 51 234 / 0.1)', borderColor: 'rgb(147 51 234 / 0.3)', transform: 'translateZ(0)' }
+                    : { backgroundColor: 'var(--secondary)', borderColor: 'var(--border)', transform: 'translateZ(0)' }}
+                >
+                  <RefreshCw size={14} className={dueRevisions.length > 0 ? 'text-purple-600' : 'text-muted-foreground'} />
+                  {/* Red badge — only when due revisions exist today */}
+                  {dueRevisions.length > 0 && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 15 }}
+                      className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center shadow-sm"
+                    >
+                      {dueRevisions.length}
+                    </motion.span>
+                  )}
+                </motion.button>
+              )}
+            </div>
+          </div>
+
+          {/* Today progress */}
+          {planReady && todayTotal > 0 && (
+            <div>
+              <div className="flex justify-between text-xs font-bold mb-2">
+                <span className="text-foreground font-semibold">
+                  {isBn ? `${todayDone}/${todayTotal} সম্পন্ন` : `${todayDone}/${todayTotal} done`}
+                  <span className="text-muted-foreground font-normal ml-1.5">({todayPercent}%)</span>
+                </span>
+                {todayMins > 0 && (
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <Clock size={10} /> {formatMins(todayMins, t('hour'), t('mins'))}
+                  </span>
+                )}
+              </div>
+              <div className="h-2.5 w-full bg-secondary rounded-full overflow-hidden border border-border/40">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-primary to-primary/70 rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${todayPercent}%` }}
+                  transition={{ duration: 0.9, ease: [0.34, 1.56, 0.64, 1] }}
+                />
+              </div>
+            </div>
+          )}
+          {planReady && todayTotal === 0 && subjects.length > 0 && (
+            <div className="h-2.5 w-full bg-secondary rounded-full overflow-hidden border border-border/40" />
+          )}
+        </header>
+
+        {/* ── Skeleton loading while plan not ready ── */}
+        {!planReady && (
+          <div className="space-y-3 mb-4">
+            <div className="skeleton h-3.5 w-40 rounded mb-3" />
+            {[1,2].map(i => (
+              <div key={i} className="bg-card rounded-2xl border border-border/50 p-4 space-y-2.5">
+                <div className="flex items-center gap-3">
+                  <div className="skeleton w-1 h-8 rounded-full" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="skeleton h-4 w-32 rounded" />
+                    <div className="skeleton h-3 w-48 rounded" />
+                  </div>
+                  <div className="skeleton h-6 w-6 rounded-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Today's plan ── */}
+        {planReady && (
+          <>
+            {incompleteSubjectGroups.length > 0 ? (
+              <div className="space-y-3 mb-4" ref={firstIncompleteRef}>
+                {incompleteSubjectGroups.map(group => renderSubjectGroup(group))}
+              </div>
+            ) : completedTasks.length === 0 ? (
+              /* Empty: no subjects or no tasks */
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="py-14 flex flex-col items-center justify-center text-center px-6"
+              >
+                <motion.div
+                  animate={{ y: [0, -10, 0] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                  className="mb-6 w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center"
+                >
+                  <Sun size={40} className="text-primary" />
+                </motion.div>
+                <h3 className="text-xl font-bold text-foreground mb-2">{t('noTasksToday')}</h3>
+                <p className="text-muted-foreground text-sm">{t('enjoyRest')}</p>
+              </motion.div>
+            ) : (
+              /* All done today */
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="py-10 flex flex-col items-center justify-center text-center px-6"
+              >
+                <motion.div
+                  animate={{ scale: [1, 1.1, 1] }}
+                  transition={{ duration: 1.5, repeat: 2, ease: 'easeInOut' }}
+                  className="mb-4"
+                >
+                  <CheckCircle2 size={60} className="text-green-500" />
+                </motion.div>
+                <h3 className="text-xl font-bold text-foreground mb-1">
+                  {isBn ? '🎉 আজকের সব কাজ সম্পন্ন!' : '🎉 All tasks completed!'}
+                </h3>
+                <p className="text-muted-foreground text-sm mb-5">{t('enjoyRest')}</p>
+                {subjects.length > 0 && (
+                  <div className="w-full max-w-sm space-y-2">
+                    <p className="text-[11px] text-muted-foreground/70">{t('loadMoreDesc')}</p>
+                    <Button variant="outline" className="w-full" onClick={loadMore}>
+                      <Plus size={14} className="mr-1.5 inline" /> {t('loadMore')}
+                    </Button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {/* ── Action Row: View Details (left) + Load More (right) ── */}
+
+            {/* ── Load More notice toast ── */}
+            <AnimatePresence>
+              {loadMoreNotice && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  className="fixed bottom-24 left-1/2 md:left-[calc(50%+8rem)] -translate-x-1/2 z-50 px-3 py-2 md:px-4 md:py-2.5 rounded-xl bg-foreground text-background text-[10px] md:text-xs font-bold shadow-lg pointer-events-none whitespace-nowrap"
+                >
+                  {loadMoreNotice}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* ── Show Completed toggle ── */}
+            {completedTasks.length > 0 && (
+              <div className="mb-4">
+                <button
+                  onClick={() => setShowCompleted(prev => !prev)}
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-border/50 bg-secondary/40 hover:bg-secondary/70 transition-colors text-sm font-semibold text-muted-foreground"
+                >
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-green-500" />
+                    <span>{isBn ? `${completedTasks.length}টি সম্পন্ন` : `${completedTasks.length} completed`}</span>
+                  </div>
+                  <ChevronDown size={14} className={`transition-transform duration-200 ${showCompleted ? 'rotate-180' : ''}`} />
+                </button>
+                <AnimatePresence>
+                  {showCompleted && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      style={{ willChange: 'height' }}
+                      className="overflow-hidden"
+                    >
+                      <div className="pt-2 space-y-2">
+                        {completedTasks.map(task => renderCard({ ...task, isCompleted: true }))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* ── View Details + Load More side by side ── */}
+            <div className="mb-4">
+              <ScrollReveal direction="up" delay={incompleteSubjectGroups.length * 0.08} className="flex gap-2 mb-1">
+                {/* View Details — left */}
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setShowDetails(prev => !prev)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-sm"
+                  style={{ background: showDetails
+                    ? 'linear-gradient(135deg, hsl(263 80% 52%) 0%, hsl(243 88% 58%) 100%)'
+                    : 'linear-gradient(135deg, hsl(243 88% 62%) 0%, hsl(263 80% 60%) 100%)' }}
+                >
+                  <TrendingUp size={13} />
+                  {showDetails
+                    ? (isBn ? 'লুকান' : 'Hide Details')
+                    : (isBn ? 'বিস্তারিত দেখুন' : 'View Details')}
+                  <ChevronDown size={12} className={`transition-transform duration-200 ${showDetails ? 'rotate-180' : ''}`} />
+                </motion.button>
+
+                {/* Load More — right */}
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={loadMore}
+                  disabled={incompleteSubjectGroups.length === 0}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm"
+                  style={incompleteSubjectGroups.length > 0
+                    ? { background: 'linear-gradient(135deg, hsl(172 70% 38%) 0%, hsl(192 85% 45%) 100%)', color: 'white' }
+                    : { background: 'hsl(var(--secondary))', color: 'hsl(var(--muted-foreground))', opacity: 0.6 }}
+                >
+                  <Plus size={13} />
+                  {isBn ? 'আরও লোড করুন' : 'Load More'}
+                </motion.button>
+              </ScrollReveal>
+              {extraLoadedMins > 0 && (
+                <p className="text-center text-[10px] text-muted-foreground/70">
+                  {isBn ? `+${extraLoadedMins} মিনিট অতিরিক্ত লোড হয়েছে` : `+${extraLoadedMins} min extra loaded`}
+                </p>
+              )}
+
+              <AnimatePresence>
+                {showDetails && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                    style={{ willChange: 'height' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pt-4 space-y-4">
+
+                      {/* Motivation / pressure message */}
+                      {(pressure.level === 'behind' || pressure.level === 'critical' || pressure.level === 'ahead') && (
+                        <div className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border text-xs font-semibold ${
+                          pressure.level === 'ahead'
+                            ? PRESSURE_COLORS['ahead']
+                            : PRESSURE_COLORS['ontrack']
+                        }`}>
+                          <ThumbsUp size={14} className="shrink-0" />
+                          <span>
+                            {pressure.level === 'ahead'
+                              ? (isBn ? pressure.message_bn : pressure.message_en)
+                              : (isBn ? 'আপনি ধরে আসছেন 🚀 চালিয়ে যান!' : "You're catching up 🚀 Keep going!")}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Overall course progress */}
+                      {totalLeaves > 0 && (
+                        <div className="bg-card rounded-xl border border-border/50 p-3">
+                          <div className="flex items-center justify-between text-xs font-semibold mb-2">
+                            <span className="text-muted-foreground flex items-center gap-1.5">
+                              <TrendingUp size={11} className="text-primary/60" />
+                              {isBn ? 'সামগ্রিক অগ্রগতি' : 'Overall Progress'}
+                            </span>
+                            <span className="text-foreground font-bold">{formatProgressPercent(overallPercent)}%</span>
+                          </div>
+                          <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                            <motion.div
+                              className="h-full bg-primary/50 rounded-full"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.max(overallPercent, overallPercent > 0 ? 0.5 : 0)}%` }}
+                              transition={{ duration: 0.8, ease: 'easeOut' }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Time analysis */}
+                      {settings.courseTotalDays && totalContent > 0 && (
+                        <div className="px-3 py-2.5 rounded-xl bg-secondary/60 border border-border/40 text-[11px] text-muted-foreground flex items-center gap-2">
+                          <Clock size={12} className="text-primary/60 shrink-0" />
+                          <span>
+                            {isBn
+                              ? `কন্টেন্ট: ${Math.round(totalContent / 60)}ঘণ্টা • পাওয়া যাবে: ${Math.round(availableTime / 60)}ঘণ্টা`
+                              : `Content: ${Math.round(totalContent / 60)}h • Available: ${Math.round(availableTime / 60)}h`}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* ── Revision tasks (today only, always visible) ── */}
+                      <div>
+                        <button
+                          onClick={() => {
+                            const willOpen = isRevisionCollapsed;
+                            setIsRevisionCollapsed(prev => !prev);
+                            if (willOpen) setIsPendingCollapsed(true);
+                          }}
+                          className="w-full flex items-center justify-between mb-2"
+                        >
+                          <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                            dueRevisions.length > 0
+                              ? 'text-purple-600 bg-purple-500/10 border-purple-200'
+                              : 'text-muted-foreground bg-secondary border-border/50'
+                          }`}>
+                            <RefreshCw size={12} />
+                            {isBn ? 'রিভিশন' : 'Revision'}
+                            {dueRevisions.length > 0 && (
+                              <span className="ml-1 bg-purple-600 text-white rounded-full px-1.5 py-0 text-[10px]">{dueRevisions.length}</span>
+                            )}
+                          </span>
+                          <ChevronDown size={14} className={`text-muted-foreground transition-transform duration-200 ${isRevisionCollapsed ? '' : 'rotate-180'}`} />
+                        </button>
+                        <AnimatePresence>
+                          {!isRevisionCollapsed && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                              style={{ willChange: 'height' }}
+                              className="overflow-hidden"
+                            >
+                              {dueRevisions.length > 0 ? (
+                                <div className="space-y-2">
+                                  {dueRevisions.map(rev => (
+                                    <div key={rev.id} className="bg-card rounded-xl border border-purple-200/60 overflow-hidden shadow-sm">
+                                      <div className="h-1 w-full" style={{ backgroundColor: rev.subjectColor }} />
+                                      <div className="px-3 pt-2.5 pb-2.5">
+                                        <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground mb-1">
+                                          <span className="max-w-[110px] truncate font-semibold" style={{ color: rev.subjectColor }}>{rev.subjectTitle}</span>
+                                          {rev.breadcrumb.map((crumb, i) => (
+                                            <React.Fragment key={i}>
+                                              <ChevronRight size={7} className="opacity-40" />
+                                              <span className="max-w-[100px] truncate">{crumb}</span>
+                                            </React.Fragment>
+                                          ))}
+                                        </div>
+                                        <p className="font-bold text-sm text-foreground leading-snug mb-1.5">{rev.mainTitle}</p>
+                                        {/* Origin badge + stage + first-completed date */}
+                                        <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-700">
+                                            🔁 {getRevisionStageLabel(rev.stage, isBn)}
+                                          </span>
+                                          {rev.origin === 'snoozed' && (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600">
+                                              ⏩ {isBn ? 'আগে লেটার দেওয়া হয়েছিল' : 'Snoozed last time'}
+                                            </span>
+                                          )}
+                                          {rev.origin === 'dismissed' && (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/10 text-red-500">
+                                              ⚠️ {isBn ? 'আগে মিস হয়ে গিয়েছিল' : 'Missed last time'}
+                                            </span>
+                                          )}
+                                          {(rev.origin === 'regular' || !rev.origin) && (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/10 text-green-600">
+                                              ✓ {isBn ? 'নিয়ম অনুযায়ী এসেছে' : 'On schedule'}
+                                            </span>
+                                          )}
+                                          {rev.firstCompletedDate && (
+                                            <span className="text-[10px] text-muted-foreground px-2 py-0.5 rounded-full bg-secondary">
+                                              📅 {isBn ? 'প্রথম সম্পন্ন:' : 'Completed:'} {rev.firstCompletedDate}
+                                            </span>
+                                          )}
+                                          <RevisionCountdown isBn={isBn} />
+                                          {(() => { const rNote = getRevisionNote(rev); const rPath = revisionToMarkPath(rev); return rNote && rPath ? (
+                                            <button onClick={e => { e.stopPropagation(); openNoteModal(rPath, rNote); }} className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-200 hover:bg-blue-500/20 transition-colors">
+                                              <StickyNote size={9} /> {isBn ? 'নোট' : 'Note'}
+                                            </button>
+                                          ) : null; })()}
+                                        </div>
+                                        <div className="flex gap-2">
+                                          <button
+                                            onClick={() => confirmCompleteRevision(rev.id)}
+                                            className="flex-1 flex items-center justify-center gap-1 h-7 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-colors"
+                                          >
+                                            <CheckCircle2 size={11} /> {isBn ? 'সম্পন্ন' : 'Complete'}
+                                          </button>
+                                          <button
+                                            onClick={() => confirmDismissRevision(rev.id)}
+                                            className="flex-1 flex items-center justify-center gap-1 h-7 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                                          >
+                                            <X size={10} /> {isBn ? 'পরে করব' : 'Later'}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="py-4 text-center text-[12px] text-muted-foreground bg-secondary/30 rounded-xl">
+                                  {isBn ? 'আজকে কোনো রিভিশন নেই ✓' : 'No revision task today ✓'}
+                                </div>
+                              )}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      {/* ── Pending work (always visible) ── */}
+                      <div>
+                        <button
+                          onClick={() => {
+                            const willOpen = isPendingCollapsed;
+                            setIsPendingCollapsed(prev => !prev);
+                            if (willOpen) setIsRevisionCollapsed(true);
+                          }}
+                          className="w-full flex items-center justify-between mb-2"
+                        >
+                          <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                            pendingItems.length > 0
+                              ? 'text-orange-600 bg-orange-500/10 border-orange-200'
+                              : 'text-muted-foreground bg-secondary border-border/50'
+                          }`}>
+                            <AlertTriangle size={12} />
+                            {isBn ? 'পেন্ডিং কাজ' : 'Pending Work'}
+                            {pendingItems.length > 0 && (
+                              <span className="ml-1 bg-orange-500 text-white rounded-full px-1.5 py-0 text-[10px]">{pendingItems.length}</span>
+                            )}
+                          </span>
+                          <ChevronDown size={14} className={`text-muted-foreground transition-transform duration-200 ${isPendingCollapsed ? '' : 'rotate-180'}`} />
+                        </button>
+                        <AnimatePresence>
+                          {!isPendingCollapsed && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                              style={{ willChange: 'height' }}
+                              className="overflow-hidden"
+                            >
+                              {pendingItems.length > 0 ? (
+                                <div className="space-y-2">
+                                  {pendingItems.map(item => (
+                                      <div key={item.task.key} className="bg-card rounded-xl border border-orange-200/60 overflow-hidden shadow-sm">
+                                        <div className="h-1 w-full" style={{ backgroundColor: item.task.subjectColor }} />
+                                        <div className="px-3 pt-2.5 pb-2.5">
+                                          <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground mb-1">
+                                            <span className="max-w-[110px] truncate font-semibold" style={{ color: item.task.subjectColor }}>{item.task.subjectTitle}</span>
+                                            {item.task.breadcrumb.map((crumb, i) => (
+                                              <React.Fragment key={i}>
+                                                <ChevronRight size={7} className="opacity-40" />
+                                                <span className="max-w-[100px] truncate">{crumb}</span>
+                                              </React.Fragment>
+                                            ))}
+                                          </div>
+                                          <p className="font-bold text-sm text-foreground leading-snug mb-1">{item.task.mainTitle}</p>
+                                          <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                                            <PendingCountdown item={item} isBn={isBn} />
+                                            {(() => { const pMarks = getTaskMarks(item.task); return pMarks.note ? (
+                                              <button onClick={e => { e.stopPropagation(); openNoteModal(taskToMarkPath(item.task), pMarks.note ?? ''); }} className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-200 hover:bg-blue-500/20 transition-colors">
+                                                <StickyNote size={9} /> {isBn ? 'নোট' : 'Note'}
+                                              </button>
+                                            ) : null; })()}
+                                          </div>
+                                          <div className="flex gap-2">
+                                            <button
+                                              onClick={() => confirmCompletePending(item)}
+                                              className="flex-1 flex items-center justify-center gap-1 h-7 rounded-lg bg-green-500 text-white text-xs font-bold hover:bg-green-600 transition-colors"
+                                            >
+                                              <CheckCircle2 size={11} /> {isBn ? 'সম্পন্ন' : 'Complete'}
+                                            </button>
+                                            <button
+                                              onClick={() => confirmDismissPending(item.task.key)}
+                                              className="flex-1 flex items-center justify-center gap-1 h-7 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                                            >
+                                              <X size={10} /> {isBn ? 'বাতিল' : 'Dismiss'}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="py-4 text-center text-[12px] text-muted-foreground bg-secondary/30 rounded-xl">
+                                  {isBn ? 'আজকে কোনো পেন্ডিং নেই ✓' : 'No pending task today ✓'}
+                                </div>
+                              )}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Pending Bottom Sheet Panel ── */}
+      <AnimatePresence>
+        {showPendingPanel && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setShowPendingPanel(false)}
+              className="fixed inset-0 md:left-64 bg-black/40 z-40 backdrop-blur-[2px]"
+            />
+            <div className="fixed bottom-0 left-0 md:left-64 right-0 z-50 flex justify-center pointer-events-none">
+            <motion.div
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+              className="w-full max-w-4xl pointer-events-auto bg-card rounded-t-3xl border border-border/60 shadow-2xl max-h-[85vh] flex flex-col"
+            >
+              <div className="flex justify-center pt-3 pb-1">
+                <div className="w-10 h-1 rounded-full bg-border" />
+              </div>
+
+              <div className="flex items-center justify-between px-5 pt-2 pb-3 border-b border-border/40">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-orange-500/10 flex items-center justify-center">
+                    <AlertTriangle size={15} className="text-orange-500" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-base text-foreground">
+                      {isBn ? 'পেন্ডিং টাস্ক' : 'Pending Tasks'}
+                    </h2>
+                    <p className="text-[11px] text-muted-foreground">
+                      {pendingItems.length > 0
+                        ? (isBn ? `${pendingItems.length}টি বাকি আছে` : `${pendingItems.length} pending`)
+                        : (isBn ? 'কোনো পেন্ডিং নেই' : 'No pending tasks')}
+                    </p>
+                  </div>
+                </div>
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setShowPendingPanel(false)}
+                  className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-muted-foreground"
+                >
+                  <X size={16} />
+                </motion.button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+                {pendingItems.length > 0 ? (
+                  pendingItems.map(item => (
+                      <motion.div
+                        key={item.task.key}
+                        layout
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: 40 }}
+                        className="bg-background rounded-2xl border border-orange-200/70 overflow-hidden shadow-sm"
+                      >
+                        <div className="h-1 w-full" style={{ backgroundColor: item.task.subjectColor }} />
+                        <div className="px-4 pt-3 pb-3">
+                          <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground mb-1.5">
+                            <span className="max-w-[110px] truncate font-semibold" style={{ color: item.task.subjectColor }}>{item.task.subjectTitle}</span>
+                            {item.task.breadcrumb.map((crumb, i) => (
+                              <React.Fragment key={i}>
+                                <ChevronRight size={8} className="opacity-40" />
+                                <span className="max-w-[100px] truncate">{crumb}</span>
+                              </React.Fragment>
+                            ))}
+                          </div>
+                          <p className="font-bold text-sm text-foreground leading-snug mb-1">{item.task.mainTitle}</p>
+                          <div className="flex items-center gap-2 flex-wrap mb-3">
+                            <PendingCountdown item={item} isBn={isBn} />
+                            <span className="text-[10px] text-muted-foreground">
+                              {item.plannedDate}
+                            </span>
+                            {(() => { const pMarks = getTaskMarks(item.task); return pMarks.note ? (
+                              <button onClick={e => { e.stopPropagation(); openNoteModal(taskToMarkPath(item.task), pMarks.note ?? ''); }} className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-200 hover:bg-blue-500/20 transition-colors">
+                                <StickyNote size={9} /> {isBn ? 'নোট' : 'Note'}
+                              </button>
+                            ) : null; })()}
+                          </div>
+                          <div className="flex gap-2">
+                            <motion.button
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => confirmCompletePending(item)}
+                              className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl bg-green-500 text-white text-xs font-bold shadow-sm hover:bg-green-600 transition-colors"
+                            >
+                              <CheckCircle2 size={13} />
+                              {isBn ? 'সম্পন্ন' : 'Complete'}
+                            </motion.button>
+                            <motion.button
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => confirmDismissPending(item.task.key)}
+                              className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                            >
+                              <X size={11} />
+                              {isBn ? 'বাতিল' : 'Dismiss'}
+                            </motion.button>
+                          </div>
+                        </div>
+                      </motion.div>
+                  ))
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="py-12 flex flex-col items-center justify-center text-center"
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center mb-3">
+                      <CheckCircle2 size={24} className="text-green-500" />
+                    </div>
+                    <p className="text-sm font-semibold text-muted-foreground">
+                      {isBn ? 'কোনো পেন্ডিং টাস্ক নেই ✓' : 'No pending tasks ✓'}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground/60 mt-1">
+                      {isBn ? 'সব কাজ ঠিকঠাক চলছে!' : "You're all caught up!"}
+                    </p>
+                  </motion.div>
+                )}
+                <div className="h-6" />
+              </div>
+            </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ── Confirm Dialog ── */}
+      <AnimatePresence>
+        {confirmDialog && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-[60] backdrop-blur-[2px]"
+              onClick={() => setConfirmDialog(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 28 }}
+              className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[61] bg-card rounded-2xl border border-border shadow-2xl p-5 max-w-sm mx-auto"
+            >
+              <p className="text-sm font-semibold text-foreground text-center mb-5 leading-relaxed">
+                {confirmDialog.message}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmDialog(null)}
+                  className="flex-1 h-10 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {isBn ? 'না, বাদ দাও' : 'Cancel'}
+                </button>
+                <button
+                  onClick={confirmDialog.onConfirm}
+                  className="flex-1 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-colors"
+                >
+                  {isBn ? 'হ্যাঁ, নিশ্চিত' : 'Yes, confirm'}
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ── Revision Bottom Sheet Panel ── */}
+      <AnimatePresence>
+        {showRevisionPanel && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowRevisionPanel(false)}
+              className="fixed inset-0 md:left-64 bg-black/40 z-40 backdrop-blur-[2px]"
+            />
+            {/* Panel */}
+            <div className="fixed bottom-0 left-0 md:left-64 right-0 z-50 flex justify-center pointer-events-none">
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+              className="w-full max-w-4xl pointer-events-auto bg-card rounded-t-3xl border border-border/60 shadow-2xl max-h-[85vh] flex flex-col"
+            >
+              {/* Handle bar */}
+              <div className="flex justify-center pt-3 pb-1">
+                <div className="w-10 h-1 rounded-full bg-border" />
+              </div>
+
+              {/* Panel header */}
+              <div className="flex items-center justify-between px-5 pt-2 pb-3 border-b border-border/40">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                    <RefreshCw size={15} className="text-purple-600" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-base text-foreground">
+                      {isBn ? 'আজকের রিভিশন' : "Today's Revision"}
+                    </h2>
+                    <p className="text-[11px] text-muted-foreground">
+                      {dueRevisions.length > 0
+                        ? (isBn ? `${dueRevisions.length}টি বাকি আছে` : `${dueRevisions.length} due today`)
+                        : (isBn ? 'আজকে কোনো রিভিশন নেই' : 'No revision today')}
+                    </p>
+                  </div>
+                </div>
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setShowRevisionPanel(false)}
+                  className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                >
+                  <X size={16} />
+                </motion.button>
+              </div>
+
+              {/* Scrollable revision list — today only */}
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+                {dueRevisions.length > 0 ? (
+                  dueRevisions.map(rev => (
+                    <motion.div
+                      key={rev.id}
+                      layout
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, x: 40 }}
+                      className="bg-background rounded-2xl border border-purple-200/70 overflow-hidden shadow-sm"
+                    >
+                      <div className="h-1 w-full" style={{ backgroundColor: rev.subjectColor }} />
+                      <div className="px-4 pt-3 pb-3">
+                        <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground mb-1.5">
+                          <span className="max-w-[110px] truncate font-semibold" style={{ color: rev.subjectColor }}>{rev.subjectTitle}</span>
+                          {rev.breadcrumb.map((crumb, i) => (
+                            <React.Fragment key={i}>
+                              <ChevronRight size={8} className="opacity-40" />
+                              <span className="max-w-[100px] truncate">{crumb}</span>
+                            </React.Fragment>
+                          ))}
+                        </div>
+                        <h3 className="font-bold text-sm text-foreground leading-snug mb-1.5">
+                          {rev.mainTitle}
+                        </h3>
+                        {/* Origin badge + stage + first-completed date */}
+                        <div className="flex items-center gap-1.5 flex-wrap mb-2.5">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-700">
+                            🔁 {getRevisionStageLabel(rev.stage, isBn)}
+                          </span>
+                          {rev.origin === 'snoozed' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600">
+                              ⏩ {isBn ? 'আগে লেটার দেওয়া হয়েছিল' : 'Snoozed last time'}
+                            </span>
+                          )}
+                          {rev.origin === 'dismissed' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/10 text-red-500">
+                              ⚠️ {isBn ? 'আগে মিস হয়ে গিয়েছিল' : 'Missed last time'}
+                            </span>
+                          )}
+                          {(rev.origin === 'regular' || !rev.origin) && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/10 text-green-600">
+                              ✓ {isBn ? 'নিয়ম অনুযায়ী এসেছে' : 'On schedule'}
+                            </span>
+                          )}
+                          {rev.firstCompletedDate && (
+                            <span className="text-[10px] text-muted-foreground px-2 py-0.5 rounded-full bg-secondary">
+                              📅 {isBn ? 'প্রথম সম্পন্ন:' : 'Completed:'} {rev.firstCompletedDate}
+                            </span>
+                          )}
+                          <RevisionCountdown isBn={isBn} />
+                          {(() => { const rNote = getRevisionNote(rev); const rPath = revisionToMarkPath(rev); return rNote && rPath ? (
+                            <button onClick={e => { e.stopPropagation(); openNoteModal(rPath, rNote); }} className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-200 hover:bg-blue-500/20 transition-colors">
+                              <StickyNote size={9} /> {isBn ? 'নোট' : 'Note'}
+                            </button>
+                          ) : null; })()}
+                        </div>
+                        <div className="flex gap-2">
+                          <motion.button
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => confirmCompleteRevision(rev.id)}
+                            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl bg-purple-600 text-white text-xs font-bold shadow-sm shadow-purple-500/30 hover:bg-purple-700 transition-colors"
+                          >
+                            <CheckCircle2 size={12} />
+                            {isBn ? 'সম্পন্ন' : 'Complete'}
+                          </motion.button>
+                          <motion.button
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => confirmDismissRevision(rev.id)}
+                            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                          >
+                            <X size={11} />
+                            {isBn ? 'পরে করব' : 'Later'}
+                          </motion.button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))
+                ) : (
+                  /* No revisions today */
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="py-12 flex flex-col items-center justify-center text-center"
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center mb-3">
+                      <RefreshCw size={24} className="text-muted-foreground/50" />
+                    </div>
+                    <p className="text-sm font-semibold text-muted-foreground">
+                      {isBn ? 'No revision available' : 'No revision available'}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground/60 mt-1">
+                      {isBn ? 'আজকে কোনো রিভিশন নেই' : 'Nothing to revise today'}
+                    </p>
+                  </motion.div>
+                )}
+
+                <div className="h-6" />
+              </div>
+            </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Modals */}
+      {renderCompletedModal()}
+
+      <Modal isOpen={isDaysModalOpen} onClose={() => setDaysModalOpen(false)} title={t('setCourseDays')}>
+        <p className="text-sm text-muted-foreground mb-4">{t('setCourseDaysDesc')}</p>
+        <label className="block text-sm font-medium text-foreground">
+          {t('numberOfDays')}
+          <Input
+            className="mt-1.5"
+            type="number"
+            value={daysInput}
+            onChange={e => setDaysInput(e.target.value)}
+            placeholder="e.g. 90"
+            onKeyDown={e => e.key === 'Enter' && handleSetDays()}
+          />
+        </label>
+        <div className="mt-4 flex gap-2">
+          <Button variant="ghost" onClick={() => setDaysModalOpen(false)} className="flex-1">{t('cancel')}</Button>
+          <Button variant="primary" onClick={handleSetDays} className="flex-1">{t('saveGoal')}</Button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={isHoursModalOpen} onClose={() => setHoursModalOpen(false)} title={t('setDailyHours')}>
+        <p className="text-sm text-muted-foreground mb-4">{t('setDailyHoursDesc')}</p>
+        <label className="block text-sm font-medium text-foreground">
+          {t('hoursPerDay')}
+          <Input
+            className="mt-1.5"
+            type="number"
+            step="0.5"
+            value={hoursInput}
+            onChange={e => setHoursInput(e.target.value)}
+            placeholder="e.g. 3"
+            onKeyDown={e => e.key === 'Enter' && handleSetHours()}
+          />
+        </label>
+        <div className="mt-4 flex gap-2">
+          <Button variant="ghost" onClick={() => setHoursModalOpen(false)} className="flex-1">{t('cancel')}</Button>
+          <Button variant="primary" onClick={handleSetHours} className="flex-1">{t('save')}</Button>
+        </div>
+      </Modal>
+
+      {/* ─── Note editor modal ─── */}
+      <NoteEditorModal
+        isOpen={noteModal.open}
+        onClose={closeNoteModal}
+        title={t('editNote')}
+        notePath={noteModal.path}
+        icon={StickyNote}
+        value={noteModal.draft}
+        onChange={v => setNoteModal(s => ({ ...s, draft: v }))}
+        onClear={() => setNoteModal(s => ({ ...s, draft: '' }))}
+        onSave={submitNoteModal}
+        placeholder={t('notePlaceholder')}
+        clearLabel={t('clearNote')}
+        saveLabel={t('saveNote')}
+        pdfUserEmail={user?.email ?? ''}
+        pdfIsAdmin={userIsAdmin}
+        pdfIsShared={!!activeSharedMeta}
+        pdfWhatsApp={appContact.whatsapp}
+        pdfWebsite={appContact.website}
+      />
+    </Layout>
+  );
+}

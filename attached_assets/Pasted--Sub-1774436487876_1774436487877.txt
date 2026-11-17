@@ -1,0 +1,105 @@
+ওয়েবসাইট আপডেট নির্দেশনা
+
+১. টপিক/সাবটপিকের জন্য স্মার্ট সময় নির্ধারণ ব্যবস্থা
+যখন ইউজার নতুন Subject, Topic, Subtopic বা এর নিচের অন্য কোনো অংশ যোগ করবে, তখন সিস্টেম তাকে সেই অংশটি সম্পূর্ণ করতে আনুমানিক কত সময় লাগবে তা নির্ধারণ করার অপশন দেবে।
+
+সময়ের অপশনগুলো হবে:
+
+- মিনিট
+- ঘণ্টা
+- দিন
+- মাস
+
+উদাহরণ:
+
+- ৫ মিনিট
+- ১০ মিনিট
+- ১ ঘণ্টা
+- ১ দিন
+- ১ মাস
+
+এই সময় দেওয়া সম্পূর্ণ অপশনাল থাকবে।
+
+যদি ইউজার নিজে সময় না দেয়, তাহলে সিস্টেম অটোমেটিকভাবে বুদ্ধিমত্তার সাথে সময় নির্ধারণ করবে।
+
+অটোমেটিক সময় নির্ধারণের ক্ষেত্রে বিবেচনা করবে:
+
+- টপিকের নামের দৈর্ঘ্য
+- টপিকের জটিলতা
+- টপিক কত বড় বা ছোট
+- সম্পূর্ণ Subject-এর মোট সাইজ
+- পুরো Course শেষ করার নির্ধারিত সময়
+
+সিস্টেমের আচরণ এমন হবে:
+
+- ছোট টপিক হলে কম সময়
+- বড় টপিক হলে বেশি সময়
+- Subject completion time অটোমেটিক আপডেট হবে
+- Full course completion time-ও অটোমেটিক হিসাব হবে
+
+২. Profile popup / bottom sheet display fix
+বর্তমানে Profile section-এ গিয়ে Name, Language ইত্যাদি পরিবর্তনের সময় নিচ থেকে popup উঠলে পুরো screen জুড়ে কালো overlay দেখা যায়।
+
+এটি পরিবর্তন করতে হবে:
+
+- কালো background শুধু popup-এর যতটুকু অংশ আছে ততটুকু পর্যন্ত থাকবে
+- পুরো screen black overlay হবে না
+- Existing theme color বজায় থাকবে
+
+Popup close behavior update:
+
+- User popup-এর বাইরে screen-এর যেকোনো জায়গায় click/tap করলে popup বন্ধ হয়ে যাবে
+- Desktop ও Mobile দুই ক্ষেত্রেই একইভাবে কাজ করবে
+
+বর্তমানে শুধু overlay-এ click করলে close হয়, সেটি fix করতে হবে।
+
+৩. Smart Daily Routine Generation System
+Daily routine এমনভাবে তৈরি করতে হবে যাতে প্রতিদিন সব Subject-এর সব Topic না আসে।
+
+উদাহরণ:
+যদি Course-এ থাকে:
+
+- বাংলা
+- ইংরেজি
+- ইতিহাস
+
+এবং প্রতিটি Subject-এর নিচে Topic, Subtopic, আরও ছোট অংশ থাকে, তাহলে Routine intelligent ভাবে distribute হবে।
+
+Rules:
+
+- একদিনে manageable পরিমাণ content
+- Daily available study time অনুযায়ী
+- Full course deadline অনুযায়ী
+- Pending task বিবেচনায়
+
+System decide করবে আজকের routine-এ কোন level দেখাবে:
+
+- Subject
+- Topic
+- Subtopic
+- Micro point
+
+এবং স্পষ্টভাবে label করবে:
+
+উদাহরণ:
+
+- Subject: বাংলা
+- Topic: ব্যাকরণ
+- Subtopic: সন্ধি
+
+Completed logic:
+
+- Complete হয়ে গেলে unnecessary repeat করবে না
+- Pending থাকলে পরের দিন বা পরে আবার দিতে পারবে
+- তবে final deadline-এর মধ্যে অবশ্যই complete করতে হবে
+
+৪. AI-based scheduling behavior
+Routine generator intelligent behaviour follow করবে:
+
+- সহজ topic → কম সময়
+- কঠিন topic → বেশি সময়
+- Pending work → auto reschedule
+- Daily balanced load
+- কোনো unrealistic pressure নয়
+
+পুরো system এমনভাবে কাজ করবে যেন এটি একটি intelligent personal study planner হয়, static list না হয়।

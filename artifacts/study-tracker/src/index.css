@@ -1,0 +1,499 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+@source "./**/*.{js,ts,jsx,tsx}";
+@source "../index.html";
+
+/* Match the mobile splash gradient's starting color so the very first paint
+   (before React mounts) doesn't flash a plain white/gray page on top of it. */
+html, body {
+  background-color: #5149f3;
+}
+@media (min-width: 768px) {
+  html, body {
+    background-color: hsl(var(--background));
+  }
+}
+
+@theme inline {
+  --font-sans: 'Inter', sans-serif;
+
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+}
+
+:root {
+  /* Background: soft indigo-tinted white */
+  --background: 228 33% 97%;
+  /* Foreground: deep indigo-slate */
+  --foreground: 226 45% 12%;
+
+  /* Card: pure white with slight warmth */
+  --card: 0 0% 100%;
+  --card-foreground: 226 45% 12%;
+
+  /* Border & Input */
+  --border: 226 28% 88%;
+  --input: 226 28% 88%;
+
+  /* Primary: vivid indigo */
+  --primary: 243 88% 62%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 243 88% 62%;
+
+  /* Secondary */
+  --secondary: 228 40% 94%;
+  --secondary-foreground: 226 45% 12%;
+
+  /* Muted */
+  --muted: 228 35% 93%;
+  --muted-foreground: 226 25% 38%;
+
+  /* Accent: violet tint */
+  --accent: 263 90% 95%;
+  --accent-foreground: 263 80% 55%;
+
+  /* Success: emerald */
+  --success: 152 70% 42%;
+  --success-foreground: 0 0% 100%;
+
+  /* Destructive */
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --radius: 0.75rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply font-sans antialiased text-foreground overflow-x-hidden;
+    min-height: 100dvh;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* The light app-background gradient only kicks in on desktop widths, where
+     there is no mobile splash to bridge into (see the mobile-only solid
+     purple rule near the top of this file). */
+  @media (min-width: 768px) {
+    body {
+      background: linear-gradient(160deg,
+        hsl(243 40% 96%) 0%,
+        hsl(263 35% 96%) 40%,
+        hsl(240 35% 97%) 100%);
+    }
+  }
+}
+
+/* ── Gradient utilities ───────────────────────────────────────────────────── */
+.gradient-primary {
+  background: linear-gradient(135deg, hsl(243 88% 62%) 0%, hsl(263 80% 60%) 100%);
+}
+.gradient-primary-soft {
+  background: linear-gradient(135deg, hsl(243 88% 62% / 0.12) 0%, hsl(263 80% 60% / 0.12) 100%);
+}
+.gradient-hero {
+  background: linear-gradient(145deg,
+    hsl(243 88% 62%) 0%,
+    hsl(263 80% 58%) 50%,
+    hsl(300 70% 60%) 100%);
+}
+.gradient-sidebar {
+  background: linear-gradient(180deg,
+    hsl(243 60% 18%) 0%,
+    hsl(256 55% 22%) 100%);
+}
+.gradient-emerald {
+  background: linear-gradient(135deg, hsl(152 70% 42%) 0%, hsl(172 70% 38%) 100%);
+}
+.gradient-amber {
+  background: linear-gradient(135deg, hsl(38 95% 55%) 0%, hsl(25 95% 58%) 100%);
+}
+.gradient-rose {
+  background: linear-gradient(135deg, hsl(349 89% 60%) 0%, hsl(326 80% 60%) 100%);
+}
+.gradient-cyan {
+  background: linear-gradient(135deg, hsl(192 85% 48%) 0%, hsl(210 80% 52%) 100%);
+}
+.text-gradient {
+  background: linear-gradient(135deg, hsl(243 88% 62%), hsl(263 80% 60%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.glass-dark {
+  background: rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ── Glow effects ─────────────────────────────────────────────────────────── */
+.glow-primary {
+  box-shadow: 0 0 24px hsl(243 88% 62% / 0.35), 0 4px 16px hsl(243 88% 62% / 0.25);
+}
+.glow-sm {
+  box-shadow: 0 0 12px hsl(243 88% 62% / 0.25), 0 2px 8px hsl(243 88% 62% / 0.15);
+}
+
+/* Custom scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.25);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.45);
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Skeleton */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.skeleton {
+  background: hsl(var(--muted));
+  border-radius: 6px;
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+/* Card hover lift */
+.card-hover { transition: transform 0.18s ease, box-shadow 0.18s ease; }
+.card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 28px -4px hsl(243 88% 62% / 0.14); }
+
+/* Button active press */
+.btn-press:active { transform: scale(0.96); transition: transform 0.1s ease; }
+
+/* Smooth progress bar fill */
+.progress-bar-fill { transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* Number counter animation */
+@keyframes count-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.count-anim { animation: count-up 0.4s ease forwards; }
+
+/* Shimmer animation */
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.shimmer-text {
+  background: linear-gradient(90deg, hsl(243 88% 62%), hsl(263 80% 70%), hsl(300 70% 65%), hsl(243 88% 62%));
+  background-size: 200% auto;
+  animation: shimmer 3s linear infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Tiptap / Rich Text Editor ─────────────────────────────────────────────── */
+.rich-editor-content {
+  font-size: var(--note-size, 14px);
+  line-height: 1.65;
+  word-break: break-word;
+}
+
+/*
+ * Notes are authored for an A4 page, not for the width of the phone viewport.
+ * Keeping a real page width on the compact mobile viewer prevents Bengali and
+ * table cells from collapsing into one character per line. The surrounding
+ * viewport intentionally scrolls horizontally on small screens.
+ */
+.note-a4-viewport {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/*
+ * The A4 viewer has 1.5rem of outer padding. Pull the sticky edit toolbar
+ * across that padding so it attaches to the actual top edge of the scroll
+ * area instead of leaving a strip where scrolled text remains visible.
+ */
+.note-a4-viewport .rich-editor-toolbar {
+  top: -1.5rem;
+}
+
+.note-a4-page {
+  width: 794px;
+  min-height: 1123px;
+  box-sizing: border-box;
+  padding: 42px 48px;
+  background: hsl(var(--card));
+}
+.note-a4-page .rich-editor-content {
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+.note-a4-page .rich-editor-content table {
+  width: 100%;
+  min-width: 100%;
+  /*
+   * Let the browser honour the table's intrinsic column sizes. The global
+   * fixed layout is useful for a narrow inline editor, but on an A4 page it
+   * can make a narrow column wrap Bengali words one character at a time.
+   * The A4 viewport can scroll when a table genuinely needs more width.
+   */
+  table-layout: auto;
+}
+
+/*
+ * When the global note-size setting is active, it must win over any inline
+ * font-size styles stored inside the note HTML (e.g. from the toolbar's
+ * FontSizeSelect or from pasted content). The .note-size-locked class is added
+ * to the outer wrapper whenever settings.globalNoteSize is set, causing every
+ * element inside .rich-editor-content to render at the global size.
+ * Inline sizes are still stored in the HTML (so they survive if the user later
+ * clears the global setting), but they are visually suppressed while the
+ * global setting is active.
+ */
+.note-size-locked .rich-editor-content * {
+  font-size: var(--note-size) !important;
+}
+.note-size-locked .rich-editor-content sup,
+.note-size-locked .rich-editor-content sub {
+  font-size: calc(var(--note-size) * 0.75) !important;
+}
+.note-size-locked .rich-editor-content .katex * {
+  font-size: revert !important;
+}
+.rich-editor-content p { margin: 0 0 0.35em; }
+.rich-editor-content p:last-child { margin-bottom: 0; }
+.rich-editor-content strong { font-weight: 700; }
+.rich-editor-content em { font-style: italic; }
+.rich-editor-content u { text-decoration: underline; }
+.rich-editor-content s { text-decoration: line-through; }
+.rich-editor-content sup { vertical-align: super; }
+.rich-editor-content sub { vertical-align: sub; }
+.rich-editor-content .katex { font-size: 1em; }
+.rich-editor-content .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.15em 0;
+}
+.rich-editor-content ul {
+  list-style: disc !important;
+  padding-left: 1.4em !important;
+  margin: 0.35em 0;
+}
+.rich-editor-content ol {
+  list-style: decimal !important;
+  padding-left: 1.4em !important;
+  margin: 0.35em 0;
+}
+.rich-editor-content li { display: list-item !important; margin: 0.15em 0; }
+.rich-editor-content li > p { display: block; margin: 0; }
+.rich-editor-content li > ul,
+.rich-editor-content li > ol { display: block; margin-top: 0.1em; }
+.rich-editor-content mark { border-radius: 3px; padding: 0 2px; }
+mark.search-hl,
+.rich-editor-content .search-hl {
+  background-color: rgba(250, 204, 21, 0.55);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+mark.search-hl.search-hl-active,
+.rich-editor-content .search-hl.search-hl-active {
+  background-color: #f97316;
+  color: #fff;
+}
+.rich-editor-content ::selection { background-color: rgba(99, 102, 241, 0.28); color: inherit; }
+.rich-editor-content a {
+  color: hsl(var(--primary));
+  text-decoration: none;
+  cursor: pointer;
+}
+.rich-editor-content .note-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.1);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 0.85em;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: 1px solid hsl(var(--primary) / 0.2);
+}
+.rich-editor-content .note-ref:hover { background: hsl(var(--primary) / 0.18); }
+.ProseMirror .note-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.1);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 0.85em;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: default;
+  border: 1px solid hsl(var(--primary) / 0.2);
+  user-select: all;
+}
+.rich-editor-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.6em 0;
+  table-layout: fixed;
+  overflow: hidden;
+}
+.rich-editor-content th,
+.rich-editor-content td {
+  border: 1px solid hsl(var(--border));
+  padding: 6px 10px;
+  vertical-align: top;
+  min-width: 60px;
+  position: relative;
+  font-size: inherit;
+}
+.rich-editor-content th {
+  background: hsl(var(--secondary));
+  font-weight: 600;
+  text-align: left;
+}
+.rich-editor-content .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--primary) / 0.12);
+  pointer-events: none;
+}
+.rich-editor-content .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: hsl(var(--primary));
+  cursor: col-resize;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.rich-editor-content table:hover .column-resize-handle { opacity: 0.5; }
+.rich-editor-content .column-resize-handle:hover,
+.rich-editor-content .resize-cursor .column-resize-handle { opacity: 1; }
+.ProseMirror { outline: none; }
+
+@property --border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes spin-border {
+  from { --border-angle: 0deg; }
+  to   { --border-angle: 360deg; }
+}
+.spin-border-wrap {
+  display: inline-flex;
+  border-radius: 12px;
+  border: 2.5px solid transparent;
+  background:
+    linear-gradient(var(--spin-mask, transparent), var(--spin-mask, transparent)) padding-box,
+    conic-gradient(
+      from var(--border-angle),
+      #818cf8,
+      #c084fc,
+      #f472b6,
+      #fb923c,
+      #fde047,
+      #4ade80,
+      #22d3ee,
+      #60a5fa,
+      #818cf8
+    ) border-box;
+  animation: spin-border 5s linear infinite;
+}
+.spin-border-inner {
+  border-radius: 10px;
+}
+.spin-border-round {
+  border-radius: 50% !important;
+}
+.spin-border-round .spin-border-inner {
+  border-radius: 50% !important;
+}
+
+/* ── Content protection (shared-course permissions) ─────────────────────── */
+.no-select-guard,
+.no-select-guard * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+.content-protection-blur-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  backdrop-filter: blur(28px);
+  background: rgba(10, 10, 20, 0.55);
+  pointer-events: none;
+}
+.content-protection-toast {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  background: #dc2626;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  animation: content-protection-toast-in 0.18s ease-out;
+}
+@keyframes content-protection-toast-in {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}

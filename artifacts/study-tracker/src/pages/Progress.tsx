@@ -1,0 +1,1698 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { RichTextPreview } from '@/components/RichTextEditor';
+import { useAuth } from '@/context/AuthContext';
+import { useStudy } from '@/context/StudyContext';
+import type { MarkPath } from '@/lib/types';
+import { useCourse } from '@/context/CourseContext';
+import { computeGranularProgress, formatProgressPercent } from '@/lib/timeEngine';
+import { useLang } from '@/context/LangContext';
+import { Layout } from '@/components/Layout';
+import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock, Share2, TrendingUp, TrendingDown, Minus, Flame } from 'lucide-react';
+import { NotificationBell } from '@/components/NotificationBell';
+import { Countdown } from '@/components/Countdown';
+import { useAdmin } from '@/context/AdminContext';
+import { TimezoneSelector } from '@/components/TimezoneSelector';
+import { getTimezoneEntry, getCurrentOffset, getFlagUrl } from '@/lib/timezones';
+import { Modal, ConfirmModal, Input, Button, NoteEditorModal } from '@/components/ui';
+import { useLocation } from 'wouter';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ScrollReveal } from '@/components/ScrollReveal';
+import { StudyActivityChart } from '@/components/StudyActivityChart';
+import { format, parseISO, isValid, differenceInCalendarDays, addDays } from 'date-fns';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { updateDocQuietly, setDocQuietly } from '@/lib/saveStatus';
+import { db } from '@/lib/firebase';
+
+function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = '—'): string {
+  if (!dateStr) return fallback;
+  try {
+    const d = parseISO(dateStr);
+    return isValid(d) ? format(d, fmt) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// ─── Note Search Modal ───────────────────────────────────────────────────────
+function NoteSearchModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { subjects, setNote } = useStudy();
+  const { t } = useLang();
+  const { user } = useAuth();
+  const { isAdmin, appContact } = useAdmin();
+  const { activeCourseId, sharedCoursesMeta } = useCourse();
+  const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
+  const [, setLocation] = useLocation();
+
+  // Drill-down state
+  type Level = 'subjects' | 'chapters' | 'topics' | 'subtopics' | 'concepts' | 'points';
+  const [level, setLevel] = React.useState<Level>('subjects');
+  const [selSubject, setSelSubject] = React.useState<any>(null);
+  const [selChapter, setSelChapter] = React.useState<any>(null);
+  const [selTopic, setSelTopic] = React.useState<any>(null);
+  const [selSubtopic, setSelSubtopic] = React.useState<any>(null);
+  const [selConcept, setSelConcept] = React.useState<any>(null);
+  // Direction of the last level change, used to pick the drill-in/back slide animation.
+  const [direction, setDirection] = React.useState<1 | -1>(1);
+
+  // Edit note state (includes path for saving)
+  const [viewNote, setViewNote] = React.useState<{ title: string; draft: string; path: MarkPath } | null>(null);
+
+  const buildPath = (item: any): MarkPath => {
+    if (level === 'subjects')  return { subjectId: item.id, level: 'subject' };
+    if (level === 'chapters')  return { subjectId: selSubject.id, chapterId: item.id, level: 'chapter' };
+    if (level === 'topics')    return { subjectId: selSubject.id, chapterId: selChapter.id, topicId: item.id, level: 'topic' };
+    if (level === 'subtopics') return { subjectId: selSubject.id, chapterId: selChapter.id, topicId: selTopic.id, subtopicId: item.id, level: 'subtopic' };
+    if (level === 'concepts')  return { subjectId: selSubject.id, chapterId: selChapter.id, topicId: selTopic.id, subtopicId: selSubtopic.id, conceptId: item.id, level: 'concept' };
+    return { subjectId: selSubject.id, chapterId: selChapter.id, topicId: selTopic.id, subtopicId: selSubtopic.id, conceptId: selConcept.id, pointId: item.id, level: 'point' };
+  };
+
+  React.useEffect(() => {
+    if (!isOpen) {
+      setLevel('subjects'); setSelSubject(null); setSelChapter(null);
+      setSelTopic(null); setSelSubtopic(null); setSelConcept(null);
+    }
+  }, [isOpen]);
+
+  const goBack = () => {
+    setDirection(-1);
+    if (level === 'points')    { setSelConcept(null);  setLevel('concepts'); }
+    else if (level === 'concepts')  { setSelSubtopic(null); setLevel('subtopics'); }
+    else if (level === 'subtopics') { setSelTopic(null);    setLevel('topics'); }
+    else if (level === 'topics')    { setSelChapter(null);  setLevel('chapters'); }
+    else if (level === 'chapters')  { setSelSubject(null);  setLevel('subjects'); }
+  };
+
+  // Always derive from live `subjects` so note edits reflect immediately
+  const liveSubject  = selSubject  ? subjects.find((s: any) => s.id === selSubject.id)                              : null;
+  const liveChapter  = liveSubject && selChapter  ? liveSubject.chapters?.find((c: any) => c.id === selChapter.id)  : null;
+  const liveTopic    = liveChapter && selTopic    ? liveChapter.topics?.find((t: any) => t.id === selTopic.id)      : null;
+  const liveSubtopic = liveTopic   && selSubtopic ? liveTopic.subtopics?.find((s: any) => s.id === selSubtopic.id)  : null;
+  const liveConcept  = liveSubtopic && selConcept ? liveSubtopic.concepts?.find((c: any) => c.id === selConcept.id) : null;
+
+  const currentItems: any[] = level === 'subjects'   ? subjects
+    : level === 'chapters'  ? (liveSubject?.chapters  ?? [])
+    : level === 'topics'    ? (liveChapter?.topics    ?? [])
+    : level === 'subtopics' ? (liveTopic?.subtopics   ?? [])
+    : level === 'concepts'  ? (liveSubtopic?.concepts ?? [])
+    : level === 'points'    ? (liveConcept?.points    ?? [])
+    : [];
+
+  const hasChildren = (item: any) => {
+    if (level === 'subjects')   return (item.chapters?.length ?? 0) > 0;
+    if (level === 'chapters')   return (item.topics?.length ?? 0) > 0;
+    if (level === 'topics')     return (item.subtopics?.length ?? 0) > 0;
+    if (level === 'subtopics')  return (item.concepts?.length ?? 0) > 0;
+    if (level === 'concepts')   return (item.points?.length ?? 0) > 0;
+    return false;
+  };
+
+  const drillInto = (item: any) => {
+    setDirection(1);
+    if (level === 'subjects')   { setSelSubject(item);  setLevel('chapters'); }
+    else if (level === 'chapters')  { setSelChapter(item);  setLevel('topics'); }
+    else if (level === 'topics')    { setSelTopic(item);    setLevel('subtopics'); }
+    else if (level === 'subtopics') { setSelSubtopic(item); setLevel('concepts'); }
+    else if (level === 'concepts')  { setSelConcept(item);  setLevel('points'); }
+  };
+
+  const levelLabel: Record<Level, string> = {
+    subjects: 'Subjects', chapters: 'Chapters', topics: 'Topics',
+    subtopics: 'Subtopics', concepts: 'Concepts', points: 'Points',
+  };
+
+  const breadcrumbs = [
+    selSubject?.title, selChapter?.title, selTopic?.title,
+    selSubtopic?.title, selConcept?.title,
+  ].filter(Boolean);
+
+  const accentColor = selSubject?.color ?? '#6366f1';
+
+  return (
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} title={t('noteSearch')} icon={Search}>
+        {/* Breadcrumb */}
+        {breadcrumbs.length > 0 && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-3 flex-wrap leading-relaxed">
+            <button
+              onClick={() => { setLevel('subjects'); setSelSubject(null); setSelChapter(null); setSelTopic(null); setSelSubtopic(null); setSelConcept(null); }}
+              className="hover:text-foreground transition-colors"
+            >
+              {t('allItems')}
+            </button>
+            {breadcrumbs.map((c, i) => (
+              <React.Fragment key={i}>
+                <ChevronRight size={11} className="text-border" />
+                <span className={i === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''}>{c}</span>
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+
+        {/* Back button */}
+        {level !== 'subjects' && (
+          <button
+            onClick={goBack}
+            className="flex items-center gap-1 text-xs text-primary mb-3 hover:underline"
+          >
+            <ChevronRight size={12} className="rotate-180" />
+            Back
+          </button>
+        )}
+
+        {/* Level label */}
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2 px-1">
+          {levelLabel[level]}
+        </p>
+
+        {/* Items list */}
+        <div className="relative max-h-72 overflow-hidden">
+          <AnimatePresence mode="wait" custom={direction} initial={false}>
+            <motion.div
+              key={level}
+              custom={direction}
+              initial={{ x: direction === 1 ? 24 : -24, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: direction === 1 ? -24 : 24, opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+              className="space-y-1 max-h-72 overflow-y-auto"
+            >
+              {currentItems.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-6">No items here.</p>
+              ) : (
+                currentItems.map(item => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2 rounded-xl hover:bg-secondary/50 transition-colors group"
+                  >
+                    {/* Drill-in button */}
+                    <button
+                      onClick={() => hasChildren(item) ? drillInto(item) : undefined}
+                      className="flex-1 flex items-center gap-2.5 p-2.5 text-left min-w-0"
+                      disabled={!hasChildren(item)}
+                    >
+                      {selSubject?.color && (
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: level === 'subjects' ? item.color : accentColor }}
+                        />
+                      )}
+                      <span className="text-sm font-medium truncate flex-1">{item.title}</span>
+                      {hasChildren(item) && (
+                        <ChevronRight size={14} className="text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+
+                    {/* Note badge */}
+                    {item.note?.trim() && (
+                      <button
+                        onClick={() => setViewNote({ title: item.title, draft: item.note, path: buildPath(item) })}
+                        className="p-2 mr-1 rounded-lg hover:bg-amber-500/10 text-amber-500 shrink-0 transition-colors"
+                        title={t('viewNote')}
+                      >
+                        <StickyNote size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </Modal>
+
+      {/* Item note editor */}
+      {viewNote && (
+        <NoteEditorModal
+          isOpen={!!viewNote}
+          onClose={() => setViewNote(null)}
+          title={viewNote.title}
+          icon={StickyNote}
+          value={viewNote.draft}
+          onChange={v => setViewNote(prev => prev ? { ...prev, draft: v } : null)}
+          onClear={() => {
+            // Guard: respect editNotes permission for shared courses.
+            if (activeSharedMeta && !activeSharedMeta.permissions.editNotes) { setViewNote(null); return; }
+            setNote(viewNote.path, '');
+            setViewNote(null);
+          }}
+          onSave={() => {
+            // Guard: respect editNotes permission for shared courses.
+            if (activeSharedMeta && !activeSharedMeta.permissions.editNotes) { setViewNote(null); return; }
+            setNote(viewNote.path, viewNote.draft);
+            setViewNote(null);
+          }}
+          placeholder={t('overallNotePlaceholder')}
+          clearLabel={t('clearNote')}
+          saveLabel={t('saveNote')}
+          editAllowed={!activeSharedMeta || activeSharedMeta.permissions.editNotes}
+          downloadAllowed={!activeSharedMeta || activeSharedMeta.permissions.downloadNotes}
+          copyAllowed={!activeSharedMeta || activeSharedMeta.permissions.copyNotes}
+          pdfUserEmail={user?.email ?? ''}
+          pdfIsAdmin={isAdmin}
+          pdfIsShared={!!activeSharedMeta}
+          pdfWhatsApp={appContact.whatsapp}
+          pdfWebsite={appContact.website}
+        />
+      )}
+
+    </>
+  );
+}
+
+// ─── Overall Notes Component ─────────────────────────────────────────────────
+function OverallNotesCard() {
+  const { overallNote, setOverallNote } = useStudy();
+  const { t } = useLang();
+  const { user } = useAuth();
+  const { isAdmin, appContact } = useAdmin();
+  const { activeCourseId, sharedCoursesMeta } = useCourse();
+  const activeSharedMeta = activeCourseId ? sharedCoursesMeta[activeCourseId] : undefined;
+  const [modalOpen, setModalOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const openModal = () => {
+    setDraft(overallNote);
+    setModalOpen(true);
+  };
+
+  // Auto-open when navigated here from Global Search
+  useEffect(() => {
+    const stored = sessionStorage.getItem('study_nav_target');
+    if (!stored) return;
+    try {
+      const nav = JSON.parse(stored);
+      if (nav.kind === 'overallNote') {
+        sessionStorage.removeItem('study_nav_target');
+        setTimeout(() => openModal(), 150);
+      }
+    } catch {}
+  }, []); // eslint-disable-line
+  const closeModal = () => { setModalOpen(false); setDraft(''); };
+  const saveNote = () => {
+    // Guard: respect editNotes permission for shared courses.
+    if (activeSharedMeta && !activeSharedMeta.permissions.editNotes) { closeModal(); return; }
+    setOverallNote(draft);
+    closeModal();
+  };
+
+  const hasNote = overallNote.trim().length > 0;
+
+  return (
+    <>
+      <ScrollReveal
+        onClick={openModal}
+        className="bg-card border border-border/60 rounded-2xl p-4 mb-6 shadow-sm cursor-pointer hover:shadow-md hover:border-indigo-300/60 transition-all group"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-indigo-500/10 flex items-center justify-center shrink-0 group-hover:bg-indigo-500/20 transition-colors">
+            <NotebookPen size={17} className="text-indigo-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-indigo-600/80 tracking-wide mb-0.5">{t('overallNotes')}</p>
+            {!hasNote && (
+              <p className="text-sm text-muted-foreground italic">{t('overallNotePlaceholder')}</p>
+            )}
+          </div>
+          <div className="shrink-0 text-muted-foreground group-hover:text-indigo-500 transition-colors">
+            <Pencil size={15} />
+          </div>
+        </div>
+      </ScrollReveal>
+
+      <NoteEditorModal
+        isOpen={modalOpen}
+        onClose={closeModal}
+        title={t('editOverallNote')}
+        icon={StickyNote}
+        value={draft}
+        onChange={setDraft}
+        onClear={() => setDraft('')}
+        onSave={saveNote}
+        placeholder={t('overallNotePlaceholder')}
+        clearLabel={t('clearNote')}
+        saveLabel={t('saveNote')}
+        editAllowed={!activeSharedMeta || activeSharedMeta.permissions.editNotes}
+        downloadAllowed={!activeSharedMeta || activeSharedMeta.permissions.downloadNotes}
+        copyAllowed={!activeSharedMeta || activeSharedMeta.permissions.copyNotes}
+        pdfUserEmail={user?.email ?? ''}
+        pdfIsAdmin={isAdmin}
+        pdfIsShared={!!activeSharedMeta}
+        pdfWhatsApp={appContact.whatsapp}
+        pdfWebsite={appContact.website}
+      />
+    </>
+  );
+}
+
+export function Progress() {
+  const { user, logout, updateProfile, updateProfilePhoto } = useAuth();
+  const { subjects, settings, setCourseStartDate, setTimezone, setGlobalNoteSize, dataLoaded } = useStudy();
+  const { courses, deletedCourses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse, restoreCourse, permanentlyDeleteCourse, sharedCoursesMeta } = useCourse();
+  const { t, lang, setLang } = useLang();
+  const [, setLocation] = useLocation();
+  const { isAdmin, appContact } = useAdmin();
+  const [modals, setModals] = useState({ profile: false, settings: false, logout: false, addCourse: false, switchCourse: false });
+  const [tzSelectorOpen, setTzSelectorOpen] = useState(false);
+  const [noteSearchOpen, setNoteSearchOpen] = useState(false);
+  const [profileForm, setProfileForm] = useState({ name: user?.name || '', currentPass: '', newPass: '' });
+  const [profileError, setProfileError] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoMsg, setPhotoMsg] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Course management
+  const [newCourseName, setNewCourseName] = useState('');
+  const [newCourseError, setNewCourseError] = useState('');
+  const [newCourseLoading, setNewCourseLoading] = useState(false);
+
+  // Rename course
+  const [renamingCourse, setRenamingCourse] = useState<{ id: string; name: string } | null>(null);
+  const [renameLoading, setRenameLoading] = useState(false);
+
+  // Delete course (soft)
+  const [deletingCourse, setDeletingCourse] = useState<{ id: string; name: string } | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [cannotDeleteError, setCannotDeleteError] = useState(false);
+
+  // Trash / restore
+  const [trashModalOpen, setTrashModalOpen] = useState(false);
+  const [permDeleteTarget, setPermDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [permDeleteLoading, setPermDeleteLoading] = useState(false);
+  const [restoreLoadingId, setRestoreLoadingId] = useState<string | null>(null);
+  const [movedToTrashMsg, setMovedToTrashMsg] = useState('');
+
+  // Course Start Date state
+  const [pendingStartDate, setPendingStartDate] = useState('');
+  const [showResetConfirm1, setShowResetConfirm1] = useState(false);
+  const [showResetConfirm2, setShowResetConfirm2] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+
+  // Global note size state
+  const [noteSizeSaved, setNoteSizeSaved] = useState(false);
+
+  const granularProgress = computeGranularProgress(subjects);
+  const overallProg = granularProgress.percent;
+  const completedSubjects = subjects.filter(s => s.completed).length;
+
+  // ── Activity snaps + start-of-day baseline (for today's gain) ─────────────
+  // We store two maps in the activitySnapshots doc:
+  //   snaps      – max % seen per day  (written by StudyActivityChart)
+  //   startOfDay – % at the very first Progress page open each day (written here)
+  //
+  // today's gain = overallProg − startOfDay[today]
+  // This is always correct: for a brand-new course startOfDay is ~0;
+  // for an existing course with history it captures "where you were at the
+  // start of today's session", so gain only counts work done today.
+  const [activitySnaps, setActivitySnaps] = useState<Record<string, number>>({});
+  const [startOfDaySnaps, setStartOfDaySnaps] = useState<Record<string, number>>({});
+  const [activitySnapsLoaded, setActivitySnapsLoaded] = useState(false);
+  // Ref prevents double-writes when overallProg updates while we're waiting
+  // for the Firestore onSnapshot to confirm our write.
+  const startOfDayWritten = useRef<{ date: string; value: number } | null>(null);
+
+  useEffect(() => {
+    const uid = user?.id;
+    const courseId = activeCourseId;
+    if (!uid || !courseId) {
+      setActivitySnaps({});
+      setStartOfDaySnaps({});
+      setActivitySnapsLoaded(false);
+      startOfDayWritten.current = null;
+      return;
+    }
+    const ref = doc(db, 'users', uid, 'activitySnapshots', courseId);
+    const unsub = onSnapshot(ref, snap => {
+      if (snap.exists()) {
+        const data = snap.data() as { snaps?: Record<string, number>; startOfDay?: Record<string, number> };
+        setActivitySnaps(data.snaps ?? {});
+        setStartOfDaySnaps(data.startOfDay ?? {});
+      } else {
+        setActivitySnaps({});
+        setStartOfDaySnaps({});
+      }
+      setActivitySnapsLoaded(true);
+    });
+    return () => { unsub(); startOfDayWritten.current = null; };
+  }, [user?.id, activeCourseId]);
+
+  // Write startOfDay once per day, after both course data and snapshot doc load.
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  useEffect(() => {
+    const uid = user?.id;
+    const courseId = activeCourseId;
+    if (!uid || !courseId || !activitySnapsLoaded || !dataLoaded) return;
+    // Already persisted to Firestore for today (confirmed via onSnapshot).
+    if (todayStr in startOfDaySnaps) return;
+    // Already written this session — avoid writing again if overallProg changes.
+    if (startOfDayWritten.current?.date === todayStr) return;
+    startOfDayWritten.current = { date: todayStr, value: overallProg };
+    const ref = doc(db, 'users', uid, 'activitySnapshots', courseId);
+    updateDocQuietly(ref, { [`startOfDay.${todayStr}`]: overallProg }).catch(async (e: any) => {
+      if (e?.code === 'not-found') {
+        await setDocQuietly(ref, { startOfDay: { [todayStr]: overallProg } }, { merge: true });
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, activeCourseId, activitySnapsLoaded, dataLoaded, todayStr, startOfDaySnaps]);
+  // Note: overallProg intentionally omitted – we only want the first-open value.
+
+  // ── Progress insight computations (live) ───────────────────────────────────
+  // todayGain baseline: the last cumulative snap recorded BEFORE today.
+  // This matches exactly what the Study Activity chart shows for today's bar,
+  // and is immune to the race where the user completes tasks before opening
+  // the Progress page (which caused startOfDay to capture the post-task value,
+  // yielding 0% gain even when real progress was made).
+  const filteredActivitySnaps: Record<string, number> = settings?.courseStartDate
+    ? Object.fromEntries(Object.entries(activitySnaps).filter(([k]) => k >= settings.courseStartDate!))
+    : activitySnaps;
+  const prevCumCandidates = Object.keys(filteredActivitySnaps)
+    .filter(d => d < todayStr && (filteredActivitySnaps[d] ?? 0) > 0)
+    .sort();
+  const prevCumBaseline = prevCumCandidates.length > 0
+    ? (filteredActivitySnaps[prevCumCandidates[prevCumCandidates.length - 1]] ?? 0)
+    : 0;
+
+  const hasBaselineReady = activitySnapsLoaded && dataLoaded;
+  const todayGain = hasBaselineReady ? Math.max(0, overallProg - prevCumBaseline) : null;
+
+  const remainingPercent = Math.max(0, 100 - overallProg);
+
+  const hasTarget = !!(settings?.courseStartDate && settings?.courseTotalDays && settings.courseTotalDays > 0);
+  const courseEndDate = hasTarget
+    ? addDays(parseISO(settings!.courseStartDate!), settings!.courseTotalDays!)
+    : null;
+  const daysRemaining = courseEndDate ? differenceInCalendarDays(courseEndDate, new Date()) : null;
+  const effectiveDays = daysRemaining !== null ? Math.max(daysRemaining, 1) : null;
+  const dailyTarget = effectiveDays !== null ? remainingPercent / effectiveDays : null;
+
+  type TodayStatus = 'exceeded' | 'done' | 'behind' | 'no-target' | 'overdue' | 'no-baseline';
+  const todayStatus: TodayStatus =
+    !hasTarget || dailyTarget === null ? 'no-target'
+    : daysRemaining !== null && daysRemaining < 0 ? 'overdue'
+    : todayGain === null ? 'no-baseline'
+    : todayGain >= dailyTarget * 1.01 ? 'exceeded'
+    : todayGain >= dailyTarget * 0.99 ? 'done'
+    : 'behind';
+
+  const handleUpdateProfile = async () => {
+    if (!profileForm.name) return;
+    if (!profileForm.currentPass) {
+      setProfileError(t('currentPassRequired'));
+      return;
+    }
+    setProfileSaving(true);
+    setProfileError('');
+    try {
+      await updateProfile(profileForm.name, profileForm.currentPass, profileForm.newPass || undefined);
+      setModals({ ...modals, profile: false });
+      setProfileForm(prev => ({ ...prev, currentPass: '', newPass: '' }));
+    } catch {
+      setProfileError(t('profileUpdateFailed'));
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoUploading(true);
+    setPhotoMsg('');
+    try {
+      await updateProfilePhoto(file);
+      setPhotoMsg(t('photoUpdated'));
+    } catch {
+      setPhotoMsg(t('photoUpdateFailed'));
+    } finally {
+      setPhotoUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const openProfileModal = () => {
+    setProfileForm({ name: user?.name || '', currentPass: '', newPass: '' });
+    setProfileError('');
+    setPhotoMsg('');
+    setModals({ ...modals, profile: true });
+  };
+
+  // Course Start Date handlers
+  const handleStartDateRequest = () => {
+    if (!pendingStartDate) return;
+    setShowResetConfirm1(true);
+  };
+
+  const handleConfirm1 = () => {
+    setShowResetConfirm1(false);
+    setShowResetConfirm2(true);
+  };
+
+  const handleConfirm2 = () => {
+    setCourseStartDate(pendingStartDate);
+    setShowResetConfirm2(false);
+    setPendingStartDate('');
+    setResetSuccess(true);
+    setTimeout(() => setResetSuccess(false), 5000);
+  };
+
+  // Rename course handler
+  const handleRenameCourse = async () => {
+    if (!renamingCourse || !renamingCourse.name.trim()) return;
+    setRenameLoading(true);
+    try {
+      await renameCourse(renamingCourse.id, renamingCourse.name.trim());
+      setRenamingCourse(null);
+    } catch { /* ignore */ } finally {
+      setRenameLoading(false);
+    }
+  };
+
+  // Delete course handler (soft delete → trash)
+  const handleDeleteCourse = async () => {
+    if (!deletingCourse) return;
+    if (courses.length <= 1) {
+      setDeletingCourse(null);
+      setCannotDeleteError(true);
+      setTimeout(() => setCannotDeleteError(false), 4000);
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      await deleteCourse(deletingCourse.id);
+      setDeletingCourse(null);
+      setModals(m => ({ ...m, switchCourse: false }));
+      setMovedToTrashMsg(lang === 'bn'
+        ? `"${deletingCourse.name}" ট্র্যাশে সরানো হয়েছে। ১ বছরের মধ্যে রিস্টোর করুন।`
+        : `"${deletingCourse.name}" moved to trash. You can restore it within 1 year.`);
+      setTimeout(() => setMovedToTrashMsg(''), 5000);
+    } catch { /* ignore */ } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // Permanently delete a trashed course
+  const handlePermanentDelete = async () => {
+    if (!permDeleteTarget) return;
+    setPermDeleteLoading(true);
+    try {
+      await permanentlyDeleteCourse(permDeleteTarget.id);
+      setPermDeleteTarget(null);
+    } catch { /* ignore */ } finally {
+      setPermDeleteLoading(false);
+    }
+  };
+
+  // Restore a trashed course
+  const handleRestore = async (courseId: string) => {
+    setRestoreLoadingId(courseId);
+    try {
+      await restoreCourse(courseId);
+    } catch { /* ignore */ } finally {
+      setRestoreLoadingId(null);
+    }
+  };
+
+  // Add new course
+  const handleAddCourse = async () => {
+    if (!newCourseName.trim()) {
+      setNewCourseError(t('courseNameRequired'));
+      return;
+    }
+    setNewCourseLoading(true);
+    setNewCourseError('');
+    try {
+      await createCourse(newCourseName.trim());
+      setNewCourseName('');
+      setModals({ ...modals, addCourse: false });
+    } catch {
+      setNewCourseError(t('registerError'));
+    } finally {
+      setNewCourseLoading(false);
+    }
+  };
+
+  return (
+    <Layout>
+      {/* ── Gradient header banner ── */}
+      <div className="sticky top-0 z-20 relative overflow-hidden rounded-b-2xl" style={{ background: 'linear-gradient(135deg, hsl(152 70% 42%) 0%, hsl(172 70% 38%) 50%, hsl(192 85% 45%) 100%)' }}>
+        <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl" />
+        <div className="relative px-5 pt-5 pb-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+            <button onClick={() => window.location.reload()} className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg shrink-0 cursor-pointer hover:bg-white/30 transition-colors active:scale-95" title="Reload">
+              <UserIcon size={20} className="text-white" strokeWidth={2.2} />
+            </button>
+            <h1 className="font-bold text-white leading-tight truncate min-w-0" style={{ fontSize: 'clamp(1rem, 4.5vw, 1.5rem)', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{t('profileTab')}</h1>
+          </div>
+          <div className="flex gap-1 sm:gap-2 items-center shrink-0">
+            <NotificationBell />
+            <motion.button
+              whileTap={{ scale: 0.93 }}
+              onClick={() => setNoteSearchOpen(true)}
+              title={t('noteSearch')}
+              className="p-2 sm:p-2.5 bg-white/15 text-white rounded-full hover:bg-white/25 transition-colors border border-white/20 shrink-0"
+            >
+              <Search size={16} className="sm:hidden" />
+              <Search size={18} className="hidden sm:block" />
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.93 }}
+              onClick={() => setModals({ ...modals, settings: true })}
+              className="p-2 sm:p-2.5 bg-white/15 text-white rounded-full hover:bg-white/25 transition-colors border border-white/20 shrink-0"
+            >
+              <Settings size={16} className="sm:hidden" />
+              <Settings size={18} className="hidden sm:block" />
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.93 }}
+              onClick={() => setModals({ ...modals, logout: true })}
+              className="p-2 sm:p-2.5 bg-white/15 text-white rounded-full hover:bg-white/25 transition-colors border border-white/20 shrink-0"
+            >
+              <LogOut size={16} className="sm:hidden" />
+              <LogOut size={18} className="hidden sm:block" />
+            </motion.button>
+          </div>
+        </div>
+      </div>
+      <div className="p-5">
+        {/* Moved to trash toast */}
+        <AnimatePresence>
+          {movedToTrashMsg && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="flex items-center gap-2.5 mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-2xl shadow-sm"
+            >
+              <Trash2 size={14} className="text-amber-500 shrink-0" />
+              <p className="text-xs text-amber-700 font-medium flex-1">{movedToTrashMsg}</p>
+              <button
+                onClick={() => { setMovedToTrashMsg(''); setTrashModalOpen(true); }}
+                className="text-xs text-amber-600 font-semibold underline underline-offset-2 shrink-0"
+              >
+                {lang === 'bn' ? 'ট্র্যাশ দেখুন' : 'View Trash'}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* User Card */}
+        <ScrollReveal className="mb-5">
+        <div
+          onClick={openProfileModal}
+          className="bg-card rounded-3xl p-5 shadow-lg shadow-black/5 border border-border/50 flex items-center gap-4 cursor-pointer hover:shadow-xl transition-all group"
+        >
+          {/* Avatar */}
+          <div className="relative shrink-0">
+            <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-2xl border-2 border-primary/20 overflow-hidden shadow-md group-hover:ring-2 group-hover:ring-primary/30 transition-all">
+              {user?.photoURL ? (
+                <img src={user.photoURL} alt={user?.name} className="w-full h-full object-cover" />
+              ) : (
+                <span>{user?.name.charAt(0).toUpperCase()}</span>
+              )}
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-primary rounded-full flex items-center justify-center shadow-sm">
+              <Camera size={11} className="text-primary-foreground" />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-bold text-foreground leading-tight truncate">{user?.name}</h2>
+            <p className="text-sm text-muted-foreground font-medium truncate">{user?.email}</p>
+            <p className="text-xs text-primary/70 font-medium mt-0.5">{t('editProfile')}</p>
+          </div>
+          <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center text-muted-foreground group-hover:bg-primary/10 transition-colors">
+            <UserIcon size={16} />
+          </div>
+        </div>
+        </ScrollReveal>
+
+        {/* Active Course Card */}
+        <ScrollReveal className="mb-6">
+        <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-3xl p-4 border border-primary/20 shadow-sm">
+          {/* Top row: label + add button — perfectly parallel */}
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <p className="text-[10px] sm:text-xs font-semibold text-primary/70 uppercase tracking-wider whitespace-nowrap shrink-0">{t('currentCourse')}</p>
+            <button
+              onClick={() => { setNewCourseName(''); setNewCourseError(''); setModals({ ...modals, addCourse: true }); }}
+              className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-primary border border-primary/60 bg-transparent hover:bg-primary/8 transition-colors px-2 sm:px-3 py-1 sm:py-1.5 rounded-full whitespace-nowrap shrink-0"
+              title={t('addCourse')}
+            >
+              <Plus size={14} className="shrink-0" />
+              <span>{t('addCourse')}</span>
+            </button>
+          </div>
+          {/* Bottom row: icon + course name + rename/switch */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+                <BookMarked size={18} className="text-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-foreground text-sm line-clamp-2 break-words">{activeCourse?.name ?? '—'}</p>
+                {activeCourseId && sharedCoursesMeta[activeCourseId]?.actualExpiresAt && (
+                  <p className="text-[10px] text-indigo-500 font-medium mt-0.5 flex items-center gap-1">
+                    <span>🔗</span>
+                    <span className="font-mono font-bold tabular-nums">
+                      <Countdown targetMs={sharedCoursesMeta[activeCourseId].actualExpiresAt!} lang={lang} />
+                    </span>
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-1.5 shrink-0">
+              {/* Hide rename if this is a shared course where admin has disabled renaming */}
+              {(!activeCourseId || !sharedCoursesMeta[activeCourseId] || sharedCoursesMeta[activeCourseId].permissions.renameCourse !== false) && (
+              <button
+                onClick={() => activeCourse && setRenamingCourse({ id: activeCourse.id, name: activeCourse.name })}
+                className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-muted-foreground bg-secondary hover:bg-secondary/70 transition-colors px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl whitespace-nowrap"
+                title={t('renameCourse')}
+              >
+                <Pencil size={11} />
+                <span className="hidden sm:inline">{t('rename')}</span>
+              </button>
+              )}
+              {courses.length > 1 && (
+                <button
+                  onClick={() => setModals({ ...modals, switchCourse: true })}
+                  className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl whitespace-nowrap"
+                  title={t('switchCourse')}
+                >
+                  <ArrowLeftRight size={11} />
+                  <span className="hidden sm:inline">{t('switchCourse')}</span>
+                </button>
+              )}
+              {deletedCourses.length > 0 && (
+                <button
+                  onClick={() => setTrashModalOpen(true)}
+                  className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-amber-600 bg-amber-500/10 hover:bg-amber-500/20 transition-colors px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl whitespace-nowrap"
+                  title={lang === 'bn' ? 'ট্র্যাশ' : 'Trash'}
+                >
+                  <Trash2 size={11} />
+                  <span className="hidden sm:inline">{lang === 'bn' ? 'ট্র্যাশ' : 'Trash'}</span>
+                  <span className="bg-amber-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center shrink-0">
+                    {deletedCourses.length}
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        </ScrollReveal>
+
+        {/* Overall Notes Card */}
+        <OverallNotesCard />
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <ScrollReveal className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="text-primary bg-primary/10 w-9 h-9 rounded-full flex items-center justify-center shrink-0">
+                <ShieldCheck size={18} />
+              </div>
+              <motion.p
+                key={completedSubjects}
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="text-3xl font-bold text-foreground"
+              >
+                {completedSubjects}
+              </motion.p>
+            </div>
+            <p className="text-[11px] sm:text-xs font-semibold text-muted-foreground tracking-normal whitespace-nowrap">{t('completed')} {t('subjects')}</p>
+          </ScrollReveal>
+          <ScrollReveal className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col justify-center">
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="text-green-500 bg-green-500/10 w-9 h-9 rounded-full flex items-center justify-center shrink-0">
+                <BookOpen size={18} />
+              </div>
+              <p className="text-3xl font-bold text-foreground">{subjects.length}</p>
+            </div>
+            <p className="text-[11px] sm:text-xs font-semibold text-muted-foreground tracking-normal whitespace-nowrap">{t('activeSubjects')}</p>
+          </ScrollReveal>
+        </div>
+
+        {/* Study Activity Chart */}
+        <ScrollReveal className="mb-0">
+          <StudyActivityChart
+            key={activeCourseId ?? ''}
+            uid={user?.id ?? ''}
+            courseId={activeCourseId ?? ''}
+            overallProg={overallProg}
+            startDate={settings?.courseStartDate}
+            dataLoaded={dataLoaded}
+          />
+        </ScrollReveal>
+
+        {/* Big Progress */}
+        <ScrollReveal className="mb-6">
+        <div className="bg-card rounded-3xl p-6 shadow-md border border-border/50 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
+            <Target size={120} />
+          </div>
+          <h3 className="font-bold text-foreground mb-4 relative z-10">{t('overallProgress')}</h3>
+
+          {/* Percent row */}
+          <div className="flex items-end justify-between mb-1 relative z-10">
+            <motion.span
+              key={overallProg}
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="text-5xl font-black text-primary leading-none"
+            >
+              {formatProgressPercent(overallProg)}%
+            </motion.span>
+          </div>
+
+          {/* Remaining label — sits just above the progress bar */}
+          {remainingPercent > 0 && (
+            <motion.div
+              key={remainingPercent}
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-baseline justify-end gap-1 mb-1.5 relative z-10"
+            >
+              <span className="text-sm font-black text-red-400 leading-none">
+                {formatProgressPercent(remainingPercent)}%
+              </span>
+              <span className="text-[9px] font-semibold text-muted-foreground">
+                {lang === 'bn' ? 'বাকি আছে' : 'remaining'}
+              </span>
+            </motion.div>
+          )}
+          {remainingPercent === 0 && <div className="mb-3" />}
+
+          {/* Progress bar (two-tone: done + remaining) */}
+          <div className="h-4 w-full bg-secondary rounded-full overflow-hidden relative z-10 border border-border/50 shadow-inner">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.max(overallProg, overallProg > 0 ? 0.5 : 0)}%` }}
+              transition={{ duration: 1, ease: [0.34, 1.56, 0.64, 1] }}
+              className="h-full bg-gradient-to-r from-primary to-primary/60 rounded-full"
+            />
+          </div>
+          <p className="text-xs font-medium text-muted-foreground mt-2.5 relative z-10">
+            {granularProgress.completed} {t('completed')} / {granularProgress.total} {lang === 'bn' ? 'আইটেম' : 'Items'}
+          </p>
+
+          {/* ── Progress Insights ─────────────────────────────────────────── */}
+          <div className="mt-4 pt-4 border-t border-border/40 relative z-10">
+            <div className="grid grid-cols-3 gap-2">
+
+              {/* 1. Daily Target */}
+              <div className="flex flex-col items-center gap-1.5 bg-blue-500/8 border border-blue-500/15 rounded-2xl p-3">
+                <div className="w-7 h-7 rounded-full bg-blue-500/15 flex items-center justify-center">
+                  <CalendarDays size={13} className="text-blue-500" />
+                </div>
+                <motion.span
+                  key={dailyTarget ?? 'none'}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="text-sm font-black text-blue-500 leading-none tabular-nums"
+                >
+                  {dailyTarget !== null ? `${formatProgressPercent(dailyTarget)}%` : '—'}
+                </motion.span>
+                <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight whitespace-nowrap">
+                  {lang === 'bn' ? 'প্রতিদিনের লক্ষ্য' : 'Daily Target'}
+                </span>
+              </div>
+
+              {/* 2. Today's Gain */}
+              <div className={`flex flex-col items-center gap-1.5 rounded-2xl p-3 border ${
+                todayStatus === 'exceeded'    ? 'bg-emerald-500/8 border-emerald-500/20'
+                : todayStatus === 'done'      ? 'bg-green-500/8 border-green-500/20'
+                : todayStatus === 'behind'    ? 'bg-red-500/8 border-red-500/20'
+                : todayStatus === 'overdue'   ? 'bg-red-500/8 border-red-500/20'
+                : 'bg-secondary/60 border-border/30'
+              }`}>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                  todayStatus === 'exceeded'    ? 'bg-emerald-500/20'
+                  : todayStatus === 'done'      ? 'bg-green-500/20'
+                  : todayStatus === 'behind'    ? 'bg-red-500/20'
+                  : todayStatus === 'overdue'   ? 'bg-red-500/20'
+                  : 'bg-secondary'
+                }`}>
+                  {todayStatus === 'exceeded'    ? <Flame size={13} className="text-emerald-500" />
+                   : todayStatus === 'done'      ? <CheckCircle2 size={13} className="text-green-500" />
+                   : todayStatus === 'behind'    ? <TrendingDown size={13} className="text-red-400" />
+                   : todayStatus === 'overdue'   ? <AlertTriangle size={13} className="text-red-400" />
+                   : <Minus size={13} className="text-muted-foreground" />}
+                </div>
+                <motion.span
+                  key={todayGain ?? 'null'}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className={`text-sm font-black leading-none tabular-nums ${
+                    todayStatus === 'exceeded'    ? 'text-emerald-500'
+                    : todayStatus === 'done'      ? 'text-green-500'
+                    : todayStatus === 'behind'    ? 'text-red-400'
+                    : todayStatus === 'overdue'   ? 'text-red-400'
+                    : 'text-muted-foreground'
+                  }`}
+                >
+                  {todayGain === null
+                    ? '—'
+                    : todayGain > 0
+                      ? `${formatProgressPercent(todayGain)}%`
+                      : '0%'}
+                </motion.span>
+                <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight whitespace-nowrap">
+                  {lang === 'bn' ? 'আজকের অগ্রগতি' : "Today's Gain"}
+                </span>
+              </div>
+
+              {/* 3. Status badge — shows ±% gap vs daily target */}
+              <div className={`flex flex-col items-center gap-1.5 rounded-2xl p-3 border ${
+                todayStatus === 'exceeded'    ? 'bg-emerald-500/8 border-emerald-500/20'
+                : todayStatus === 'done'      ? 'bg-green-500/8 border-green-500/20'
+                : todayStatus === 'behind'    ? 'bg-red-500/8 border-red-500/20'
+                : todayStatus === 'overdue'   ? 'bg-red-500/8 border-red-500/20'
+                : 'bg-secondary/60 border-border/30'
+              }`}>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                  todayStatus === 'exceeded'    ? 'bg-emerald-500/20'
+                  : todayStatus === 'done'      ? 'bg-green-500/20'
+                  : todayStatus === 'behind'    ? 'bg-red-500/20'
+                  : todayStatus === 'overdue'   ? 'bg-red-500/20'
+                  : 'bg-secondary'
+                }`}>
+                  {todayStatus === 'exceeded'    ? <TrendingUp size={13} className="text-emerald-500" />
+                   : todayStatus === 'done'      ? <CheckCircle2 size={13} className="text-green-500" />
+                   : todayStatus === 'behind'    ? <TrendingDown size={13} className="text-red-400" />
+                   : todayStatus === 'overdue'   ? <AlertTriangle size={13} className="text-red-400" />
+                   : <Minus size={13} className="text-muted-foreground" />}
+                </div>
+                <motion.span
+                  key={todayStatus + String(todayGain)}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className={`text-sm font-black leading-none tabular-nums text-center ${
+                    todayStatus === 'exceeded'    ? 'text-emerald-500'
+                    : todayStatus === 'done'      ? 'text-green-500'
+                    : todayStatus === 'behind'    ? 'text-red-400'
+                    : todayStatus === 'overdue'   ? 'text-red-400'
+                    : 'text-muted-foreground'
+                  }`}
+                >
+                  {todayStatus === 'exceeded' && dailyTarget !== null && todayGain !== null
+                    ? `+${formatProgressPercent(todayGain - dailyTarget)}%`
+                    : todayStatus === 'done'
+                      ? '✓'
+                    : todayStatus === 'behind' && dailyTarget !== null && todayGain !== null
+                      ? `-${formatProgressPercent(dailyTarget - todayGain)}%`
+                    : todayStatus === 'overdue'
+                      ? (lang === 'bn' ? 'সময় শেষ!' : 'Overdue!')
+                    : todayStatus === 'no-baseline'
+                      ? '—'
+                    : '—'}
+                </motion.span>
+                <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight whitespace-nowrap">
+                  {lang === 'bn' ? 'আজকের অবস্থা' : "Today's Status"}
+                </span>
+              </div>
+            </div>
+
+            {/* Deadline info row */}
+            {hasTarget && daysRemaining !== null && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`mt-3 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-semibold ${
+                  daysRemaining < 0 ? 'bg-red-500/10 text-red-500'
+                  : daysRemaining === 0 ? 'bg-amber-500/10 text-amber-600'
+                  : 'bg-secondary/70 text-muted-foreground'
+                }`}
+              >
+                <CalendarDays size={10} className="shrink-0" />
+                {lang === 'bn'
+                  ? daysRemaining < 0
+                    ? `টার্গেট তারিখ ${Math.abs(daysRemaining)} দিন আগে পেরিয়ে গেছে`
+                    : daysRemaining === 0
+                      ? 'আজই শেষ দিন — সর্বোচ্চ চেষ্টা করুন!'
+                      : `টার্গেট শেষ হতে আরও ${daysRemaining} দিন বাকি · ${safeFormat(courseEndDate?.toISOString(), 'MMM d, yyyy')}`
+                  : daysRemaining < 0
+                    ? `Deadline passed ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) !== 1 ? 's' : ''} ago`
+                    : daysRemaining === 0
+                      ? 'Last day — give it everything!'
+                      : `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} left until deadline : ${safeFormat(courseEndDate?.toISOString(), 'MMM d, yyyy')}`
+                }
+              </motion.div>
+            )}
+            {!hasTarget && (
+              <p className="mt-2.5 text-center text-[10px] text-muted-foreground font-medium">
+                {lang === 'bn'
+                  ? '📅 কোর্স কমপ্লিশন টার্গেট সেট করলে প্রতিদিনের লক্ষ্য দেখাবে'
+                  : '📅 Set a course completion target to see your daily goal'}
+              </p>
+            )}
+          </div>
+        </div>
+        </ScrollReveal>
+
+        {/* Subject Breakdown */}
+        <h3 className="font-bold text-lg mb-4 text-foreground px-1">{t('subjects')}</h3>
+        <div className="space-y-3">
+          {subjects.map((s, i) => {
+            const p = computeGranularProgress([s]).percent;
+            return (
+              <ScrollReveal
+                key={s.id}
+                direction="right"
+                delay={i * 0.08}
+                className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col gap-3"
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: s.color }} />
+                    <span className="font-bold text-foreground text-sm">{s.title}</span>
+                  </div>
+                  <span className="text-[10px] font-bold bg-secondary px-2 py-1 rounded text-muted-foreground">
+                    {safeFormat(s.deadline, 'MMM d')}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.max(p, p > 0 ? 0.5 : 0)}%` }}
+                      transition={{ duration: 0.6, delay: 0.1 * i }}
+                      className="h-full rounded-full"
+                      style={{ backgroundColor: s.color }}
+                    />
+                  </div>
+                  <span className="text-xs font-bold text-muted-foreground w-10 text-right">{formatProgressPercent(p)}%</span>
+                </div>
+              </ScrollReveal>
+            );
+          })}
+        </div>
+
+      </div>
+
+      {/* Profile Modal */}
+      <Modal
+        isOpen={modals.profile}
+        onClose={() => { setModals({ ...modals, profile: false }); setProfileError(''); setPhotoMsg(''); }}
+        title={t('editProfile')}
+        align="bottom"
+        icon={UserIcon}
+      >
+        <div className="space-y-4">
+          <div className="flex flex-col items-center gap-3 pb-2">
+            <div className="relative">
+              <div className="h-20 w-20 rounded-full bg-primary/10 border-2 border-primary/20 overflow-hidden shadow-md">
+                {user?.photoURL ? (
+                  <img src={user.photoURL} alt={user?.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-primary font-bold text-2xl">
+                    {user?.name?.charAt(0)?.toUpperCase()}
+                  </div>
+                )}
+              </div>
+              {photoUploading && (
+                <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoChange}
+            />
+            <Button
+              variant="outline"
+              className="text-xs py-2 px-4 h-auto"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={photoUploading}
+            >
+              <Camera size={13} className="mr-1.5" />
+              {user?.photoURL ? t('changePhoto') : t('uploadPhoto')}
+            </Button>
+            {photoMsg && (
+              <p className={`text-xs text-center ${photoMsg.includes(t('photoUpdated')) ? 'text-green-600' : 'text-destructive'}`}>
+                {photoMsg}
+              </p>
+            )}
+          </div>
+
+          <div className="border-t border-border/40 pt-4 space-y-3">
+            <Input placeholder={t('name')} value={profileForm.name} onChange={e => setProfileForm({ ...profileForm, name: e.target.value })} />
+            <Input type="password" placeholder={t('currentPass')} value={profileForm.currentPass} onChange={e => setProfileForm({ ...profileForm, currentPass: e.target.value })} />
+            <Input type="password" placeholder={t('newPasswordOp')} value={profileForm.newPass} onChange={e => setProfileForm({ ...profileForm, newPass: e.target.value })} />
+          </div>
+          {profileError && (
+            <p className="text-destructive text-sm bg-destructive/10 rounded-xl px-3 py-2">{profileError}</p>
+          )}
+          <Button className="w-full mt-4 py-3.5" onClick={handleUpdateProfile} disabled={profileSaving}>
+            {profileSaving ? '...' : t('saveChanges')}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Settings Modal */}
+      <Modal isOpen={modals.settings} onClose={() => setModals({ ...modals, settings: false })} title={t('settings')} align="bottom" icon={Settings}>
+        <div className="space-y-6">
+          {/* Language */}
+          <div>
+            <p className="text-sm font-semibold text-muted-foreground mb-3">{t('language')}</p>
+            <div className="flex bg-secondary p-1.5 rounded-xl relative border border-border/50">
+              <motion.div
+                layout
+                className="absolute h-10 w-[calc(50%-6px)] bg-card rounded-lg shadow-sm"
+                style={{ left: lang === 'en' ? '6px' : 'calc(50%)' }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              />
+              <button
+                className={`flex-1 h-10 z-10 font-bold text-sm transition-colors ${lang === 'en' ? 'text-primary' : 'text-muted-foreground'}`}
+                onClick={() => setLang('en')}
+              >
+                English
+              </button>
+              <button
+                className={`flex-1 h-10 z-10 font-bold text-sm transition-colors ${lang === 'bn' ? 'text-primary' : 'text-muted-foreground'}`}
+                onClick={() => setLang('bn')}
+              >
+                বাংলা
+              </button>
+            </div>
+          </div>
+
+          {/* Timezone */}
+          <div className="border-t border-border/40 pt-5">
+            <div className="flex items-center gap-2 mb-1">
+              <Globe size={15} className="text-primary" />
+              <p className="text-sm font-semibold text-foreground">{t('timezoneLabel')}</p>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">{t('timezoneDesc')}</p>
+            <button
+              onClick={() => setTzSelectorOpen(true)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 bg-secondary/70 border border-border/50 rounded-xl hover:bg-secondary transition-colors text-left"
+            >
+              {settings.timezone ? (
+                <>
+                  {(() => {
+                    const entry = getTimezoneEntry(settings.timezone);
+                    const flagUrl = entry?.code ? getFlagUrl(entry.code) : null;
+                    return flagUrl
+                      ? <img src={flagUrl} alt={entry?.country ?? ''} className="w-7 h-5 rounded-sm object-cover shrink-0" />
+                      : <Globe size={20} className="text-muted-foreground shrink-0" />;
+                  })()}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">
+                      {getTimezoneEntry(settings.timezone)?.country ?? settings.timezone}
+                    </p>
+                    <p className="text-[11px] font-mono text-muted-foreground">{getCurrentOffset(settings.timezone)}</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {(() => {
+                    const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    const entry = getTimezoneEntry(deviceTz);
+                    const flagUrl = entry?.code ? getFlagUrl(entry.code) : null;
+                    return flagUrl
+                      ? <img src={flagUrl} alt={entry?.country ?? ''} className="w-7 h-5 rounded-sm object-cover shrink-0" />
+                      : <Globe size={20} className="text-muted-foreground shrink-0" />;
+                  })()}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground">
+                      {(() => {
+                        const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                        const entry = getTimezoneEntry(deviceTz);
+                        return entry ? entry.country : deviceTz;
+                      })()}
+                    </p>
+                    <p className="text-[11px] font-mono text-muted-foreground">{Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
+                  </div>
+                </>
+              )}
+              <ChevronRight size={15} className="text-muted-foreground shrink-0" />
+            </button>
+          </div>
+
+          {/* Admin Panel shortcut */}
+          {isAdmin && (
+            <div className="border-t border-border/40 pt-5">
+              <button
+                onClick={() => { setModals({ ...modals, settings: false }); setLocation('/admin'); }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 text-primary hover:from-primary/20 hover:to-primary/10 transition-all text-sm font-semibold"
+              >
+                <ShieldCheck size={18} />
+                <span className="flex-1 text-left">{lang === 'bn' ? 'এডমিন প্যানেলে যান' : 'Switch to Admin Panel'}</span>
+                <ChevronRight size={16} className="shrink-0 opacity-60" />
+              </button>
+            </div>
+          )}
+
+          {/* Global Note Text Size */}
+          <div className="border-t border-border/40 pt-5">
+            <div className="flex items-center gap-2 mb-1">
+              <NotebookPen size={15} className="text-primary" />
+              <p className="text-sm font-semibold text-foreground">{t('globalNoteSize')}</p>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">{t('globalNoteSizeDesc')}</p>
+            <div className="flex gap-2 flex-wrap">
+              {[
+                { label: lang === 'bn' ? 'ছোট' : 'Small',    value: '11px' },
+                { label: lang === 'bn' ? 'সাধারণ' : 'Normal', value: '14px' },
+                { label: lang === 'bn' ? 'মাঝারি' : 'Medium', value: '17px' },
+                { label: lang === 'bn' ? 'বড়' : 'Large',     value: '21px' },
+                { label: lang === 'bn' ? 'অনেক বড়' : 'X-Large', value: '26px' },
+              ].map(opt => {
+                const active = (settings.globalNoteSize ?? '14px') === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => {
+                      setGlobalNoteSize(opt.value);
+                      setNoteSizeSaved(true);
+                      setTimeout(() => setNoteSizeSaved(false), 2000);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-semibold transition-all ${
+                      active
+                        ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                        : 'bg-secondary border-border/50 text-foreground hover:bg-secondary/80'
+                    }`}
+                    style={{ fontSize: opt.value }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            {noteSizeSaved && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-3 flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-200 rounded-xl"
+              >
+                <CheckCircle2 size={14} className="text-green-600 shrink-0" />
+                <p className="text-xs font-semibold text-green-700">{t('globalNoteSizeSaved')}</p>
+              </motion.div>
+            )}
+          </div>
+
+          {/* Course Starting Date */}
+          <div className="border-t border-border/40 pt-5">
+            <div className="flex items-center gap-2 mb-1">
+              <CalendarDays size={15} className="text-primary" />
+              <p className="text-sm font-semibold text-foreground">{t('courseStartDate')}</p>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">{t('courseStartDateDesc')}</p>
+
+            {settings.courseStartDate && (
+              <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-primary/5 border border-primary/20 rounded-xl">
+                <CalendarDays size={13} className="text-primary shrink-0" />
+                <div>
+                  <p className="text-[10px] text-muted-foreground font-medium">{t('courseStartDateCurrent')}</p>
+                  <p className="text-sm font-bold text-primary">
+                    {safeFormat(settings.courseStartDate, 'MMM d, yyyy')}
+                  </p>
+                </div>
+                {settings.resetScheduled && (
+                  <span className="ml-auto text-[10px] font-bold text-amber-600 bg-amber-500/10 border border-amber-200 px-2 py-0.5 rounded-full">
+                    {lang === 'bn' ? 'নির্ধারিত' : 'Scheduled'}
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={pendingStartDate}
+                onChange={e => setPendingStartDate(e.target.value)}
+                className="flex-1 text-sm rounded-xl border border-border/60 bg-secondary px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <Button
+                onClick={handleStartDateRequest}
+                disabled={!pendingStartDate}
+                className="shrink-0 px-4 py-2.5 h-auto text-sm"
+              >
+                {settings.courseStartDate ? t('courseStartDateChange') : t('courseStartDateSet')}
+              </Button>
+            </div>
+
+            {resetSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-3 flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-200 rounded-xl"
+              >
+                <CheckCircle2 size={14} className="text-green-600 shrink-0" />
+                <p className="text-xs font-semibold text-green-700">{t('courseResetScheduled')}</p>
+              </motion.div>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Timezone Selector */}
+      <TimezoneSelector
+        isOpen={tzSelectorOpen}
+        onClose={() => setTzSelectorOpen(false)}
+        value={settings.timezone}
+        onChange={tz => setTimezone(tz)}
+        lang={lang}
+      />
+
+      {/* Add New Course Modal */}
+      <Modal
+        isOpen={modals.addCourse}
+        onClose={() => { setModals({ ...modals, addCourse: false }); setNewCourseName(''); setNewCourseError(''); }}
+        title={t('addCourse')}
+        align="bottom"
+        icon={BookMarked}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">{t('courseWelcomeDescExtra')}</p>
+          <Input
+            placeholder={t('courseNamePlaceholder')}
+            value={newCourseName}
+            onChange={e => { setNewCourseName(e.target.value); setNewCourseError(''); }}
+            onKeyDown={e => { if (e.key === 'Enter') handleAddCourse(); }}
+            autoFocus
+          />
+          {newCourseError && (
+            <p className="text-destructive text-sm bg-destructive/10 rounded-xl px-3 py-2">{newCourseError}</p>
+          )}
+          <Button
+            className="w-full py-3.5"
+            onClick={handleAddCourse}
+            disabled={newCourseLoading || !newCourseName.trim()}
+          >
+            {newCourseLoading ? '...' : t('createCourseBtn')}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* My Courses Modal */}
+      <Modal
+        isOpen={modals.switchCourse}
+        onClose={() => setModals({ ...modals, switchCourse: false })}
+        title={t('switchCourse')}
+        align="bottom"
+        icon={BookOpenCheck}
+      >
+        <div className="space-y-2">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-muted-foreground">{t('selectCourse')}</p>
+            {deletedCourses.length > 0 && (
+              <button
+                onClick={() => { setModals(m => ({ ...m, switchCourse: false })); setTrashModalOpen(true); }}
+                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors px-2.5 py-1.5 rounded-xl hover:bg-destructive/8 border border-border/50"
+              >
+                <Trash2 size={12} />
+                {lang === 'bn' ? 'ট্র্যাশ' : 'Trash'} ({deletedCourses.length})
+              </button>
+            )}
+          </div>
+
+          {/* Cannot delete error */}
+          <AnimatePresence>
+            {cannotDeleteError && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="flex items-start gap-2 px-3 py-2.5 bg-destructive/10 border border-destructive/20 rounded-xl mb-2"
+              >
+                <Trash2 size={13} className="text-destructive shrink-0 mt-0.5" />
+                <p className="text-xs text-destructive font-medium">{t('cannotDeleteOnly')}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {courses.map((course, i) => {
+              const isActive = course.id === activeCourseId;
+              const canDelete = courses.length > 1;
+              const sharedMeta = sharedCoursesMeta[course.id];
+              const canRename = !sharedMeta || sharedMeta.permissions.renameCourse !== false;
+              return (
+                <motion.div
+                  key={course.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className={`flex items-center gap-2 p-3 rounded-2xl border transition-all ${
+                    isActive
+                      ? 'bg-primary/10 border-primary/30'
+                      : 'bg-secondary border-border/50'
+                  }`}
+                >
+                  {/* Switch tap area */}
+                  <button
+                    className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                    onClick={() => {
+                      switchCourse(course.id);
+                      setModals({ ...modals, switchCourse: false });
+                    }}
+                  >
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                      isActive ? 'bg-primary/20' : sharedMeta ? 'bg-indigo-500/10' : 'bg-background'
+                    }`}>
+                      {sharedMeta
+                        ? <Share2 size={15} className={isActive ? 'text-primary' : 'text-indigo-500'} />
+                        : <BookMarked size={15} className={isActive ? 'text-primary' : 'text-muted-foreground'} />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold text-sm line-clamp-2 break-words ${isActive ? 'text-primary' : 'text-foreground'}`}>
+                        {course.name}
+                      </p>
+                      {sharedMeta ? (
+                        <p className="text-[10px] text-indigo-500 font-medium mt-0.5 flex items-center gap-1 flex-wrap">
+                          <span>🔗 {lang === 'bn' ? 'শেয়ার্ড' : 'Shared'} · {sharedMeta.fromAdminName}</span>
+                          {sharedMeta.actualExpiresAt && (
+                            <span className="font-mono font-bold tabular-nums">
+                              · <Countdown targetMs={sharedMeta.actualExpiresAt} lang={lang} />
+                            </span>
+                          )}
+                        </p>
+                      ) : isActive ? (
+                        <p className="text-[10px] text-primary/60 font-medium">{t('currentCourse')}</p>
+                      ) : null}
+                    </div>
+                    {isActive && <CheckCircle2 size={15} className="text-primary shrink-0" />}
+                  </button>
+
+                  {/* Action icons */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {canRename && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRenamingCourse({ id: course.id, name: course.name });
+                      }}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+                      title={t('renameCourse')}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!canDelete) {
+                          setCannotDeleteError(true);
+                          setTimeout(() => setCannotDeleteError(false), 4000);
+                        } else {
+                          setDeletingCourse({ id: course.id, name: course.name });
+                        }
+                      }}
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
+                        canDelete
+                          ? 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
+                          : 'text-muted-foreground/30 cursor-not-allowed'
+                      }`}
+                      title={canDelete ? t('deleteCourse') : t('cannotDeleteOnly')}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>
+      </Modal>
+
+      {/* Rename Course Modal */}
+      <Modal
+        isOpen={!!renamingCourse}
+        onClose={() => setRenamingCourse(null)}
+        title={t('renameCourse')}
+        align="bottom"
+        icon={Pencil}
+      >
+        <div className="space-y-4">
+          <Input
+            placeholder={t('courseNamePlaceholder')}
+            value={renamingCourse?.name ?? ''}
+            onChange={e => setRenamingCourse(prev => prev ? { ...prev, name: e.target.value } : null)}
+            onKeyDown={e => { if (e.key === 'Enter') handleRenameCourse(); }}
+            autoFocus
+          />
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 py-3" onClick={() => setRenamingCourse(null)}>
+              {t('cancel')}
+            </Button>
+            <Button
+              className="flex-1 py-3"
+              onClick={handleRenameCourse}
+              disabled={renameLoading || !renamingCourse?.name.trim()}
+            >
+              {renameLoading ? '...' : t('rename')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Course Confirm (soft delete → trash) */}
+      <ConfirmModal
+        isOpen={!!deletingCourse}
+        onClose={() => setDeletingCourse(null)}
+        onConfirm={handleDeleteCourse}
+        title={`${t('deleteCourse')}: ${deletingCourse?.name ?? ''}`}
+        message={lang === 'bn'
+          ? 'কোর্সটি ট্র্যাশে সরানো হবে। ১ বছরের মধ্যে রিস্টোর করতে পারবেন।'
+          : 'Course will be moved to trash. You can restore it within 1 year.'}
+        confirmText={lang === 'bn' ? 'ট্র্যাশে সরাও' : 'Move to Trash'}
+        cancelText={t('cancel')}
+        isDanger={true}
+      />
+
+      {/* Trash Modal */}
+      <Modal
+        isOpen={trashModalOpen}
+        onClose={() => setTrashModalOpen(false)}
+        title={lang === 'bn' ? 'ট্র্যাশ' : 'Trash'}
+        align="bottom"
+        icon={Trash2}
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground mb-3">
+            {lang === 'bn'
+              ? 'ডিলিট করা কোর্সগুলো ১ বছর পর্যন্ত এখানে থাকবে।'
+              : 'Deleted courses are kept here for up to 1 year.'}
+          </p>
+
+          {deletedCourses.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 gap-3 text-muted-foreground">
+              <Trash2 size={36} className="opacity-20" />
+              <p className="text-sm">{lang === 'bn' ? 'ট্র্যাশ খালি' : 'Trash is empty'}</p>
+            </div>
+          ) : (
+            <AnimatePresence>
+              {deletedCourses.map((course, i) => {
+                const daysLeft = Math.ceil((365 * 24 * 60 * 60 * 1000 - (Date.now() - course.deletedAt)) / (24 * 60 * 60 * 1000));
+                const isRestoring = restoreLoadingId === course.id;
+                return (
+                  <motion.div
+                    key={course.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="flex items-center gap-3 p-3 rounded-2xl border border-border/50 bg-secondary/50"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-background flex items-center justify-center shrink-0">
+                      <BookMarked size={15} className="text-muted-foreground/60" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-foreground truncate">{course.name}</p>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Clock size={10} className="text-amber-500 shrink-0" />
+                        <p className="text-[10px] text-amber-600 font-medium">
+                          {lang === 'bn' ? `${daysLeft} দিন বাকি` : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {/* Restore */}
+                      <button
+                        onClick={() => handleRestore(course.id)}
+                        disabled={!!isRestoring}
+                        className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-2.5 py-1.5 rounded-xl disabled:opacity-50"
+                        title={lang === 'bn' ? 'রিস্টোর করুন' : 'Restore'}
+                      >
+                        {isRestoring
+                          ? <span className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                          : <RotateCcw size={12} />}
+                        <span className="hidden sm:inline">{lang === 'bn' ? 'রিস্টোর' : 'Restore'}</span>
+                      </button>
+                      {/* Permanent delete */}
+                      <button
+                        onClick={() => setPermDeleteTarget({ id: course.id, name: course.name })}
+                        className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        title={lang === 'bn' ? 'চিরতরে মুছুন' : 'Delete permanently'}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          )}
+        </div>
+      </Modal>
+
+      {/* Permanent Delete Confirm */}
+      <ConfirmModal
+        isOpen={!!permDeleteTarget}
+        onClose={() => setPermDeleteTarget(null)}
+        onConfirm={handlePermanentDelete}
+        title={lang === 'bn' ? 'চিরতরে মুছে ফেলুন' : 'Delete Permanently'}
+        message={lang === 'bn'
+          ? `"${permDeleteTarget?.name ?? ''}" এবং সকল ডেটা চিরতরে মুছে যাবে। এটি পূর্বাবস্থায় ফেরানো যাবে না।`
+          : `"${permDeleteTarget?.name ?? ''}" and all its data will be permanently erased. This cannot be undone.`}
+        confirmText={lang === 'bn' ? 'চিরতরে মুছুন' : 'Delete Forever'}
+        cancelText={t('cancel')}
+        isDanger={true}
+      />
+
+      {/* Logout Confirm */}
+      <ConfirmModal
+        isOpen={modals.logout}
+        onClose={() => setModals({ ...modals, logout: false })}
+        onConfirm={logout}
+        title={t('logout')}
+        message={t('logoutConfirm')}
+        confirmText={t('yes')}
+        cancelText={t('no')}
+        isDanger={true}
+      />
+
+      {/* Course Reset - First Confirmation */}
+      <ConfirmModal
+        isOpen={showResetConfirm1}
+        onClose={() => setShowResetConfirm1(false)}
+        onConfirm={handleConfirm1}
+        title={t('courseResetConfirm1Title')}
+        message={t('courseResetConfirm1Msg')}
+        confirmText={t('courseResetProceeed')}
+        cancelText={t('cancel')}
+        isDanger={true}
+      />
+
+      {/* Course Reset - Second Confirmation */}
+      <ConfirmModal
+        isOpen={showResetConfirm2}
+        onClose={() => setShowResetConfirm2(false)}
+        onConfirm={handleConfirm2}
+        title={t('courseResetConfirm2Title')}
+        message={t('courseResetConfirm2Msg')}
+        confirmText={t('courseResetAbsoluteSure')}
+        cancelText={t('cancel')}
+        isDanger={true}
+      />
+
+      {/* Note Search */}
+      <NoteSearchModal isOpen={noteSearchOpen} onClose={() => setNoteSearchOpen(false)} />
+    </Layout>
+  );
+}

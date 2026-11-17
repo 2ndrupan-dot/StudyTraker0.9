@@ -1,0 +1,260 @@
+You are upgrading an AI-powered learning system.
+
+Do NOT rebuild logic.
+ONLY enhance UI/UX, animations, and visual experience along with existing intelligent features.
+
+-----------------------------------
+🔷 1. DESIGN SYSTEM (MODERN UI)
+-----------------------------------
+
+Use clean, minimal, modern design:
+
+- Soft background (light or dark mode)
+- Card-based layout
+- Rounded corners (12px–20px)
+- Subtle shadows
+- Consistent spacing
+
+Typography:
+- Clear hierarchy (Title > Subtitle > Meta)
+- Level labels (L1–L6) small & muted
+
+-----------------------------------
+🔷 2. COLOR SYSTEM
+-----------------------------------
+
+Use calm and readable colors:
+
+- Primary: soft blue / indigo
+- Success: green
+- Warning: orange
+- Danger: red
+- Neutral: grey tones
+
+Avoid overly bright or harsh colors
+
+-----------------------------------
+🔷 3. ACCORDION INTERACTION (IMPORTANT)
+-----------------------------------
+
+Subject / Chapter / Topic list:
+
+- Only ONE section open at a time
+- Clicking another → previous closes
+
+Animation:
+- Smooth expand/collapse (300ms ease)
+- Height + opacity transition
+
+-----------------------------------
+🔷 4. LEVEL LABEL UI
+-----------------------------------
+
+Each item must display:
+
+Title (L3)
+
+Style:
+- Smaller font (70%)
+- Light grey color
+- Inline
+
+-----------------------------------
+🔷 5. PROGRESS VISUALIZATION
+-----------------------------------
+
+Add visual indicators:
+
+1. Progress bar under each item
+2. Circular progress (optional)
+3. Text:
+   - "2/5 completed"
+   - "40% done"
+
+Animation:
+- Progress bar fills smoothly
+
+-----------------------------------
+🔷 6. COMPLETION STATES UI
+-----------------------------------
+
+Use clear visual states:
+
+1. Not Started:
+   - Grey
+2. In Progress:
+   - Blue highlight
+3. Fully Completed:
+   - Green + check icon
+
+Animation:
+- Checkmark appears with scale effect
+
+-----------------------------------
+🔷 7. OVERVIEW UI
+-----------------------------------
+
+Overview must be visually different:
+
+- Slight background highlight
+- Label:
+  "Overview"
+
+When completed:
+- Show "Overview Completed"
+
+-----------------------------------
+🔷 8. DAILY ROUTINE UI
+-----------------------------------
+
+Design as cards:
+
+Each task card shows:
+- Title + Level
+- Time required
+- Progress
+- Status
+
+Interactions:
+- Swipe to complete (optional)
+- Tap to expand
+
+-----------------------------------
+🔷 9. COMPLETED ITEMS HANDLING
+-----------------------------------
+
+- Fade out completed items
+- Move to "Completed Today"
+
+Animation:
+- Slide + fade transition
+
+-----------------------------------
+🔷 10. BACKLOG HIGHLIGHT
+-----------------------------------
+
+If item is carried forward:
+
+- Show "Pending" badge
+- Slight red/orange highlight
+
+-----------------------------------
+🔷 11. DASHBOARD UI
+-----------------------------------
+
+Create top dashboard:
+
+Show:
+
+- Total progress bar
+- Days completed vs total
+- Expected vs actual progress
+
+Use:
+- Cards
+- Animated numbers
+
+-----------------------------------
+🔷 12. CONTINUE LEARNING BUTTON
+-----------------------------------
+
+Sticky button:
+
+- "Continue Learning"
+
+Behavior:
+- Scroll to last active item
+
+Animation:
+- Smooth scroll
+
+-----------------------------------
+🔷 13. MICRO-ANIMATIONS
+-----------------------------------
+
+Add subtle animations:
+
+- Button press → scale down
+- Card hover → slight lift
+- Toggle switch → smooth slide
+- Loading → skeleton screens
+
+-----------------------------------
+🔷 14. LOADING EXPERIENCE
+-----------------------------------
+
+Use skeleton loaders:
+
+- Instead of blank screen
+- Match layout shape
+
+-----------------------------------
+🔷 15. EMPTY STATES
+-----------------------------------
+
+When no data:
+
+Show friendly UI:
+- Icon
+- Message
+- CTA button
+
+Example:
+"No tasks today 🎉"
+
+-----------------------------------
+🔷 16. SETTINGS UI
+-----------------------------------
+
+Clean settings layout:
+
+- Section cards
+- Toggle switches
+- Date picker (for course start)
+
+-----------------------------------
+🔷 17. CONFIRMATION MODAL (RESET)
+-----------------------------------
+
+Use modal popup:
+
+- Dark overlay
+- Center card
+
+Step 1:
+Warning message
+
+Step 2:
+Final confirmation
+
+Animation:
+- Fade + scale in
+
+-----------------------------------
+🔷 18. RESPONSIVE DESIGN
+-----------------------------------
+
+Ensure:
+
+- Mobile-first design
+- Smooth scrolling
+- Touch-friendly spacing
+
+-----------------------------------
+🔷 19. PERFORMANCE RULES
+-----------------------------------
+
+- Use lazy loading
+- Avoid heavy animations
+- Optimize re-renders
+
+-----------------------------------
+🔷 FINAL INSTRUCTION
+-----------------------------------
+
+- Maintain clean, premium UI
+- Animations must be smooth, not distracting
+- Focus on usability + clarity
+
+If anything unclear:
+ASK USER

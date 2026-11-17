@@ -1,0 +1,164 @@
+You are upgrading an existing AI-powered learning system built with Firebase.
+
+Do NOT rebuild the system.
+ONLY extend and enhance with the following features.
+
+-----------------------------------
+🔷 1. LEVEL LABEL DISPLAY IN DAILY ROUTINE
+-----------------------------------
+
+Currently, level labels (L1–L6) are shown in Subject Section.
+
+Now implement the SAME behavior in the Daily Routine page.
+
+Requirements:
+
+1. Every item in Daily Routine must display its level:
+   Example:
+   - বাংলা (L1)
+   - বাংলা গ্রামার (L2)
+   - সমাস (L3)
+   - সমাস ১ (L4)
+   - ধারণা A (L5)
+   - উদাহরণ (L6)
+
+2. UI Rules:
+   - Show level in brackets → (L1–L6)
+   - Small font size (70% of title)
+   - Muted/light color
+   - Inline with title
+
+3. Must be dynamically rendered from stored level data
+
+4. Should work for ALL items shown in routine:
+   - Topic
+   - Subtopic
+   - Concept
+   - Point
+
+-----------------------------------
+🔷 2. SETTINGS PAGE ENHANCEMENT
+-----------------------------------
+
+Add a new section in Settings:
+
+Settings Options:
+1. Language (existing)
+2. Course Starting Date (NEW)
+
+-----------------------------------
+🔷 3. COURSE START DATE SYSTEM (CRITICAL FEATURE)
+-----------------------------------
+
+User must be able to:
+
+- Select a course starting date
+- Edit/change the date anytime
+
+-----------------------------------
+🔷 4. COURSE RESET LOGIC
+-----------------------------------
+
+When user sets or changes the course starting date:
+
+1. The entire course must RESET
+
+2. Reset includes:
+   - All progress → cleared
+   - manual_complete → false
+   - auto_complete → false
+   - progress_percentage → 0
+   - routine → regenerated
+   - completed items → removed
+
+3. All content becomes:
+   - Unlocked based on initial rules
+   - Fresh learning state
+
+-----------------------------------
+🔷 5. RESET EXECUTION TIME
+-----------------------------------
+
+The reset must NOT happen instantly.
+
+Instead:
+
+- Execute reset at:
+  Selected date → 12:00 AM (midnight)
+
+-----------------------------------
+🔷 6. DOUBLE CONFIRMATION SYSTEM (VERY IMPORTANT)
+-----------------------------------
+
+Because this is a destructive action:
+
+1. When user selects date → show first confirmation:
+
+   Message:
+   "This will restart your entire course from the selected date. All progress will be lost."
+
+2. On confirm → show SECOND confirmation:
+
+   Message:
+   "Are you absolutely sure? This action cannot be undone."
+
+3. Only after second confirmation → save change
+
+-----------------------------------
+🔷 7. SAFETY RULES
+-----------------------------------
+
+- Prevent accidental reset
+- Require explicit confirmation
+- Do NOT allow silent reset
+
+-----------------------------------
+🔷 8. FIREBASE IMPLEMENTATION
+-----------------------------------
+
+Update user_settings:
+
+Add fields:
+- course_start_date
+- reset_scheduled (boolean)
+
+-----------------------------------
+
+Create Cloud Function:
+
+Trigger:
+- On update of course_start_date
+
+Function:
+1. Schedule reset job at selected date (12 AM)
+2. On execution:
+   - Clear progress collection
+   - Reset all content_items completion fields
+   - Delete old routines
+   - Generate new routine
+
+-----------------------------------
+🔷 9. UI FEEDBACK
+-----------------------------------
+
+After saving:
+
+Show message:
+"Course restart scheduled successfully"
+
+Optional:
+Show countdown or next restart date
+
+-----------------------------------
+🔷 FINAL INSTRUCTION
+-----------------------------------
+
+This is a sensitive feature.
+
+- Ensure data safety
+- Ensure proper confirmation
+- Ensure reset works exactly once
+- Avoid duplicate triggers
+
+If anything is unclear:
+ASK USER before implementing

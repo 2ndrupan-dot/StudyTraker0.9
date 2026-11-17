@@ -1,0 +1,3586 @@
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'wouter';
+import {
+  ShieldCheck, Users, Send, List, Plus, Trash2, Edit3, Check, X,
+  BookOpen, StickyNote, ChevronRight, ChevronLeft, Clock, ArrowLeft,
+  UserCheck, UserMinus, RefreshCw, Eye, EyeOff, Save, MessageSquare,
+  TimerReset, ListPlus, Undo2, AlertTriangle, Archive, Search,
+  Phone, Globe, Link2, MessageCircle, Infinity, RotateCcw, OctagonX, CheckCheck,
+  ClipboardList, Play, Trophy,
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
+import { useAdmin, SharePermissions, ShareRequest, NoteShareItem, AdminRolePermissions, VisibleAdminEntry, DEFAULT_ADMIN_ROLE_PERMISSIONS } from '@/context/AdminContext';
+import { useCourse } from '@/context/CourseContext';
+import { useStudy } from '@/context/StudyContext';
+import { useLang } from '@/context/LangContext';
+import { Button, Input, Modal } from '@/components/ui';
+import { RichTextPreview } from '@/components/RichTextEditor';
+import { Countdown, AdminTermCountdown, CountUp } from '@/components/Countdown';
+import type { Subject } from '@/lib/types';
+import { useTest } from '@/context/TestContext';
+import type { TestCard } from '@/context/TestContext';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatDuration(value: number, unit: string, lang: string) {
+  if (lang === 'bn') {
+    const m: Record<string, string> = { minutes: 'মিনিট', hours: 'ঘণ্টা', days: 'দিন', months: 'মাস' };
+    return `${value} ${m[unit] || unit}`;
+  }
+  return `${value} ${unit}`;
+}
+
+function formatDate(ts: number) {
+  return new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function statusColor(status: string) {
+  if (status === 'pending') return 'bg-amber-500/10 text-amber-700';
+  if (status === 'accepted') return 'bg-green-500/10 text-green-700';
+  return 'bg-red-500/10 text-red-600';
+}
+
+function typeIcon(type: ShareRequest['type'], size = 16) {
+  if (type === 'course') return <BookOpen size={size} />;
+  if (type === 'message') return <MessageSquare size={size} />;
+  if (type === 'testcard') return <ClipboardList size={size} />;
+  return <StickyNote size={size} />;
+}
+
+function typeColorClass(type: ShareRequest['type']) {
+  if (type === 'course') return 'bg-indigo-500/10 text-indigo-600';
+  if (type === 'message') return 'bg-sky-500/10 text-sky-600';
+  if (type === 'testcard') return 'bg-violet-500/10 text-violet-600';
+  return 'bg-amber-500/10 text-amber-600';
+}
+
+/** Human-readable title for any share card, handling multi-note shares. */
+function shareTitle(share: ShareRequest, lang: string): string {
+  if (share.type === 'course') return share.courseName || '—';
+  if (share.type === 'message') return share.messageText || '—';
+  if (share.type === 'testcard') return share.testCardTitle || '—';
+  if (share.notes && share.notes.length > 1) {
+    return lang === 'bn' ? `${share.notes.length}টি নোট` : `${share.notes.length} notes`;
+  }
+  return share.notes?.[0]?.title || share.noteTitle || '—';
+}
+
+const DEFAULT_PERMISSIONS: SharePermissions = {
+  editNotes: false,
+  deleteNotes: false,
+  downloadNotes: false,
+  copyNotes: false,
+  renameCourse: false,
+  addItems: false,
+  takeScreenshot: false,
+  selectCopyText: false,
+};
+
+// ─── Note Picker (drill-down through subjects hierarchy) ──────────────────────
+
+type NoteLevel = 'subjects' | 'chapters' | 'topics' | 'subtopics' | 'concepts' | 'points';
+
+interface NotePick {
+  title: string;
+  html: string;
+  breadcrumb: string[];
+}
+
+function NotePicker({
+  subjects,
+  onToggle,
+  pickedIds,
+  lang,
+}: {
+  subjects: Subject[];
+  /** Toggles the given item in/out of the multi-select list. */
+  onToggle: (pick: NotePick & { id: string }) => void;
+  /** ids of notes already selected — used to render the checked state. */
+  pickedIds: Set<string>;
+  lang: string;
+}) {
+  const [level, setLevel] = useState<NoteLevel>('subjects');
+  const [sel, setSel] = useState<{
+    subject?: any; chapter?: any; topic?: any; subtopic?: any; concept?: any;
+  }>({});
+  const [dir, setDir] = useState<1 | -1>(1);
+
+  const liveSubject = sel.subject ? subjects.find(s => s.id === sel.subject.id) : null;
+  const liveChapter = liveSubject && sel.chapter ? liveSubject.chapters?.find(c => c.id === sel.chapter.id) : null;
+  const liveTopic = liveChapter && sel.topic ? liveChapter.topics?.find(t => t.id === sel.topic.id) : null;
+  const liveSubtopic = liveTopic && sel.subtopic ? liveTopic.subtopics?.find(s => s.id === sel.subtopic.id) : null;
+  const liveConcept = liveSubtopic && sel.concept ? liveSubtopic.concepts?.find(c => c.id === sel.concept.id) : null;
+
+  const currentItems: any[] = {
+    subjects,
+    chapters: liveSubject?.chapters ?? [],
+    topics: liveChapter?.topics ?? [],
+    subtopics: liveTopic?.subtopics ?? [],
+    concepts: liveSubtopic?.concepts ?? [],
+    points: liveConcept?.points ?? [],
+  }[level] ?? [];
+
+  const hasChildren = (item: any) => {
+    if (level === 'subjects') return (item.chapters?.length ?? 0) > 0;
+    if (level === 'chapters') return (item.topics?.length ?? 0) > 0;
+    if (level === 'topics') return (item.subtopics?.length ?? 0) > 0;
+    if (level === 'subtopics') return (item.concepts?.length ?? 0) > 0;
+    if (level === 'concepts') return (item.points?.length ?? 0) > 0;
+    return false;
+  };
+
+  const buildBreadcrumb = (): string[] =>
+    [sel.subject?.title, sel.chapter?.title, sel.topic?.title, sel.subtopic?.title, sel.concept?.title].filter(Boolean);
+
+  const drillDown = (item: any) => {
+    setDir(1);
+    const next: Record<NoteLevel, NoteLevel> = {
+      subjects: 'chapters', chapters: 'topics', topics: 'subtopics',
+      subtopics: 'concepts', concepts: 'points', points: 'points',
+    };
+    if (level === 'subjects') setSel({ subject: item });
+    else if (level === 'chapters') setSel(s => ({ ...s, chapter: item }));
+    else if (level === 'topics') setSel(s => ({ ...s, topic: item }));
+    else if (level === 'subtopics') setSel(s => ({ ...s, subtopic: item }));
+    else if (level === 'concepts') setSel(s => ({ ...s, concept: item }));
+    setLevel(next[level]);
+  };
+
+  const goBack = () => {
+    setDir(-1);
+    const prev: Partial<Record<NoteLevel, NoteLevel>> = {
+      chapters: 'subjects', topics: 'chapters', subtopics: 'topics',
+      concepts: 'subtopics', points: 'concepts',
+    };
+    if (prev[level]) {
+      setLevel(prev[level]!);
+      if (level === 'chapters') setSel({});
+      else if (level === 'topics') setSel(s => ({ subject: s.subject }));
+      else if (level === 'subtopics') setSel(s => ({ subject: s.subject, chapter: s.chapter }));
+      else if (level === 'concepts') setSel(s => ({ subject: s.subject, chapter: s.chapter, topic: s.topic }));
+      else if (level === 'points') setSel(s => ({ subject: s.subject, chapter: s.chapter, topic: s.topic, subtopic: s.subtopic }));
+    }
+  };
+
+  const pickNote = (item: any) => {
+    const html = item.note || '';
+    const breadcrumb = [...buildBreadcrumb(), item.title];
+    onToggle({ id: item.id, title: item.title, html, breadcrumb });
+  };
+
+  const accentColor = sel.subject?.color ?? '#6366f1';
+  const levelLabel: Record<NoteLevel, string> = lang === 'bn'
+    ? { subjects: 'সাবজেক্ট', chapters: 'চ্যাপ্টার', topics: 'টপিক', subtopics: 'সাবটপিক', concepts: 'কনসেপ্ট', points: 'পয়েন্ট' }
+    : { subjects: 'Subjects', chapters: 'Chapters', topics: 'Topics', subtopics: 'Subtopics', concepts: 'Concepts', points: 'Points' };
+  const collectNotes = (items: any[], parentBreadcrumb: string[]): Array<NotePick & { id: string }> => {
+    const result: Array<NotePick & { id: string }> = [];
+    for (const item of items) {
+      const breadcrumb = [...parentBreadcrumb, item.title];
+      if (item.note?.trim()) {
+        result.push({ id: item.id, title: item.title, html: item.note, breadcrumb });
+      }
+      const childKey: Record<NoteLevel, string | undefined> = {
+        subjects: 'chapters',
+        chapters: 'topics',
+        topics: 'subtopics',
+        subtopics: 'concepts',
+        concepts: 'points',
+        points: undefined,
+      };
+      const children = childKey[level] ? item[childKey[level]!] : [];
+      if (Array.isArray(children)) result.push(...collectNotes(children, breadcrumb));
+    }
+    return result;
+  };
+  const selectableNotes = collectNotes(currentItems, buildBreadcrumb());
+  const allNotesSelected = selectableNotes.length > 0 && selectableNotes.every(note => pickedIds.has(note.id));
+
+  return (
+    <div className="space-y-3">
+      {/* Breadcrumb */}
+      {buildBreadcrumb().length > 0 && (
+        <div className="flex items-center gap-1 flex-wrap text-xs text-muted-foreground">
+          <button onClick={() => { setLevel('subjects'); setSel({}); }} className="hover:text-foreground transition-colors">
+            {lang === 'bn' ? 'সব' : 'All'}
+          </button>
+          {buildBreadcrumb().map((c, i) => (
+            <React.Fragment key={i}>
+              <ChevronRight size={10} />
+              <span className={i === buildBreadcrumb().length - 1 ? 'text-foreground font-medium' : ''}>{c}</span>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+
+      {level !== 'subjects' && (
+        <button onClick={goBack} className="flex items-center gap-1 text-xs text-primary hover:underline">
+          <ChevronLeft size={12} />
+          {lang === 'bn' ? 'ফিরে যান' : 'Back'}
+        </button>
+      )}
+
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{levelLabel[level]}</p>
+        {selectableNotes.length > 0 && (
+          <button
+            onClick={() => {
+              if (allNotesSelected) {
+                selectableNotes.forEach(note => onToggle(note));
+              } else {
+                selectableNotes.filter(note => !pickedIds.has(note.id)).forEach(note => onToggle(note));
+              }
+            }}
+            className="text-[11px] font-semibold text-primary hover:underline"
+          >
+            {allNotesSelected
+              ? (lang === 'bn' ? 'সব বাদ দিন' : 'Deselect all')
+              : (lang === 'bn' ? 'সব সিলেক্ট' : 'Select all')}
+          </button>
+        )}
+      </div>
+
+      <div className="relative max-h-48 overflow-hidden">
+        <AnimatePresence mode="wait" custom={dir} initial={false}>
+          <motion.div
+            key={level}
+            custom={dir}
+            initial={{ x: dir === 1 ? 20 : -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: dir === 1 ? -20 : 20, opacity: 0 }}
+            transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
+            className="space-y-1 max-h-48 overflow-y-auto"
+          >
+            {currentItems.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">
+                {lang === 'bn' ? 'কিছু নেই।' : 'Nothing here.'}
+              </p>
+            ) : currentItems.map(item => (
+              <div key={item.id} className="flex items-center gap-2 rounded-xl hover:bg-secondary/60 transition-colors group">
+                <button
+                  onClick={() => hasChildren(item) ? drillDown(item) : undefined}
+                  className="flex-1 flex items-center gap-2.5 p-2.5 text-left min-w-0"
+                  disabled={!hasChildren(item) && !item.note}
+                >
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: level === 'subjects' ? item.color : accentColor }} />
+                  <span className="text-sm font-medium truncate flex-1">{item.title}</span>
+                  {hasChildren(item) && <ChevronRight size={13} className="text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100" />}
+                </button>
+                {item.note?.trim() && (
+                  <button
+                    onClick={() => pickNote(item)}
+                    className={cn(
+                      "flex items-center gap-1 p-2 mr-1 rounded-lg text-xs font-semibold shrink-0 transition-colors",
+                      pickedIds.has(item.id)
+                        ? "bg-green-500/15 text-green-700 hover:bg-green-500/25"
+                        : "bg-primary/10 text-primary hover:bg-primary/20"
+                    )}
+                  >
+                    {pickedIds.has(item.id) && <Check size={11} />}
+                    {pickedIds.has(item.id)
+                      ? (lang === 'bn' ? 'যোগ হয়েছে' : 'Added')
+                      : (lang === 'bn' ? 'সিলেক্ট' : 'Select')}
+                  </button>
+                )}
+              </div>
+            ))}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+// ─── Note Pages Picker (standalone "Notes" section — notePagesIndex) ─────────
+// Unlike NotePicker (which drills through the subjects hierarchy), standalone
+// note pages only have metadata (id/title) in memory — the HTML content lives
+// in a separate Firestore doc per page. Selecting a page fetches that content
+// on demand via loadNotePage() and produces the same NotePick shape used by
+// the subject-tree picker, so the rest of the send/accept pipeline (NoteShareItem,
+// shareRequest.notes[]) needs no changes at all.
+function NotePagesPicker({
+  notePagesIndex,
+  loadNotePage,
+  onToggle,
+  pickedIds,
+  lang,
+}: {
+  notePagesIndex: { id: string; title: string }[];
+  loadNotePage: (id: string) => Promise<{ html?: string } | null>;
+  onToggle: (pick: NotePick & { id: string }) => void;
+  pickedIds: Set<string>;
+  lang: string;
+}) {
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [loadingAll, setLoadingAll] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredPages = searchQuery.trim()
+    ? notePagesIndex.filter(page => page.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : notePagesIndex;
+
+  const handlePick = async (page: { id: string; title: string }) => {
+    if (pickedIds.has(page.id)) {
+      // Already selected — toggling off doesn't need the content.
+      onToggle({ id: page.id, title: page.title, html: '', breadcrumb: [lang === 'bn' ? 'নোট' : 'Notes', page.title] });
+      return;
+    }
+    setLoadingId(page.id);
+    try {
+      const full = await loadNotePage(page.id);
+      onToggle({
+        id: page.id,
+        title: page.title,
+        html: full?.html || '',
+        breadcrumb: [lang === 'bn' ? 'নোট' : 'Notes', page.title],
+      });
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  if (notePagesIndex.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground text-center py-6">
+        {lang === 'bn' ? 'কোনো নোট নেই।' : 'No notes yet.'}
+      </p>
+    );
+  }
+
+  const allFilteredSelected = filteredPages.length > 0 && filteredPages.every(page => pickedIds.has(page.id));
+  const handleSelectAll = async () => {
+    if (allFilteredSelected) {
+      filteredPages.forEach(page => {
+        if (pickedIds.has(page.id)) {
+          onToggle({ id: page.id, title: page.title, html: '', breadcrumb: [lang === 'bn' ? 'নোট' : 'Notes', page.title] });
+        }
+      });
+      return;
+    }
+    setLoadingAll(true);
+    try {
+      for (const page of filteredPages) {
+        if (pickedIds.has(page.id)) continue;
+        const full = await loadNotePage(page.id);
+        onToggle({
+          id: page.id,
+          title: page.title,
+          html: full?.html || '',
+          breadcrumb: [lang === 'bn' ? 'নোট' : 'Notes', page.title],
+        });
+      }
+    } finally {
+      setLoadingAll(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder={lang === 'bn' ? 'নোট খুঁজুন...' : 'Search notes...'}
+            className="w-full pl-8 pr-8 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={handleSelectAll}
+          disabled={loadingAll || filteredPages.length === 0}
+          className="text-[11px] font-semibold text-primary hover:underline whitespace-nowrap disabled:opacity-50"
+        >
+          {allFilteredSelected
+            ? (lang === 'bn' ? 'সব বাদ দিন' : 'Deselect all')
+            : (lang === 'bn' ? 'সব সিলেক্ট' : 'Select all')}
+        </button>
+      </div>
+      <div className="space-y-1 max-h-52 overflow-y-auto">
+        {filteredPages.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-5">
+            {lang === 'bn' ? `"${searchQuery}"-এর সাথে কোনো নোট মিলছে না` : `No notes match "${searchQuery}"`}
+          </p>
+        ) : filteredPages.map(page => (
+          <div key={page.id} className="flex items-center gap-2 p-2.5 rounded-xl hover:bg-secondary/60 transition-colors">
+            <StickyNote size={14} className="text-primary shrink-0" />
+            <span className="text-sm font-medium truncate flex-1">{page.title}</span>
+            <button
+              onClick={() => handlePick(page)}
+              disabled={loadingId === page.id || loadingAll}
+              className={cn(
+                "flex items-center gap-1 p-2 rounded-lg text-xs font-semibold shrink-0 transition-colors disabled:opacity-60",
+                pickedIds.has(page.id)
+                  ? "bg-green-500/15 text-green-700 hover:bg-green-500/25"
+                  : "bg-primary/10 text-primary hover:bg-primary/20"
+              )}
+            >
+              {pickedIds.has(page.id) && <Check size={11} />}
+              {loadingId === page.id
+                ? (lang === 'bn' ? 'লোড হচ্ছে...' : 'Loading...')
+                : pickedIds.has(page.id)
+                  ? (lang === 'bn' ? 'যোগ হয়েছে' : 'Added')
+                  : (lang === 'bn' ? 'সিলেক্ট' : 'Select')}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin Role Permissions Editor ────────────────────────────────────────────
+
+function AdminRolePermissionsEditor({
+  permissions, onChange, lang, allowedKeys,
+}: {
+  permissions: AdminRolePermissions;
+  onChange: (p: AdminRolePermissions) => void;
+  lang: string;
+  /** If provided, only show items whose key is in this set (used when a
+   *  non-super admin is adding/editing another admin — they can't grant
+   *  permissions they don't have themselves). */
+  allowedKeys?: Set<keyof AdminRolePermissions>;
+}) {
+  const allItems: { key: keyof AdminRolePermissions; label: string; sublabel: string; color: string }[] = [
+    {
+      key: 'canShareReceivedContent',
+      label: lang === 'bn' ? 'রিসিভড কন্টেন্ট শেয়ার করতে পারবে' : 'Can re-share received content',
+      sublabel: lang === 'bn' ? 'অন্য এডমিনের শেয়ার করা কোর্স/নোট পুনরায় শেয়ার করতে পারবে' : 'Can share courses/notes received from another admin',
+      color: 'text-teal-600',
+    },
+    {
+      key: 'canEditContacts',
+      label: lang === 'bn' ? 'কন্টাক্ট তথ্য এডিট করতে পারবে' : 'Can edit contact info',
+      sublabel: lang === 'bn' ? 'এডমিন প্যানেলে WhatsApp, ওয়েবসাইট ও সাপোর্ট লিঙ্ক পরিবর্তন করতে পারবে' : 'Can update WhatsApp, website & support link in admin panel',
+      color: 'text-blue-600',
+    },
+    {
+      key: 'canViewOtherAdmins',
+      label: lang === 'bn' ? 'অন্যান্য এডমিনের তালিকা দেখতে পারবে' : 'Can view other admins',
+      sublabel: lang === 'bn' ? 'নিজের ও সুপার এডমিনের বাইরে অন্যান্য এডমিনের ইমেইল দেখতে পারবে' : 'Can see other admins\' emails beyond own & super admin',
+      color: 'text-purple-600',
+    },
+    {
+      key: 'canAddAdmins',
+      label: lang === 'bn' ? 'নতুন এডমিন যোগ করতে পারবে' : 'Can add new admins',
+      sublabel: lang === 'bn' ? 'অন্য ইউজারকে এডমিন হিসেবে যোগ করতে এবং তাদের পারমিশন ম্যানেজ করতে পারবে' : 'Can add users as admins and manage their permissions',
+      color: 'text-orange-600',
+    },
+  ];
+
+  const items = allowedKeys ? allItems.filter(i => allowedKeys.has(i.key)) : allItems;
+
+  if (items.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground italic text-center py-3 bg-secondary/40 rounded-xl px-3">
+        {lang === 'bn'
+          ? 'আপনার কাছে এমন কোনো পারমিশন নেই যা আপনি অন্যকে দিতে পারেন।'
+          : 'You have no permissions that you can grant to others.'}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.map(({ key, label, sublabel, color }) => (
+        <button
+          key={key}
+          onClick={() => onChange({ ...permissions, [key]: !permissions[key] })}
+          className="w-full flex items-start gap-3 p-3 rounded-xl hover:bg-secondary/60 transition-colors text-left"
+        >
+          <div className={cn(
+            "w-5 h-5 rounded flex items-center justify-center border-2 shrink-0 transition-all mt-0.5",
+            permissions[key] ? "bg-primary border-primary" : "border-border bg-transparent"
+          )}>
+            {permissions[key] && <Check size={11} className="text-white" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className={cn("text-sm font-semibold block", color)}>{label}</span>
+            <span className="text-[11px] text-muted-foreground leading-tight">{sublabel}</span>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Permissions Checkboxes ────────────────────────────────────────────────────
+
+function PermissionsEditor({
+  permissions, onChange, lang, allowedKeys,
+}: {
+  permissions: SharePermissions;
+  onChange: (p: SharePermissions) => void;
+  lang: string;
+  /** If provided, only show items whose key is in this set (used when the
+   *  content being shared was originally received from another admin — the
+   *  re-sharer can only grant permissions they themselves received). */
+  allowedKeys?: Set<keyof SharePermissions>;
+}) {
+  const allItems: { key: keyof SharePermissions; label: string; color: string; divider?: boolean }[] = [
+    { key: 'downloadNotes', label: lang === 'bn' ? 'নোট ডাউনলোড করতে পারবে'  : 'Can download notes',       color: 'text-green-600' },
+    { key: 'copyNotes',     label: lang === 'bn' ? 'নোট কপি করতে পারবে'       : 'Can copy notes',           color: 'text-purple-600', divider: true },
+    { key: 'renameCourse',  label: lang === 'bn' ? 'কোর্সের নাম পরিবর্তন করতে পারবে' : 'Can rename course', color: 'text-orange-600', divider: true },
+    { key: 'takeScreenshot', label: lang === 'bn' ? 'স্ক্রিনশট / স্ক্রিন রেকর্ড নিতে পারবে' : 'Can take screenshots',      color: 'text-rose-600' },
+    { key: 'selectCopyText', label: lang === 'bn' ? 'টেক্সট সিলেক্ট করে কপি করতে পারবে'    : 'Can select & copy text',    color: 'text-cyan-600' },
+  ];
+
+  const items = allowedKeys ? allItems.filter(i => allowedKeys.has(i.key)) : allItems;
+
+  if (items.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground italic text-center py-3 bg-secondary/40 rounded-xl px-3">
+        {lang === 'bn'
+          ? 'এই শেয়ার করা কন্টেন্টের জন্য আপনার কাছে কোনো পারমিশন দেওয়ার সুযোগ নেই।'
+          : 'You have no grantable permissions for this received content.'}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.map(({ key, label, color, divider }) => (
+        <React.Fragment key={key}>
+          {divider && <div className="border-t border-border/50 my-1" />}
+          <button
+            onClick={() => onChange({ ...permissions, [key]: !permissions[key] })}
+            className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-secondary/60 transition-colors text-left"
+          >
+            <div className={cn(
+              "w-5 h-5 rounded flex items-center justify-center border-2 shrink-0 transition-all",
+              permissions[key] ? "bg-primary border-primary" : "border-border bg-transparent"
+            )}>
+              {permissions[key] && <Check size={11} className="text-white" />}
+            </div>
+            <span className={cn("text-sm font-medium", color)}>{label}</span>
+          </button>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+// ─── Sent Shares List ─────────────────────────────────────────────────────────
+
+/** Format a millisecond duration into a compact human-readable string, e.g.
+ *  "3d 2h 15m" or "45m 30s". Returns "0s" when remainingMs ≤ 0. */
+function formatFrozenMs(remainingMs: number, lang: string): string {
+  if (remainingMs <= 0) return lang === 'bn' ? '০ সে' : '0s';
+  const totalSec = Math.floor(remainingMs / 1000);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+
+  if (lang === 'bn') {
+    const parts: string[] = [];
+    if (d > 0) parts.push(`${d}দি`);
+    if (h > 0) parts.push(`${h}ঘ`);
+    if (m > 0) parts.push(`${m}মি`);
+    if (s > 0 && d === 0) parts.push(`${s}সে`);
+    return parts.join(' ') || '০ সে';
+  }
+  const parts: string[] = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  if (s > 0 && d === 0) parts.push(`${s}s`);
+  return parts.join(' ') || '0s';
+}
+
+function SentShareRow({
+  share, lang,
+  onEditPermissions,
+  onDelete,
+  onExtend,
+  onAddSubjects,
+  onResend,
+  isSelected,
+  onToggleSelect,
+}: {
+  share: ShareRequest;
+  lang: string;
+  onEditPermissions: (share: ShareRequest) => void;
+  onDelete: (share: ShareRequest) => void;
+  onExtend: (share: ShareRequest) => void;
+  onAddSubjects: (share: ShareRequest) => void;
+  onResend: (shareId: string) => void;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
+}) {
+  const [resending, setResending] = React.useState(false);
+
+  // For note/message shares, "declined" means the recipient deleted the
+  // notification themselves rather than the admin cancelling a pending share.
+  const declinedLabel = share.type === 'course'
+    ? (lang === 'bn' ? 'প্রত্যাখ্যান করেছে' : 'Rejected')
+    : share.type === 'testcard'
+      ? (lang === 'bn' ? 'ক্যান্সেল করেছে' : 'Cancelled by user')
+      : (lang === 'bn' ? 'ইউজার ডিলিট করেছে' : 'Deleted by user');
+
+  const countdownTarget = share.status === 'accepted' ? share.actualExpiresAt : share.pendingExpiresAt;
+
+  // ── Revoked state (admin was removed; card frozen) ────────────────────────
+  if (share.adminRevoked) {
+    // Calculate how much time was left on the clock at the moment of revocation.
+    const frozenMs = countdownTarget && share.revokedAt
+      ? Math.max(0, countdownTarget - share.revokedAt)
+      : null;
+
+    return (
+      <div className={cn("bg-card border-2 rounded-2xl p-4 space-y-3 opacity-90", isSelected ? "border-primary/70" : "border-red-400/40")}>
+        <div className="flex items-start gap-3">
+          {onToggleSelect && (
+            <button
+              onClick={e => { e.stopPropagation(); onToggleSelect(); }}
+              className={cn(
+                "mt-1 w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
+                isSelected ? "bg-primary border-primary" : "border-border bg-card hover:border-primary"
+              )}
+            >
+              {isSelected && <Check size={11} className="text-primary-foreground" />}
+            </button>
+          )}
+          <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0 opacity-60", typeColorClass(share.type))}>
+            {typeIcon(share.type, 16)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-foreground truncate">
+              {shareTitle(share, lang)}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">→ {share.toEmail}</p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-red-500/15 text-red-700 dark:text-red-400">
+                {lang === 'bn' ? 'বাতিল হয়েছে' : 'Revoked'}
+              </span>
+              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                <Clock size={9} />
+                {formatDuration(share.durationValue, share.durationUnit, lang)}
+              </span>
+              <span className="text-[10px] text-muted-foreground">{formatDate(share.sentAt)}</span>
+            </div>
+            {/* Frozen timer — shows the exact remaining time when the admin was removed */}
+            <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/10">
+              <OctagonX size={10} className="text-red-600" />
+              <span className="text-[11px] font-mono font-bold text-red-700 dark:text-red-400 tabular-nums">
+                {frozenMs !== null
+                  ? formatFrozenMs(frozenMs, lang)
+                  : (lang === 'bn' ? 'থামানো' : 'Stopped')}
+              </span>
+              {frozenMs !== null && (
+                <span className="text-[9px] text-red-600/70">
+                  {lang === 'bn' ? 'বাকি ছিল' : 'was left'}
+                </span>
+              )}
+            </div>
+            {/* Revocation note */}
+            <p className="text-[10px] text-red-700 dark:text-red-400 mt-1.5 font-medium">
+              {lang === 'bn'
+                ? 'থামানো হয়েছে কারণ আপনি অ্যাডমিন রাইটস হারিয়েছিলেন।'
+                : 'Stopped because you lost admin rights.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={async () => { setResending(true); try { await onResend(share.id); } finally { setResending(false); } }}
+            disabled={resending}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-teal-500/15 text-teal-800 dark:text-teal-200 hover:bg-teal-500/25 transition-colors text-xs font-semibold disabled:opacity-50"
+          >
+            <RotateCcw size={12} className={resending ? 'animate-spin' : ''} />
+            {resending
+              ? (lang === 'bn' ? 'পাঠানো হচ্ছে…' : 'Resending…')
+              : (lang === 'bn' ? 'রিসেন্ড করুন' : 'Resend')}
+          </button>
+          <button
+            onClick={() => onDelete(share)}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold"
+          >
+            <Trash2 size={12} />
+            {lang === 'bn' ? 'ডিলিট' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn("bg-card border-2 rounded-2xl p-4 space-y-3", isSelected ? "border-primary/70" : "border-border")}>
+      <div className="flex items-start gap-3">
+        {onToggleSelect && (
+          <button
+            onClick={e => { e.stopPropagation(); onToggleSelect(); }}
+            className={cn(
+              "mt-1 w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
+              isSelected ? "bg-primary border-primary" : "border-border/60 bg-card hover:border-primary/50"
+            )}
+          >
+            {isSelected && <Check size={11} className="text-primary-foreground" />}
+          </button>
+        )}
+        <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", typeColorClass(share.type))}>
+          {typeIcon(share.type, 16)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-foreground truncate">
+            {shareTitle(share, lang)}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">→ {share.toEmail}</p>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-semibold", statusColor(share.status))}>
+              {share.status === 'pending'
+                ? (lang === 'bn' ? 'অপেক্ষমাণ' : 'Pending')
+                : share.status === 'accepted'
+                  ? (lang === 'bn' ? 'গৃহীত' : 'Accepted')
+                  : declinedLabel}
+            </span>
+            {share.recipientDeleted && share.status === 'accepted' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-red-500/15 text-red-700 dark:text-red-400 flex items-center gap-1">
+                <Trash2 size={9} />
+                {lang === 'bn' ? 'ইউজার ডিলিট করেছে' : 'Deleted by user'}
+              </span>
+            )}
+            <span className={cn(
+              "text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1",
+              share.seenAt ? "bg-blue-500/10 text-blue-600" : "bg-secondary text-muted-foreground"
+            )}>
+              {share.seenAt ? <Eye size={10} /> : <EyeOff size={10} />}
+              {share.seenAt
+                ? (lang === 'bn' ? `দেখেছে · ${formatDate(share.seenAt)}` : `Seen · ${formatDate(share.seenAt)}`)
+                : (lang === 'bn' ? 'দেখেনি' : 'Not seen')}
+            </span>
+            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+              <Clock size={9} />
+              {formatDuration(share.durationValue, share.durationUnit, lang)}
+            </span>
+            <span className="text-[10px] text-muted-foreground">{formatDate(share.sentAt)}</span>
+          </div>
+          {(share.status === 'pending' || share.status === 'accepted') && countdownTarget && !share.recipientDeleted && (
+            <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-primary/10">
+              <Clock size={10} className="text-primary" />
+              <span className="text-[11px] font-mono font-bold text-primary tabular-nums">
+                <Countdown targetMs={countdownTarget} lang={lang} />
+              </span>
+              <span className="text-[9px] text-primary/70">
+                {lang === 'bn' ? 'বাকি' : 'left'}
+              </span>
+            </div>
+          )}
+          {share.recipientDeleted && share.recipientDeletedAt && (
+            <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/10">
+              <Trash2 size={10} className="text-red-600" />
+              <span className="text-[11px] font-mono font-bold text-red-700 dark:text-red-400 tabular-nums">
+                <CountUp startMs={share.recipientDeletedAt} lang={lang} />
+              </span>
+              <span className="text-[9px] text-red-600/70">
+                {lang === 'bn' ? 'আগে ডিলিট করেছে' : 'ago deleted'}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {(share.status === 'pending' || share.status === 'accepted') && share.type !== 'message' && share.type !== 'testcard' && (
+          <button
+            onClick={() => onEditPermissions(share)}
+            className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-secondary text-foreground hover:bg-secondary/70 transition-colors text-xs font-semibold"
+          >
+            <Edit3 size={12} />
+            {lang === 'bn' ? 'অনুমতি' : 'Permissions'}
+          </button>
+        )}
+        {(share.status === 'pending' || share.status === 'accepted') && (
+          <button
+            onClick={() => onExtend(share)}
+            className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 transition-colors text-xs font-semibold"
+          >
+            <TimerReset size={12} />
+            {lang === 'bn' ? 'সময় বাড়ান' : 'Extend Time'}
+          </button>
+        )}
+        {share.status === 'accepted' && share.type === 'course' && (
+          <button
+            onClick={() => onAddSubjects(share)}
+            className="flex-1 min-w-[45%] flex items-center justify-center gap-1.5 py-2 rounded-xl bg-teal-500/10 text-teal-600 hover:bg-teal-500/20 transition-colors text-xs font-semibold"
+          >
+            <ListPlus size={12} />
+            {lang === 'bn' ? 'সাবজেক্ট ম্যানেজ করুন' : 'Manage Subjects'}
+          </button>
+        )}
+        <button
+          onClick={() => onDelete(share)}
+          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold"
+        >
+          <Trash2 size={12} />
+          {lang === 'bn' ? 'ডিলিট' : 'Delete'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Trashed Share Row ─────────────────────────────────────────────────────
+
+function TrashedShareRow({
+  share, lang, onRestore, onPermanentDelete, isSelected, onToggleSelect,
+}: {
+  share: ShareRequest;
+  lang: string;
+  onRestore: (shareId: string) => void;
+  onPermanentDelete: (share: ShareRequest) => void;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
+}) {
+  return (
+    <div className={cn("bg-card border-2 rounded-2xl p-4 space-y-3 opacity-90", isSelected ? "border-primary/70" : "border-border")}>
+      <div className="flex items-start gap-3">
+        {onToggleSelect && (
+          <button
+            onClick={e => { e.stopPropagation(); onToggleSelect(); }}
+            className={cn(
+              "mt-1 w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
+              isSelected ? "bg-primary border-primary" : "border-border/60 bg-card hover:border-primary/50"
+            )}
+          >
+            {isSelected && <Check size={11} className="text-primary-foreground" />}
+          </button>
+        )}
+        <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", typeColorClass(share.type))}>
+          {typeIcon(share.type, 16)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-foreground truncate">
+            {shareTitle(share, lang)}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">→ {share.toEmail}</p>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            {/* How did this card end up in Trash? */}
+            {share.recipientAction === 'declined' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 bg-red-500/15 text-red-700 dark:text-red-400">
+                <X size={9} />
+                {lang === 'bn' ? 'নোটিফিকেশন থেকে ডিলিট করেছে' : 'Rejected from notification'}
+              </span>
+            )}
+            {share.recipientAction === 'accepted_then_deleted' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 bg-orange-500/15 text-orange-700 dark:text-orange-400">
+                <CheckCheck size={9} />
+                {lang === 'bn' ? 'একসেপ্ট করে পরে ডিলিট করেছে' : 'Accepted then deleted'}
+              </span>
+            )}
+            {share.recipientAction === 'opened' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 bg-green-500/15 text-green-700 dark:text-green-400">
+                <Eye size={9} />
+                {lang === 'bn' ? 'খুলে দেখেছে (ডেলিভারি সম্পন্ন)' : 'Opened (delivered)'}
+              </span>
+            )}
+            {share.recipientAction === 'completed' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 bg-violet-500/15 text-violet-700 dark:text-violet-400">
+                <Trophy size={9} />
+                {lang === 'bn' ? 'টেস্ট সম্পন্ন করেছে' : 'Test completed'}
+              </span>
+            )}
+            {/* Seen timestamp */}
+            {share.seenAt && share.recipientAction !== 'opened' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 bg-blue-500/10 text-blue-600">
+                <Eye size={10} />
+                {lang === 'bn' ? `দেখেছে · ${formatDate(share.seenAt)}` : `Seen · ${formatDate(share.seenAt)}`}
+              </span>
+            )}
+          </div>
+          {share.trashedAt && (
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {share.trashedByRecipient
+                ? (lang === 'bn' ? `ট্রাস্টে এসেছে · ${formatDate(share.trashedAt)}` : `Moved to trash · ${formatDate(share.trashedAt)}`)
+                : (lang === 'bn' ? `ডিলিট করা হয়েছে · ${formatDate(share.trashedAt)}` : `Deleted · ${formatDate(share.trashedAt)}`)}
+            </p>
+          )}
+          {/* Show live countdown timer if share still has time remaining */}
+          {(() => {
+            const timerTarget = share.trashedFromStatus === 'accepted'
+              ? share.actualExpiresAt
+              : share.pendingExpiresAt;
+            if (!timerTarget || timerTarget <= Date.now()) return null;
+            return (
+              <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-primary/10">
+                <Clock size={10} className="text-primary" />
+                <span className="text-[11px] font-mono font-bold text-primary tabular-nums">
+                  <Countdown targetMs={timerTarget} lang={lang} />
+                </span>
+                <span className="text-[9px] text-primary/70">
+                  {lang === 'bn' ? 'বাকি' : 'left'}
+                </span>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onRestore(share.id)}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-green-500/10 text-green-700 hover:bg-green-500/20 transition-colors text-xs font-semibold"
+        >
+          <Undo2 size={12} />
+          {lang === 'bn' ? 'পুনরুদ্ধার' : 'Restore'}
+        </button>
+        <button
+          onClick={() => onPermanentDelete(share)}
+          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold"
+        >
+          <Trash2 size={12} />
+          {lang === 'bn' ? 'স্থায়ীভাবে মুছুন' : 'Delete Forever'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Admin Panel ──────────────────────────────────────────────────────────
+
+export function AdminPanel() {
+  const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const { lang } = useLang();
+  const { isAdmin, isSuperAdmin, adminEmails, loadingAdmins, addAdmin, removeAdmin,
+    visibleAdmins, currentAdminPermissions, updateAdminPermissions, updateAdminDuration,
+    makeAdminPermanent,
+    sendShare, sentShares, trashedShares, loadingSentShares, updateSharePermissions,
+    extendShare, getCourseSubjectsForShare, addSubjectsToShare, removeSubjectsFromShare,
+    trashShare, restoreShare, permanentlyDeleteShare, resendShare,
+    appContact, saveContactSettings, acceptedShares } = useAdmin();
+  const { courses, activeCourse } = useCourse();
+  const {
+    subjects,
+    notePagesIndex,
+    personalNotePagesIndex,
+    loadNotePage,
+    loadPersonalNotePage,
+  } = useStudy();
+  const { testDecks, personalTestDecks } = useTest();
+
+  const [tab, setTab] = useState<'admins' | 'share' | 'sent' | 'contact'>('admins');
+  const [sentSubTab, setSentSubTab] = useState<'active' | 'trash'>('active');
+
+  // ── Contact tab state ──
+  const [contactForm, setContactForm] = useState({ whatsapp: '', website: '', supportLink: '' });
+  const [savingContact, setSavingContact] = useState(false);
+  const [contactSaved, setContactSaved] = useState(false);
+
+  // Sync form whenever Firestore data loads/updates
+  useEffect(() => {
+    setContactForm({ whatsapp: appContact.whatsapp, website: appContact.website, supportLink: appContact.supportLink });
+  }, [appContact.whatsapp, appContact.website, appContact.supportLink]);
+
+  // ── Admins tab state ──
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPermissions, setNewAdminPermissions] = useState<AdminRolePermissions>({ ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
+  const [showNewAdminPerms, setShowNewAdminPerms] = useState(false);
+  // Duration / expiry for new admin
+  const [newAdminHasExpiry, setNewAdminHasExpiry] = useState(false);
+  const [newAdminDurationValue, setNewAdminDurationValue] = useState(7);
+  const [newAdminDurationRaw, setNewAdminDurationRaw] = useState('7');
+  const [newAdminDurationUnit, setNewAdminDurationUnit] = useState<'minutes' | 'hours' | 'days' | 'months'>('days');
+  const [addingAdmin, setAddingAdmin] = useState(false);
+  const [adminError, setAdminError] = useState('');
+  const [removingEmail, setRemovingEmail] = useState<string | null>(null);
+  const [confirmRemoveEmail, setConfirmRemoveEmail] = useState<string | null>(null);
+  // Edit permissions modal for an existing admin
+  const [editAdminPermEntry, setEditAdminPermEntry] = useState<VisibleAdminEntry | null>(null);
+  const [editAdminPermissions, setEditAdminPermissions] = useState<AdminRolePermissions>({ ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
+  const [savingAdminPerms, setSavingAdminPerms] = useState(false);
+  // Extend / reduce admin duration modal
+  const [extendAdminModal, setExtendAdminModal] = useState<VisibleAdminEntry | null>(null);
+  const [extendAdminValue, setExtendAdminValue] = useState(7);
+  const [extendAdminUnit, setExtendAdminUnit] = useState<'minutes' | 'hours' | 'days' | 'months'>('days');
+  const [extendAdminDirection, setExtendAdminDirection] = useState<'add' | 'subtract'>('add');
+  const [extendingAdmin, setExtendingAdmin] = useState(false);
+  const [makingPermanentEmail, setMakingPermanentEmail] = useState<string | null>(null);
+
+  // ── Share tab state ──
+  const [shareStep, setShareStep] = useState(1); // 1=recipient, 2=content, 3=duration+perms
+  const [shareForm, setShareForm] = useState({
+    // One or more recipients. A single email behaves exactly like the old
+    // single-recipient flow; multiple emails fan out into one separate
+    // shareRequest card per recipient when sent.
+    toEmails: [] as string[],
+    type: 'course' as 'course' | 'note' | 'message' | 'testcard',
+    courseId: '',
+    courseName: '',
+    noteTitle: '',
+    noteHtml: '',
+    noteBreadcrumb: [] as string[],
+    messageText: '',
+    testCardTitle: '',
+    durationValue: 7,
+    durationUnit: 'days' as 'minutes' | 'hours' | 'days' | 'months',
+    permissions: { ...DEFAULT_PERMISSIONS },
+  });
+  const [durationRaw, setDurationRaw] = useState('7');
+  const [emailInput, setEmailInput] = useState('');
+  const [emailInputError, setEmailInputError] = useState('');
+  // One or more notes picked together to be sent as a single share card.
+  const [notesPickedList, setNotesPickedList] = useState<Array<NotePick & { id: string }>>([]);
+  // Which picker is shown for note shares: inline subject/chapter/topic notes,
+  // or standalone pages from the top-level "Notes" section. Both feed the same
+  // notesPickedList / NoteShareItem[] pipeline, so they can be mixed freely.
+  const [noteSource, setNoteSource] = useState<'inline' | 'pages'>('inline');
+  const [noteSectionSource, setNoteSectionSource] = useState<'course' | 'personal'>('course');
+  const [selectedNoteSubjectId, setSelectedNoteSubjectId] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendSuccess, setSendSuccess] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  // Subject-level selection for course shares (only relevant when the picked
+  // course actually has subjects — courses with none skip this entirely).
+  const [courseSubjects, setCourseSubjects] = useState<{ id: string; title: string }[]>([]);
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
+  const [loadingCourseSubjects, setLoadingCourseSubjects] = useState(false);
+
+  // ── Test card picker state ──
+  const [testCardSource, setTestCardSource] = useState<'course' | 'personal'>('course');
+  const [selectedTestSubjectId, setSelectedTestSubjectId] = useState('');
+  const [selectedTestCards, setSelectedTestCards] = useState<Array<TestCard & {
+    subjectId: string;
+    subjectTitle: string;
+    source: 'course' | 'personal';
+  }>>([]);
+  const selectedTestCard = selectedTestCards[0];
+  const activeTestDecks = testCardSource === 'course' ? testDecks : personalTestDecks;
+  const activeTestCards = selectedTestSubjectId ? (activeTestDecks[selectedTestSubjectId] ?? []) : [];
+  const selectedTestCardIds = new Set(
+    selectedTestCards
+      .filter(card => card.source === testCardSource && card.subjectId === selectedTestSubjectId)
+      .map(card => card.id),
+  );
+
+  useEffect(() => {
+    if (shareForm.type !== 'course' || !shareForm.courseId) {
+      setCourseSubjects([]);
+      setSelectedSubjectIds([]);
+      return;
+    }
+    let active = true;
+    setLoadingCourseSubjects(true);
+    getCourseSubjectsForShare(shareForm.courseId).then(list => {
+      if (!active) return;
+      setCourseSubjects(list);
+      // Default to NONE selected (not "select all"). Previously this defaulted to
+      // every subject pre-checked, so an admin who only clicked the 1-2 subjects
+      // they wanted to share saw no visible change (they were already checked)
+      // and every other subject — still checked — went out with the share too.
+      // Forcing an explicit, from-scratch selection makes "what's checked" always
+      // equal "what gets shared".
+      setSelectedSubjectIds([]);
+      setLoadingCourseSubjects(false);
+    });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareForm.type, shareForm.courseId]);
+
+  const toggleSubject = (id: string) => {
+    setSelectedSubjectIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+  const toggleSelectAllSubjects = () => {
+    setSelectedSubjectIds(prev => prev.length === courseSubjects.length ? [] : courseSubjects.map(s => s.id));
+  };
+
+  // ── Sent tab state ──
+  const [sentSearch, setSentSearch] = useState('');
+  const filteredSentShares = sentSearch.trim()
+    ? sentShares.filter(s => {
+        const q = sentSearch.trim().toLowerCase();
+        const title = shareTitle(s, lang).toLowerCase();
+        return s.toEmail.toLowerCase().includes(q) || title.includes(q);
+      })
+    : sentShares;
+  const [trashSearch, setTrashSearch] = useState('');
+  const filteredTrashedShares = trashSearch.trim()
+    ? trashedShares.filter(s => {
+        const q = trashSearch.trim().toLowerCase();
+        const title = shareTitle(s, lang).toLowerCase();
+        return s.toEmail.toLowerCase().includes(q) || title.includes(q);
+      })
+    : trashedShares;
+  const [editPermModal, setEditPermModal] = useState<ShareRequest | null>(null);
+  const [editPermissions, setEditPermissions] = useState<SharePermissions>({ ...DEFAULT_PERMISSIONS });
+  const [savingPerms, setSavingPerms] = useState(false);
+  const [deleteConfirmShare, setDeleteConfirmShare] = useState<ShareRequest | null>(null);
+  const [permDeleteConfirmShare, setPermDeleteConfirmShare] = useState<ShareRequest | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [testCardPickerOpen, setTestCardPickerOpen] = useState(false);
+  const [testCardSearchQuery, setTestCardSearchQuery] = useState('');
+  const [extendModal, setExtendModal] = useState<ShareRequest | null>(null);
+  const [extendValue, setExtendValue] = useState(1);
+  const [extendUnit, setExtendUnit] = useState<'minutes' | 'hours' | 'days' | 'months'>('days');
+  const [extendDirection, setExtendDirection] = useState<'add' | 'subtract'>('add');
+  const [extending, setExtending] = useState(false);
+  const [addSubjectsModal, setAddSubjectsModal] = useState<ShareRequest | null>(null);
+  const [addSubjectsAvailable, setAddSubjectsAvailable] = useState<{ id: string; title: string }[]>([]);
+  const [addSubjectsPicked, setAddSubjectsPicked] = useState<string[]>([]);
+  const [removeSubjectsPicked, setRemoveSubjectsPicked] = useState<string[]>([]);
+  const [addingSubjects, setAddingSubjects] = useState(false);
+
+  // ── Bulk selection state ──
+  const [activeSelectedIds, setActiveSelectedIds] = useState<Set<string>>(new Set());
+  const [trashSelectedIds, setTrashSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeletingActive, setBulkDeletingActive] = useState(false);
+  const [bulkDeletingTrash, setBulkDeletingTrash] = useState(false);
+  const [bulkActiveConfirm, setBulkActiveConfirm] = useState(false);
+  const [bulkTrashConfirm, setBulkTrashConfirm] = useState(false);
+
+  // Clear selections when switching between Active / Trash sub-tabs
+  useEffect(() => {
+    setActiveSelectedIds(new Set());
+    setTrashSelectedIds(new Set());
+  }, [sentSubTab]);
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-4 p-8 bg-background">
+        <ShieldCheck size={48} className="text-muted-foreground/30" />
+        <p className="text-muted-foreground text-center">
+          {lang === 'bn' ? 'আপনার এই পেজে প্রবেশের অনুমতি নেই।' : 'You do not have permission to access this page.'}
+        </p>
+        <button onClick={() => setLocation('/progress')} className="text-primary text-sm font-semibold hover:underline">
+          {lang === 'bn' ? 'ফিরে যান' : 'Go back'}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Handlers ──
+
+  const handleAddAdmin = async () => {
+    if (!newAdminEmail.trim()) return;
+    setAdminError('');
+    setAddingAdmin(true);
+    try {
+      // Keep the input editable while typing, but never submit an invalid
+      // duration if the field was left blank or contains a non-positive value.
+      const durationValue = Math.max(1, parseInt(newAdminDurationRaw, 10) || 1);
+      await addAdmin(
+        newAdminEmail.trim(),
+        newAdminPermissions,
+        newAdminHasExpiry ? durationValue : undefined,
+        newAdminHasExpiry ? newAdminDurationUnit : undefined,
+      );
+      setNewAdminEmail('');
+      setNewAdminPermissions({ ...DEFAULT_ADMIN_ROLE_PERMISSIONS });
+      setShowNewAdminPerms(false);
+      setNewAdminHasExpiry(false);
+      setNewAdminDurationValue(7);
+      setNewAdminDurationRaw('7');
+      setNewAdminDurationUnit('days');
+    } catch {
+      setAdminError(lang === 'bn' ? 'যোগ করতে সমস্যা হয়েছে।' : 'Failed to add admin.');
+    } finally {
+      setAddingAdmin(false);
+    }
+  };
+
+  const handleOpenEditAdminPerms = (entry: VisibleAdminEntry) => {
+    setEditAdminPermEntry(entry);
+    setEditAdminPermissions({ ...entry.permissions });
+  };
+
+  const handleSaveAdminPerms = async () => {
+    if (!editAdminPermEntry) return;
+    setSavingAdminPerms(true);
+    try {
+      await updateAdminPermissions(editAdminPermEntry.email, editAdminPermissions);
+      setEditAdminPermEntry(null);
+    } finally {
+      setSavingAdminPerms(false);
+    }
+  };
+
+  const openExtendAdminModal = (entry: VisibleAdminEntry) => {
+    setExtendAdminModal(entry);
+    setExtendAdminValue(7);
+    setExtendAdminUnit('days');
+    setExtendAdminDirection('add');
+  };
+
+  const handleConfirmAdminExtend = async () => {
+    if (!extendAdminModal) return;
+    setExtendingAdmin(true);
+    try {
+      const signedValue = extendAdminDirection === 'subtract' ? -extendAdminValue : extendAdminValue;
+      await updateAdminDuration(extendAdminModal.email, signedValue, extendAdminUnit);
+      setExtendAdminModal(null);
+    } finally {
+      setExtendingAdmin(false);
+    }
+  };
+
+  const handleMakePermanent = async (email: string) => {
+    setMakingPermanentEmail(email);
+    try {
+      await makeAdminPermanent(email);
+    } finally {
+      setMakingPermanentEmail(null);
+    }
+  };
+
+  const handleRemoveAdmin = (email: string) => {
+    setConfirmRemoveEmail(email);
+  };
+
+  const handleConfirmRemoveAdmin = async () => {
+    if (!confirmRemoveEmail) return;
+    const email = confirmRemoveEmail;
+    setConfirmRemoveEmail(null);
+    setRemovingEmail(email);
+    try { await removeAdmin(email); } finally { setRemovingEmail(null); }
+  };
+
+  const handleSaveContact = async () => {
+    setSavingContact(true);
+    try {
+      await saveContactSettings({
+        whatsapp: contactForm.whatsapp.trim(),
+        website: contactForm.website.trim(),
+        supportLink: contactForm.supportLink.trim(),
+      });
+      setContactSaved(true);
+      setTimeout(() => setContactSaved(false), 3000);
+    } finally {
+      setSavingContact(false);
+    }
+  };
+
+  // ── Multi-recipient email chip helpers ──
+  // Accepts a single email or a batch pasted/typed with commas, spaces, or
+  // newlines between them, and adds every valid, not-yet-added one as a chip.
+  const addEmailChips = (raw: string) => {
+    const candidates = raw.split(/[,\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (candidates.length === 0) return;
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const valid: string[] = [];
+    let sawInvalid = false;
+    for (const c of candidates) {
+      if (emailRe.test(c)) valid.push(c);
+      else sawInvalid = true;
+    }
+    setShareForm(f => ({ ...f, toEmails: Array.from(new Set([...f.toEmails, ...valid])) }));
+    setEmailInput('');
+    setEmailInputError(sawInvalid ? (lang === 'bn' ? 'কিছু ইমেইল সঠিক নয়, বাদ দেওয়া হয়েছে।' : 'Some emails were invalid and skipped.') : '');
+  };
+  const removeEmailChip = (email: string) => {
+    setShareForm(f => ({ ...f, toEmails: f.toEmails.filter(e => e !== email) }));
+  };
+
+  const handleSendShare = async () => {
+    setSending(true);
+    setSendError(null);
+    try {
+      const noteItems = shareForm.type === 'note'
+        ? notesPickedList.map(({ id: _id, ...rest }) => rest)
+        : undefined;
+      // Fan out to a separate shareRequest doc per recipient and per selected
+      // note/test card. Each item keeps its own status, permissions and expiry,
+      // while preserving the existing one-item-per-notification behavior.
+      for (const toEmail of shareForm.toEmails) {
+        const noteBatches = shareForm.type === 'note'
+          ? (noteItems && noteItems.length > 0 ? noteItems.map(n => [n]) : [undefined])
+          : [undefined];
+        const testCardBatches = shareForm.type === 'testcard'
+          ? (selectedTestCards.length > 0 ? selectedTestCards : [undefined])
+          : [undefined];
+        const batches = shareForm.type === 'note' ? noteBatches : testCardBatches;
+        for (const batch of batches) {
+          const noteBatch = shareForm.type === 'note' ? batch as NoteShareItem[] | undefined : undefined;
+          const testCard = shareForm.type === 'testcard'
+            ? batch as (TestCard & { subjectId: string; subjectTitle: string; source: 'course' | 'personal' }) | undefined
+            : undefined;
+          await sendShare({
+            toEmail,
+            type: shareForm.type,
+            courseId: shareForm.type === 'course' ? shareForm.courseId : undefined,
+            courseName: shareForm.type === 'course' ? shareForm.courseName : undefined,
+            noteTitle: shareForm.type === 'note' ? noteBatch?.[0]?.title : undefined,
+            noteHtml: shareForm.type === 'note' ? noteBatch?.[0]?.html : undefined,
+            noteBreadcrumb: shareForm.type === 'note' ? noteBatch?.[0]?.breadcrumb : undefined,
+            notes: noteBatch,
+            messageText: shareForm.type === 'message' ? shareForm.messageText.trim() : undefined,
+            permissions: (shareForm.type === 'message' || shareForm.type === 'testcard') ? { editNotes: false, deleteNotes: false, downloadNotes: false, copyNotes: false, renameCourse: false, addItems: false, takeScreenshot: false, selectCopyText: false } : shareForm.permissions,
+            durationValue: shareForm.durationValue,
+            durationUnit: shareForm.durationUnit,
+            sharedSubjectIds: shareForm.type === 'course' && courseSubjects.length > 0 ? selectedSubjectIds : undefined,
+            testCardId: shareForm.type === 'testcard' ? testCard?.id : undefined,
+            testCardTitle: shareForm.type === 'testcard' ? testCard?.title : undefined,
+            testCardSubjectId: shareForm.type === 'testcard' ? testCard?.subjectId : undefined,
+            testCardSubjectTitle: shareForm.type === 'testcard' ? testCard?.subjectTitle : undefined,
+            testCardQuestion: shareForm.type === 'testcard' ? testCard?.question : undefined,
+            testCardAnswer: shareForm.type === 'testcard' ? testCard?.answer : undefined,
+          });
+        }
+      }
+      setSendSuccess(true);
+      setShareStep(1);
+      setShareForm({
+        toEmails: [], type: 'course', courseId: '', courseName: '', noteTitle: '', noteHtml: '',
+        noteBreadcrumb: [], messageText: '', testCardTitle: '', durationValue: 7, durationUnit: 'days', permissions: { ...DEFAULT_PERMISSIONS },
+      });
+      setDurationRaw('7');
+      setEmailInput('');
+      setEmailInputError('');
+      setNotesPickedList([]);
+      setNoteSource('inline');
+      setCourseSubjects([]);
+      setSelectedSubjectIds([]);
+      setSelectedTestSubjectId('');
+      setSelectedTestCards([]);
+      setTestCardSource('course');
+      setSelectedNoteSubjectId('');
+      setNoteSectionSource('course');
+      setTimeout(() => setSendSuccess(false), 3000);
+    } catch (err) {
+      setSendError(
+        err instanceof Error
+          ? err.message
+          : (lang === 'bn' ? 'শেয়ার পাঠাতে সমস্যা হয়েছে।' : 'Failed to send share.')
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleSavePermissions = async () => {
+    if (!editPermModal) return;
+    setSavingPerms(true);
+    try {
+      await updateSharePermissions(editPermModal.id, editPermissions);
+      setEditPermModal(null);
+    } finally {
+      setSavingPerms(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmShare) return;
+    setDeletingId(deleteConfirmShare.id);
+    try {
+      await trashShare(deleteConfirmShare.id);
+      setDeleteConfirmShare(null);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleRestore = async (shareId: string) => {
+    await restoreShare(shareId);
+  };
+
+  const handleConfirmPermanentDelete = async () => {
+    if (!permDeleteConfirmShare) return;
+    setDeletingId(permDeleteConfirmShare.id);
+    try {
+      await permanentlyDeleteShare(permDeleteConfirmShare.id);
+      setPermDeleteConfirmShare(null);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleBulkDeleteActive = async () => {
+    setBulkDeletingActive(true);
+    try {
+      await Promise.all([...activeSelectedIds].map(id => trashShare(id)));
+      setActiveSelectedIds(new Set());
+      setBulkActiveConfirm(false);
+    } finally {
+      setBulkDeletingActive(false);
+    }
+  };
+
+  const handleBulkDeleteTrash = async () => {
+    setBulkDeletingTrash(true);
+    try {
+      await Promise.all([...trashSelectedIds].map(id => permanentlyDeleteShare(id)));
+      setTrashSelectedIds(new Set());
+      setBulkTrashConfirm(false);
+    } finally {
+      setBulkDeletingTrash(false);
+    }
+  };
+
+  const openExtendModal = (share: ShareRequest) => {
+    setExtendModal(share);
+    setExtendValue(1);
+    setExtendUnit('days');
+    setExtendDirection('add');
+  };
+
+  const handleConfirmExtend = async () => {
+    if (!extendModal) return;
+    setExtending(true);
+    try {
+      const signedValue = extendDirection === 'subtract' ? -extendValue : extendValue;
+      await extendShare(extendModal.id, signedValue, extendUnit);
+      setExtendModal(null);
+    } finally {
+      setExtending(false);
+    }
+  };
+
+  const openAddSubjectsModal = async (share: ShareRequest) => {
+    if (!share.courseId) return;
+    setAddSubjectsModal(share);
+    setAddSubjectsPicked([]);
+    setRemoveSubjectsPicked([]);
+    const list = await getCourseSubjectsForShare(share.courseId);
+    setAddSubjectsAvailable(list);
+  };
+
+  const handleConfirmAddSubjects = async () => {
+    if (!addSubjectsModal) return;
+    const hasAdd = addSubjectsPicked.length > 0;
+    const hasRemove = removeSubjectsPicked.length > 0;
+    if (!hasAdd && !hasRemove) return;
+    setAddingSubjects(true);
+    try {
+      if (hasRemove) await removeSubjectsFromShare(addSubjectsModal.id, removeSubjectsPicked);
+      if (hasAdd) await addSubjectsToShare(addSubjectsModal.id, addSubjectsPicked);
+      setAddSubjectsModal(null);
+      setAddSubjectsPicked([]);
+      setRemoveSubjectsPicked([]);
+    } finally {
+      setAddingSubjects(false);
+    }
+  };
+
+  // ── Grantable admin-role permissions ─────────────────────────────────────
+  // A non-super admin can only grant permissions they themselves hold. Super
+  // admins have everything so no filtering is needed for them (undefined = show all).
+  const grantableAdminKeys: Set<keyof AdminRolePermissions> | undefined = isSuperAdmin
+    ? undefined
+    : (() => {
+        const p = currentAdminPermissions;
+        if (!p) return undefined;
+        const keys = new Set<keyof AdminRolePermissions>();
+        if (p.canShareReceivedContent) keys.add('canShareReceivedContent');
+        if (p.canEditContacts)         keys.add('canEditContacts');
+        if (p.canViewOtherAdmins)      keys.add('canViewOtherAdmins');
+        if (p.canAddAdmins)            keys.add('canAddAdmins');
+        return keys;
+      })();
+
+  // ── Grantable share permissions for received content ─────────────────────
+  // When the admin shares a course/note that was originally sent TO them by
+  // another admin, they can only grant permissions they themselves received.
+  // Own courses/notes (not received from another admin) have no restriction.
+  const receivedCourseSharePerms: SharePermissions | undefined = (() => {
+    if (shareForm.type !== 'course' || !shareForm.courseId) return undefined;
+    return acceptedShares.find(s => s.id === shareForm.courseId && s.type === 'course')?.permissions;
+  })();
+  const receivedNoteSharePerms: SharePermissions | undefined = (() => {
+    if (shareForm.type !== 'note') return undefined;
+    // Notes in the picker come from the active course's subjects. If the
+    // active course is a received share, limit by what the admin was granted.
+    return acceptedShares.find(s => s.type === 'course' && s.id === activeCourse?.id)?.permissions;
+  })();
+  const receivedSharePerms = receivedCourseSharePerms ?? receivedNoteSharePerms;
+
+  // Build the allowedKeys set for the share PermissionsEditor. Super admins
+  // and own-content shares have no restriction (undefined = show all).
+  const grantableShareKeys: Set<keyof SharePermissions> | undefined =
+    isSuperAdmin || !receivedSharePerms
+      ? undefined
+      : (() => {
+          const p = receivedSharePerms;
+          const keys = new Set<keyof SharePermissions>();
+          if (p.downloadNotes)   keys.add('downloadNotes');
+          if (p.copyNotes)       keys.add('copyNotes');
+          if (p.renameCourse)    keys.add('renameCourse');
+          if (p.takeScreenshot)  keys.add('takeScreenshot');
+          if (p.selectCopyText)  keys.add('selectCopyText');
+          return keys;
+        })();
+
+  const allTabs = [
+    { id: 'admins', label: lang === 'bn' ? 'এডমিন' : 'Admins', Icon: Users },
+    { id: 'share', label: lang === 'bn' ? 'শেয়ার' : 'Share', Icon: Send },
+    { id: 'sent', label: lang === 'bn' ? 'পাঠানো' : 'Sent', Icon: List },
+    { id: 'contact', label: lang === 'bn' ? 'কন্টাক্ট' : 'Contact', Icon: Phone },
+  ] as const;
+  const tabs = allTabs.filter(t =>
+    t.id !== 'contact' || isSuperAdmin || !!currentAdminPermissions?.canEditContacts
+  );
+
+  return (
+    <div className="min-h-[100dvh] bg-background">
+      {/* Header */}
+      <div
+        className="sticky top-0 z-20 relative overflow-hidden rounded-b-2xl shadow-md"
+        style={{ background: 'linear-gradient(135deg, hsl(243 88% 55%) 0%, hsl(263 80% 52%) 60%, hsl(283 75% 52%) 100%)' }}
+      >
+        <div className="absolute top-[-20px] right-[-20px] w-36 h-36 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+        <div className="relative px-5 pt-5 pb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setLocation('/progress')}
+              className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center border border-white/30 hover:bg-white/30 transition-colors active:scale-95"
+            >
+              <ArrowLeft size={18} className="text-white" />
+            </button>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <ShieldCheck size={16} className="text-white/80" />
+                <h1 className="font-bold text-white text-lg leading-tight">
+                  {lang === 'bn' ? 'এডমিন প্যানেল' : 'Admin Panel'}
+                </h1>
+              </div>
+              <p className="text-[10px] text-white/60 font-medium">{user?.email}</p>
+            </div>
+          </div>
+          {isSuperAdmin && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-yellow-400/20 text-yellow-200 border border-yellow-300/30">
+              {lang === 'bn' ? 'সুপার এডমিন' : 'Super Admin'}
+            </span>
+          )}
+        </div>
+
+        {/* Tabs — redesigned as a fully-rounded segmented-control pill bar
+            instead of "notebook tab" shapes (rounded-top only, square
+            bottom/side corners). The old shape looked jarring/unfinished
+            whichever tab landed at the far right edge, because its exposed
+            square corner sat right next to the screen edge. A pill bar with
+            equal rounding on every tab, inset inside a translucent track
+            with side padding, has no exposed corners at all — regardless of
+            which tab is active or how narrow the screen is. Still scrolls
+            horizontally as a safety net for very narrow screens / longer
+            translated labels. */}
+        {/* pb-6 (not pb-4) gives real clearance below the pill track before
+            the header box's own bottom edge — the header's rounded-b-2xl
+            corner (16px radius) was curving inward right where the pill
+            track's bottom-left/right corners sat, so the corner mask bit
+            into the track and let the page's white background peek through
+            in the notch, making it look like the pill bar spilled outside
+            the purple card. */}
+        <div className="px-5 pb-6 overflow-x-auto no-scrollbar">
+          <div className="flex gap-1 p-1 rounded-2xl bg-white/10 border border-white/15 w-max min-w-full sm:min-w-0">
+            {tabs.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                className={cn(
+                  "flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap flex-1",
+                  tab === id
+                    ? "bg-background text-primary shadow-sm"
+                    : "text-white/70 hover:text-white/90 hover:bg-white/10"
+                )}
+              >
+                <Icon size={13} />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="p-4 sm:p-5 max-w-2xl mx-auto">
+
+        {/* ── Admins Tab ── */}
+        {tab === 'admins' && (
+          <div className="space-y-4 mt-2">
+            {/* Add admin — visible to super admin and to admins with canAddAdmins */}
+            {(isSuperAdmin || currentAdminPermissions?.canAddAdmins) && (
+              <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-3">
+                <p className="text-sm font-bold text-foreground">
+                  {lang === 'bn' ? 'নতুন এডমিন যোগ করুন' : 'Add New Admin'}
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    type="email"
+                    placeholder={lang === 'bn' ? 'ইমেইল আইডি' : 'Email address'}
+                    value={newAdminEmail}
+                    onChange={e => { setNewAdminEmail(e.target.value); setAdminError(''); }}
+                    onKeyDown={e => { if (e.key === 'Enter' && !showNewAdminPerms) handleAddAdmin(); }}
+                    className="flex-1 h-10 text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowNewAdminPerms(v => !v)}
+                    className="h-10 px-3 py-0 text-xs border-primary/30 text-primary"
+                    title={lang === 'bn' ? 'পারমিশন সেট করুন' : 'Set permissions'}
+                  >
+                    <ShieldCheck size={14} />
+                  </Button>
+                  <Button
+                    onClick={handleAddAdmin}
+                    disabled={addingAdmin || !newAdminEmail.trim()}
+                    className="h-10 px-4 py-0 text-sm"
+                  >
+                    {addingAdmin ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+                  </Button>
+                </div>
+
+                {/* Inline permissions picker */}
+                <AnimatePresence>
+                  {showNewAdminPerms && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="border-t border-border/40 pt-3 space-y-1">
+                        <p className="text-xs font-semibold text-muted-foreground mb-2">
+                          {lang === 'bn' ? 'এডমিন পারমিশন সেট করুন' : 'Set admin permissions'}
+                        </p>
+                        <AdminRolePermissionsEditor
+                          permissions={newAdminPermissions}
+                          onChange={setNewAdminPermissions}
+                          lang={lang}
+                          allowedKeys={grantableAdminKeys}
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Duration / expiry picker */}
+                <div className="border-t border-border/40 pt-3 space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={newAdminHasExpiry}
+                      onChange={e => setNewAdminHasExpiry(e.target.checked)}
+                      className="w-4 h-4 rounded accent-primary"
+                    />
+                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Clock size={12} className="text-muted-foreground" />
+                      {lang === 'bn' ? 'মেয়াদ সীমিত করুন' : 'Set an expiry'}
+                    </span>
+                  </label>
+                  <AnimatePresence>
+                    {newAdminHasExpiry && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="flex gap-2 pt-1">
+                          <Input
+                            type="number"
+                            min={1}
+                            value={newAdminDurationRaw}
+                            onChange={e => {
+                              const raw = e.target.value;
+                              setNewAdminDurationRaw(raw);
+                              const value = parseInt(raw, 10);
+                              if (!isNaN(value) && value > 0) setNewAdminDurationValue(value);
+                            }}
+                            onBlur={() => {
+                              const value = Math.max(1, parseInt(newAdminDurationRaw, 10) || 1);
+                              setNewAdminDurationValue(value);
+                              setNewAdminDurationRaw(String(value));
+                            }}
+                            className="flex-1 h-9 text-sm"
+                          />
+                          <select
+                            value={newAdminDurationUnit}
+                            onChange={e => setNewAdminDurationUnit(e.target.value as 'minutes' | 'hours' | 'days' | 'months')}
+                            className="rounded-xl border border-border/60 bg-secondary px-3 text-sm text-foreground h-9"
+                          >
+                            <option value="minutes">{lang === 'bn' ? 'মিনিট' : 'Minutes'}</option>
+                            <option value="hours">{lang === 'bn' ? 'ঘণ্টা' : 'Hours'}</option>
+                            <option value="days">{lang === 'bn' ? 'দিন' : 'Days'}</option>
+                            <option value="months">{lang === 'bn' ? 'মাস' : 'Months'}</option>
+                          </select>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-1.5">
+                          {lang === 'bn'
+                            ? 'এই সময় পার হলে এডমিন অ্যাক্সেস স্বয়ংক্রিয়ভাবে বন্ধ হয়ে যাবে।'
+                            : 'Admin access will automatically expire after this duration.'}
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {adminError && <p className="text-xs text-destructive">{adminError}</p>}
+              </div>
+            )}
+
+            {/* Admin list */}
+            <div className="space-y-2">
+              {loadingAdmins ? (
+                <div className="py-8 flex justify-center">
+                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : visibleAdmins.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  {lang === 'bn' ? 'কোনো এডমিন নেই।' : 'No admins yet.'}
+                </p>
+              ) : visibleAdmins.map(entry => {
+                const canEditPerms = !entry.isSuperAdminMember && (
+                  isSuperAdmin ||
+                  (currentAdminPermissions?.canAddAdmins && entry.addedBy === user?.email?.toLowerCase())
+                );
+                const canRemove = !entry.isSuperAdminMember && (
+                  isSuperAdmin ||
+                  (currentAdminPermissions?.canAddAdmins && entry.addedBy === user?.email?.toLowerCase())
+                );
+                const isExpired = !entry.isSuperAdminMember && !!entry.expiresAt && entry.expiresAt <= Date.now();
+                const canExtendDuration = !entry.isSuperAdminMember && (
+                  isSuperAdmin ||
+                  (currentAdminPermissions?.canAddAdmins && entry.addedBy === user?.email?.toLowerCase())
+                );
+                // Whether the compact countdown + make-permanent row should show
+                const showTimerRow = !entry.isSuperAdminMember && !isExpired && !!entry.expiresAt &&
+                  (entry.email === user?.email?.toLowerCase() || canExtendDuration);
+
+                return (
+                  <div key={entry.email} className={cn(
+                    "bg-card border rounded-2xl p-3.5",
+                    isExpired ? "border-destructive/40 opacity-70" : "border-border/50"
+                  )}>
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-9 h-9 rounded-xl flex items-center justify-center shrink-0",
+                        isExpired ? "bg-destructive/10" : "bg-primary/10"
+                      )}>
+                        <UserCheck size={16} className={isExpired ? "text-destructive" : "text-primary"} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{entry.email}</p>
+                        <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                          {entry.isSuperAdminMember && (
+                            <span className="text-[10px] font-bold text-yellow-600 bg-yellow-500/10 px-1.5 py-0.5 rounded-full">
+                              {lang === 'bn' ? 'সুপার এডমিন' : 'Super Admin'}
+                            </span>
+                          )}
+                          {isExpired && (
+                            <span className="text-[10px] font-bold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-full">
+                              {lang === 'bn' ? 'মেয়াদ শেষ' : 'Expired'}
+                            </span>
+                          )}
+                          {/* Temporary Admin badge */}
+                          {!entry.isSuperAdminMember && !isExpired && entry.expiresAt && (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-500/10 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                              <Clock size={9} />
+                              {lang === 'bn' ? 'অস্থায়ী এডমিন' : 'Temporary Admin'}
+                            </span>
+                          )}
+                          {/* Permanent Admin badge */}
+                          {!entry.isSuperAdminMember && !isExpired && !entry.expiresAt && (
+                            <span className="text-[10px] font-bold text-green-700 bg-green-500/10 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                              <Infinity size={9} />
+                              {lang === 'bn' ? 'স্থায়ী এডমিন' : 'Permanent Admin'}
+                            </span>
+                          )}
+                          {!entry.isSuperAdminMember && entry.addedBy && (
+                            <span className="text-[10px] font-medium text-foreground/60 bg-muted/60 px-1.5 py-0.5 rounded-full">
+                              {lang === 'bn' ? `➕ যোগ করেছেন: ${entry.addedBy}` : `➕ Added by: ${entry.addedBy}`}
+                            </span>
+                          )}
+                        </div>
+                        {/* Permission badges for non-super admins */}
+                        {!entry.isSuperAdminMember && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {entry.permissions.canShareReceivedContent && (
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-teal-500/10 text-teal-700">
+                                {lang === 'bn' ? 'শেয়ার' : 'Re-share'}
+                              </span>
+                            )}
+                            {entry.permissions.canEditContacts && (
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-700">
+                                {lang === 'bn' ? 'কন্টাক্ট' : 'Contacts'}
+                              </span>
+                            )}
+                            {entry.permissions.canViewOtherAdmins && (
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-700">
+                                {lang === 'bn' ? 'এডমিন দেখুন' : 'View admins'}
+                              </span>
+                            )}
+                            {entry.permissions.canAddAdmins && (
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-700">
+                                {lang === 'bn' ? 'এডমিন যোগ' : 'Add admins'}
+                              </span>
+                            )}
+                            {!entry.permissions.canShareReceivedContent && !entry.permissions.canEditContacts &&
+                              !entry.permissions.canViewOtherAdmins && !entry.permissions.canAddAdmins && (
+                              <span className="text-[9px] text-muted-foreground italic">
+                                {lang === 'bn' ? 'কোনো বিশেষ পারমিশন নেই' : 'No extra permissions'}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {canExtendDuration && (
+                          <button
+                            onClick={() => openExtendAdminModal(entry)}
+                            className="p-2 rounded-xl bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 transition-colors"
+                            title={lang === 'bn' ? 'মেয়াদ পরিবর্তন করুন' : 'Adjust expiry'}
+                          >
+                            <TimerReset size={14} />
+                          </button>
+                        )}
+                        {canEditPerms && (
+                          <button
+                            onClick={() => handleOpenEditAdminPerms(entry)}
+                            className="p-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                            title={lang === 'bn' ? 'পারমিশন এডিট করুন' : 'Edit permissions'}
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                        )}
+                        {canRemove && (
+                          <button
+                            onClick={() => handleRemoveAdmin(entry.email)}
+                            disabled={removingEmail === entry.email}
+                            className="p-2 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                          >
+                            {removingEmail === entry.email
+                              ? <RefreshCw size={14} className="animate-spin" />
+                              : <UserMinus size={14} />}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Countdown + Make Permanent row — shown above buttons */}
+                    {showTimerRow && (
+                      <div className="mt-2.5 pt-2.5 border-t border-border/30 flex items-center justify-between gap-2 flex-wrap">
+                        {/* Compact live countdown */}
+                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-300/30">
+                          <Clock size={11} className="text-amber-600 shrink-0" />
+                          <span className="text-[11px] font-mono font-bold text-amber-700 tabular-nums">
+                            <Countdown targetMs={entry.expiresAt!} lang={lang} />
+                          </span>
+                          <span className="text-[9px] text-amber-600/70 font-medium">
+                            {lang === 'bn' ? 'বাকি' : 'left'}
+                          </span>
+                        </div>
+                        {/* Make Permanent button (only for those who can manage this admin) */}
+                        {canExtendDuration && (
+                          <button
+                            onClick={() => handleMakePermanent(entry.email)}
+                            disabled={makingPermanentEmail === entry.email}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-green-500/10 text-green-700 hover:bg-green-500/20 transition-colors text-xs font-semibold disabled:opacity-50 border border-green-300/30"
+                          >
+                            {makingPermanentEmail === entry.email
+                              ? <RefreshCw size={11} className="animate-spin" />
+                              : <Infinity size={11} />}
+                            {lang === 'bn' ? 'স্থায়ী করুন' : 'Make Permanent'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Share Tab ── */}
+        {tab === 'share' && (
+          <div className="space-y-4 mt-2">
+            {sendSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-2.5 px-4 py-3 bg-green-500/10 border border-green-300/50 rounded-2xl"
+              >
+                <Check size={14} className="text-green-600 shrink-0" />
+                <p className="text-sm text-green-700 font-medium">
+                  {lang === 'bn' ? 'সফলভাবে পাঠানো হয়েছে!' : 'Sent successfully!'}
+                </p>
+              </motion.div>
+            )}
+
+            {/* Step indicator */}
+            <div className="flex items-center gap-2">
+              {[1, 2, 3].map(s => (
+                <React.Fragment key={s}>
+                  <div className={cn(
+                    "w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center transition-all",
+                    shareStep >= s ? "bg-primary text-white" : "bg-secondary text-muted-foreground"
+                  )}>{s}</div>
+                  {s < 3 && <div className={cn("flex-1 h-1 rounded-full transition-all", shareStep > s ? "bg-primary" : "bg-secondary")} />}
+                </React.Fragment>
+              ))}
+            </div>
+
+            {/* Step 1: Recipient + Type */}
+            {shareStep === 1 && (
+              <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-4">
+                <p className="text-sm font-bold text-foreground">
+                  {lang === 'bn' ? '১. প্রাপক ও কন্টেন্ট টাইপ' : '1. Recipient & Content Type'}
+                </p>
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    {lang === 'bn'
+                      ? 'একজনের ইমেইল দিন, অথবা একাধিক ইমেইল কমা/স্পেস দিয়ে লিখে একসাথে অনেকজনকে পাঠান'
+                      : 'Add one email, or paste several separated by commas/spaces to send to many at once'}
+                  </p>
+                  {shareForm.toEmails.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {shareForm.toEmails.map(email => (
+                        <span
+                          key={email}
+                          className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold"
+                        >
+                          {email}
+                          <button
+                            onClick={() => removeEmailChip(email)}
+                            className="p-0.5 rounded-full hover:bg-primary/20 transition-colors"
+                          >
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      placeholder={lang === 'bn' ? 'প্রাপকের ইমেইল আইডি' : 'Recipient email(s)'}
+                      value={emailInput}
+                      onChange={e => { setEmailInput(e.target.value); setEmailInputError(''); }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); addEmailChips(emailInput); }
+                      }}
+                      className="flex-1"
+                    />
+                    <Button
+                      onClick={() => addEmailChips(emailInput)}
+                      disabled={!emailInput.trim()}
+                      className="px-4 py-0 h-12"
+                    >
+                      <Plus size={14} />
+                    </Button>
+                  </div>
+                  {emailInputError && <p className="text-xs text-destructive mt-1">{emailInputError}</p>}
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    {lang === 'bn' ? 'কী শেয়ার করবেন?' : 'What to share?'}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['course', 'note', 'message', 'testcard'] as const).map(type => (
+                      <button
+                        key={type}
+                        onClick={() => {
+                          setShareForm(f => ({ ...f, type }));
+                          if (type !== 'testcard') {
+                            setSelectedTestSubjectId('');
+                            setSelectedTestCards([]);
+                          }
+                          if (type === 'testcard') {
+                            setSelectedTestSubjectId('');
+                            setSelectedTestCards([]);
+                            setTestCardSource('course');
+                          }
+                        }}
+                        className={cn(
+                          "flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all",
+                          shareForm.type === type
+                            ? "border-primary bg-primary/5"
+                            : "border-border/50 bg-card hover:bg-secondary/50"
+                        )}
+                      >
+                        {type === 'course' ? <BookOpen size={22} className="text-indigo-500" />
+                          : type === 'note' ? <StickyNote size={22} className="text-amber-500" />
+                          : type === 'message' ? <MessageSquare size={22} className="text-sky-500" />
+                          : <ClipboardList size={22} className="text-violet-500" />}
+                        <span className="text-xs font-semibold text-foreground">
+                          {type === 'course'
+                            ? (lang === 'bn' ? 'কোর্স' : 'Course')
+                            : type === 'note'
+                              ? (lang === 'bn' ? 'নোট' : 'Note')
+                              : type === 'message'
+                                ? (lang === 'bn' ? 'মেসেজ' : 'Message')
+                                : (lang === 'bn' ? 'টেস্ট কার্ড' : 'Test Card')}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={shareForm.toEmails.length === 0}
+                  onClick={() => setShareStep(2)}
+                >
+                  {lang === 'bn' ? 'পরবর্তী' : 'Next'} →
+                </Button>
+              </div>
+            )}
+
+            {/* Step 2: Content Selection */}
+            {shareStep === 2 && (
+              <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-4">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setShareStep(1)} className="p-1 rounded-full hover:bg-secondary text-muted-foreground">
+                    <ChevronLeft size={16} />
+                  </button>
+                  <p className="text-sm font-bold text-foreground">
+                    {shareForm.type === 'course'
+                      ? (lang === 'bn' ? '২. কোর্স সিলেক্ট করুন' : '2. Select Course')
+                      : shareForm.type === 'message'
+                        ? (lang === 'bn' ? '২. মেসেজ লিখুন' : '2. Write Message')
+                        : shareForm.type === 'testcard'
+                          ? (lang === 'bn' ? '২. টেস্ট কার্ড সিলেক্ট করুন' : '2. Select Test Card')
+                          : (lang === 'bn' ? '২. নোট সিলেক্ট করুন' : '2. Select Note')}
+                  </p>
+                </div>
+
+                {shareForm.type === 'course' ? (
+                  <div className="space-y-2">
+                    {courses.map(course => (
+                      <button
+                        key={course.id}
+                        onClick={() => setShareForm(f => ({ ...f, courseId: course.id, courseName: course.name }))}
+                        className={cn(
+                          "w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all",
+                          shareForm.courseId === course.id
+                            ? "border-primary bg-primary/5"
+                            : "border-border/50 hover:bg-secondary/50"
+                        )}
+                      >
+                        <BookOpen size={16} className="text-primary shrink-0" />
+                        <span className="text-sm font-semibold text-foreground flex-1 truncate">{course.name}</span>
+                        {shareForm.courseId === course.id && <Check size={14} className="text-primary shrink-0" />}
+                      </button>
+                    ))}
+
+                    {/* Subject-level selection — only shown for courses that actually
+                        have subjects; a course with none is shared as a whole. */}
+                    {shareForm.courseId && loadingCourseSubjects && (
+                      <p className="text-xs text-muted-foreground py-2">
+                        {lang === 'bn' ? 'সাবজেক্ট লোড হচ্ছে...' : 'Loading subjects...'}
+                      </p>
+                    )}
+                    {shareForm.courseId && !loadingCourseSubjects && courseSubjects.length > 0 && (
+                      <div className="pt-2 border-t border-border/40 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-bold text-foreground">
+                            {lang === 'bn' ? 'কোন সাবজেক্টগুলো পাঠাবেন?' : 'Which subjects to send?'}
+                          </p>
+                          <button
+                            onClick={toggleSelectAllSubjects}
+                            className="text-[11px] font-semibold text-primary hover:underline"
+                          >
+                            {selectedSubjectIds.length === courseSubjects.length
+                              ? (lang === 'bn' ? 'সব বাদ দিন' : 'Deselect all')
+                              : (lang === 'bn' ? 'সব সিলেক্ট করুন' : 'Select all')}
+                          </button>
+                        </div>
+                        <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                          {courseSubjects.map(s => (
+                            <label
+                              key={s.id}
+                              className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-secondary/60 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedSubjectIds.includes(s.id)}
+                                onChange={() => toggleSubject(s.id)}
+                                className="w-4 h-4 rounded accent-primary shrink-0"
+                              />
+                              <span className="text-sm text-foreground truncate">{s.title}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {selectedSubjectIds.length === 0 && (
+                          <p className="text-[11px] text-destructive">
+                            {lang === 'bn' ? 'অন্তত একটি সাবজেক্ট সিলেক্ট করুন' : 'Select at least one subject'}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : shareForm.type === 'message' ? (
+                  <textarea
+                    value={shareForm.messageText}
+                    onChange={e => setShareForm(f => ({ ...f, messageText: e.target.value }))}
+                    placeholder={lang === 'bn' ? 'ইউজারকে যে মেসেজ পাঠাতে চান তা লিখুন...' : 'Write the message you want to send this user...'}
+                    rows={6}
+                    className="w-full rounded-xl border border-border/60 bg-secondary px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                  />
+                ) : shareForm.type === 'testcard' ? (
+                  <div className="space-y-3">
+                    {/* Trigger button */}
+                    <button
+                      onClick={() => setTestCardPickerOpen(true)}
+                      className={cn(
+                        "w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all duration-200",
+                        selectedTestCards.length > 0
+                          ? "border-primary/60 bg-primary/5"
+                          : "border-border/50 bg-secondary/40 hover:bg-secondary/70 hover:border-border"
+                      )}
+                    >
+                      <div className={cn(
+                        "flex items-center justify-center w-8 h-8 rounded-xl shrink-0",
+                        selectedTestCards.length > 0 ? "bg-primary/10" : "bg-secondary"
+                      )}>
+                        <Trophy size={15} className={selectedTestCards.length > 0 ? "text-primary" : "text-muted-foreground"} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        {selectedTestCards.length > 0 ? (
+                          <>
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary/70 mb-0.5">
+                              {selectedTestCards[0].subjectTitle}
+                            </p>
+                            <p className="text-sm font-bold text-foreground truncate">
+                              {selectedTestCards.length === 1
+                                ? selectedTestCards[0].title
+                                : (lang === 'bn' ? `${selectedTestCards.length}টি কার্ড সিলেক্ট করা হয়েছে` : `${selectedTestCards.length} cards selected`)}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-sm font-semibold text-muted-foreground">
+                            {lang === 'bn' ? 'টেস্ট কার্ড সিলেক্ট করুন' : 'Select a test card'}
+                          </p>
+                        )}
+                      </div>
+                      {selectedTestCards.length > 0 ? (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            setSelectedTestSubjectId('');
+                            setSelectedTestCards([]);
+                            setShareForm(f => ({ ...f, testCardTitle: '' }));
+                          }}
+                          className="p-1 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                        >
+                          <X size={14} />
+                        </button>
+                      ) : (
+                        <ChevronRight size={15} className="text-muted-foreground/50 shrink-0" />
+                      )}
+                    </button>
+
+                    {/* Picker Modal */}
+                    <Modal
+                      isOpen={testCardPickerOpen}
+                      onClose={() => { setTestCardPickerOpen(false); setTestCardSearchQuery(''); }}
+                      title={lang === 'bn' ? 'টেস্ট কার্ড সিলেক্ট করুন' : 'Select Test Card'}
+                      icon={Trophy}
+                    >
+                      <div className="space-y-5">
+                        <div className="flex items-center gap-1.5 p-1 bg-secondary rounded-xl">
+                          {(['course', 'personal'] as const).map(source => (
+                            <button
+                              key={source}
+                              onClick={() => {
+                                setTestCardSource(source);
+                                setSelectedTestSubjectId('');
+                                setTestCardSearchQuery('');
+                              }}
+                              className={cn(
+                                "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                                testCardSource === source ? "bg-card shadow-sm text-foreground" : "text-muted-foreground",
+                              )}
+                            >
+                              {source === 'course'
+                                ? (lang === 'bn' ? 'কোর্স টেস্ট কার্ড' : 'Course test cards')
+                                : (lang === 'bn' ? 'পার্সোনাল টেস্ট কার্ড' : 'Personal test cards')}
+                            </button>
+                          ))}
+                        </div>
+                        {/* Subject chips */}
+                        {subjects.length === 0 ? (
+                          <p className="text-xs text-muted-foreground text-center py-4">
+                            {lang === 'bn' ? 'এই কোর্সে কোনো সাবজেক্ট নেই।' : 'No subjects in this course.'}
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                              {lang === 'bn' ? 'সাবজেক্ট' : 'Subject'}
+                            </p>
+                            <div className="flex gap-2 flex-wrap">
+                              {subjects.map((s, i) => {
+                                const hues = ['#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#3b82f6','#84cc16'];
+                                const color = (s as any).color || hues[i % hues.length];
+                                const isActive = selectedTestSubjectId === s.id;
+                                return (
+                                  <button
+                                    key={s.id}
+                                    onClick={() => {
+                                      setSelectedTestSubjectId(s.id);
+                                      setTestCardSearchQuery('');
+                                    }}
+                                    style={isActive ? {
+                                      background: `${color}18`,
+                                      borderColor: color,
+                                      color: color,
+                                    } : {}}
+                                    className={cn(
+                                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200 border",
+                                      isActive
+                                        ? ""
+                                        : "border-border/50 bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground hover:border-border"
+                                    )}
+                                  >
+                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                                    <span>{s.title}</span>
+                                    {isActive && <Check size={10} strokeWidth={3} />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Test card list */}
+                        <AnimatePresence mode="wait">
+                          {selectedTestSubjectId && (
+                            <motion.div
+                              key={selectedTestSubjectId}
+                              initial={{ opacity: 0, y: 6 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -4 }}
+                              transition={{ duration: 0.15 }}
+                              className="space-y-3"
+                            >
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                                {lang === 'bn' ? 'টেস্ট কার্ড' : 'Test Card'}
+                              </p>
+
+                              {/* Search box — only if there are cards */}
+                              {activeTestCards.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                  <div className="relative flex-1">
+                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                                    <input
+                                      type="text"
+                                      value={testCardSearchQuery}
+                                      onChange={e => setTestCardSearchQuery(e.target.value)}
+                                      placeholder={lang === 'bn' ? 'কার্ড খুঁজুন...' : 'Search cards...'}
+                                      className="w-full pl-8 pr-8 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
+                                    />
+                                    {testCardSearchQuery && (
+                                      <button
+                                        onClick={() => setTestCardSearchQuery('')}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                      >
+                                        <X size={13} />
+                                      </button>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const q = testCardSearchQuery.toLowerCase();
+                                      const visible = activeTestCards.filter(card => card.title.toLowerCase().includes(q));
+                                      const allSelected = visible.length > 0 && visible.every(card => selectedTestCardIds.has(card.id));
+                                      if (allSelected) {
+                                        setSelectedTestCards(prev => prev.filter(card =>
+                                          !(card.source === testCardSource && card.subjectId === selectedTestSubjectId && visible.some(v => v.id === card.id)),
+                                        ));
+                                      } else {
+                                        setSelectedTestCards(prev => {
+                                          const next = [...prev];
+                                          visible.forEach(card => {
+                                            if (!next.some(item => item.id === card.id && item.source === testCardSource && item.subjectId === selectedTestSubjectId)) {
+                                              const subjectTitle = subjects.find(s => s.id === selectedTestSubjectId)?.title || '';
+                                              next.push({ ...card, subjectId: selectedTestSubjectId, subjectTitle, source: testCardSource });
+                                            }
+                                          });
+                                          return next;
+                                        });
+                                      }
+                                    }}
+                                    className="text-[11px] font-semibold text-primary hover:underline whitespace-nowrap"
+                                  >
+                                    {(() => {
+                                      const q = testCardSearchQuery.toLowerCase();
+                                      const visible = activeTestCards.filter(card => card.title.toLowerCase().includes(q));
+                                      return visible.length > 0 && visible.every(card => selectedTestCardIds.has(card.id))
+                                        ? (lang === 'bn' ? 'সব বাদ দিন' : 'Deselect all')
+                                        : (lang === 'bn' ? 'সব সিলেক্ট' : 'Select all');
+                                    })()}
+                                  </button>
+                                </div>
+                              )}
+
+                              {activeTestCards.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center gap-1.5 py-6 rounded-2xl border border-dashed border-border/50 bg-secondary/30">
+                                  <Trophy size={18} className="text-muted-foreground/30" />
+                                  <p className="text-xs text-muted-foreground/60">
+                                    {lang === 'bn' ? 'এই সাবজেক্টে কোনো টেস্ট কার্ড নেই।' : 'No test cards in this subject.'}
+                                  </p>
+                                </div>
+                              ) : (() => {
+                                const filtered = activeTestCards.filter(c =>
+                                  c.title.toLowerCase().includes(testCardSearchQuery.toLowerCase())
+                                );
+                                if (filtered.length === 0) return (
+                                  <div className="flex flex-col items-center justify-center gap-1.5 py-6 rounded-2xl border border-dashed border-border/50 bg-secondary/30">
+                                    <Search size={18} className="text-muted-foreground/30" />
+                                    <p className="text-xs text-muted-foreground/60">
+                                      {lang === 'bn'
+                                        ? `"${testCardSearchQuery}" এর সাথে কোনো কার্ড মিলছে না`
+                                        : `No cards match "${testCardSearchQuery}"`}
+                                    </p>
+                                  </div>
+                                );
+                                return (
+                                  <div className="space-y-1.5">
+                                    {filtered.map((card, idx) => {
+                                      const isSelected = selectedTestCardIds.has(card.id);
+                                      const cardHues = ['#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899'];
+                                      const accent = cardHues[activeTestCards.indexOf(card) % cardHues.length];
+                                      return (
+                                        <button
+                                          key={card.id}
+                                          onClick={() => {
+                                            setSelectedTestCards(prev => {
+                                              const exists = prev.some(item =>
+                                                item.id === card.id && item.source === testCardSource && item.subjectId === selectedTestSubjectId,
+                                              );
+                                              if (exists) {
+                                                return prev.filter(item => !(
+                                                  item.id === card.id && item.source === testCardSource && item.subjectId === selectedTestSubjectId
+                                                ));
+                                              }
+                                              const subjectTitle = subjects.find(s => s.id === selectedTestSubjectId)?.title || '';
+                                              return [...prev, {
+                                                ...card,
+                                                subjectId: selectedTestSubjectId,
+                                                subjectTitle,
+                                                source: testCardSource,
+                                              }];
+                                            });
+                                            setShareForm(f => ({ ...f, testCardTitle: card.title }));
+                                          }}
+                                          style={isSelected ? {
+                                            borderColor: accent,
+                                            background: `${accent}10`,
+                                          } : {}}
+                                          className={cn(
+                                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-all duration-200",
+                                            isSelected
+                                              ? ""
+                                              : "border-border/40 bg-secondary/30 hover:bg-secondary/70 hover:border-border/60"
+                                          )}
+                                        >
+                                          <div
+                                            className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
+                                            style={{ background: `${accent}18` }}
+                                          >
+                                            <Trophy size={13} style={{ color: accent }} />
+                                          </div>
+                                          <p
+                                            className="text-sm font-bold text-foreground truncate flex-1"
+                                            style={isSelected ? { color: accent } : {}}
+                                          >
+                                            {card.title}
+                                          </p>
+                                          {isSelected && (
+                                            <span
+                                              className="flex items-center justify-center w-5 h-5 rounded-full shrink-0"
+                                              style={{ background: accent }}
+                                            >
+                                              <Check size={10} strokeWidth={3} className="text-white" />
+                                            </span>
+                                          )}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })()}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </Modal>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold text-muted-foreground">
+                      {lang === 'bn'
+                        ? 'একটি বা একাধিক নোট সিলেক্ট করুন — সবগুলো একসাথে একটি কার্ড হিসেবে পাঠানো হবে'
+                        : 'Select one or more notes — they will all be sent together as a single card'}
+                    </p>
+
+                    {notesPickedList.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] font-bold text-foreground">
+                          {lang === 'bn'
+                            ? `সিলেক্ট করা হয়েছে (${notesPickedList.length})`
+                            : `Selected (${notesPickedList.length})`}
+                        </p>
+                        {notesPickedList.map(note => (
+                          <div key={note.id} className="flex items-center justify-between gap-2 p-2.5 bg-amber-500/5 border border-amber-300/50 rounded-xl">
+                            <p className="text-xs text-foreground flex items-center gap-1 flex-wrap min-w-0 flex-1">
+                              {note.breadcrumb.map((c, i) => (
+                                <React.Fragment key={i}>
+                                  {i > 0 && <ChevronRight size={9} className="shrink-0" />}
+                                  <span className={i === note.breadcrumb.length - 1 ? 'font-semibold' : ''}>{c}</span>
+                                </React.Fragment>
+                              ))}
+                            </p>
+                            <button
+                              onClick={() => setNotesPickedList(list => list.filter(n => n.id !== note.id))}
+                              className="p-1 rounded hover:bg-secondary text-muted-foreground shrink-0"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Source toggle: subject/chapter/topic notes vs. standalone Notes-page items */}
+                    <div className="flex items-center gap-1.5 p-1 bg-secondary rounded-xl">
+                      <button
+                        onClick={() => {
+                          setNoteSource('inline');
+                          setSelectedNoteSubjectId('');
+                        }}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                          noteSource === 'inline' ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"
+                        )}
+                      >
+                        {lang === 'bn' ? 'সাবজেক্ট নোট' : 'Subject notes'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setNoteSource('pages');
+                          setSelectedNoteSubjectId('');
+                          setNoteSectionSource('course');
+                        }}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                          noteSource === 'pages' ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"
+                        )}
+                      >
+                        {lang === 'bn' ? 'নোট সেকশন' : 'Notes section'}
+                      </button>
+                    </div>
+
+                    {noteSource === 'inline' ? (
+                      <NotePicker
+                        subjects={subjects}
+                        pickedIds={new Set(notesPickedList.map(n => n.id))}
+                        onToggle={pick => setNotesPickedList(list =>
+                          list.some(n => n.id === pick.id)
+                            ? list.filter(n => n.id !== pick.id)
+                            : [...list, pick]
+                        )}
+                        lang={lang}
+                      />
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-1.5 p-1 bg-secondary rounded-xl">
+                          {(['course', 'personal'] as const).map(source => (
+                            <button
+                              key={source}
+                              onClick={() => {
+                                setNoteSectionSource(source);
+                                setSelectedNoteSubjectId('');
+                              }}
+                              className={cn(
+                                "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                                noteSectionSource === source ? "bg-card shadow-sm text-foreground" : "text-muted-foreground",
+                              )}
+                            >
+                              {source === 'course'
+                                ? (lang === 'bn' ? 'কোর্স নোটস' : 'Course notes')
+                                : (lang === 'bn' ? 'পার্সোনাল নোটস' : 'Personal notes')}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                              {lang === 'bn' ? 'সাবজেক্ট সিলেক্ট করুন' : 'Select a subject'}
+                            </p>
+                            {selectedNoteSubjectId && (
+                              <button
+                                onClick={() => setSelectedNoteSubjectId('')}
+                                className="text-[11px] text-primary hover:underline"
+                              >
+                                {lang === 'bn' ? 'পরিবর্তন করুন' : 'Change'}
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex gap-2 flex-wrap">
+                            {subjects.map((subject, i) => {
+                              const isActive = selectedNoteSubjectId === subject.id;
+                              const color = subject.color || ['#6366f1', '#06b6d4', '#10b981', '#f59e0b'][i % 4];
+                              return (
+                                <button
+                                  key={subject.id}
+                                  onClick={() => setSelectedNoteSubjectId(subject.id)}
+                                  style={isActive ? { background: `${color}18`, borderColor: color, color } : {}}
+                                  className={cn(
+                                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all",
+                                    isActive
+                                      ? ""
+                                      : "border-border/50 bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground",
+                                  )}
+                                >
+                                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                                  {subject.title}
+                                  {isActive && <Check size={10} strokeWidth={3} />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {selectedNoteSubjectId ? (
+                          <NotePagesPicker
+                            notePagesIndex={(noteSectionSource === 'course' ? notePagesIndex : personalNotePagesIndex)
+                              .filter(page => page.subjectId === selectedNoteSubjectId && (noteSectionSource === 'personal' || !page.privateNote))}
+                            loadNotePage={noteSectionSource === 'course' ? loadNotePage : loadPersonalNotePage}
+                            pickedIds={new Set(notesPickedList.map(n => n.id))}
+                            onToggle={pick => setNotesPickedList(list =>
+                              list.some(n => n.id === pick.id)
+                                ? list.filter(n => n.id !== pick.id)
+                                : [...list, pick]
+                            )}
+                            lang={lang}
+                          />
+                        ) : (
+                          <p className="text-xs text-muted-foreground text-center py-4 rounded-xl bg-secondary/30">
+                            {lang === 'bn' ? 'উপরের তালিকা থেকে একটি সাবজেক্ট বেছে নিন।' : 'Choose a subject above to see its notes.'}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Received-content re-share block */}
+                {(() => {
+                  const isReceived = shareForm.type === 'course' && shareForm.courseId &&
+                    acceptedShares.some(s => s.id === shareForm.courseId && s.type === 'course');
+                  const blocked = isReceived && !isSuperAdmin && !currentAdminPermissions?.canShareReceivedContent;
+                  if (!blocked) return null;
+                  return (
+                    <div className="bg-amber-500/10 border border-amber-300/50 rounded-xl p-3 flex items-start gap-2.5">
+                      <ShieldCheck size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-800 font-medium">
+                        {lang === 'bn'
+                          ? 'এই কোর্সটি অন্য একজন এডমিনের কাছ থেকে শেয়ার করা হয়েছে। রিসিভড কন্টেন্ট পুনরায় শেয়ার করার অনুমতি আপনার নেই।'
+                          : 'This course was shared with you by another admin. You do not have permission to re-share received content.'}
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                <Button
+                  className="w-full"
+                  disabled={
+                    shareForm.type === 'course'
+                      ? (!shareForm.courseId || (courseSubjects.length > 0 && selectedSubjectIds.length === 0) ||
+                          (!isSuperAdmin && !currentAdminPermissions?.canShareReceivedContent &&
+                            acceptedShares.some(s => s.id === shareForm.courseId && s.type === 'course')))
+                      : shareForm.type === 'message' ? !shareForm.messageText.trim()
+                      : shareForm.type === 'testcard' ? selectedTestCards.length === 0
+                      : notesPickedList.length === 0
+                  }
+                  onClick={() => setShareStep(3)}
+                >
+                  {lang === 'bn' ? 'পরবর্তী' : 'Next'} →
+                </Button>
+              </div>
+            )}
+
+            {/* Step 3: Duration + Permissions + Send */}
+            {shareStep === 3 && (
+              <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-4">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setShareStep(2)} className="p-1 rounded-full hover:bg-secondary text-muted-foreground">
+                    <ChevronLeft size={16} />
+                  </button>
+                  <p className="text-sm font-bold text-foreground">
+                    {lang === 'bn' ? '৩. সময়সীমা ও অনুমতি' : '3. Duration & Permissions'}
+                  </p>
+                </div>
+
+                {/* Duration */}
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    {lang === 'bn' ? 'কতদিনের জন্য?' : 'How long?'}
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={durationRaw}
+                      onChange={e => {
+                        setDurationRaw(e.target.value);
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val) && val > 0) setShareForm(f => ({ ...f, durationValue: val }));
+                      }}
+                      onBlur={() => {
+                        const val = Math.max(1, parseInt(durationRaw) || 1);
+                        setDurationRaw(String(val));
+                        setShareForm(f => ({ ...f, durationValue: val }));
+                      }}
+                      className="w-24 h-10 rounded-xl border border-border/60 bg-secondary px-3 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <div className="flex bg-secondary p-1 rounded-xl border border-border/50 flex-1">
+                      {(['minutes', 'hours', 'days', 'months'] as const).map(unit => (
+                        <button
+                          key={unit}
+                          onClick={() => setShareForm(f => ({ ...f, durationUnit: unit }))}
+                          className={cn(
+                            "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                            shareForm.durationUnit === unit ? "bg-card shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {lang === 'bn'
+                            ? { minutes: 'মিনিট', hours: 'ঘণ্টা', days: 'দিন', months: 'মাস' }[unit]
+                            : { minutes: 'Mins', hours: 'Hours', days: 'Days', months: 'Months' }[unit]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Permissions — not applicable to plain messages */}
+                {shareForm.type !== 'message' && shareForm.type !== 'testcard' && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-2">
+                      {lang === 'bn' ? 'অনুমতি সেট করুন' : 'Set Permissions'}
+                    </p>
+                    <PermissionsEditor
+                      permissions={shareForm.permissions}
+                      onChange={p => setShareForm(f => ({ ...f, permissions: p }))}
+                      lang={lang}
+                      allowedKeys={grantableShareKeys}
+                    />
+                    {grantableShareKeys !== undefined && (
+                      <p className="text-[10px] text-amber-700 bg-amber-500/10 rounded-lg px-2.5 py-1.5 mt-1 flex items-center gap-1.5">
+                        <ShieldCheck size={11} className="shrink-0" />
+                        {lang === 'bn'
+                          ? 'এটি শেয়ার করা কন্টেন্ট — আপনি শুধুমাত্র সেই পারমিশনগুলো দিতে পারবেন যা আপনি নিজে পেয়েছেন।'
+                          : 'Received content — you can only grant permissions you were given.'}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Summary */}
+                <div className="bg-secondary/50 rounded-xl p-3 text-xs space-y-1">
+                  <p>
+                    <span className="text-muted-foreground">
+                      {lang === 'bn'
+                        ? `প্রাপক (${shareForm.toEmails.length}):`
+                        : `To (${shareForm.toEmails.length}):`}
+                    </span>{' '}
+                    <span className="font-semibold">{shareForm.toEmails.join(', ')}</span>
+                  </p>
+                  <p><span className="text-muted-foreground">{lang === 'bn' ? 'কন্টেন্ট:' : 'Content:'}</span>{' '}
+                    <span className="font-semibold">
+                      {shareForm.type === 'course' ? shareForm.courseName
+                        : shareForm.type === 'message' ? shareForm.messageText
+                        : shareForm.type === 'testcard' ? (shareForm.testCardTitle || '—')
+                        : notesPickedList.length > 1
+                          ? (lang === 'bn' ? `${notesPickedList.length}টি নোট` : `${notesPickedList.length} notes`)
+                          : (notesPickedList[0]?.title || '—')}
+                    </span>
+                  </p>
+                  <p><span className="text-muted-foreground">{lang === 'bn' ? 'সময়:' : 'Duration:'}</span>{' '}
+                    <span className="font-semibold">{formatDuration(shareForm.durationValue, shareForm.durationUnit, lang)}</span>
+                  </p>
+                </div>
+
+                {sendError && (
+                  <p className="text-destructive text-xs text-center bg-destructive/10 rounded-lg py-2 px-3">
+                    {sendError}
+                  </p>
+                )}
+
+                <Button className="w-full" onClick={handleSendShare} disabled={sending}>
+                  {sending ? (
+                    <RefreshCw size={14} className="animate-spin mr-2" />
+                  ) : (
+                    <Send size={14} className="mr-2" />
+                  )}
+                  {lang === 'bn' ? 'পাঠান' : 'Send'}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Sent Tab ── */}
+        {tab === 'sent' && (
+          <div className="space-y-3 mt-2">
+            {/* Active / Trash sub-toggle */}
+            <div className="flex gap-2 p-1 bg-secondary/60 rounded-xl">
+              <button
+                onClick={() => setSentSubTab('active')}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                  sentSubTab === 'active' ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
+                )}
+              >
+                {lang === 'bn' ? 'পাঠানো' : 'Active'}
+              </button>
+              <button
+                onClick={() => setSentSubTab('trash')}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5",
+                  sentSubTab === 'trash' ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
+                )}
+              >
+                <Archive size={12} />
+                {lang === 'bn' ? 'ট্র্যাশ' : 'Trash'}
+                {trashedShares.length > 0 && (
+                  <span className="text-[10px] bg-destructive/15 text-destructive px-1.5 rounded-full">{trashedShares.length}</span>
+                )}
+              </button>
+            </div>
+
+            {/* Search by recipient email — jump straight to a specific user's cards to edit them */}
+            {sentSubTab === 'active' && (
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={sentSearch}
+                  onChange={e => setSentSearch(e.target.value)}
+                  placeholder={lang === 'bn' ? 'ইমেইল বা কোর্স/নোটের নাম...' : 'Search by email or title...'}
+                  className="w-full h-10 pl-9 pr-8 rounded-xl border border-border/60 bg-secondary text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                {sentSearch && (
+                  <button
+                    onClick={() => setSentSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-secondary/80 text-muted-foreground"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Search by email — shown for the trash sub-tab */}
+            {sentSubTab === 'trash' && (
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={trashSearch}
+                  onChange={e => setTrashSearch(e.target.value)}
+                  placeholder={lang === 'bn' ? 'ইমেইল বা কোর্স/নোটের নাম...' : 'Search by email or title...'}
+                  className="w-full h-10 pl-9 pr-8 rounded-xl border border-border/60 bg-secondary text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                {trashSearch && (
+                  <button
+                    onClick={() => setTrashSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-secondary/80 text-muted-foreground"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {loadingSentShares ? (
+              <div className="py-8 flex justify-center">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : sentSubTab === 'active' ? (
+              filteredSentShares.length === 0 ? (
+                <div className="py-12 text-center">
+                  <List size={32} className="text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    {sentShares.length === 0
+                      ? (lang === 'bn' ? 'এখনো কিছু পাঠানো হয়নি।' : 'Nothing sent yet.')
+                      : (lang === 'bn' ? 'এই ইমেইলে কিছু পাঠানো হয়নি।' : 'Nothing sent to this email.')}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Select All / bulk delete bar — active */}
+                  <div className="flex items-center gap-2 px-0.5">
+                    <button
+                      onClick={() => {
+                        const allVisible = filteredSentShares.map(s => s.id);
+                        const allSelected = allVisible.every(id => activeSelectedIds.has(id));
+                        setActiveSelectedIds(prev => {
+                          const next = new Set(prev);
+                          if (allSelected) { allVisible.forEach(id => next.delete(id)); }
+                          else { allVisible.forEach(id => next.add(id)); }
+                          return next;
+                        });
+                      }}
+                      className={cn(
+                        "w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
+                        filteredSentShares.every(s => activeSelectedIds.has(s.id))
+                          ? "bg-primary border-primary"
+                          : filteredSentShares.some(s => activeSelectedIds.has(s.id))
+                            ? "border-primary bg-primary/20"
+                            : "border-border bg-card hover:border-primary"
+                      )}
+                    >
+                      {filteredSentShares.every(s => activeSelectedIds.has(s.id))
+                        ? <Check size={11} className="text-primary-foreground" />
+                        : filteredSentShares.some(s => activeSelectedIds.has(s.id))
+                          ? <div className="w-2 h-0.5 bg-primary rounded-full" />
+                          : null}
+                    </button>
+                    <span className="text-xs text-muted-foreground flex-1">
+                      {activeSelectedIds.size > 0
+                        ? (lang === 'bn' ? `${activeSelectedIds.size}টি সিলেক্ট হয়েছে` : `${activeSelectedIds.size} selected`)
+                        : (lang === 'bn' ? 'সব সিলেক্ট করুন' : 'Select all')}
+                    </span>
+                    {activeSelectedIds.size > 0 && (
+                      <>
+                        <button
+                          onClick={() => setBulkActiveConfirm(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 text-xs font-semibold transition-colors"
+                        >
+                          <Trash2 size={12} />
+                          {lang === 'bn' ? `ডিলিট (${activeSelectedIds.size})` : `Delete (${activeSelectedIds.size})`}
+                        </button>
+                        <button
+                          onClick={() => setActiveSelectedIds(new Set())}
+                          className="p-1 rounded-lg hover:bg-secondary text-muted-foreground transition-colors"
+                        >
+                          <X size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {filteredSentShares.map(share => (
+                    <SentShareRow
+                      key={share.id}
+                      share={share}
+                      lang={lang}
+                      isSelected={activeSelectedIds.has(share.id)}
+                      onToggleSelect={() => setActiveSelectedIds(prev => {
+                        const next = new Set(prev);
+                        if (next.has(share.id)) next.delete(share.id); else next.add(share.id);
+                        return next;
+                      })}
+                      onEditPermissions={s => { setEditPermissions({ ...s.permissions }); setEditPermModal(s); }}
+                      onDelete={s => setDeleteConfirmShare(s)}
+                      onExtend={s => openExtendModal(s)}
+                      onAddSubjects={s => openAddSubjectsModal(s)}
+                      onResend={shareId => resendShare(shareId)}
+                    />
+                  ))}
+                </>
+              )
+            ) : (
+              filteredTrashedShares.length === 0 ? (
+                <div className="py-12 text-center">
+                  <Archive size={32} className="text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    {trashedShares.length === 0
+                      ? (lang === 'bn' ? 'ট্র্যাশ খালি।' : 'Trash is empty.')
+                      : (lang === 'bn' ? 'এই ইমেইলে কিছু পাওয়া যায়নি।' : 'Nothing found for this email.')}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Select All / bulk delete bar — trash */}
+                  <div className="flex items-center gap-2 px-0.5">
+                    <button
+                      onClick={() => {
+                        const allVisible = filteredTrashedShares.map(s => s.id);
+                        const allSelected = allVisible.every(id => trashSelectedIds.has(id));
+                        setTrashSelectedIds(prev => {
+                          const next = new Set(prev);
+                          if (allSelected) { allVisible.forEach(id => next.delete(id)); }
+                          else { allVisible.forEach(id => next.add(id)); }
+                          return next;
+                        });
+                      }}
+                      className={cn(
+                        "w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
+                        filteredTrashedShares.every(s => trashSelectedIds.has(s.id))
+                          ? "bg-primary border-primary"
+                          : filteredTrashedShares.some(s => trashSelectedIds.has(s.id))
+                            ? "border-primary bg-primary/20"
+                            : "border-border bg-card hover:border-primary"
+                      )}
+                    >
+                      {filteredTrashedShares.every(s => trashSelectedIds.has(s.id))
+                        ? <Check size={11} className="text-primary-foreground" />
+                        : filteredTrashedShares.some(s => trashSelectedIds.has(s.id))
+                          ? <div className="w-2 h-0.5 bg-primary rounded-full" />
+                          : null}
+                    </button>
+                    <span className="text-xs text-muted-foreground flex-1">
+                      {trashSelectedIds.size > 0
+                        ? (lang === 'bn' ? `${trashSelectedIds.size}টি সিলেক্ট হয়েছে` : `${trashSelectedIds.size} selected`)
+                        : (lang === 'bn' ? 'সব সিলেক্ট করুন' : 'Select all')}
+                    </span>
+                    {trashSelectedIds.size > 0 && (
+                      <>
+                        <button
+                          onClick={() => setBulkTrashConfirm(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 text-xs font-semibold transition-colors"
+                        >
+                          <Trash2 size={12} />
+                          {lang === 'bn' ? `মুছুন (${trashSelectedIds.size})` : `Delete Forever (${trashSelectedIds.size})`}
+                        </button>
+                        <button
+                          onClick={() => setTrashSelectedIds(new Set())}
+                          className="p-1 rounded-lg hover:bg-secondary text-muted-foreground transition-colors"
+                        >
+                          <X size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {filteredTrashedShares.map(share => (
+                    <TrashedShareRow
+                      key={share.id}
+                      share={share}
+                      lang={lang}
+                      isSelected={trashSelectedIds.has(share.id)}
+                      onToggleSelect={() => setTrashSelectedIds(prev => {
+                        const next = new Set(prev);
+                        if (next.has(share.id)) next.delete(share.id); else next.add(share.id);
+                        return next;
+                      })}
+                      onRestore={handleRestore}
+                      onPermanentDelete={s => setPermDeleteConfirmShare(s)}
+                    />
+                  ))}
+                </>
+              )
+            )}
+          </div>
+        )}
+
+        {/* ── Contact Tab ── */}
+        {tab === 'contact' && (
+          <div className="space-y-4 mt-2">
+            {/* Permission gate: non-super-admin without canEditContacts sees read-only notice */}
+            {!isSuperAdmin && !currentAdminPermissions?.canEditContacts && (
+              <div className="bg-amber-500/10 border border-amber-300/50 rounded-2xl p-4 flex items-start gap-3">
+                <ShieldCheck size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">
+                    {lang === 'bn' ? 'কন্টাক্ট এডিট করার অনুমতি নেই' : 'No permission to edit contacts'}
+                  </p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    {lang === 'bn'
+                      ? 'সুপার এডমিন আপনাকে এই অনুমতি দিলে আপনি কন্টাক্ট তথ্য পরিবর্তন করতে পারবেন।'
+                      : 'Ask a super admin to grant you the "edit contacts" permission.'}
+                  </p>
+                </div>
+              </div>
+            )}
+            <div className={cn(
+              "bg-card border border-border/50 rounded-2xl p-4 space-y-4",
+              !isSuperAdmin && !currentAdminPermissions?.canEditContacts && "opacity-50 pointer-events-none select-none"
+            )}>
+              <p className="text-sm font-bold text-foreground">
+                {lang === 'bn' ? 'কন্টাক্ট তথ্য সেট করুন' : 'Set Contact Information'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {lang === 'bn'
+                  ? 'এখানে সেট করা তথ্য সব ইউজারের PDF ফুটারে এবং কন্টাক্ট বাটনে লাইভ আপডেট হবে।'
+                  : 'These settings appear in PDF footers and the contact button for all users, updated live.'}
+              </p>
+
+              {/* WhatsApp Number */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <MessageCircle size={12} className="text-green-600" />
+                  {lang === 'bn' ? 'WhatsApp নম্বর' : 'WhatsApp Number'}
+                </label>
+                <Input
+                  type="text"
+                  placeholder={lang === 'bn' ? 'যেমন: 9999999999' : 'e.g. 9999999999'}
+                  value={contactForm.whatsapp}
+                  onChange={e => setContactForm(f => ({ ...f, whatsapp: e.target.value }))}
+                  className="h-10 text-sm"
+                />
+              </div>
+
+              {/* Website Link */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <Globe size={12} className="text-blue-600" />
+                  {lang === 'bn' ? 'ওয়েবসাইট লিঙ্ক' : 'Website Link'}
+                </label>
+                <Input
+                  type="url"
+                  placeholder="https://example.com"
+                  value={contactForm.website}
+                  onChange={e => setContactForm(f => ({ ...f, website: e.target.value }))}
+                  className="h-10 text-sm"
+                />
+              </div>
+
+              {/* Support Link */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <Link2 size={12} className="text-indigo-600" />
+                  {lang === 'bn' ? 'সাপোর্ট লিঙ্ক (WhatsApp/Telegram চ্যাট)' : 'Support Link (WhatsApp/Telegram chat)'}
+                </label>
+                <Input
+                  type="url"
+                  placeholder="https://wa.me/91... or https://t.me/..."
+                  value={contactForm.supportLink}
+                  onChange={e => setContactForm(f => ({ ...f, supportLink: e.target.value }))}
+                  className="h-10 text-sm"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {lang === 'bn'
+                    ? 'এই লিঙ্কটি Today পেজের Contact বাটনে ওপেন হবে।'
+                    : 'This link opens when users tap the Contact button on the Today page.'}
+                </p>
+              </div>
+
+              <Button
+                onClick={handleSaveContact}
+                disabled={savingContact}
+                className="w-full h-10 text-sm"
+              >
+                {savingContact
+                  ? <RefreshCw size={14} className="animate-spin mr-2" />
+                  : <Save size={14} className="mr-2" />}
+                {lang === 'bn' ? 'সেভ করুন' : 'Save'}
+              </Button>
+
+              {contactSaved && (
+                <motion.p
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-xs text-green-600 text-center font-semibold"
+                >
+                  {lang === 'bn' ? '✓ সফলভাবে সেভ হয়েছে!' : '✓ Saved successfully!'}
+                </motion.p>
+              )}
+            </div>
+
+            {/* Current settings preview */}
+            {(appContact.whatsapp || appContact.website || appContact.supportLink) && (
+              <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-2">
+                <p className="text-xs font-bold text-muted-foreground">
+                  {lang === 'bn' ? 'বর্তমান তথ্য' : 'Current Settings'}
+                </p>
+                {appContact.whatsapp && (
+                  <p className="text-sm text-foreground flex items-center gap-2">
+                    <MessageCircle size={13} className="text-green-600 shrink-0" />
+                    {appContact.whatsapp}
+                  </p>
+                )}
+                {appContact.website && (
+                  <p className="text-sm text-foreground flex items-center gap-2 break-all">
+                    <Globe size={13} className="text-blue-600 shrink-0" />
+                    {appContact.website}
+                  </p>
+                )}
+                {appContact.supportLink && (
+                  <p className="text-sm text-foreground flex items-center gap-2 break-all">
+                    <Link2 size={13} className="text-indigo-600 shrink-0" />
+                    {appContact.supportLink}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Edit Permissions Modal */}
+      <Modal
+        isOpen={!!editPermModal}
+        onClose={() => setEditPermModal(null)}
+        title={lang === 'bn' ? 'অনুমতি সম্পাদনা' : 'Edit Permissions'}
+        align="bottom"
+        icon={Edit3}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            → {editPermModal?.toEmail}
+          </p>
+          <PermissionsEditor permissions={editPermissions} onChange={setEditPermissions} lang={lang} />
+          <Button className="w-full" onClick={handleSavePermissions} disabled={savingPerms}>
+            {savingPerms ? '...' : (
+              <>
+                <Save size={14} className="mr-2" />
+                {lang === 'bn' ? 'সংরক্ষণ করুন' : 'Save'}
+              </>
+            )}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Extend Time Modal */}
+      <Modal
+        isOpen={!!extendModal}
+        onClose={() => setExtendModal(null)}
+        title={lang === 'bn' ? 'সময় বাড়ান' : 'Extend Time'}
+        align="bottom"
+        icon={TimerReset}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">→ {extendModal?.toEmail}</p>
+          <div className="flex rounded-xl bg-secondary p-1 gap-1">
+            <button
+              onClick={() => setExtendDirection('add')}
+              className={cn(
+                "flex-1 py-2 rounded-lg text-sm font-semibold transition-colors",
+                extendDirection === 'add' ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              )}
+            >
+              {lang === 'bn' ? 'সময় বাড়ান' : 'Extend'}
+            </button>
+            <button
+              onClick={() => setExtendDirection('subtract')}
+              className={cn(
+                "flex-1 py-2 rounded-lg text-sm font-semibold transition-colors",
+                extendDirection === 'subtract' ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              )}
+            >
+              {lang === 'bn' ? 'সময় কমান' : 'Reduce'}
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              min={1}
+              value={extendValue}
+              onChange={e => setExtendValue(Math.max(1, Number(e.target.value) || 1))}
+              className="flex-1"
+            />
+            <select
+              value={extendUnit}
+              onChange={e => setExtendUnit(e.target.value as 'minutes' | 'hours' | 'days' | 'months')}
+              className="rounded-xl border border-border/60 bg-secondary px-3 text-sm text-foreground"
+            >
+              <option value="minutes">{lang === 'bn' ? 'মিনিট' : 'Minutes'}</option>
+              <option value="hours">{lang === 'bn' ? 'ঘণ্টা' : 'Hours'}</option>
+              <option value="days">{lang === 'bn' ? 'দিন' : 'Days'}</option>
+              <option value="months">{lang === 'bn' ? 'মাস' : 'Months'}</option>
+            </select>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {extendDirection === 'add'
+              ? (lang === 'bn'
+                ? 'বর্তমান মেয়াদ শেষ হওয়ার সময়ের সাথে এই সময় যোগ হবে।'
+                : 'This time will be added on top of the current expiry.')
+              : (lang === 'bn'
+                ? 'বর্তমান মেয়াদ শেষ হওয়ার সময় থেকে এই সময় কমে যাবে।'
+                : 'This time will be subtracted from the current expiry.')}
+          </p>
+          <Button className="w-full" onClick={handleConfirmExtend} disabled={extending}>
+            {extending ? '...' : (extendDirection === 'add'
+              ? (lang === 'bn' ? 'সময় বাড়ান' : 'Extend')
+              : (lang === 'bn' ? 'সময় কমান' : 'Reduce'))}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Manage Subjects Modal */}
+      <Modal
+        isOpen={!!addSubjectsModal}
+        onClose={() => { setAddSubjectsModal(null); setRemoveSubjectsPicked([]); setAddSubjectsPicked([]); }}
+        title={lang === 'bn' ? 'সাবজেক্ট ম্যানেজ করুন' : 'Manage Subjects'}
+        align="bottom"
+        icon={ListPlus}
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">→ {addSubjectsModal?.toEmail}</p>
+          {(() => {
+            const alreadySentIds = new Set(addSubjectsModal?.sharedSubjectIds || []);
+            const sentSubjects = addSubjectsAvailable.filter(s => alreadySentIds.has(s.id));
+            const newSubjects = addSubjectsAvailable.filter(s => !alreadySentIds.has(s.id));
+            const keepCount = sentSubjects.length - removeSubjectsPicked.length;
+            const noChanges = addSubjectsPicked.length === 0 && removeSubjectsPicked.length === 0;
+            return (
+              <>
+                {/* Already sent — checkboxes, uncheck to remove */}
+                {sentSubjects.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      {lang === 'bn' ? 'পাঠানো সাবজেক্ট' : 'Sent subjects'}
+                    </p>
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                      {sentSubjects.map(s => {
+                        const markedForRemoval = removeSubjectsPicked.includes(s.id);
+                        return (
+                          <label
+                            key={s.id}
+                            className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer transition-colors ${
+                              markedForRemoval
+                                ? 'bg-red-50 dark:bg-red-950/30 line-through opacity-60'
+                                : 'hover:bg-secondary/60 bg-green-50/60 dark:bg-green-950/20'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!markedForRemoval}
+                              onChange={() =>
+                                setRemoveSubjectsPicked(prev =>
+                                  prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]
+                                )
+                              }
+                              className="w-4 h-4 rounded shrink-0"
+                            />
+                            <span className="text-sm text-foreground truncate">{s.title}</span>
+                            {markedForRemoval && (
+                              <span className="ml-auto text-[10px] font-semibold text-red-500 shrink-0">
+                                {lang === 'bn' ? 'রিমুভ হবে' : 'Will remove'}
+                              </span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {removeSubjectsPicked.length > 0 && keepCount === 0 && (
+                      <p className="text-[11px] text-red-500 font-medium">
+                        {lang === 'bn'
+                          ? '⚠️ অন্তত একটি সাবজেক্ট রাখতে হবে।'
+                          : '⚠️ At least one subject must remain.'}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* New subjects to add */}
+                {newSubjects.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      {lang === 'bn' ? 'নতুন সাবজেক্ট যোগ করুন' : 'Add new subjects'}
+                    </p>
+                    <div className="max-h-40 overflow-y-auto space-y-1">
+                      {newSubjects.map(s => (
+                        <label key={s.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-secondary/60 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={addSubjectsPicked.includes(s.id)}
+                            onChange={() =>
+                              setAddSubjectsPicked(prev =>
+                                prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]
+                              )
+                            }
+                            className="w-4 h-4 rounded accent-primary shrink-0"
+                          />
+                          <span className="text-sm text-foreground truncate">{s.title}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {addSubjectsAvailable.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">
+                    {lang === 'bn' ? 'কোনো সাবজেক্ট পাওয়া যায়নি।' : 'No subjects found.'}
+                  </p>
+                )}
+
+                <button
+                  onClick={handleConfirmAddSubjects}
+                  disabled={addingSubjects || noChanges || (removeSubjectsPicked.length > 0 && keepCount === 0)}
+                  className={`w-full mt-2 py-3 rounded-xl text-sm font-semibold transition-all shadow-md active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
+                    removeSubjectsPicked.length > 0 && addSubjectsPicked.length === 0
+                      ? 'bg-red-500 hover:bg-red-600 text-white'
+                      : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  }`}
+                >
+                  {addingSubjects
+                    ? '...'
+                    : removeSubjectsPicked.length > 0 && addSubjectsPicked.length === 0
+                      ? (lang === 'bn' ? `${removeSubjectsPicked.length}টি সাবজেক্ট রিমুভ করুন` : `Remove ${removeSubjectsPicked.length} subject(s)`)
+                      : removeSubjectsPicked.length > 0
+                        ? (lang === 'bn' ? 'পরিবর্তন সেভ করুন' : 'Save changes')
+                        : (lang === 'bn' ? `${addSubjectsPicked.length}টি যোগ করুন` : `Add ${addSubjectsPicked.length} subject(s)`)}
+                </button>
+              </>
+            );
+          })()}
+        </div>
+      </Modal>
+
+      {/* Delete confirmation (moves to trash) */}
+      <Modal
+        isOpen={!!deleteConfirmShare}
+        onClose={() => setDeleteConfirmShare(null)}
+        title={lang === 'bn' ? 'ডিলিট নিশ্চিত করুন' : 'Confirm Delete'}
+        align="bottom"
+        icon={AlertTriangle}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
+            {lang === 'bn'
+              ? 'এই কার্ডটি ট্র্যাশে সরানো হবে। পরে ট্র্যাশ থেকে পুনরুদ্ধার করতে পারবেন।'
+              : 'This card will be moved to trash. You can restore it from trash later.'}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setDeleteConfirmShare(null)}
+              className="flex-1 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-semibold hover:bg-secondary/70 transition-colors"
+            >
+              {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleConfirmDelete}
+              disabled={deletingId === deleteConfirmShare?.id}
+              className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-50"
+            >
+              {deletingId === deleteConfirmShare?.id ? '...' : (lang === 'bn' ? 'ডিলিট করুন' : 'Delete')}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Permanent delete confirmation (from trash) */}
+      <Modal
+        isOpen={!!permDeleteConfirmShare}
+        onClose={() => setPermDeleteConfirmShare(null)}
+        title={lang === 'bn' ? 'স্থায়ীভাবে মুছুন' : 'Delete Forever'}
+        align="bottom"
+        icon={AlertTriangle}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
+            {lang === 'bn'
+              ? 'এটি স্থায়ীভাবে মুছে যাবে এবং আর ফিরিয়ে আনা যাবে না।'
+              : 'This will be permanently deleted and cannot be recovered.'}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPermDeleteConfirmShare(null)}
+              className="flex-1 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-semibold hover:bg-secondary/70 transition-colors"
+            >
+              {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleConfirmPermanentDelete}
+              disabled={deletingId === permDeleteConfirmShare?.id}
+              className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-50"
+            >
+              {deletingId === permDeleteConfirmShare?.id ? '...' : (lang === 'bn' ? 'মুছুন' : 'Delete')}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk delete confirmation — active list (moves to trash) */}
+      <Modal
+        isOpen={bulkActiveConfirm}
+        onClose={() => setBulkActiveConfirm(false)}
+        title={lang === 'bn' ? 'একসাথে ডিলিট করুন' : 'Bulk Delete'}
+        align="bottom"
+        icon={AlertTriangle}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
+            {lang === 'bn'
+              ? `${activeSelectedIds.size}টি কার্ড ট্র্যাশে সরানো হবে। পরে ট্র্যাশ থেকে পুনরুদ্ধার করতে পারবেন।`
+              : `${activeSelectedIds.size} card(s) will be moved to trash. You can restore them from trash later.`}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setBulkActiveConfirm(false)}
+              className="flex-1 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-semibold hover:bg-secondary/70 transition-colors"
+            >
+              {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleBulkDeleteActive}
+              disabled={bulkDeletingActive}
+              className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-50"
+            >
+              {bulkDeletingActive ? '...' : (lang === 'bn' ? 'ডিলিট করুন' : 'Delete')}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk permanent delete confirmation — trash list */}
+      <Modal
+        isOpen={bulkTrashConfirm}
+        onClose={() => setBulkTrashConfirm(false)}
+        title={lang === 'bn' ? 'স্থায়ীভাবে মুছুন' : 'Delete Forever'}
+        align="bottom"
+        icon={AlertTriangle}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
+            {lang === 'bn'
+              ? `${trashSelectedIds.size}টি কার্ড স্থায়ীভাবে মুছে যাবে এবং আর ফিরিয়ে আনা যাবে না।`
+              : `${trashSelectedIds.size} card(s) will be permanently deleted and cannot be recovered.`}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setBulkTrashConfirm(false)}
+              className="flex-1 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-semibold hover:bg-secondary/70 transition-colors"
+            >
+              {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleBulkDeleteTrash}
+              disabled={bulkDeletingTrash}
+              className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-50"
+            >
+              {bulkDeletingTrash ? '...' : (lang === 'bn' ? 'মুছুন' : 'Delete Forever')}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Extend / Reduce Admin Duration Modal */}
+      <Modal
+        isOpen={!!extendAdminModal}
+        onClose={() => setExtendAdminModal(null)}
+        title={lang === 'bn' ? 'এডমিনের মেয়াদ পরিবর্তন করুন' : 'Adjust Admin Expiry'}
+        align="bottom"
+        icon={TimerReset}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">→ {extendAdminModal?.email}</p>
+          {extendAdminModal?.expiresAt && (
+            <p className="text-xs text-muted-foreground">
+              {lang === 'bn' ? 'বর্তমান মেয়াদ:' : 'Current expiry:'}{' '}
+              <span className="font-semibold text-foreground">
+                {new Date(extendAdminModal.expiresAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </p>
+          )}
+          {!extendAdminModal?.expiresAt && (
+            <p className="text-xs text-amber-700 bg-amber-500/10 rounded-lg px-3 py-2">
+              {lang === 'bn'
+                ? 'এই এডমিনের কোনো মেয়াদ সীমা নেই। সময় যোগ করলে এখন থেকে সেই সময় পর মেয়াদ শেষ হবে।'
+                : 'This admin has no expiry. Adding time will set an expiry from now.'}
+            </p>
+          )}
+          <div className="flex rounded-xl bg-secondary p-1 gap-1">
+            <button
+              onClick={() => setExtendAdminDirection('add')}
+              className={cn(
+                "flex-1 py-2 rounded-lg text-sm font-semibold transition-colors",
+                extendAdminDirection === 'add' ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              )}
+            >
+              {lang === 'bn' ? 'সময় বাড়ান' : 'Extend'}
+            </button>
+            <button
+              onClick={() => setExtendAdminDirection('subtract')}
+              className={cn(
+                "flex-1 py-2 rounded-lg text-sm font-semibold transition-colors",
+                extendAdminDirection === 'subtract' ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              )}
+            >
+              {lang === 'bn' ? 'সময় কমান' : 'Reduce'}
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              min={1}
+              value={extendAdminValue}
+              onChange={e => setExtendAdminValue(Math.max(1, Number(e.target.value) || 1))}
+              className="flex-1"
+            />
+            <select
+              value={extendAdminUnit}
+              onChange={e => setExtendAdminUnit(e.target.value as 'minutes' | 'hours' | 'days' | 'months')}
+              className="rounded-xl border border-border/60 bg-secondary px-3 text-sm text-foreground"
+            >
+              <option value="minutes">{lang === 'bn' ? 'মিনিট' : 'Minutes'}</option>
+              <option value="hours">{lang === 'bn' ? 'ঘণ্টা' : 'Hours'}</option>
+              <option value="days">{lang === 'bn' ? 'দিন' : 'Days'}</option>
+              <option value="months">{lang === 'bn' ? 'মাস' : 'Months'}</option>
+            </select>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {extendAdminDirection === 'add'
+              ? (lang === 'bn'
+                ? 'বর্তমান মেয়াদ শেষ হওয়ার সময়ের সাথে এই সময় যোগ হবে।'
+                : 'This time will be added on top of the current expiry.')
+              : (lang === 'bn'
+                ? 'বর্তমান মেয়াদ শেষ হওয়ার সময় থেকে এই সময় কমে যাবে।'
+                : 'This time will be subtracted from the current expiry.')}
+          </p>
+          <Button className="w-full" onClick={handleConfirmAdminExtend} disabled={extendingAdmin}>
+            {extendingAdmin ? '...' : (extendAdminDirection === 'add'
+              ? (lang === 'bn' ? 'সময় বাড়ান' : 'Extend')
+              : (lang === 'bn' ? 'সময় কমান' : 'Reduce'))}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Remove Admin Confirmation Modal */}
+      <Modal
+        isOpen={!!confirmRemoveEmail}
+        onClose={() => setConfirmRemoveEmail(null)}
+        title={lang === 'bn' ? 'এডমিন রিমুভ করুন' : 'Remove Admin'}
+        align="bottom"
+        icon={AlertTriangle}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
+            {lang === 'bn'
+              ? `আপনি কি নিশ্চিত যে "${confirmRemoveEmail}" কে এডমিন থেকে রিমুভ করতে চান?`
+              : `Are you sure you want to remove "${confirmRemoveEmail}" as admin?`}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setConfirmRemoveEmail(null)}
+              className="flex-1 py-2.5 rounded-xl bg-secondary text-foreground text-sm font-semibold hover:bg-secondary/70 transition-colors"
+            >
+              {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleConfirmRemoveAdmin}
+              disabled={!!removingEmail}
+              className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-50"
+            >
+              {removingEmail ? '...' : (lang === 'bn' ? 'রিমুভ করুন' : 'Remove')}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Admin Permissions Modal */}
+      <Modal
+        isOpen={!!editAdminPermEntry}
+        onClose={() => setEditAdminPermEntry(null)}
+        title={lang === 'bn' ? 'এডমিন পারমিশন এডিট করুন' : 'Edit Admin Permissions'}
+        align="bottom"
+        icon={ShieldCheck}
+      >
+        <div className="space-y-4">
+          {editAdminPermEntry && (
+            <>
+              <p className="text-xs text-muted-foreground">
+                → {editAdminPermEntry.email}
+              </p>
+              <AdminRolePermissionsEditor
+                permissions={editAdminPermissions}
+                onChange={setEditAdminPermissions}
+                lang={lang}
+                allowedKeys={grantableAdminKeys}
+              />
+              <Button
+                className="w-full"
+                onClick={handleSaveAdminPerms}
+                disabled={savingAdminPerms}
+              >
+                {savingAdminPerms
+                  ? <RefreshCw size={14} className="animate-spin mr-2" />
+                  : <Save size={14} className="mr-2" />}
+                {lang === 'bn' ? 'সংরক্ষণ করুন' : 'Save Permissions'}
+              </Button>
+            </>
+          )}
+        </div>
+      </Modal>
+    </div>
+  );
+}

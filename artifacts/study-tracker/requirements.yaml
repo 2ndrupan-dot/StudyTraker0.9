@@ -1,0 +1,21 @@
+packages:
+  "framer-motion": "For smooth page transitions, modal animations, and expanding lists in the mobile UI"
+  "clsx": "For conditional tailwind class merging"
+  "tailwind-merge": "For conditional tailwind class merging alongside clsx"
+  "date-fns": "For manipulating and formatting deadlines and daily progress"
+  "lucide-react": "For beautiful consistent icons across the app"
+  "react-hook-form": "For robust form handling in auth and resource creation"
+  "@hookform/resolvers": "For Zod integration with react-hook-form"
+  "zod": "For schema validation of all forms"
+
+images:
+  - path: "artifacts/study-tracker/public/images/auth-hero.png"
+    description: "Minimalist abstract 3D illustration of a floating book and geometric shapes in soft blue and white tones, clean background"
+    aspect_ratio: "1:1"
+  - path: "artifacts/study-tracker/public/images/empty-sun.png"
+    description: "Cute flat vector illustration of a smiling sun hiding behind a cloud, soft pastel colors, no background"
+    aspect_ratio: "1:1"
+
+notes:
+  - The app is entirely offline and uses localStorage to simulate database persistence
+  - Built with a mobile-first philosophy, centering a max-w-md container on desktop

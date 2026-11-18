@@ -304,10 +304,15 @@ function generateSmartPlan(
     hasInProgress: boolean;
   }
 
+  const activePendingItems = pendingItems.filter(p => pendingDaysLeft(p, todayStr) > 0);
+  const pendingSubjectIds = new Set(activePendingItems.map(p => p.task.subjectId));
+
   const subjCandidates: SubjectCandidate[] = [];
 
   for (const subj of subjects) {
     if (subj.completed) continue;
+    // Rule: Exclude subjects that currently have active uncompleted items in the Pending section
+    if (pendingSubjectIds.has(subj.id)) continue;
     const hasAnyIncomplete = subj.chapters.some(ch => !isChapterContentDone(ch));
     if (!hasAnyIncomplete) continue;
 
@@ -338,6 +343,43 @@ function generateSmartPlan(
       : ((1 - completionPct) * 100) / Math.sqrt(daysLeft + 1);
     const urgency: 'high' | 'medium' | 'low' = urgencyScore > 25 ? 'high' : urgencyScore > 8 ? 'medium' : 'low';
     subjCandidates.push({ subj, daysLeft, urgencyScore, urgency, hasInProgress });
+  }
+
+  // Fallback: only if all incomplete subjects in the course happen to be in pending,
+  // allow pending subjects so Today plan is not completely empty
+  if (subjCandidates.length === 0) {
+    for (const subj of subjects) {
+      if (subj.completed) continue;
+      const hasAnyIncomplete = subj.chapters.some(ch => !isChapterContentDone(ch));
+      if (!hasAnyIncomplete) continue;
+
+      const daysLeft = Math.max(0, differenceInDays(parseISO(subj.deadline), parseISO(todayStr)));
+
+      let total = 0, incomplete = 0, hasInProgress = false;
+      for (const ch of subj.chapters) {
+        if (ch.topics.length === 0) { total++; if (!ch.completed) { incomplete++; } continue; }
+        for (const t of ch.topics) {
+          total++;
+          if (!t.completed) { incomplete++; }
+          if (t.subtopics.length === 0) continue;
+          for (const sub of t.subtopics) {
+            if (sub.concepts.length === 0) { total++; if (!sub.completed) incomplete++; continue; }
+            for (const c of sub.concepts) {
+              if (c.points.length === 0) { total++; if (!c.completed) incomplete++; continue; }
+              for (const p of c.points) { total++; if (!p.completed) incomplete++; }
+            }
+          }
+        }
+      }
+      if (total === 0) continue;
+
+      const completionPct = (total - incomplete) / total;
+      const urgencyScore = daysLeft === 0
+        ? 10000
+        : ((1 - completionPct) * 100) / Math.sqrt(daysLeft + 1);
+      const urgency: 'high' | 'medium' | 'low' = urgencyScore > 25 ? 'high' : urgencyScore > 8 ? 'medium' : 'low';
+      subjCandidates.push({ subj, daysLeft, urgencyScore, urgency, hasInProgress });
+    }
   }
 
   // Max subjects per session based on available time
@@ -919,7 +961,9 @@ export function Today() {
   const loadMore = () => {
     const extraStep = 30;
     const existingKeys = new Set(lockedPlan.map(p => p.key));
-    const pendingKeys = new Set(pendingItems.filter(p => pendingDaysLeft(p, todayStr) > 0).map(p => p.task.key));
+    const activePending = pendingItems.filter(p => pendingDaysLeft(p, todayStr) > 0);
+    const pendingKeys = new Set(activePending.map(p => p.task.key));
+    const pendingSubjectIds = new Set(activePending.map(p => p.task.subjectId));
     const allExclude = new Set([...existingKeys, ...pendingKeys]);
 
     const activeSubjIds = [...new Set(lockedPlan.map(p => p.subjectId))].slice(0, 2);
@@ -927,7 +971,7 @@ export function Today() {
     let allowedSubjects = subjects.filter(s => activeSubjIds.includes(s.id));
     if (allowedSubjects.length < 2) {
       const remainingSlots = 2 - allowedSubjects.length;
-      const otherIncomplete = subjects.filter(s => !s.completed && !activeSubjIds.includes(s.id));
+      const otherIncomplete = subjects.filter(s => !s.completed && !activeSubjIds.includes(s.id) && !pendingSubjectIds.has(s.id));
       allowedSubjects = [...allowedSubjects, ...otherIncomplete.slice(0, remainingSlots)];
     }
 
@@ -1175,32 +1219,17 @@ export function Today() {
       syncRevisions(currentRevisions, false);
     }
 
-    // ── New-day: clear stale pending items at midnight ────────────────────────
-    // Any pending item not acted on by midnight is cleared so it can be
-    // re-evaluated by the carry-over logic below.  We deliberately do NOT write
-    // these keys to dismissedPendingKeys — that would permanently block the
-    // carry-over from re-adding the same task as pending on the new day
-    // (because the carry-over checks dismissed keys when building the new list).
-    if (stored && stored.date !== todayStr && currentPending.length > 0) {
-      currentPending = [];
-    }
+    const activePendingKeys = new Set(currentPending.map(p => p.task.key));
+    const activePendingSubjIds = new Set(currentPending.map(p => p.task.subjectId));
 
     if (stored && stored.date === todayStr) {
-      // Same-day: preserve the stored plan as-is so that:
-      // 1. Completed tasks stay in lockedPlan → the "N completed" section
-      //    continues to render correctly after a refresh (generateSmartPlan
-      //    only returns incomplete items, so calling it here would drop them).
-      // 2. No new subjects auto-appear — generateSmartPlan considers all
-      //    eligible subjects and may select more than what was originally
-      //    planned for the day. The user must explicitly click "Load More"
-      //    to surface additional subjects or tasks.
-      //
-      // We only:
-      //   a) Drop tasks whose underlying item was deleted from the course.
-      //   b) Dedup: keep the first base task per subject (handles legacy plans
-      //      stored before the single-item-per-subject rule was enforced).
-      //   c) Keep all Load-More extras as-is.
-      const validTasks = stored.tasks.filter(t => doesTaskExist(subjects, t));
+      // Same-day: preserve the stored plan, but drop any task whose underlying
+      // item was deleted OR whose subject/task is currently in the active Pending section.
+      const validTasks = stored.tasks.filter(t =>
+        doesTaskExist(subjects, t) &&
+        !activePendingKeys.has(t.key) &&
+        !activePendingSubjIds.has(t.subjectId)
+      );
       const seenSubjects = new Set<string>();
       const repaired: PlanTask[] = [];
       for (const t of validTasks) {
@@ -1210,10 +1239,23 @@ export function Today() {
           repaired.push(t);
         }
       }
-      setLockedPlan(repaired);
-      const changed = repaired.length !== stored.tasks.length ||
-        repaired.some((t, i) => t.key !== stored.tasks[i]?.key);
-      if (changed) syncPlan(todayStr, repaired, false);
+
+      // If pending exclusion removed a subject leaving fewer than the target 2 subjects,
+      // regenerate a clean plan so Today displays active non-pending subjects.
+      const eligibleNonPendingSubjects = subjects.filter(s => !s.completed && !activePendingSubjIds.has(s.id));
+      const targetCount = Math.min(2, eligibleNonPendingSubjects.length);
+      const repairedSubjectCount = new Set(repaired.map(t => t.subjectId)).size;
+
+      if (repairedSubjectCount < targetCount) {
+        const fresh = generateSmartPlan(subjects, dailyBudgetMins, currentPending, todayStr);
+        setLockedPlan(fresh);
+        syncPlan(todayStr, fresh, false);
+      } else {
+        setLockedPlan(repaired);
+        const changed = repaired.length !== stored.tasks.length ||
+          repaired.some((t, i) => t.key !== stored.tasks[i]?.key);
+        if (changed) syncPlan(todayStr, repaired, false);
+      }
     } else {
       if (stored && stored.date !== todayStr) {
         const stillIncomplete = stored.tasks.filter(t => !isTaskCompleted(subjects, t));

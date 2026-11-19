@@ -2357,10 +2357,10 @@ export function Today() {
 
             {/* ── Show Completed toggle ── */}
             {completedTasks.length > 0 && (
-              <div className="mb-4">
+              <div className="mb-4 rounded-xl border border-border/50 bg-secondary/40 overflow-hidden">
                 <button
                   onClick={() => setShowCompleted(prev => !prev)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-border/50 bg-secondary/40 hover:bg-secondary/70 transition-colors text-sm font-semibold text-muted-foreground"
+                  className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/70 transition-colors text-sm font-semibold text-muted-foreground"
                 >
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={14} className="text-green-500" />
@@ -2378,18 +2378,18 @@ export function Today() {
                       style={{ willChange: 'height' }}
                       className="overflow-hidden"
                     >
-                      <div className="pt-2 space-y-2">
+                      <div className="px-2 pb-2 pt-1 space-y-2 border-t border-border/30">
                         {completedSubjectGroups.map(group => {
                           const isExpanded = completedExpandedSubjId === group.subjectId;
                           return (
                             <div
                               key={group.subjectId}
-                              className="rounded-2xl border-2 border-border/50 overflow-hidden shadow-sm relative bg-card"
+                              className="rounded-xl border border-border/40 overflow-hidden relative bg-card"
                             >
-                              <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: group.subjectColor }} />
+                              <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: group.subjectColor }} />
                               <button
                                 onClick={() => toggleCompletedSubjAccordion(group.subjectId)}
-                                className="w-full flex items-center gap-3 pl-5 pr-4 py-3 text-left transition-colors bg-card hover:bg-secondary/30 active:bg-secondary/50"
+                                className="w-full flex items-center gap-3 pl-4 pr-3 py-2.5 text-left transition-colors hover:bg-secondary/30 active:bg-secondary/50"
                               >
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-0.5">

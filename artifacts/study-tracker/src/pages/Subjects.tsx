@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+﻿import React, { useMemo, useState, useEffect } from 'react';
 import { useStudy } from '@/context/StudyContext';
 import { useCourse } from '@/context/CourseContext';
 import { useLang } from '@/context/LangContext';
@@ -1095,7 +1095,7 @@ export function Subjects() {
                                   className="px-3 pt-3 pb-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row relative"
                                   onClick={() => toggleChapter(chapter.id)}
                                 >
-                                  <p className={`font-semibold text-sm w-full leading-snug break-words ${isChapterContentDone(chapter) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                  <p className={`font-semibold text-sm w-full leading-snug break-words ${isChapterContentDone(chapter) ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     <BookOpen size={11} className="text-primary shrink-0 inline-block mr-1.5 -translate-y-0.5" />
                                     {chapter.title}
                                   </p>
@@ -1183,7 +1183,7 @@ export function Subjects() {
                                                 className="px-3 pt-2.5 pb-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
                                                 onClick={() => toggleTopic(topic.id)}
                                               >
-                                                <p className={`text-xs font-semibold w-full leading-snug ${isTopicContentDone(topic) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                <p className={`text-xs font-semibold w-full leading-snug ${isTopicContentDone(topic) ? 'text-muted-foreground' : 'text-foreground'}`}>
                                                   <Layers size={10} className="text-accent-foreground shrink-0 inline-block mr-1.5 -translate-y-0.5" />
                                                   {topic.title}
                                                 </p>
@@ -1271,7 +1271,7 @@ export function Subjects() {
                                                               className="px-2.5 pt-2 pb-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
                                                               onClick={() => toggleSubtopicExpand(sub.id)}
                                                             >
-                                                              <p className={`text-[11px] font-medium w-full leading-snug ${isSubtopicContentDone(sub) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                              <p className={`text-[11px] font-medium w-full leading-snug ${isSubtopicContentDone(sub) ? 'text-muted-foreground' : 'text-foreground'}`}>
                                                                 <List size={9} className="text-blue-400 shrink-0 inline-block mr-1.5 -translate-y-0.5" />
                                                                 {sub.title}
                                                               </p>
@@ -1344,7 +1344,7 @@ export function Subjects() {
                                                                              className="px-2 pt-1.5 pb-1 pl-3 cursor-pointer hover:bg-fuchsia-100/50 group/row relative"
                                                                             onClick={() => toggleConceptExpand(concept.id)}
                                                                           >
-                                                                            <p className={`text-[10px] font-medium w-full leading-snug ${isConceptContentDone(concept) ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                            <p className={`text-[10px] font-medium w-full leading-snug ${isConceptContentDone(concept) ? 'text-muted-foreground' : 'text-foreground'}`}>
                                                                               {concept.title}
                                                                             </p>
                                                                             <div className="flex items-center gap-1 mt-0.5">
@@ -1413,7 +1413,7 @@ export function Subjects() {
                                                                                       {...itemAnim}
                                                                                        className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-lg border border-emerald-300/60 bg-emerald-50/40 hover:bg-emerald-50/80 group/row ${ptLocked ? 'opacity-45' : ''} ${point.important ? 'ring-1 ring-yellow-300/40' : ''} ${point.weak ? 'ring-1 ring-rose-300/40' : ''}`}
                                                                                     >
-                                                                                      <p className={`text-[9px] font-medium w-full ${point.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                                                      <p className={`text-[9px] font-medium w-full ${point.completed ? 'text-muted-foreground' : 'text-foreground'}`}>
                                                                                         {point.title}
                                                                                       </p>
                                                                                       <div className="flex items-center gap-1.5">

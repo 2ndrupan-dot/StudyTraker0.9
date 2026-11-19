@@ -1783,7 +1783,7 @@ export function Today() {
           )}
 
           <div className="mb-2">
-            <h3 className={`font-bold text-sm leading-snug w-full ${isFullDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+            <h3 className={`font-bold text-sm leading-snug w-full ${isFullDone ? 'text-muted-foreground' : 'text-foreground'}`}>
               {task.mainTitle}
               <span className="ml-1.5 text-[70%] text-muted-foreground/55 font-medium not-italic align-baseline">({levelNum})</span>
             </h3>

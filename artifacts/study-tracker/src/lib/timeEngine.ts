@@ -381,8 +381,10 @@ export function findNextItem(subjects: Subject[], excludeKeys?: Set<string>): Ne
         };
       }
 
+      // Chapter overview is in excludeKeys or not yet done — do NOT advance to next chapter
       if (!ch.completed) break;
 
+      let topicLoopBroke = false;
       for (const t of ch.topics) {
         if (isTopicContentDone(t)) continue;
 
@@ -397,8 +399,10 @@ export function findNextItem(subjects: Subject[], excludeKeys?: Set<string>): Ne
           };
         }
 
-        if (!t.completed) break;
+        // Topic overview excluded or not yet done — do NOT advance to next topic
+        if (!t.completed) { topicLoopBroke = true; break; }
 
+        let subtopicLoopBroke = false;
         for (const sub of t.subtopics) {
           if (isSubtopicContentDone(sub)) continue;
 
@@ -413,8 +417,10 @@ export function findNextItem(subjects: Subject[], excludeKeys?: Set<string>): Ne
             };
           }
 
-          if (!sub.completed) break;
+          // Subtopic overview excluded or not yet done — do NOT advance to next subtopic
+          if (!sub.completed) { subtopicLoopBroke = true; break; }
 
+          let conceptLoopBroke = false;
           for (const c of sub.concepts) {
             if (isConceptContentDone(c)) continue;
 
@@ -429,8 +435,10 @@ export function findNextItem(subjects: Subject[], excludeKeys?: Set<string>): Ne
               };
             }
 
-            if (!c.completed) break;
+            // Concept overview excluded or not yet done — do NOT advance to next concept
+            if (!c.completed) { conceptLoopBroke = true; break; }
 
+            let pointFound = false;
             for (const p of c.points) {
               const ptKey = `${subj.id}|${ch.id}|${t.id}|${sub.id}|${c.id}|${p.id}`;
               if (!p.completed && (!excludeKeys || !excludeKeys.has(ptKey))) {
@@ -441,10 +449,21 @@ export function findNextItem(subjects: Subject[], excludeKeys?: Set<string>): Ne
                   estimatedMins: adjPoint(p),
                 };
               }
+              // Point excluded → all remaining points in this concept are locked too
+              if (!p.completed) { conceptLoopBroke = true; break; }
+              pointFound = true;
             }
+            if (conceptLoopBroke) break;
+            void pointFound;
           }
+          // If a concept wasn't fully done, the subtopic is still incomplete → stop
+          if (conceptLoopBroke || !isSubtopicContentDone(sub)) { subtopicLoopBroke = true; break; }
         }
+        // If a subtopic wasn't fully done, the topic is still incomplete → stop
+        if (subtopicLoopBroke || !isTopicContentDone(t)) { topicLoopBroke = true; break; }
       }
+      // If a topic wasn't fully done, the chapter is still incomplete → stop
+      if (topicLoopBroke || !isChapterContentDone(ch)) break;
     }
   }
   return null;

@@ -720,8 +720,12 @@ export function Today() {
 
   // Accordion: single expanded subject at a time (null = all collapsed)
   const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
-  // Completed section accordion (inside modal)
+  // Completed section accordion — inline (below today list) and inside modal share the same state
   const [completedExpandedSubjId, setCompletedExpandedSubjId] = useState<string | null>(null);
+  // Toggle: only one subject open at a time
+  const toggleCompletedSubjAccordion = (subjId: string) => {
+    setCompletedExpandedSubjId(prev => prev === subjId ? null : subjId);
+  };
   const [isPendingCollapsed, setIsPendingCollapsed] = useState(true);
   const [isRevisionCollapsed, setIsRevisionCollapsed] = useState(true);
 
@@ -1683,7 +1687,9 @@ export function Today() {
     }
     completedGroupsMap.get(task.subjectId)!.tasks.push(task);
   }
-  const completedSubjectGroups = Array.from(completedGroupsMap.values());
+  const completedSubjectGroups = subjectOrder
+    .filter(sid => completedGroupsMap.has(sid))
+    .map(sid => completedGroupsMap.get(sid)!);
 
   // Accordion toggle: only one subject open at a time
   const toggleSubjectAccordion = (subjId: string) => {
@@ -2373,7 +2379,56 @@ export function Today() {
                       className="overflow-hidden"
                     >
                       <div className="pt-2 space-y-2">
-                        {completedTasks.map(task => renderCard({ ...task, isCompleted: true }))}
+                        {completedSubjectGroups.map(group => {
+                          const isExpanded = completedExpandedSubjId === group.subjectId;
+                          return (
+                            <div
+                              key={group.subjectId}
+                              className="rounded-2xl border-2 border-border/50 overflow-hidden shadow-sm relative bg-card"
+                            >
+                              <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: group.subjectColor }} />
+                              <button
+                                onClick={() => toggleCompletedSubjAccordion(group.subjectId)}
+                                className="w-full flex items-center gap-3 pl-5 pr-4 py-3 text-left transition-colors bg-card hover:bg-secondary/30 active:bg-secondary/50"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="font-bold text-sm truncate" style={{ color: group.subjectColor }}>
+                                      {group.subjectTitle}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                                    <span className="flex items-center gap-1 text-green-600 font-medium">
+                                      <CheckCircle2 size={11} className="text-green-500" />
+                                      {group.tasks.length} {isBn ? 'টি সম্পন্ন' : 'completed'}
+                                    </span>
+                                  </div>
+                                </div>
+                                <ChevronDown
+                                  size={16}
+                                  className={`text-muted-foreground transition-transform duration-200 shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+                                />
+                              </button>
+
+                              <AnimatePresence initial={false}>
+                                {isExpanded && (
+                                  <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                                    style={{ willChange: 'height' }}
+                                    className="overflow-hidden"
+                                  >
+                                    <div className="p-2 space-y-2 bg-secondary/10 border-t border-border/40">
+                                      {group.tasks.map(task => renderCard({ ...task, isCompleted: true }))}
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          );
+                        })}
                       </div>
                     </motion.div>
                   )}

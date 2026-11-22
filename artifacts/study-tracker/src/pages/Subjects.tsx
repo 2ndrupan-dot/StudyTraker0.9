@@ -10,10 +10,10 @@ import {
   BookOpen, Layers, List, Lightbulb, Dot, FolderPlus,
   CheckCircle2, Circle, Pencil, Lock,
   Star, AlertTriangle, StickyNote, Filter, RotateCcw, GripVertical, ArrowUpDown,
-  Copy, ClipboardPaste,
+  Copy, ClipboardPaste, FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { cloneSubjectWithoutNotes, COPIED_SUBJECT_STORAGE_KEY } from '@/lib/subjectCopy';
+import { cloneSubjectTree, cloneSubjectWithoutNotes, COPIED_SUBJECT_STORAGE_KEY } from '@/lib/subjectCopy';
 import { Countdown } from '@/components/Countdown';
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor, KeyboardSensor,
@@ -528,6 +528,9 @@ export function Subjects() {
   // ─── Reset subject progress state ────────────────────────────────────
   const [resetConfirmSubjId, setResetConfirmSubjId] = useState<string | null>(null);
 
+  // ─── Copy subject options modal state ────────────────────────────────
+  const [copyModalSubject, setCopyModalSubject] = useState<Subject | null>(null);
+
   const resetSliders = () => { setSliderMonths(0); setSliderDays(0); setSliderHours(0); setSliderMins(0); };
   const resetForm = () => { setFormTitle(''); setFormDays(''); setFormDifficulty('easy'); resetSliders(); };
   const closeModal = () => { setModal(null); resetForm(); };
@@ -566,9 +569,13 @@ export function Subjects() {
   // Show time picker for all levels except subject (in edit) and except point
   const showTimePicker = activePath.level !== 'point' && !(modal === 'edit' && activePath.level === 'subject');
 
-  const handleCopySubject = (subj: Subject) => {
-    const stripped = cloneSubjectWithoutNotes(subj);
-    const json = JSON.stringify(stripped);
+  const openCopyModal = (subj: Subject) => {
+    setCopyModalSubject(subj);
+  };
+
+  const handleExecuteCopy = (subj: Subject, withNotes: boolean) => {
+    const cloned = cloneSubjectTree(subj, { withNotes });
+    const json = JSON.stringify(cloned);
     try {
       localStorage.setItem(COPIED_SUBJECT_STORAGE_KEY, json);
     } catch (err) {
@@ -577,7 +584,20 @@ export function Subjects() {
     if (navigator?.clipboard?.writeText) {
       navigator.clipboard.writeText(json).catch(() => {});
     }
-    toast.success(lang === 'bn' ? `"${subj.title}" সাবজেক্ট কপি করা হয়েছে (নোট ছাড়া)` : `Copied subject "${subj.title}" (without notes)`);
+    setCopyModalSubject(null);
+    if (withNotes) {
+      toast.success(
+        lang === 'bn'
+          ? `"${subj.title}" সাবজেক্ট নোট সহ সফলভাবে কপি করা হয়েছে`
+          : `Copied subject "${subj.title}" with notes`
+      );
+    } else {
+      toast.success(
+        lang === 'bn'
+          ? `"${subj.title}" সাবজেক্ট নোট ছাড়া সফলভাবে কপি করা হয়েছে`
+          : `Copied subject "${subj.title}" without notes`
+      );
+    }
   };
 
   const handlePasteSubject = async () => {
@@ -614,7 +634,8 @@ export function Subjects() {
         toast.error(lang === 'bn' ? 'কপি করা সাবজেক্টের তথ্য সঠিক নয়!' : 'Invalid copied subject data!');
         return;
       }
-      const newSubj = cloneSubjectWithoutNotes(parsed);
+      // cloneSubjectTree with withNotes: true preserves notes if they exist in the copied data
+      const newSubj = cloneSubjectTree(parsed, { withNotes: true });
       newSubj.color = getRandomColor();
       newSubj.deadline = new Date().toISOString();
       importSubject(newSubj);
@@ -1093,9 +1114,9 @@ export function Subjects() {
                           <RotateCcw size={11} />
                         </button>
                         <button
-                          onClick={e => { e.stopPropagation(); handleCopySubject(subj); }}
+                          onClick={e => { e.stopPropagation(); openCopyModal(subj); }}
                           className="p-1 text-muted-foreground hover:bg-sky-500/10 hover:text-sky-600 rounded-full transition-colors"
-                          title={lang === 'bn' ? 'সাবজেক্ট কপি করুন (নোট ছাড়া)' : 'Copy Subject Structure (without notes)'}
+                          title={lang === 'bn' ? 'সাবজেক্ট কপি করুন' : 'Copy Subject Structure'}
                         >
                           <Copy size={11} />
                         </button>
@@ -1811,6 +1832,98 @@ export function Subjects() {
         cancelText={t('cancel')}
         isDanger={true}
       />
+
+      {/* Copy subject options modal */}
+      <Modal
+        isOpen={!!copyModalSubject}
+        onClose={() => setCopyModalSubject(null)}
+        title={lang === 'bn' ? 'সাবজেক্ট কপি অপশন' : 'Copy Subject Options'}
+        icon={Copy}
+        align="center"
+      >
+        {copyModalSubject && (
+          <div className="space-y-4">
+            <div className="p-3 rounded-xl bg-secondary/50 border border-border/50">
+              <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">
+                {lang === 'bn' ? 'নির্বাচিত সাবজেক্ট' : 'Selected Subject'}
+              </p>
+              <p className="text-sm font-bold text-foreground mt-0.5 truncate">
+                {copyModalSubject.title}
+              </p>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {lang === 'bn'
+                ? 'আপনি এই সাবজেক্টটি কীভাবে কপি করতে চান? নিচের যেকোনো একটি অপশন বেছে নিন:'
+                : 'How would you like to copy this subject? Choose one of the options below:'}
+            </p>
+
+            <div className="grid grid-cols-1 gap-3 pt-1">
+              {/* Option 1: With Notes */}
+              <button
+                type="button"
+                onClick={() => handleExecuteCopy(copyModalSubject, true)}
+                className="w-full text-left p-3.5 rounded-2xl border-2 border-emerald-500/30 hover:border-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/10 transition-all flex items-start gap-3 group active:scale-[0.99]"
+              >
+                <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5 group-hover:bg-emerald-500 group-hover:text-white transition-colors">
+                  <FileText size={18} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-bold text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                      {lang === 'bn' ? 'নোট সহ কপি করুন' : 'Copy With Notes'}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 shrink-0">
+                      {lang === 'bn' ? 'সব নোট সহ' : 'Full Notes'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 leading-normal">
+                    {lang === 'bn'
+                      ? 'সম্পূর্ণ সাবজেক্ট ট্রি এবং এর প্রতিটি চ্যাপ্টার, টপিক ও পয়েন্টের ভেতরের সমস্ত নোট সহ কপি হবে।'
+                      : 'Copies the complete subject tree along with all notes at every level.'}
+                  </p>
+                </div>
+              </button>
+
+              {/* Option 2: Without Notes */}
+              <button
+                type="button"
+                onClick={() => handleExecuteCopy(copyModalSubject, false)}
+                className="w-full text-left p-3.5 rounded-2xl border-2 border-sky-500/30 hover:border-sky-500 bg-sky-500/5 hover:bg-sky-500/10 transition-all flex items-start gap-3 group active:scale-[0.99]"
+              >
+                <div className="p-2 rounded-xl bg-sky-500/15 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5 group-hover:bg-sky-500 group-hover:text-white transition-colors">
+                  <Copy size={18} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-bold text-foreground group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+                      {lang === 'bn' ? 'নোট ছাড়া কপি করুন' : 'Copy Without Notes'}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300 shrink-0">
+                      {lang === 'bn' ? 'শুধুমাত্র স্ট্রাকচার' : 'Structure Only'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 leading-normal">
+                    {lang === 'bn'
+                      ? 'শুধুমাত্র সাবজেক্টের চ্যাপ্টার, টপিক ও পয়েন্টের স্ট্রাকচার কপি হবে (কোনো নোট থাকবে না)।'
+                      : 'Copies chapters, topics, and points outline without any notes.'}
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <div className="pt-2">
+              <Button
+                variant="secondary"
+                className="w-full py-2.5 text-xs font-semibold"
+                onClick={() => setCopyModalSubject(null)}
+              >
+                {t('cancel')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
     </Layout>
   );

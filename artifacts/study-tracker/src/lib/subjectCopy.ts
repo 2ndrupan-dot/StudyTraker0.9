@@ -5,10 +5,36 @@ export const COPIED_SUBJECT_STORAGE_KEY = '@study_copied_subject_v1';
 const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 
 /**
- * Clones an entire subject structure (all chapters, topics, subtopics, concepts, points)
- * with brand-new IDs, completion reset to false, and WITHOUT any notes.
+ * Checks whether any level of the subject tree (subject, chapters, topics, subtopics, concepts, points) has a note.
  */
-export function cloneSubjectWithoutNotes(subj: Subject): Subject {
+export function hasAnyNotes(subj: Subject): boolean {
+  if (subj.note && subj.note.trim()) return true;
+  for (const ch of subj.chapters || []) {
+    if (ch.note && ch.note.trim()) return true;
+    for (const t of ch.topics || []) {
+      if (t.note && t.note.trim()) return true;
+      for (const st of t.subtopics || []) {
+        if (st.note && st.note.trim()) return true;
+        for (const c of st.concepts || []) {
+          if (c.note && c.note.trim()) return true;
+          for (const p of c.points || []) {
+            if (p.note && p.note.trim()) return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Clones an entire subject structure (all chapters, topics, subtopics, concepts, points)
+ * with brand-new IDs and reset progress (completed: false, important: false, weak: false).
+ * If withNotes is true, notes on every level are preserved.
+ * If withNotes is false, notes are cleared (set to undefined).
+ */
+export function cloneSubjectTree(subj: Subject, options?: { withNotes?: boolean }): Subject {
+  const withNotes = options?.withNotes ?? false;
   const newSubjId = genId();
 
   const cleanChapters: Chapter[] = (subj.chapters || []).map(ch => {
@@ -24,7 +50,7 @@ export function cloneSubjectWithoutNotes(subj: Subject): Subject {
             title: p.title,
             completed: false,
             difficulty: p.difficulty,
-            note: undefined,
+            note: withNotes ? (p.note || undefined) : undefined,
             important: false,
             weak: false,
           }));
@@ -36,7 +62,7 @@ export function cloneSubjectWithoutNotes(subj: Subject): Subject {
             adjustedMinutes: c.adjustedMinutes,
             difficulty: c.difficulty,
             points: cleanPoints,
-            note: undefined,
+            note: withNotes ? (c.note || undefined) : undefined,
             important: false,
             weak: false,
           };
@@ -49,7 +75,7 @@ export function cloneSubjectWithoutNotes(subj: Subject): Subject {
           adjustedMinutes: st.adjustedMinutes,
           difficulty: st.difficulty,
           concepts: cleanConcepts,
-          note: undefined,
+          note: withNotes ? (st.note || undefined) : undefined,
           important: false,
           weak: false,
         };
@@ -63,7 +89,7 @@ export function cloneSubjectWithoutNotes(subj: Subject): Subject {
         difficulty: t.difficulty,
         completed: false,
         subtopics: cleanSubtopics,
-        note: undefined,
+        note: withNotes ? (t.note || undefined) : undefined,
         important: false,
         weak: false,
       };
@@ -77,7 +103,7 @@ export function cloneSubjectWithoutNotes(subj: Subject): Subject {
       difficulty: ch.difficulty,
       completed: false,
       topics: cleanTopics,
-      note: undefined,
+      note: withNotes ? (ch.note || undefined) : undefined,
       important: false,
       weak: false,
     };
@@ -87,9 +113,17 @@ export function cloneSubjectWithoutNotes(subj: Subject): Subject {
     ...subj,
     id: newSubjId,
     completed: false,
-    note: undefined,
+    note: withNotes ? (subj.note || undefined) : undefined,
     important: false,
     weak: false,
     chapters: cleanChapters,
   };
+}
+
+export function cloneSubjectWithoutNotes(subj: Subject): Subject {
+  return cloneSubjectTree(subj, { withNotes: false });
+}
+
+export function cloneSubjectWithNotes(subj: Subject): Subject {
+  return cloneSubjectTree(subj, { withNotes: true });
 }

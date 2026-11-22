@@ -531,9 +531,12 @@ export function Subjects() {
   // ─── Copy subject options modal state ────────────────────────────────
   const [copyModalSubject, setCopyModalSubject] = useState<Subject | null>(null);
 
+  // ─── Deleting item title for confirmation modal ──────────────────────
+  const [deletingTitle, setDeletingTitle] = useState('');
+
   const resetSliders = () => { setSliderMonths(0); setSliderDays(0); setSliderHours(0); setSliderMins(0); };
   const resetForm = () => { setFormTitle(''); setFormDays(''); setFormDifficulty('easy'); resetSliders(); };
-  const closeModal = () => { setModal(null); resetForm(); };
+  const closeModal = () => { setModal(null); setDeletingTitle(''); resetForm(); };
 
   const openAdd = (level: LevelType, path: Partial<ActivePath>) => {
     setActivePath(prev => ({ ...prev, ...path, level }));
@@ -560,8 +563,9 @@ export function Subjects() {
     setModal('edit');
   };
 
-  const openDelete = (level: LevelType, path: Partial<ActivePath>) => {
+  const openDelete = (level: LevelType, path: Partial<ActivePath>, title?: string) => {
     setActivePath(prev => ({ ...prev, ...path, level }));
+    setDeletingTitle(title || '');
     setModal('delete');
   };
 
@@ -1128,7 +1132,7 @@ export function Subjects() {
                             <Pencil size={11} />
                           </button>
                           <button
-                            onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }); }}
+                            onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }, subj.title); }}
                             className="p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-full transition-colors"
                           >
                             <Trash2 size={11} />
@@ -1219,7 +1223,7 @@ export function Subjects() {
                                           <Pencil size={12} />
                                         </button>
                                         <button
-                                          onClick={e => { e.stopPropagation(); openDelete('chapter', { subjId: subj.id, chapterId: chapter.id }); }}
+                                          onClick={e => { e.stopPropagation(); openDelete('chapter', { subjId: subj.id, chapterId: chapter.id }, chapter.title); }}
                                           className="p-1.5 text-muted-foreground hover:text-destructive transition-colors rounded-lg"
                                         >
                                           <Trash2 size={13} />
@@ -1307,7 +1311,7 @@ export function Subjects() {
                                                         <Pencil size={10} />
                                                       </button>
                                                       <button
-                                                        onClick={e => { e.stopPropagation(); openDelete('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }); }}
+                                                        onClick={e => { e.stopPropagation(); openDelete('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }, topic.title); }}
                                                         className="p-1 text-muted-foreground hover:text-destructive"
                                                       >
                                                         <Trash2 size={11} />
@@ -1386,7 +1390,7 @@ export function Subjects() {
                                                                     <button onClick={e => { e.stopPropagation(); openEdit('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title, sub.estimatedMinutes, undefined, sub.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
                                                                       <Pencil size={9} />
                                                                     </button>
-                                                                    <button onClick={e => { e.stopPropagation(); openDelete('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
+                                                                    <button onClick={e => { e.stopPropagation(); openDelete('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title); }} className="p-1 text-muted-foreground hover:text-destructive">
                                                                       <Trash2 size={10} />
                                                                     </button>
                                                                   </>}
@@ -1459,7 +1463,7 @@ export function Subjects() {
                                                                                   <button onClick={e => { e.stopPropagation(); openEdit('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title, concept.estimatedMinutes, undefined, concept.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
                                                                                     <Pencil size={8} />
                                                                                   </button>
-                                                                                  <button onClick={e => { e.stopPropagation(); openDelete('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }); }} className="p-1 text-muted-foreground hover:text-destructive">
+                                                                                  <button onClick={e => { e.stopPropagation(); openDelete('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title); }} className="p-1 text-muted-foreground hover:text-destructive">
                                                                                     <Trash2 size={9} />
                                                                                   </button>
                                                                                 </>}
@@ -1527,7 +1531,7 @@ export function Subjects() {
                                                                                               <button onClick={() => openEdit('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title, undefined, undefined, point.difficulty)} className="p-0.5 text-muted-foreground hover:text-primary">
                                                                                                 <Pencil size={8} />
                                                                                               </button>
-                                                                                              <button onClick={() => openDelete('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id })} className="p-0.5 text-muted-foreground hover:text-destructive">
+                                                                                              <button onClick={() => openDelete('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title)} className="p-0.5 text-muted-foreground hover:text-destructive">
                                                                                                 <Trash2 size={9} />
                                                                                               </button>
                                                                                             </div>
@@ -1784,7 +1788,7 @@ export function Subjects() {
         isOpen={modal === 'delete'}
         onClose={closeModal}
         onConfirm={handleDelete}
-        title={t(deleteTitleKey[activePath.level] as any)}
+        title={deletingTitle ? `"${deletingTitle}"` : t(deleteTitleKey[activePath.level] as any)}
         message={t('deleteConfirmMsg')}
         confirmText={t('delete')}
         cancelText={t('cancel')}

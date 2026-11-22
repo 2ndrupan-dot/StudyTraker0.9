@@ -159,7 +159,7 @@ export function TempNoteSection() {
             if (confirmDelete) deleteTempNote(confirmDelete);
             setConfirmDelete(null);
           }}
-          title={t('deleteTempNote')}
+          title={confirmDelete ? (findTempNote(tempNotes, confirmDelete)?.text ? `"${findTempNote(tempNotes, confirmDelete)?.text}"` : t('deleteTempNote')) : t('deleteTempNote')}
           message={t('deleteTempNote')}
           confirmText={t('delete')}
           cancelText={t('cancel')}

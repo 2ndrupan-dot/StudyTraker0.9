@@ -107,9 +107,9 @@ export const Modal = ({
                   : "rounded-[calc(1.5rem-1.5px)] max-h-[85vh]"
               )}>
               <div className="flex items-center justify-between p-6 border-b border-border/50">
-                <div className="flex items-center gap-3">
-                  {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary"><Icon size={20} /></div>}
-                  <h2 className="text-lg font-bold text-foreground">{title}</h2>
+                <div className="flex items-center gap-3 min-w-0 pr-2">
+                  {Icon && <div className="p-2 bg-primary/10 rounded-full text-primary shrink-0"><Icon size={20} /></div>}
+                  <h2 className="text-lg font-bold text-foreground break-words line-clamp-2 leading-snug">{title}</h2>
                 </div>
                 <button
                   onClick={onClose}

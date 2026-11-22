@@ -878,7 +878,7 @@ export function Test() {
         isOpen={!!confirmDeleteCardId}
         onClose={() => setConfirmDeleteCardId(null)}
         onConfirm={handleDeleteCard}
-        title={t('testCardDeleteTitle')}
+        title={confirmDeleteCardId ? (deck.find(c => c.id === confirmDeleteCardId)?.title ? `"${deck.find(c => c.id === confirmDeleteCardId)?.title}"` : t('testCardDeleteTitle')) : t('testCardDeleteTitle')}
         message={t('testCardDeleteConfirm')}
         confirmText={t('delete')}
         cancelText={t('cancel')}

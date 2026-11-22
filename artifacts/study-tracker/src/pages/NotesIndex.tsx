@@ -1238,7 +1238,7 @@ export function NotesIndex() {
           }
           setConfirmDelete(null);
         }}
-        title={t('deletePage')}
+        title={confirmDelete ? (notePagesIndex.find(n => n.id === confirmDelete)?.title ? `"${notePagesIndex.find(n => n.id === confirmDelete)?.title}"` : t('deletePage')) : t('deletePage')}
         message={t('deletePageConfirm')}
         confirmText={t('delete')}
         cancelText={t('cancel')}
@@ -1256,7 +1256,7 @@ export function NotesIndex() {
           }
           setConfirmDeletePersonal(null);
         }}
-        title={t('deletePage')}
+        title={confirmDeletePersonal ? (personalNotePagesIndex.find(n => n.id === confirmDeletePersonal)?.title ? `"${personalNotePagesIndex.find(n => n.id === confirmDeletePersonal)?.title}"` : t('deletePage')) : t('deletePage')}
         message={t('deletePageConfirm')}
         confirmText={t('delete')}
         cancelText={t('cancel')}
@@ -1274,7 +1274,7 @@ export function NotesIndex() {
           }
           setConfirmDeletePrompt(null);
         }}
-        title={t('deletePage')}
+        title={confirmDeletePrompt ? (promptNotePagesIndex.find(n => n.id === confirmDeletePrompt)?.title ? `"${promptNotePagesIndex.find(n => n.id === confirmDeletePrompt)?.title}"` : t('deletePage')) : t('deletePage')}
         message={t('deletePageConfirm')}
         confirmText={t('delete')}
         cancelText={t('cancel')}

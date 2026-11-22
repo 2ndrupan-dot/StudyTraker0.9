@@ -18,8 +18,7 @@ function formatDuration(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  return `${hours}h : ${minutes}m : ${seconds}s`;
 }
 
 // ─── Circular progress arc ────────────────────────────────────────────────────
@@ -291,8 +290,8 @@ export function TestRunner() {
               </div>
               <div className="w-px h-7 bg-white/20" />
               {/* Total Time */}
-              <div className="flex flex-col items-center gap-0.5 px-1 min-w-[56px]">
-                <span className="text-base sm:text-lg font-bold font-mono text-purple-200 tracking-wider">
+              <div className="flex flex-col items-center gap-0.5 px-1 min-w-[64px]">
+                <span className="text-sm sm:text-base font-bold font-mono text-purple-200 tracking-wider whitespace-nowrap">
                   {formatDuration(elapsedSeconds)}
                 </span>
                 <span className="text-[10px] sm:text-[11px] text-white/70 flex items-center gap-1">
@@ -475,7 +474,7 @@ export function TestRunner() {
                 {currentIdx + 1} / {total}
               </span>
               <span className="text-white/30 text-xs">•</span>
-              <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold bg-black/20 text-white px-2.5 py-0.5 rounded-full border border-white/15 tracking-wider shadow-inner">
+              <span className="inline-flex items-center gap-1 font-mono text-[10px] sm:text-[11px] font-bold bg-black/20 text-white px-2 py-0.5 rounded-full border border-white/15 tracking-wider shadow-inner whitespace-nowrap">
                 <Clock size={11} className="text-white/90 animate-pulse" />
                 {formatDuration(elapsedSeconds)}
               </span>

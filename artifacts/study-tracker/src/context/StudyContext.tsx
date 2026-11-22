@@ -1043,6 +1043,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     };
   }, []);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; overallNote: string; notePagesIndex: NotePageMeta[]; personalNotePagesIndex: NotePageMeta[] } | null>(null);
   const isInitialLoad = useRef(true);
   const lastSavedAt = useRef<number>(0);
   // Prevents the save-useEffect from echo-saving data that just arrived from a
@@ -1063,8 +1064,27 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // Always-current refs so flushSave never captures stale closures
   const userRef = useRef(user);
   const activeCourseIdRef = useRef(activeCourseId);
+  userRef.current = user;
+  activeCourseIdRef.current = activeCourseId;
   useEffect(() => { userRef.current = user; }, [user]);
   useEffect(() => { activeCourseIdRef.current = activeCourseId; }, [activeCourseId]);
+
+  // Tracks which course is currently loaded in memory so we NEVER save data from course A into course B
+  const loadedCourseIdRef = useRef<string | null>(null);
+  const prevActiveCourseIdRef = useRef<string | null>(activeCourseId);
+  const prevUserEmailRef = useRef<string | undefined>(user?.email);
+
+  if (prevActiveCourseIdRef.current !== activeCourseId || prevUserEmailRef.current !== user?.email) {
+    prevActiveCourseIdRef.current = activeCourseId;
+    prevUserEmailRef.current = user?.email;
+    loadedCourseIdRef.current = null;
+    isInitialLoad.current = true;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      pendingSaveRef.current = null;
+    }
+  }
 
   const recoveryDismissalScopeRef = useRef('');
   const recoveryDismissalsRef = useRef<Set<string>>(new Set());
@@ -1149,7 +1169,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
       const pending = pendingSaveRef.current;
-      if (pending) {
+      if (pending && currentCourseId && loadedCourseIdRef.current === currentCourseId) {
         flushSave(
           pending.subjects,
           pending.settings,
@@ -1157,6 +1177,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           pending.overallNote,
           pending.notePagesIndex,
           pending.personalNotePagesIndex,
+          currentCourseId,
         );
       }
     }
@@ -1309,7 +1330,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           setRecoveryCandidate(recoveryData, null, user.id, activeCourseId, localUnsynced);
         }
         setDataLoaded(true);
-        setTimeout(() => { isInitialLoad.current = false; }, 200);
+        loadedCourseIdRef.current = activeCourseId;
+        setTimeout(() => {
+          if (active && activeCourseIdRef.current === activeCourseId) {
+            isInitialLoad.current = false;
+          }
+        }, 200);
       })();
     }, 6000);
 
@@ -1513,7 +1539,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
                   );
                 }
                 setDataLoaded(true);
-                setTimeout(() => { isInitialLoad.current = false; }, 200);
+                loadedCourseIdRef.current = activeCourseId;
+                setTimeout(() => {
+                  if (active && activeCourseIdRef.current === activeCourseId) {
+                    isInitialLoad.current = false;
+                  }
+                }, 200);
               })();
             }
             return;
@@ -1637,9 +1668,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             }
 
             setDataLoaded(true);
+            loadedCourseIdRef.current = activeCourseId;
             // Delay so React finishes batching all setState calls above before
             // the save-useEffect can run (prevents saving empty [] subjects on load)
-            setTimeout(() => { isInitialLoad.current = false; }, 200);
+            setTimeout(() => {
+              if (active && activeCourseIdRef.current === activeCourseId) {
+                isInitialLoad.current = false;
+              }
+            }, 200);
           })();
         } else {
           // ── Real-time update from another device ──
@@ -1743,7 +1779,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             setRecoveryCandidate(recoveryData, null, user.id, activeCourseId, localUnsynced);
           }
           setDataLoaded(true);
-          setTimeout(() => { isInitialLoad.current = false; }, 200);
+          loadedCourseIdRef.current = activeCourseId;
+          setTimeout(() => {
+            if (active && activeCourseIdRef.current === activeCourseId) {
+              isInitialLoad.current = false;
+            }
+          }, 200);
         })();
       },
     );
@@ -1880,9 +1921,6 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [promptNotePagesIndex, user?.id, promptIndexReady]);
 
-  // Save data (debounced for Firestore, immediate for localStorage)
-  const pendingSaveRef = useRef<{ subjects: Subject[]; settings: CourseSettings; tempNotes: TempNoteItem[]; overallNote: string; notePagesIndex: NotePageMeta[]; personalNotePagesIndex: NotePageMeta[] } | null>(null);
-
   // NOTE: this used to also gate a "skip the write" safety net for the very
   // first flushSave of a course session (see studytrack-clear-note-first-save
   // memory for why that was removed) — a real user's first action after
@@ -1910,11 +1948,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     overallNoteToSave: string,
     notePagesIndexToSave: NotePageMeta[],
     personalNotePagesIndexToSave: NotePageMeta[],
+    targetCourseId?: string,
   ) => {
     // Use refs so this always has the latest user/courseId regardless of closure age
     const currentUser = userRef.current;
-    const currentCourseId = activeCourseIdRef.current;
+    const currentCourseId = targetCourseId ?? activeCourseIdRef.current;
     if (!currentUser || !currentCourseId) return;
+    if (activeCourseIdRef.current !== currentCourseId || loadedCourseIdRef.current !== currentCourseId) return;
 
     const docRef = doc(db, 'users', currentUser.id, 'studyData', currentCourseId);
     const notesDocRef = doc(db, 'users', currentUser.id, 'courseNotes', currentCourseId);
@@ -2180,9 +2220,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     overallNoteToSave: string,
     notePagesIndexToSave: NotePageMeta[],
     personalNotePagesIndexToSave: NotePageMeta[],
+    targetCourseId?: string,
   ) => {
     const targetUserId = userRef.current?.id;
-    const targetCourseId = activeCourseIdRef.current;
+    const courseIdToSave = targetCourseId ?? activeCourseIdRef.current;
     courseSaveQueueRef.current = courseSaveQueueRef.current
       .catch(() => {})
       .then(() => {
@@ -2191,9 +2232,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         // the old debounce can finish after the new course is active.
         if (
           !targetUserId ||
-          !targetCourseId ||
+          !courseIdToSave ||
           userRef.current?.id !== targetUserId ||
-          activeCourseIdRef.current !== targetCourseId
+          activeCourseIdRef.current !== courseIdToSave ||
+          loadedCourseIdRef.current !== courseIdToSave
         ) return;
         return flushSaveNow(
           subjectsToSave,
@@ -2202,6 +2244,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           overallNoteToSave,
           notePagesIndexToSave,
           personalNotePagesIndexToSave,
+          courseIdToSave,
         );
       });
   };
@@ -2213,7 +2256,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     nextSubjects: Subject[],
     nextOverallNote: string,
   ) => {
-    if (!user || !activeCourseId || !dataLoaded) return;
+    if (!user || !activeCourseId || !dataLoaded || loadedCourseIdRef.current !== activeCourseId) return;
     const savedAt = Math.max(Date.now(), lastSavedAt.current + 1);
     const payload: StudyData = {
       subjects: nextSubjects,
@@ -2347,7 +2390,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
       const pending = pendingSaveRef.current;
-      if (pending) {
+      if (pending && currentCourseId && loadedCourseIdRef.current === currentCourseId) {
         flushSave(
           pending.subjects,
           pending.settings,
@@ -2355,6 +2398,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           pending.overallNote,
           pending.notePagesIndex,
           pending.personalNotePagesIndex,
+          currentCourseId,
         );
       }
     }
@@ -2460,7 +2504,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   };
 
   React.useLayoutEffect(() => {
-    if (!user || !dataLoaded) return;
+    if (!user || !activeCourseId || !dataLoaded || loadedCourseIdRef.current !== activeCourseId) return;
     if (isInitialLoad.current) {
       // The save-effect can't run yet, but a server snapshot may have set
       // skipNextSaveRef during the boot window. Clear it here so the very
@@ -2524,17 +2568,32 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSyncStatus('syncing');
     pendingSaveRef.current = { subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex };
+    const courseForThisSave = activeCourseId;
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
       const pending = pendingSaveRef.current;
-      if (pending) flushSave(pending.subjects, pending.settings, pending.tempNotes, pending.overallNote, pending.notePagesIndex, pending.personalNotePagesIndex);
+      if (
+        pending &&
+        activeCourseIdRef.current === courseForThisSave &&
+        loadedCourseIdRef.current === courseForThisSave
+      ) {
+        flushSave(
+          pending.subjects,
+          pending.settings,
+          pending.tempNotes,
+          pending.overallNote,
+          pending.notePagesIndex,
+          pending.personalNotePagesIndex,
+          courseForThisSave,
+        );
+      }
     }, 250);
-  }, [subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex, user, dataLoaded, activeCourseId]);
+  }, [subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex, user, dataLoaded]);
 
   // Flush save immediately before page unload
   useEffect(() => {
     const handleUnload = () => {
-      if (pendingSaveRef.current && user && activeCourseId) {
+      if (pendingSaveRef.current && user && activeCourseId && loadedCourseIdRef.current === activeCourseId) {
         const { subjects: s, settings: st, tempNotes: tn, overallNote: on, notePagesIndex: np, personalNotePagesIndex: pnp } = pendingSaveRef.current;
         const payload: StudyData = { subjects: s, settings: st, tempNotes: tn, overallNote: on, notePagesIndex: np, personalNotePagesIndex: pnp, savedAt: Date.now() };
         const lsKey = `@study_data_${activeCourseId}_${user.email}`;

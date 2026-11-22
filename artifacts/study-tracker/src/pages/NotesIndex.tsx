@@ -90,9 +90,7 @@ export function NotesIndex() {
   const isCourseNotesReadOnly = !!activeSharedMeta;
 
   // ── Tab & subject navigation ──
-  const [activeTab, setActiveTab] = useState<ActiveTab>(
-    canViewCourseNotes ? 'course' : 'personal',
-  );
+  const [activeTab, setActiveTab] = useState<ActiveTab>('personal');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
 
   // ── Course Notes state ──
@@ -600,17 +598,6 @@ export function NotesIndex() {
           {canViewCourseNotes && (
             <div className="relative px-3 pb-3 flex gap-1">
               <button
-                onClick={() => setActiveTab('course')}
-                className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl font-bold transition-all ${isSuperAdmin ? 'text-[10px]' : 'text-xs'} ${
-                  activeTab === 'course'
-                    ? 'bg-white text-purple-700 shadow-md'
-                    : 'bg-white/15 text-white/80 hover:bg-white/25'
-                }`}
-              >
-                <BookOpen size={10} className="shrink-0" />
-                <span className="whitespace-nowrap">{lang === 'bn' ? 'কোর্স নোটস' : 'Course Notes'}</span>
-              </button>
-              <button
                 onClick={() => setActiveTab('personal')}
                 className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl font-bold transition-all ${isSuperAdmin ? 'text-[10px]' : 'text-xs'} ${
                   activeTab === 'personal'
@@ -620,6 +607,17 @@ export function NotesIndex() {
               >
                 <User size={10} className="shrink-0" />
                 <span className="whitespace-nowrap">{lang === 'bn' ? 'ব্যক্তিগত নোটস' : 'Personal Notes'}</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('course')}
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl font-bold transition-all ${isSuperAdmin ? 'text-[10px]' : 'text-xs'} ${
+                  activeTab === 'course'
+                    ? 'bg-white text-purple-700 shadow-md'
+                    : 'bg-white/15 text-white/80 hover:bg-white/25'
+                }`}
+              >
+                <BookOpen size={10} className="shrink-0" />
+                <span className="whitespace-nowrap">{lang === 'bn' ? 'কোর্স নোটস' : 'Course Notes'}</span>
               </button>
               {isSuperAdmin && (
                 <button

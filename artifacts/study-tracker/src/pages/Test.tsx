@@ -148,11 +148,50 @@ interface CardFormProps {
 }
 
 function CardForm({ initialTitle = '', initialQuestion = '', initialAnswer = '', onSave, onCancel, onInfo, t, saveError }: CardFormProps) {
+  const { lang } = useLang();
   const [title, setTitle] = useState(initialTitle);
   const [question, setQuestion] = useState(initialQuestion);
   const [answer, setAnswer] = useState(initialAnswer);
   const titleRef = useRef<HTMLInputElement>(null);
   useEffect(() => { titleRef.current?.focus(); }, []);
+
+  const handlePasteIntoForm = async () => {
+    let card: CopiedTestCard | null = null;
+    try {
+      const stored = localStorage.getItem(COPIED_TEST_CARD_STORAGE_KEY) || sessionStorage.getItem(COPIED_TEST_CARD_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (typeof parsed?.title === 'string' && typeof parsed?.question === 'string' && typeof parsed?.answer === 'string') {
+          card = parsed;
+        }
+      }
+      if (!card && navigator?.clipboard?.readText) {
+        const clipText = await navigator.clipboard.readText();
+        const parsed = JSON.parse(clipText);
+        if (typeof parsed?.title === 'string' && typeof parsed?.question === 'string' && typeof parsed?.answer === 'string') {
+          card = parsed;
+        }
+      }
+    } catch {}
+
+    if (!card) {
+      toast.error(
+        lang === 'bn'
+          ? 'কপি করা কোনো টেস্ট কার্ড পাওয়া যায়নি! প্রথমে কোনো টেস্ট কার্ডের Copy বাটনে ক্লিক করুন।'
+          : 'No copied test card found! Please copy a test card first.'
+      );
+      return;
+    }
+
+    setTitle(card.title);
+    setQuestion(card.question);
+    setAnswer(card.answer);
+    toast.success(
+      lang === 'bn'
+        ? `"${card.title}" টেস্ট কার্ডের তথ্য পেস্ট করা হয়েছে`
+        : `Pasted data for test card "${card.title}"`
+    );
+  };
 
   const handleSave = () => onSave(title, question, answer);
 
@@ -165,6 +204,23 @@ function CardForm({ initialTitle = '', initialQuestion = '', initialAnswer = '',
       className="overflow-hidden"
     >
       <div className="bg-card border border-border/70 rounded-2xl p-4 shadow-sm mb-3">
+        {/* Paste helper banner */}
+        <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/25 flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <ClipboardPaste size={15} className="text-purple-600 dark:text-purple-400 shrink-0" />
+            <span className="text-xs font-semibold text-purple-700 dark:text-purple-300 truncate">
+              {lang === 'bn' ? 'কপি করা কোনো টেস্ট কার্ড পেস্ট করবেন?' : 'Paste a copied test card?'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handlePasteIntoForm}
+            className="shrink-0 px-3 py-1 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-colors shadow-sm"
+          >
+            {lang === 'bn' ? 'পেস্ট করুন' : 'Paste'}
+          </button>
+        </div>
+
         {/* Title */}
         <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">{t('testCardTitle')} *</label>
         <input
@@ -206,12 +262,20 @@ function CardForm({ initialTitle = '', initialQuestion = '', initialAnswer = '',
         )}
 
         {/* Actions */}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={handleSave}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
           >
             <Check size={14} /> {t('testCardSave')}
+          </button>
+          <button
+            type="button"
+            onClick={handlePasteIntoForm}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 text-sm font-semibold hover:bg-purple-500/20 transition-colors border border-purple-500/25"
+            title={lang === 'bn' ? 'কপি করা টেস্ট কার্ড পেস্ট করুন' : 'Paste Copied Card'}
+          >
+            <ClipboardPaste size={14} /> {lang === 'bn' ? 'পেস্ট করুন' : 'Paste'}
           </button>
           <button
             onClick={onCancel}
@@ -245,9 +309,7 @@ export function Test() {
 
   // Navigation state
   type ActiveTestTab = 'course' | 'personal' | 'extra';
-  const [activeTab, setActiveTab] = useState<ActiveTestTab>(
-    canViewCourseTests ? 'course' : 'personal',
-  );
+  const [activeTab, setActiveTab] = useState<ActiveTestTab>('personal');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
 
   // Card interactions
@@ -557,36 +619,9 @@ export function Test() {
                   </motion.button>
                 </span>
               )}
-
-              {/* Paste a copied card into the currently selected subject (mandatory/always visible). */}
-              {selectedSubjectId && !isAdding && !editingCardId && canEditSelectedDeck && (
-                <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(313 80% 52%)' } as React.CSSProperties}>
-                  <motion.button
-                    whileTap={{ scale: 0.97 }}
-                    type="button"
-                    onClick={handlePasteCard}
-                    title={t('testCardPaste')}
-                    className="spin-border-inner flex items-center justify-center h-7 w-7 sm:w-auto gap-1 px-0 sm:px-2.5 whitespace-nowrap bg-white/20 text-white text-[10px] sm:text-[11px] font-bold hover:bg-white/30 transition-colors"
-                  >
-                    <ClipboardPaste size={12} className="shrink-0" />
-                    <span className="hidden sm:inline">{t('testCardPaste')}</span>
-                  </motion.button>
-                </span>
-              )}
             </div>
           </div>
             <div className="relative px-3 pb-3 flex gap-1">
-              {canViewCourseTests && (
-              <button
-                onClick={() => setActiveTab('course')}
-                className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                  activeTab === 'course' ? 'bg-white text-purple-700 shadow-md' : 'bg-white/15 text-white/80 hover:bg-white/25'
-                }`}
-              >
-                <BookOpen size={10} className="shrink-0" />
-                <span className="whitespace-nowrap">{lang === 'bn' ? 'কোর্স টেস্ট' : 'Course Test'}</span>
-              </button>
-              )}
               <button
                 onClick={() => setActiveTab('personal')}
                 className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all ${
@@ -596,6 +631,17 @@ export function Test() {
                 <UserIcon size={10} className="shrink-0" />
                 <span className="whitespace-nowrap">{lang === 'bn' ? 'পার্সোনাল টেস্ট' : 'Personal Test'}</span>
               </button>
+              {canViewCourseTests && (
+                <button
+                  onClick={() => setActiveTab('course')}
+                  className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === 'course' ? 'bg-white text-purple-700 shadow-md' : 'bg-white/15 text-white/80 hover:bg-white/25'
+                  }`}
+                >
+                  <BookOpen size={10} className="shrink-0" />
+                  <span className="whitespace-nowrap">{lang === 'bn' ? 'কোর্স টেস্ট' : 'Course Test'}</span>
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab('extra')}
                 className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all ${

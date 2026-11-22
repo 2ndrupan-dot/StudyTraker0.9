@@ -750,29 +750,16 @@ export function Subjects() {
               </motion.div>
             )}
             {canAddItems && (
-              <>
-                <motion.div whileTap={{ scale: 0.95 }}>
-                  <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
-                    <button
-                      className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
-                      onClick={() => openAdd('subject', {})}
-                    >
-                      <Plus size={12} /> {t('addSubject')}
-                    </button>
-                  </span>
-                </motion.div>
-                <motion.div whileTap={{ scale: 0.95 }}>
-                  <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(280 84% 57%)' } as React.CSSProperties}>
-                    <button
-                      className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
-                      onClick={handlePasteSubject}
-                      title={lang === 'bn' ? 'কপি করা সাবজেক্ট পেস্ট করুন' : 'Paste Copied Subject'}
-                    >
-                      <ClipboardPaste size={12} /> {lang === 'bn' ? 'পেস্ট' : 'Paste'}
-                    </button>
-                  </span>
-                </motion.div>
-              </>
+              <motion.div whileTap={{ scale: 0.95 }}>
+                <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
+                  <button
+                    className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
+                    onClick={() => openAdd('subject', {})}
+                  >
+                    <Plus size={12} /> {t('addSubject')}
+                  </button>
+                </span>
+              </motion.div>
             )}
           </div>
         </div>

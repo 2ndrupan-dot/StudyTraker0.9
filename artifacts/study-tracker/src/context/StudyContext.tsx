@@ -16,7 +16,9 @@ import { readLocalCourseSnapshot, writeLocalCourseSnapshot } from '@/lib/localSt
 // Firestore document size limit — documents above this are split across a
 // "chunks" subcollection instead of relying on Firebase Storage (which
 // requires the paid Blaze plan; this app targets the free Spark plan).
-const FIRESTORE_NOTE_LIMIT = 800_000; // 800 KB (Firestore hard limit is 1 MB)
+// Set to 350 KB safe limit (well below Firestore's 1 MB entity limit to account
+// for indexing, map key metadata, and protobuf wire overhead).
+const FIRESTORE_NOTE_LIMIT = 350_000; // 350 KB safe threshold
 
 /** Real UTF-8 byte length, reused below for bin-packing chunk sizes. */
 // (byteSize is defined further below; declared here only in comments to avoid
@@ -110,9 +112,9 @@ function reassembleEntries(entries: Array<[string, string]>): Record<string, str
  *  looks like. */
 async function writeChunks(colRef: CollectionReference, chunks: Array<Record<string, string>>): Promise<string> {
   const generation = doc(colRef).id;
-  for (let start = 0; start < chunks.length; start += 400) {
+  for (let start = 0; start < chunks.length; start += 4) {
     const batch = writeBatch(db);
-    chunks.slice(start, start + 400).forEach((data, offset) => {
+    chunks.slice(start, start + 4).forEach((data, offset) => {
       const index = start + offset;
       const pairs = Object.entries(data).map(([k, v]) => ({ k, v }));
       batch.set(doc(colRef, `${generation}_${index}`), { generation, data: pairs });
@@ -237,9 +239,9 @@ function packElements(elements: NoteElement[], limit: number): NoteElement[][] {
 /** Stage a new element-chunk generation without touching the currently active one. */
 async function writeElementChunks(colRef: CollectionReference, chunks: NoteElement[][]): Promise<string> {
   const generation = doc(colRef).id;
-  for (let start = 0; start < chunks.length; start += 400) {
+  for (let start = 0; start < chunks.length; start += 4) {
     const batch = writeBatch(db);
-    chunks.slice(start, start + 400).forEach((elements, offset) => {
+    chunks.slice(start, start + 4).forEach((elements, offset) => {
       const index = start + offset;
       batch.set(doc(colRef, `${generation}_${index}`), { generation, elements });
     });

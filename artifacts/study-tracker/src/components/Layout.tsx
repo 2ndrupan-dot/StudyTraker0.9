@@ -420,7 +420,7 @@ function FloatingSearchButton({ onClick }: { onClick: () => void }) {
 }
 
 function ConnectionStatus({ isProfilePage }: { isProfilePage: boolean }) {
-  const { syncStatus, syncError, online } = useStudy();
+  const { syncStatus, syncError, online, clearSyncFailure } = useStudy();
   const { pending, failures, lastSuccessAt } = useSaveStatus();
   const { t, lang } = useLang();
   const isBn = lang === 'bn';
@@ -556,6 +556,7 @@ function ConnectionStatus({ isProfilePage }: { isProfilePage: boolean }) {
                     type="button"
                     onClick={() => {
                       clearAllSaveFailures();
+                      clearSyncFailure();
                       setFailuresOpen(false);
                     }}
                     className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-red-600 hover:bg-red-100 dark:text-red-300 dark:hover:bg-red-900"
@@ -595,7 +596,11 @@ function ConnectionStatus({ isProfilePage }: { isProfilePage: boolean }) {
                         <button
                           type="button"
                           onClick={() => {
-                            dismissSaveFailure(failure.id);
+                            if (failure.id === 'study-context-failure') {
+                              clearSyncFailure();
+                            } else {
+                              dismissSaveFailure(failure.id);
+                            }
                             if (visibleFailures.length <= 1) setFailuresOpen(false);
                           }}
                           aria-label={isBn ? 'মুছুন' : 'Dismiss'}

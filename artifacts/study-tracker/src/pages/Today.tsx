@@ -299,9 +299,9 @@ function generateSmartPlan(
   interface SubjectCandidate {
     subj: Subject;
     daysLeft: number;
+    completionPct: number;
     urgencyScore: number;
     urgency: 'high' | 'medium' | 'low';
-    hasInProgress: boolean;
   }
 
   const activePendingItems = pendingItems.filter(p => pendingDaysLeft(p, todayStr) > 0);
@@ -318,31 +318,14 @@ function generateSmartPlan(
 
     const daysLeft = Math.max(0, differenceInDays(parseISO(subj.deadline), parseISO(todayStr)));
 
-    let total = 0, incomplete = 0, hasInProgress = false;
-    for (const ch of subj.chapters) {
-      if (ch.topics.length === 0) { total++; if (!ch.completed) { incomplete++; } continue; }
-      for (const t of ch.topics) {
-        total++;
-        if (!t.completed) { incomplete++; }
-        if (t.subtopics.length === 0) continue;
-        for (const sub of t.subtopics) {
-          if (sub.concepts.length === 0) { total++; if (!sub.completed) incomplete++; continue; }
-          for (const c of sub.concepts) {
-            if (c.points.length === 0) { total++; if (!c.completed) incomplete++; continue; }
-            for (const p of c.points) { total++; if (!p.completed) incomplete++; }
-          }
-        }
-      }
-    }
-    if (total === 0) continue;
+    // Official granular progress: matches Profile / Progress page percentage exactly
+    const completionPct = computeGranularProgress([subj]).percent;
 
-    // urgencyScore: higher = less complete + closer deadline → needs more study days
-    const completionPct = (total - incomplete) / total; // 0=nothing done, 1=all done
     const urgencyScore = daysLeft === 0
       ? 10000
-      : ((1 - completionPct) * 100) / Math.sqrt(daysLeft + 1);
+      : (100 - completionPct) / Math.sqrt(daysLeft + 1);
     const urgency: 'high' | 'medium' | 'low' = urgencyScore > 25 ? 'high' : urgencyScore > 8 ? 'medium' : 'low';
-    subjCandidates.push({ subj, daysLeft, urgencyScore, urgency, hasInProgress });
+    subjCandidates.push({ subj, daysLeft, completionPct, urgencyScore, urgency });
   }
 
   // Fallback: only if all incomplete subjects in the course happen to be in pending,
@@ -354,81 +337,33 @@ function generateSmartPlan(
       if (!hasAnyIncomplete) continue;
 
       const daysLeft = Math.max(0, differenceInDays(parseISO(subj.deadline), parseISO(todayStr)));
-
-      let total = 0, incomplete = 0, hasInProgress = false;
-      for (const ch of subj.chapters) {
-        if (ch.topics.length === 0) { total++; if (!ch.completed) { incomplete++; } continue; }
-        for (const t of ch.topics) {
-          total++;
-          if (!t.completed) { incomplete++; }
-          if (t.subtopics.length === 0) continue;
-          for (const sub of t.subtopics) {
-            if (sub.concepts.length === 0) { total++; if (!sub.completed) incomplete++; continue; }
-            for (const c of sub.concepts) {
-              if (c.points.length === 0) { total++; if (!c.completed) incomplete++; continue; }
-              for (const p of c.points) { total++; if (!p.completed) incomplete++; }
-            }
-          }
-        }
-      }
-      if (total === 0) continue;
-
-      const completionPct = (total - incomplete) / total;
+      const completionPct = computeGranularProgress([subj]).percent;
       const urgencyScore = daysLeft === 0
         ? 10000
-        : ((1 - completionPct) * 100) / Math.sqrt(daysLeft + 1);
+        : (100 - completionPct) / Math.sqrt(daysLeft + 1);
       const urgency: 'high' | 'medium' | 'low' = urgencyScore > 25 ? 'high' : urgencyScore > 8 ? 'medium' : 'low';
-      subjCandidates.push({ subj, daysLeft, urgencyScore, urgency, hasInProgress });
+      subjCandidates.push({ subj, daysLeft, completionPct, urgencyScore, urgency });
     }
   }
 
   // Max subjects per session based on available time
   const maxSubjects = dailyBudgetMinutes < 90 ? 1 : 2;
-  const n = subjCandidates.length;
 
-  let selected: SubjectCandidate[];
-
-  if (n <= maxSubjects) {
-    // All subjects fit — sort by urgency
-    selected = [...subjCandidates].sort((a, b) => {
-      if (a.hasInProgress !== b.hasInProgress) return a.hasInProgress ? -1 : 1;
-      return b.urgencyScore - a.urgencyScore;
-    });
-  } else {
-    // Weighted random selection seeded by today's date
-    // Over many days, each subject appears proportional to its urgencyScore
-    // → less complete subjects with tighter deadlines appear more often
-    // IMPORTANT: seed from `todayStr` (the app's IST calendar date), NOT
-    // Date.now(). Date.now()/86400000 ticks over at UTC midnight, which is
-    // 5:30 AM IST — so a plan regenerated (e.g. by the "new structural item"
-    // effect, or an hours-setting change) later in the same IST day used to
-    // get a DIFFERENT random seed and could silently pick different subjects,
-    // looking exactly like "Load More" fired on its own.
-    const dayIndex = Math.floor(parseISO(todayStr).getTime() / (1000 * 60 * 60 * 24));
-    const rand = lcgRandom(dayIndex * 31337 + 12345);
-
-    const pool = [...subjCandidates];
-    selected = [];
-
-    // Always include in-progress subjects first
-    for (let i = pool.length - 1; i >= 0; i--) {
-      if (pool[i].hasInProgress && selected.length < maxSubjects) {
-        selected.push(...pool.splice(i, 1));
-      }
+  // Strict rule: Prioritize subjects with lowest completion percentage first (least studied)
+  subjCandidates.sort((a, b) => {
+    // 1. Lowest completion percentage first (least studied)
+    if (Math.abs(a.completionPct - b.completionPct) > 0.001) {
+      return a.completionPct - b.completionPct;
     }
-
-    // Fill remaining slots with urgency-weighted random selection
-    while (selected.length < maxSubjects && pool.length > 0) {
-      const totalW = pool.reduce((s, c) => s + Math.max(c.urgencyScore, 1), 0);
-      let r = rand() * totalW;
-      let chosen = pool.length - 1;
-      for (let i = 0; i < pool.length; i++) {
-        r -= Math.max(pool[i].urgencyScore, 1);
-        if (r <= 0) { chosen = i; break; }
-      }
-      selected.push(...pool.splice(chosen, 1));
+    // 2. Tighter deadline / fewer daysLeft first
+    if (a.daysLeft !== b.daysLeft) {
+      return a.daysLeft - b.daysLeft;
     }
-  }
+    // 3. Higher urgency score
+    return b.urgencyScore - a.urgencyScore;
+  });
+
+  const selected = subjCandidates.slice(0, maxSubjects);
 
   const perSubjectBudget = selected.length > 0 ? Math.floor(dailyBudgetMinutes / selected.length) : dailyBudgetMinutes;
 
@@ -975,7 +910,9 @@ export function Today() {
     let allowedSubjects = subjects.filter(s => activeSubjIds.includes(s.id));
     if (allowedSubjects.length < 2) {
       const remainingSlots = 2 - allowedSubjects.length;
-      const otherIncomplete = subjects.filter(s => !s.completed && !activeSubjIds.includes(s.id) && !pendingSubjectIds.has(s.id));
+      const otherIncomplete = subjects
+        .filter(s => !s.completed && !activeSubjIds.includes(s.id) && !pendingSubjectIds.has(s.id))
+        .sort((a, b) => computeGranularProgress([a]).percent - computeGranularProgress([b]).percent);
       allowedSubjects = [...allowedSubjects, ...otherIncomplete.slice(0, remainingSlots)];
     }
 
@@ -2233,6 +2170,24 @@ export function Today() {
                       {dueRevisions.length}
                     </motion.span>
                   )}
+                </motion.button>
+              )}
+
+              {/* ── Regenerate today plan button (RotateCcw) ── */}
+              {planReady && (
+                <motion.button
+                  whileTap={{ scale: 0.88 }}
+                  onClick={() => {
+                    const fresh = generateSmartPlan(subjects, dailyBudgetMins, pendingItems, todayStr);
+                    setLockedPlan(fresh);
+                    syncPlan(todayStr, fresh);
+                    setLoadMoreNotice(isBn ? 'স্টাডি প্ল্যান পুনরায় তৈরি করা হয়েছে' : 'Plan refreshed');
+                    setTimeout(() => setLoadMoreNotice(null), 2000);
+                  }}
+                  title={isBn ? 'স্টাডি প্ল্যান রিফ্রেশ করুন' : 'Refresh today plan'}
+                  className="relative w-8 h-8 rounded-xl flex items-center justify-center border transition-all bg-secondary/80 border-border hover:bg-secondary text-muted-foreground hover:text-foreground"
+                >
+                  <RotateCcw size={13} />
                 </motion.button>
               )}
             </div>

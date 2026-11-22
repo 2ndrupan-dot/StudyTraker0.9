@@ -7,7 +7,7 @@ import { nowIST, addDaysIST, toDateStrIST } from '@/lib/istTime';
 import { doc, getDoc, getDocFromServer, getDocs, onSnapshot, collection, query, where, type CollectionReference, type DocumentReference } from 'firebase/firestore';
 import {
   setDoc, deleteDoc, writeBatch, updateDoc,
-  setDocQuietly,
+  setDocQuietly, updateDocQuietly,
 } from '@/lib/saveStatus';
 import { db } from '@/lib/firebase';
 import { collectAllIds, filterSubjectsByIds, filterNotesMapByIds } from '@/lib/courseShare';
@@ -156,9 +156,9 @@ async function readChunkEntries(
 /** Read the complete companion note document, including chunked note maps. */
 async function readCourseNotes(
   notesDocRef: DocumentReference,
-): Promise<{ exists: boolean; overallNote: string; notes: Record<string, string> }> {
+): Promise<{ exists: boolean; overallNote: string; notes: Record<string, string>; chunked?: boolean }> {
   const snap = await getDoc(notesDocRef);
-  if (!snap.exists()) return { exists: false, overallNote: '', notes: {} };
+  if (!snap.exists()) return { exists: false, overallNote: '', notes: {}, chunked: false };
   const data = snap.data() as {
     overallNote?: string;
     notes?: Record<string, string>;
@@ -171,13 +171,14 @@ async function readCourseNotes(
       exists: true,
       overallNote: data.overallNote || '',
       notes: data.notes || {},
+      chunked: false,
     };
   }
   const entries = await readChunkEntries(collection(notesDocRef, 'chunks'), data.chunkGeneration, data.chunkCount);
   const merged = reassembleEntries(entries);
   const overallNote = merged['__overall__'] || '';
   delete merged['__overall__'];
-  return { exists: true, overallNote, notes: merged };
+  return { exists: true, overallNote, notes: merged, chunked: true };
 }
 
 /** Publish a complete note snapshot by staging chunks first and switching the
@@ -186,6 +187,7 @@ async function writeCourseNotesSnapshot(
   notesDocRef: DocumentReference,
   notesData: { overallNote: string; notes: Record<string, string> },
   savedAt: number,
+  wasChunked = false,
 ): Promise<void> {
   const chunksRef = collection(notesDocRef, 'chunks');
   const dataSize = byteSize(JSON.stringify(notesData));
@@ -205,7 +207,11 @@ async function writeCourseNotesSnapshot(
   }
 
   await setDoc(notesDocRef, payload, { merge: false });
-  await clearChunks(chunksRef, typeof payload.chunkGeneration === 'string' ? payload.chunkGeneration : undefined);
+  if (wasChunked || payload.chunked) {
+    clearChunks(chunksRef, typeof payload.chunkGeneration === 'string' ? payload.chunkGeneration : undefined).catch(err =>
+      console.warn('[StudyContext] clearChunks background cleanup error:', err)
+    );
+  }
 }
 
 /** Bin-pack a NoteElement array into chunk arrays that each stay under `limit`
@@ -387,6 +393,23 @@ function extractNotes(
   }
 
   return { subjects: subjects.map(stripS), tempNotes: stripTN(tempNotes), notes };
+}
+
+/** Check if note maps and overallNote are identical to avoid unnecessary companion note writes. */
+function areNotesEqual(
+  a: Record<string, string>,
+  b: Record<string, string>,
+  overallA: string,
+  overallB: string,
+): boolean {
+  if ((overallA || '') !== (overallB || '')) return false;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  for (const k of keysA) {
+    if (a[k] !== b[k]) return false;
+  }
+  return true;
 }
 
 /** Merge note HTML back from a flat map into stripped subjects / temp-notes. */
@@ -1950,169 +1973,79 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         hasNotesDoc: true,        // tells the loader to fetch the companion doc
       }));
 
-      // The flat notes map can itself grow past Firestore's 1 MB document limit;
-      // writeCourseNotesSnapshot stages it in a new chunk generation before
-      // switching the parent document, keeping the old generation available.
-      // Merge against the latest remote companion document before writing.
-      // The current UI state may have been produced from a stale snapshot on
-      // this device.  Only keys that changed relative to the loaded baseline
-      // are local mutations; untouched remote keys must survive this save.
-      let notesToSave = notes;
-      let overallNoteToSaveMerged = overallNoteToSave;
-      try {
-        const remoteNotes = await readCourseNotes(notesDocRef);
-        if (remoteNotes.exists) {
-          const baseline = loadedNotesRef.current;
-          const mergedNotes: Record<string, string> = { ...remoteNotes.notes };
-          const allKeys = new Set([
-            ...Object.keys(remoteNotes.notes),
-            ...Object.keys(baseline),
-            ...Object.keys(notes),
-          ]);
-          for (const key of allKeys) {
-            const before = baseline[key];
-            const current = notes[key];
-            // Equal means this device did not touch the note.  Preserve the
-            // newest remote value (or its existence) in that case.
-            if (current === before) continue;
-            if (current) mergedNotes[key] = current;
-            else delete mergedNotes[key]; // explicit local clear/delete
+      // Check whether notes actually changed compared to the loaded/saved baseline.
+      // If notes haven't changed (e.g. user added/deleted a subject, changed deadlines,
+      // toggled completion, reordered items), we SKIP reading & writing the companion
+      // courseNotes document completely!
+      const notesChanged = !areNotesEqual(
+        notes,
+        loadedNotesRef.current,
+        overallNoteToSave,
+        loadedOverallNoteRef.current,
+      );
+
+      let notesToSave = loadedNotesRef.current;
+      let overallNoteToSaveMerged = loadedOverallNoteRef.current;
+
+      if (notesChanged) {
+        let remoteWasChunked = false;
+        try {
+          const remoteNotes = await readCourseNotes(notesDocRef);
+          remoteWasChunked = !!remoteNotes.chunked;
+          if (remoteNotes.exists) {
+            const baseline = loadedNotesRef.current;
+            const mergedNotes: Record<string, string> = { ...remoteNotes.notes };
+            const allKeys = new Set([
+              ...Object.keys(remoteNotes.notes),
+              ...Object.keys(baseline),
+              ...Object.keys(notes),
+            ]);
+            for (const key of allKeys) {
+              const before = baseline[key];
+              const current = notes[key];
+              // Equal means this device did not touch the note.  Preserve the
+              // newest remote value (or its existence) in that case.
+              if (current === before) continue;
+              if (current) mergedNotes[key] = current;
+              else delete mergedNotes[key]; // explicit local clear/delete
+            }
+            notesToSave = mergedNotes;
+            overallNoteToSaveMerged =
+              overallNoteToSave === loadedOverallNoteRef.current
+                ? remoteNotes.overallNote
+                : overallNoteToSave;
+          } else {
+            notesToSave = notes;
+            overallNoteToSaveMerged = overallNoteToSave;
           }
-          notesToSave = mergedNotes;
-          overallNoteToSaveMerged =
-            overallNoteToSave === loadedOverallNoteRef.current
-              ? remoteNotes.overallNote
-              : overallNoteToSave;
+        } catch (err) {
+          console.warn('[StudyContext] Could not merge remote notes before save:', err);
+          notesToSave = notes;
+          overallNoteToSaveMerged = overallNoteToSave;
         }
-      } catch (err) {
-        // The main save can still proceed when the companion read is offline.
-        // In that case the local payload is retained and will be retried by
-        // the normal unsynced marker flow.
-        console.warn('[StudyContext] Could not merge remote notes before save:', err);
-      }
-      const notesData = { overallNote: overallNoteToSaveMerged, notes: notesToSave };
+        const notesData = { overallNote: overallNoteToSaveMerged, notes: notesToSave };
 
-      // Diagnostic only (does NOT block the write — see notesGuardArmedRef
-      // comment above for why blocking here breaks legitimate first-clears).
-      // Still useful in logs to distinguish "user really cleared everything"
-      // from "something upstream produced an unexpectedly empty state".
-      if (notesGuardArmedRef.current) {
-        const incomingHasNotes =
-          !!notesData.overallNote || Object.values(notesData.notes).some((v) => !!v);
-        if (!incomingHasNotes) {
-          console.info(
-            '[StudyContext] First save of this session has empty notes — saving as-is ' +
-            '(this is expected when the user just cleared/deleted their last note).',
-          );
-        }
-        notesGuardArmedRef.current = false;
-      }
-
-      // Write courseNotes FIRST, then studyData.  Sequential (not concurrent) so
-      // another device that receives the main snapshot can fetch a complete note
-      // generation. Previous chunks remain readable until this parent write lands.
-      await writeCourseNotesSnapshot(notesDocRef, notesData, savedAt);
-      await setDoc(docRef, mainPayload, { merge: false });
-
-      // ── Live-sync: relay update through shareRequests ────────────────────
-      // Security rules prevent the admin from writing directly to another user's
-      // studyData/courseNotes collections.  Instead, we write the updated course
-      // data into each accepted shareRequests document (admin CAN write those
-      // because fromAdminUid == auth.uid).  The recipient's client has an
-      // onSnapshot on shareRequests and will detect the new syncedAt timestamp,
-      // then apply the data to their own collections themselves.
-      //
-      // Query only by fromAdminUid (single equality → no composite index needed).
-      try {
-        const sharesQ = query(
-          collection(db, 'shareRequests'),
-          where('fromAdminUid', '==', currentUser.id),
-        );
-        const sharesSnap = await getDocs(sharesQ);
-        console.log(`[LiveSync] Admin save for course "${currentCourseId}" — found ${sharesSnap.size} sent share(s) total`);
-        const syncedAt = Date.now();
-        let syncCount = 0;
-        for (const shareDoc of sharesSnap.docs) {
-          const shareData = shareDoc.data();
-          if (shareData.courseId !== currentCourseId) continue;
-          if (shareData.status !== 'accepted') continue;
-          syncCount++;
-
-          // Partial-subject shares must keep being filtered on every re-sync,
-          // not just at the initial share — otherwise the very next edit the
-          // admin makes pushes the FULL course back over the top of the
-          // recipient's restricted subset (previously reported as "all
-          // subjects come back after accepting a partial course share").
-          const sharedSubjectIds = shareData.sharedSubjectIds as string[] | undefined;
-          let syncSubjects = mainPayload.subjects as unknown[];
-          let syncNotes = notesData.notes;
-          if (sharedSubjectIds && Array.isArray(mainPayload.subjects)) {
-            syncSubjects = filterSubjectsByIds(mainPayload.subjects as unknown[], sharedSubjectIds);
-            const idSet = collectAllIds(syncSubjects);
-            syncNotes = filterNotesMapByIds(notesData.notes, idSet);
+        if (notesGuardArmedRef.current) {
+          const incomingHasNotes =
+            !!notesData.overallNote || Object.values(notesData.notes).some((v) => !!v);
+          if (!incomingHasNotes) {
+            console.info(
+              '[StudyContext] First save of this session has empty notes — saving as-is ' +
+              '(this is expected when the user just cleared/deleted their last note).',
+            );
           }
-          // Strip library-compiler notes (privateNote=true) — they are admin-only
-          // and must never appear in a shared course copy.
-          const syncNotePagesIndex = (mainPayload.notePagesIndex as NotePageMeta[] | undefined)
-            ?.filter(p => !p.privateNote) ?? [];
-          // Strip tempNotes and personalNotePagesIndex — both are private to each user
-          // and must never reach shared-course recipients.
-          const { tempNotes: _stripAdminTempNotes, personalNotePagesIndex: _stripPersonalIdx, ...syncStudyDataPayload } = {
-            ...mainPayload,
-            subjects: syncSubjects,
-            notePagesIndex: syncNotePagesIndex,
-          };
-          const syncNotesDataPayload = { ...notesData, notes: syncNotes };
-
-          // Fetch test decks for this course so they are relayed to the recipient.
-          // Apply the same subject-level filter as subjects/notes above.
-          let testDecksMap: Record<string, unknown[]> = {};
-          try {
-            const decksColRef = collection(db, 'users', currentUser.id, 'courses', currentCourseId, 'testDecks');
-            const decksSnap = await getDocs(decksColRef);
-            decksSnap.forEach(d => {
-              const data = d.data();
-              const cards: unknown[] = Array.isArray(data.cards) ? data.cards : [];
-              if (!sharedSubjectIds || sharedSubjectIds.includes(d.id)) {
-                testDecksMap[d.id] = cards;
-              }
-            });
-          } catch { /* best-effort — missing decks are not fatal */ }
-
-          // Overwrite courseSnapshot.studyData in-place (dot-notation).
-          // notesJson and testDecksJson are written to separate sub-documents
-          // under shareRequests/{shareId}/syncPayloads/notes and /testDecks
-          // so that the main shareRequests document never exceeds Firestore's
-          // 1 MB per-document limit (a large course with many notes easily
-          // breaches it when everything is packed into one document).
-          const shareDocRef = doc(db, 'shareRequests', shareDoc.id);
-          const syncPayload: Record<string, unknown> = {
-            'courseSnapshot.studyData': syncStudyDataPayload,
-            // Clear legacy inline fields so old clients don't read stale data
-            'courseSnapshot.notesJson': '',
-            'courseSnapshot.testDecksJson': '',
-            syncedAt,
-          };
-          // Write large payloads into sub-documents (no size limit per collection)
-          const syncPayloadsCol = collection(db, 'shareRequests', shareDoc.id, 'syncPayloads');
-          await Promise.all([
-            setDoc(doc(syncPayloadsCol, 'notes'), {
-              notesJson: JSON.stringify(syncNotesDataPayload),
-              syncedAt,
-            }),
-            setDoc(doc(syncPayloadsCol, 'testDecks'), {
-              testDecksJson: JSON.stringify(testDecksMap),
-              syncedAt,
-            }),
-          ]);
-          await updateDoc(shareDocRef, syncPayload);
-          console.log(`[LiveSync] ✅ Relay pushed to shareRequest "${shareDoc.id}" — syncedAt=${syncedAt}`);
+          notesGuardArmedRef.current = false;
         }
-        if (syncCount === 0) console.warn(`[LiveSync] ⚠️ No accepted shares found for course "${currentCourseId}"`);
-      } catch (syncErr) {
-        console.error('[LiveSync] ❌ Relay write failed:', syncErr);
+
+        // Save courseNotes and studyData in PARALLEL to slash latency in half!
+        await Promise.all([
+          writeCourseNotesSnapshot(notesDocRef, notesData, savedAt, remoteWasChunked),
+          setDoc(docRef, mainPayload, { merge: false }),
+        ]);
+      } else {
+        // Fast path: Only write studyData! No companion read/write needed!
+        await setDoc(docRef, mainPayload, { merge: false });
       }
-      // ─────────────────────────────────────────────────────────────────────
 
       // Firestore now has this edit — clear the "unsynced" marker so a future
       // load on this device trusts Firestore instead of this local cache.
@@ -2157,6 +2090,77 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         setSyncStatus('success');
         setTimeout(() => setSyncStatus(s => s === 'success' ? 'idle' : s), 2500);
       }
+
+      // ── Live-sync: relay update through shareRequests asynchronously in background ──────
+      // Runs without blocking the user's UI / "Saved" notification.
+      void (async () => {
+        try {
+          const sharesQ = query(
+            collection(db, 'shareRequests'),
+            where('fromAdminUid', '==', currentUser.id),
+          );
+          const sharesSnap = await getDocs(sharesQ);
+          if (sharesSnap.empty) return;
+          const syncedAt = Date.now();
+          for (const shareDoc of sharesSnap.docs) {
+            const shareData = shareDoc.data();
+            if (shareData.courseId !== currentCourseId) continue;
+            if (shareData.status !== 'accepted') continue;
+
+            const sharedSubjectIds = shareData.sharedSubjectIds as string[] | undefined;
+            let syncSubjects = mainPayload.subjects as unknown[];
+            let syncNotes = notesToSave;
+            if (sharedSubjectIds && Array.isArray(mainPayload.subjects)) {
+              syncSubjects = filterSubjectsByIds(mainPayload.subjects as unknown[], sharedSubjectIds);
+              const idSet = collectAllIds(syncSubjects);
+              syncNotes = filterNotesMapByIds(notesToSave, idSet);
+            }
+            const syncNotePagesIndex = (mainPayload.notePagesIndex as NotePageMeta[] | undefined)
+              ?.filter(p => !p.privateNote) ?? [];
+            const { tempNotes: _stripAdminTempNotes, personalNotePagesIndex: _stripPersonalIdx, ...syncStudyDataPayload } = {
+              ...mainPayload,
+              subjects: syncSubjects,
+              notePagesIndex: syncNotePagesIndex,
+            };
+            const syncNotesDataPayload = { overallNote: overallNoteToSaveMerged, notes: syncNotes };
+
+            let testDecksMap: Record<string, unknown[]> = {};
+            try {
+              const decksColRef = collection(db, 'users', currentUser.id, 'courses', currentCourseId, 'testDecks');
+              const decksSnap = await getDocs(decksColRef);
+              decksSnap.forEach(d => {
+                const data = d.data();
+                const cards: unknown[] = Array.isArray(data.cards) ? data.cards : [];
+                if (!sharedSubjectIds || sharedSubjectIds.includes(d.id)) {
+                  testDecksMap[d.id] = cards;
+                }
+              });
+            } catch { /* best-effort — missing decks are not fatal */ }
+
+            const shareDocRef = doc(db, 'shareRequests', shareDoc.id);
+            const syncPayload: Record<string, unknown> = {
+              'courseSnapshot.studyData': syncStudyDataPayload,
+              'courseSnapshot.notesJson': '',
+              'courseSnapshot.testDecksJson': '',
+              syncedAt,
+            };
+            const syncPayloadsCol = collection(db, 'shareRequests', shareDoc.id, 'syncPayloads');
+            await Promise.all([
+              setDocQuietly(doc(syncPayloadsCol, 'notes'), {
+                notesJson: JSON.stringify(syncNotesDataPayload),
+                syncedAt,
+              }),
+              setDocQuietly(doc(syncPayloadsCol, 'testDecks'), {
+                testDecksJson: JSON.stringify(testDecksMap),
+                syncedAt,
+              }),
+            ]);
+            await updateDocQuietly(shareDocRef, syncPayload);
+          }
+        } catch (syncErr) {
+          console.error('[LiveSync] ❌ Background relay failed:', syncErr);
+        }
+      })();
     } catch (err) {
       console.error('[StudyContext] Firestore save failed:', err);
       setSyncStatus('failed');
@@ -2523,7 +2527,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       saveTimerRef.current = null;
       const pending = pendingSaveRef.current;
       if (pending) flushSave(pending.subjects, pending.settings, pending.tempNotes, pending.overallNote, pending.notePagesIndex, pending.personalNotePagesIndex);
-    }, 400);
+    }, 250);
   }, [subjects, settings, tempNotes, overallNote, notePagesIndex, personalNotePagesIndex, user, dataLoaded, activeCourseId]);
 
   // Flush save immediately before page unload
@@ -2702,7 +2706,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     } catch { return; }
     if (user?.id) {
       const sanitized = JSON.parse(JSON.stringify({ revisions: filtered }));
-      setDoc(
+      setDocQuietly(
         doc(db, 'users', user.id, 'todayData', courseId),
         sanitized,
         { merge: true },
@@ -2724,7 +2728,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     } catch { return; }
     if (user?.id) {
       const sanitized = JSON.parse(JSON.stringify({ revisions: updated }));
-      setDoc(
+      setDocQuietly(
         doc(db, 'users', user.id, 'todayData', courseId),
         sanitized,
         { merge: true },
@@ -4111,11 +4115,19 @@ export function StudyProvider({ children }: { children: ReactNode }) {
                 chunkGeneration,
                 elements: [],   // cleared from Firestore doc — stored in chunks subcollection
               });
+              await setDoc(ref, firestorePayload);
+              clearChunks(pageChunksRef, firestorePayload.chunkGeneration).catch(err =>
+                console.warn('[saveNotePage] clearChunks background cleanup error:', err)
+              );
             } else {
               firestorePayload = { ...cleaned, chunked: false };
+              await setDoc(ref, firestorePayload);
+              if (latestData.chunked) {
+                clearChunks(pageChunksRef, undefined).catch(err =>
+                  console.warn('[saveNotePage] clearChunks background cleanup error:', err)
+                );
+              }
             }
-            await setDoc(ref, firestorePayload);
-            await clearChunks(pageChunksRef, firestorePayload.chunkGeneration);
             if (localNotePageMatches(localPageKey(pageId), latestData)) {
               markLocalNotePageUnsynced(localPageKey(pageId), false);
               clearLocalNotePageRecovery('course-page', pageId);

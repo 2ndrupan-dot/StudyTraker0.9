@@ -34,7 +34,17 @@ function LoadingScreen() {
 type ConnectionState = "checking" | "online" | "offline";
 
 async function hasInternetConnection(): Promise<boolean> {
-  if (!navigator.onLine) return false;
+  // If running on localhost or loopback (e.g. IDE side-panel webview / dev), always treat as online
+  if (
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname === "0.0.0.0")
+  ) {
+    return true;
+  }
+
+  if (typeof navigator !== "undefined" && !navigator.onLine) return false;
 
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 1500);
@@ -51,7 +61,8 @@ async function hasInternetConnection(): Promise<boolean> {
     });
     return true;
   } catch {
-    return false;
+    // If gstatic is blocked by an adblocker/firewall/webview sandbox but the browser says online, trust online
+    return typeof navigator !== "undefined" ? navigator.onLine : true;
   } finally {
     window.clearTimeout(timeoutId);
   }
@@ -137,6 +148,12 @@ function OfflineGuard({ children }: { children: React.ReactNode }) {
       window.removeEventListener("offline", handleOffline);
     };
   }, []);
+
+  useEffect(() => {
+    if (connection !== "checking") {
+      hideAppShell();
+    }
+  }, [connection]);
 
   if (connection !== "online") {
     return <OfflineScreen checking={connection === "checking"} />;

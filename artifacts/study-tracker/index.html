@@ -256,6 +256,17 @@
         <div class="as-spinner"></div>
       </div>
     </div>
+    <!-- Safety fallback: ensure app shell loader fades out after max 3s even if offline/sandbox checks delay -->
+    <script>
+      setTimeout(function () {
+        var el = document.getElementById('app-shell-loader');
+        if (el && !el.dataset.hidden) {
+          el.dataset.hidden = '1';
+          el.style.opacity = '0';
+          setTimeout(function () { if (el && el.parentNode) el.parentNode.removeChild(el); }, 260);
+        }
+      }, 3000);
+    </script>
     <!-- Capture the PWA install prompt before React mounts so the browser's
          native mini-infobar never appears on any page (including login). -->
     <script>

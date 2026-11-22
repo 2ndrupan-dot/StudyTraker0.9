@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { useLang } from '@/context/LangContext';
 import { useStudy } from '@/context/StudyContext';
 import { useTest } from '@/context/TestContext';
-import { retrySaveFailure, useSaveStatus } from '@/lib/saveStatus';
+import { retrySaveFailure, useSaveStatus, dismissSaveFailure, clearAllSaveFailures } from '@/lib/saveStatus';
 import { usePWAInstall } from '@/context/PWAInstallContext';
 import { useAdmin } from '@/context/AdminContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -422,7 +422,8 @@ function FloatingSearchButton({ onClick }: { onClick: () => void }) {
 function ConnectionStatus({ isProfilePage }: { isProfilePage: boolean }) {
   const { syncStatus, syncError, online } = useStudy();
   const { pending, failures, lastSuccessAt } = useSaveStatus();
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const isBn = lang === 'bn';
   const [showBackOnline, setShowBackOnline] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [failuresOpen, setFailuresOpen] = useState(false);
@@ -550,15 +551,28 @@ function ConnectionStatus({ isProfilePage }: { isProfilePage: boolean }) {
             >
               <div className="mb-2 flex items-center justify-between gap-2">
                 <h2 className="m-0 text-xs font-bold text-red-700 dark:text-red-300">{t('syncFailureDetails')}</h2>
-                <button
-                  type="button"
-                  onClick={() => setFailuresOpen(false)}
-                  aria-label={t('dismissSyncFailure')}
-                  title={t('dismissSyncFailure')}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-300 dark:hover:bg-red-900"
-                >
-                  <X size={16} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearAllSaveFailures();
+                      setFailuresOpen(false);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-red-600 hover:bg-red-100 dark:text-red-300 dark:hover:bg-red-900"
+                    title={isBn ? 'সব মুছুন' : 'Clear all'}
+                  >
+                    {isBn ? 'সব মুছুন' : 'Clear all'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFailuresOpen(false)}
+                    aria-label={t('dismissSyncFailure')}
+                    title={t('dismissSyncFailure')}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-300 dark:hover:bg-red-900"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
               </div>
               <ul className="m-0 flex max-h-[60vh] list-none flex-col gap-2 overflow-y-auto p-0">
                 {visibleFailures.map(failure => (
@@ -566,16 +580,30 @@ function ConnectionStatus({ isProfilePage }: { isProfilePage: boolean }) {
                     <div className="flex items-start justify-between gap-2">
                       <strong className="leading-snug text-red-800 dark:text-red-200">{failure.label}</strong>
                       <div className="flex shrink-0 items-center gap-1">
+                        {failure.retry && (
+                          <button
+                            type="button"
+                            onClick={() => retryFailure(failure.id)}
+                            aria-label={t('retrySave')}
+                            title={t('retrySave')}
+                            className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-semibold text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-300 dark:hover:bg-red-900"
+                          >
+                            <RotateCcw size={12} />
+                            {t('retrySave')}
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => retryFailure(failure.id)}
-                          disabled={!failure.retry}
-                          aria-label={t('retrySave')}
-                          title={failure.retry ? t('retrySave') : t('retryUnavailable')}
-                          className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-semibold text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:cursor-not-allowed disabled:opacity-45 dark:text-red-300 dark:hover:bg-red-900"
+                          onClick={() => {
+                            dismissSaveFailure(failure.id);
+                            if (visibleFailures.length <= 1) setFailuresOpen(false);
+                          }}
+                          aria-label={isBn ? 'মুছুন' : 'Dismiss'}
+                          title={isBn ? 'মুছুন' : 'Dismiss'}
+                          className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-200/70 dark:text-slate-400 dark:hover:bg-slate-800"
                         >
-                          <RotateCcw size={12} />
-                          {t('retrySave')}
+                          <X size={12} />
+                          {isBn ? 'মুছুন' : 'Dismiss'}
                         </button>
                       </div>
                     </div>

@@ -173,6 +173,16 @@ export function failSave(id: string, error: unknown) {
   publish();
 }
 
+export function clearAllSaveFailures() {
+  failureRecords = [];
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(FAILURE_STORAGE_KEY);
+    }
+  } catch { /* ignore */ }
+  publish();
+}
+
 export function dismissSaveFailure(id: string) {
   const removed = failureRecords.find(failure => failure.id === id);
   const next = failureRecords.filter(failure => failure.id !== id);
@@ -255,43 +265,82 @@ function trackFirestoreWrite<T>(
   return trackSave('Cloud save', action, resourceKey, showProgress);
 }
 
-export const setDoc: typeof firestoreSetDoc = ((...args: Parameters<typeof firestoreSetDoc>) =>
-  trackFirestoreWrite(() => firestoreSetDoc(...args), getResourceKey(args[0]))) as typeof firestoreSetDoc;
+/**
+ * Recursively strips keys whose value is undefined, preventing Firestore
+ * "Unsupported field value: undefined" errors while preserving FieldValues, Dates, etc.
+ */
+export function removeUndefinedDeep<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
+  // If it's a Firestore FieldValue, Date, or non-plain object, keep as is
+  if (
+    obj.constructor &&
+    obj.constructor.name !== 'Object' &&
+    obj.constructor.name !== 'Array'
+  ) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => removeUndefinedDeep(item)) as unknown as T;
+  }
+  const clean: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      clean[key] = removeUndefinedDeep(value);
+    }
+  }
+  return clean as T;
+}
 
-export const updateDoc: typeof firestoreUpdateDoc = ((...args: Parameters<typeof firestoreUpdateDoc>) =>
-  trackFirestoreWrite(() => firestoreUpdateDoc(...args), getResourceKey(args[0]))) as typeof firestoreUpdateDoc;
+export const setDoc: typeof firestoreSetDoc = ((...args: Parameters<typeof firestoreSetDoc>) => {
+  const [docRef, data, options] = args;
+  const cleanData = removeUndefinedDeep(data);
+  return trackFirestoreWrite(() => firestoreSetDoc(docRef, cleanData, options as any), getResourceKey(docRef));
+}) as typeof firestoreSetDoc;
+
+export const updateDoc: typeof firestoreUpdateDoc = ((...args: Parameters<typeof firestoreUpdateDoc>) => {
+  const [docRef, data, ...rest] = args;
+  const cleanData = typeof data === 'object' && data !== null ? removeUndefinedDeep(data) : data;
+  return trackFirestoreWrite(() => (firestoreUpdateDoc as any)(docRef, cleanData, ...rest), getResourceKey(docRef));
+}) as typeof firestoreUpdateDoc;
 
 export const deleteDoc: typeof firestoreDeleteDoc = ((...args: Parameters<typeof firestoreDeleteDoc>) =>
   trackFirestoreWrite(() => firestoreDeleteDoc(...args), getResourceKey(args[0]))) as typeof firestoreDeleteDoc;
 
 // Background reconciliation and page-load maintenance still retain failures
 // for the user, but shouldn't show Syncing/Saved as if they had just edited.
-export const setDocQuietly: typeof firestoreSetDoc = ((...args: Parameters<typeof firestoreSetDoc>) =>
-  trackFirestoreWrite(() => firestoreSetDoc(...args), getResourceKey(args[0]), false)) as typeof firestoreSetDoc;
+export const setDocQuietly: typeof firestoreSetDoc = ((...args: Parameters<typeof firestoreSetDoc>) => {
+  const [docRef, data, options] = args;
+  const cleanData = removeUndefinedDeep(data);
+  return trackFirestoreWrite(() => firestoreSetDoc(docRef, cleanData, options as any), getResourceKey(docRef), false);
+}) as typeof firestoreSetDoc;
 
-export const updateDocQuietly: typeof firestoreUpdateDoc = ((...args: Parameters<typeof firestoreUpdateDoc>) =>
-  trackFirestoreWrite(() => firestoreUpdateDoc(...args), getResourceKey(args[0]), false)) as typeof firestoreUpdateDoc;
+export const updateDocQuietly: typeof firestoreUpdateDoc = ((...args: Parameters<typeof firestoreUpdateDoc>) => {
+  const [docRef, data, ...rest] = args;
+  const cleanData = typeof data === 'object' && data !== null ? removeUndefinedDeep(data) : data;
+  return trackFirestoreWrite(() => (firestoreUpdateDoc as any)(docRef, cleanData, ...rest), getResourceKey(docRef), false);
+}) as typeof firestoreUpdateDoc;
 
 export const deleteDocQuietly: typeof firestoreDeleteDoc = ((...args: Parameters<typeof firestoreDeleteDoc>) =>
   trackFirestoreWrite(() => firestoreDeleteDoc(...args), getResourceKey(args[0]), false)) as typeof firestoreDeleteDoc;
 
 export const addDoc: typeof firestoreAddDoc = ((...args: Parameters<typeof firestoreAddDoc>) => {
   const [collectionRef, data] = args;
-  // Fix the document ID before the first attempt. Retrying addDoc directly
-  // could create a second document if the first commit succeeded but its
-  // acknowledgement was lost.
+  const cleanData = removeUndefinedDeep(data);
   const ref = firestoreDoc(collectionRef);
   return trackFirestoreWrite(async () => {
-    await firestoreSetDoc(ref, data);
+    await firestoreSetDoc(ref, cleanData);
     return ref;
   }, getResourceKey(ref));
 }) as typeof firestoreAddDoc;
 
 export const addDocQuietly: typeof firestoreAddDoc = ((...args: Parameters<typeof firestoreAddDoc>) => {
   const [collectionRef, data] = args;
+  const cleanData = removeUndefinedDeep(data);
   const ref = firestoreDoc(collectionRef);
   return trackFirestoreWrite(async () => {
-    await firestoreSetDoc(ref, data);
+    await firestoreSetDoc(ref, cleanData);
     return ref;
   }, getResourceKey(ref), false);
 }) as typeof firestoreAddDoc;

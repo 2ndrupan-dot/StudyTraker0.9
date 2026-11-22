@@ -844,14 +844,14 @@ export function Today() {
   // Append a dismissed pending key to Firestore (arrayUnion, no grace-period — doesn't
   // touch pending/revision arrays so onSnapshot echoes are harmless).
   const addDismissedPendingKey = useCallback(async (key: string) => {
-    if (!user?.id || !activeCourseId) return;
+    if (!user?.id || !activeCourseId || !key) return;
     await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { dismissedPendingKeys: arrayUnion(key) }, { merge: true })
       .catch(e => console.warn('[todaySync] addDismissedPendingKey:', e));
   }, [user?.id, activeCourseId]); // eslint-disable-line
 
   // Append a dismissed revision ID to Firestore (arrayUnion, no grace-period).
   const addDismissedRevisionId = useCallback(async (id: string) => {
-    if (!user?.id || !activeCourseId) return;
+    if (!user?.id || !activeCourseId || !id) return;
     await setDoc(doc(db, 'users', user.id, 'todayData', activeCourseId), { dismissedRevisionIds: arrayUnion(id) }, { merge: true })
       .catch(e => console.warn('[todaySync] addDismissedRevisionId:', e));
   }, [user?.id, activeCourseId]); // eslint-disable-line

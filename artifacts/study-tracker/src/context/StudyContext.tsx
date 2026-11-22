@@ -2701,9 +2701,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(revK, JSON.stringify(filtered));
     } catch { return; }
     if (user?.id) {
+      const sanitized = JSON.parse(JSON.stringify({ revisions: filtered }));
       setDoc(
         doc(db, 'users', user.id, 'todayData', courseId),
-        { revisions: filtered },
+        sanitized,
         { merge: true },
       ).catch(e => console.warn('[purgeRevisions] Firestore sync failed:', e));
     }
@@ -2722,9 +2723,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(revK, JSON.stringify(updated));
     } catch { return; }
     if (user?.id) {
+      const sanitized = JSON.parse(JSON.stringify({ revisions: updated }));
       setDoc(
         doc(db, 'users', user.id, 'todayData', courseId),
-        { revisions: updated },
+        sanitized,
         { merge: true },
       ).catch(e => console.warn('[patchRevisions] Firestore sync failed:', e));
     }
@@ -2884,13 +2886,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
       // Sync to Firestore so other devices also reflect the reset immediately
       if (user?.id) {
+        const sanitized = JSON.parse(JSON.stringify({
+          plan: { date: planDate, tasks: filteredPlanTasks },
+          pending: filteredPend,
+          revisions: filteredRev,
+        }));
         setDoc(
           doc(db, 'users', user.id, 'todayData', courseId),
-          {
-            plan: { date: planDate, tasks: filteredPlanTasks },
-            pending: filteredPend,
-            revisions: filteredRev,
-          },
+          sanitized,
           { merge: false },
         ).catch(e => console.warn('[resetSubjectProgress] Firestore todayData sync failed:', e));
       }

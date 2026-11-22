@@ -304,7 +304,7 @@ function generateSmartPlan(
     urgency: 'high' | 'medium' | 'low';
   }
 
-  const activePendingItems = pendingItems.filter(p => pendingDaysLeft(p, todayStr) > 0);
+  const activePendingItems = pendingItems.filter(p => pendingDaysLeft(p, todayStr) > 0 && !isTaskCompleted(subjects, p.task));
   const pendingSubjectIds = new Set(activePendingItems.map(p => p.task.subjectId));
 
   const subjCandidates: SubjectCandidate[] = [];
@@ -900,7 +900,7 @@ export function Today() {
   const loadMore = () => {
     const extraStep = 30;
     const existingKeys = new Set(lockedPlan.map(p => p.key));
-    const activePending = pendingItems.filter(p => pendingDaysLeft(p, todayStr) > 0);
+    const activePending = pendingItems.filter(p => pendingDaysLeft(p, todayStr) > 0 && !isTaskCompleted(subjects, p.task));
     const pendingKeys = new Set(activePending.map(p => p.task.key));
     const pendingSubjectIds = new Set(activePending.map(p => p.task.subjectId));
     const allExclude = new Set([...existingKeys, ...pendingKeys]);
@@ -1332,7 +1332,7 @@ export function Today() {
     if (cleanedPlan.length !== currentPlan.length) { currentPlan = cleanedPlan; dirty = true; }
 
     const cleanedPending = pendingItems.filter(
-      p => doesTaskExist(subjects, p.task) && pendingDaysLeft(p, todayStr) > 0
+      p => doesTaskExist(subjects, p.task) && !isTaskCompleted(subjects, p.task) && pendingDaysLeft(p, todayStr) > 0
     );
     if (cleanedPending.length !== pendingItems.length) {
       setPendingItems(cleanedPending);

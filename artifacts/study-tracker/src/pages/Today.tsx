@@ -351,8 +351,8 @@ function generateSmartPlan(
 
   // Strict rule: Prioritize subjects with lowest completion percentage first (least studied)
   subjCandidates.sort((a, b) => {
-    // 1. Lowest completion percentage first (least studied)
-    if (Math.abs(a.completionPct - b.completionPct) > 0.001) {
+    // 1. Lowest completion percentage first (least studied, considering exact decimal precision)
+    if (a.completionPct !== b.completionPct) {
       return a.completionPct - b.completionPct;
     }
     // 2. Tighter deadline / fewer daysLeft first
@@ -2170,24 +2170,6 @@ export function Today() {
                       {dueRevisions.length}
                     </motion.span>
                   )}
-                </motion.button>
-              )}
-
-              {/* ── Regenerate today plan button (RotateCcw) ── */}
-              {planReady && (
-                <motion.button
-                  whileTap={{ scale: 0.88 }}
-                  onClick={() => {
-                    const fresh = generateSmartPlan(subjects, dailyBudgetMins, pendingItems, todayStr);
-                    setLockedPlan(fresh);
-                    syncPlan(todayStr, fresh);
-                    setLoadMoreNotice(isBn ? 'স্টাডি প্ল্যান পুনরায় তৈরি করা হয়েছে' : 'Plan refreshed');
-                    setTimeout(() => setLoadMoreNotice(null), 2000);
-                  }}
-                  title={isBn ? 'স্টাডি প্ল্যান রিফ্রেশ করুন' : 'Refresh today plan'}
-                  className="relative w-8 h-8 rounded-xl flex items-center justify-center border transition-all bg-secondary/80 border-border hover:bg-secondary text-muted-foreground hover:text-foreground"
-                >
-                  <RotateCcw size={13} />
                 </motion.button>
               )}
             </div>

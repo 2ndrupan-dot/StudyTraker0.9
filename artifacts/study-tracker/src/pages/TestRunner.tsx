@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useTest } from '@/context/TestContext';
 import { useLang } from '@/context/LangContext';
@@ -8,9 +8,19 @@ import { ConfirmModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Square, Trophy, RotateCcw,
-  CheckCircle2, XCircle, AlertCircle, SkipForward,
+  CheckCircle2, XCircle, AlertCircle, SkipForward, Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+// ─── Duration formatter (hours : minutes : seconds) ───────────────────────────
+
+function formatDuration(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
 
 // ─── Circular progress arc ────────────────────────────────────────────────────
 
@@ -108,6 +118,18 @@ export function TestRunner() {
   const [finished, setFinished] = useState(false);
   const [showAnswerFirst, setShowAnswerFirst] = useState(false);
 
+  // Timer state (hours : minutes : seconds)
+  const [startTime, setStartTime] = useState<number>(() => Date.now());
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (finished) return;
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startTime, finished]);
+
   // Confirm dialogs
   const [confirmStop, setConfirmStop] = useState(false);
   const [confirmBack, setConfirmBack] = useState(false);
@@ -172,6 +194,7 @@ export function TestRunner() {
     if (currentIdx < total - 1) {
       setCurrentIdx(i => i + 1);
     } else {
+      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
       setFinished(true);
     }
   };
@@ -183,6 +206,7 @@ export function TestRunner() {
     if (currentIdx < total - 1) {
       setCurrentIdx(i => i + 1);
     } else {
+      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
       setFinished(true);
     }
   };
@@ -199,6 +223,8 @@ export function TestRunner() {
     setSkipped({});
     setFinished(false);
     setShowAnswerFirst(false);
+    setStartTime(Date.now());
+    setElapsedSeconds(0);
   };
 
   const handleRetryMissed = () => {
@@ -215,6 +241,8 @@ export function TestRunner() {
     setSkipped({});
     setFinished(false);
     setShowAnswerFirst(false);
+    setStartTime(Date.now());
+    setElapsedSeconds(0);
   };
 
   // ── Progress bar ──────────────────────────────────────────────────────────
@@ -243,23 +271,34 @@ export function TestRunner() {
               </div>
             </div>
 
-            <div className="flex gap-5 mt-1">
+            <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-4 mt-2 px-3 py-2 bg-black/15 rounded-2xl border border-white/10 backdrop-blur-sm">
               {/* Attended */}
-              <div className="flex flex-col items-center gap-0.5">
-                <span className="text-lg font-bold text-sky-300">{attendedCount}/{total}</span>
-                <span className="text-[11px] text-white/70">{t('testAttended')}</span>
+              <div className="flex flex-col items-center gap-0.5 px-1 min-w-[48px]">
+                <span className="text-base sm:text-lg font-bold text-sky-300">{attendedCount}/{total}</span>
+                <span className="text-[10px] sm:text-[11px] text-white/70">{t('testAttended')}</span>
               </div>
-              <div className="w-px bg-white/20" />
+              <div className="w-px h-7 bg-white/20" />
               {/* Correct */}
-              <div className="flex flex-col items-center gap-0.5">
-                <span className="text-lg font-bold text-emerald-300">{correctCount}/{attendedCount}</span>
-                <span className="text-[11px] text-white/70">{t('testCorrectCount')}</span>
+              <div className="flex flex-col items-center gap-0.5 px-1 min-w-[48px]">
+                <span className="text-base sm:text-lg font-bold text-emerald-300">{correctCount}/{attendedCount}</span>
+                <span className="text-[10px] sm:text-[11px] text-white/70">{t('testCorrectCount')}</span>
               </div>
-              <div className="w-px bg-white/20" />
+              <div className="w-px h-7 bg-white/20" />
               {/* Skipped */}
-              <div className="flex flex-col items-center gap-0.5">
-                <span className="text-lg font-bold text-amber-300">{skippedCount}/{total}</span>
-                <span className="text-[11px] text-white/70">{t('testSkipped')}</span>
+              <div className="flex flex-col items-center gap-0.5 px-1 min-w-[48px]">
+                <span className="text-base sm:text-lg font-bold text-amber-300">{skippedCount}/{total}</span>
+                <span className="text-[10px] sm:text-[11px] text-white/70">{t('testSkipped')}</span>
+              </div>
+              <div className="w-px h-7 bg-white/20" />
+              {/* Total Time */}
+              <div className="flex flex-col items-center gap-0.5 px-1 min-w-[56px]">
+                <span className="text-base sm:text-lg font-bold font-mono text-purple-200 tracking-wider">
+                  {formatDuration(elapsedSeconds)}
+                </span>
+                <span className="text-[10px] sm:text-[11px] text-white/70 flex items-center gap-1">
+                  <Clock size={10} className="text-purple-200" />
+                  {t('testTotalTime')}
+                </span>
               </div>
             </div>
           </div>
@@ -426,12 +465,21 @@ export function TestRunner() {
             <ChevronLeft size={20} className="text-white" />
           </button>
 
-          {/* Title + counter */}
-          <div className="flex flex-col items-center gap-0.5">
-            <p className="text-white font-bold text-sm leading-tight">{card.title}</p>
-            <p className="text-white/70 text-[11px]">
-              {currentIdx + 1} / {total}
+          {/* Title + counter + timer */}
+          <div className="flex flex-col items-center gap-1">
+            <p className="text-white font-bold text-sm leading-tight max-w-[170px] sm:max-w-xs truncate text-center">
+              {card.title}
             </p>
+            <div className="flex items-center gap-2">
+              <span className="text-white/80 text-[11px] font-medium">
+                {currentIdx + 1} / {total}
+              </span>
+              <span className="text-white/30 text-xs">•</span>
+              <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold bg-black/20 text-white px-2.5 py-0.5 rounded-full border border-white/15 tracking-wider shadow-inner">
+                <Clock size={11} className="text-white/90 animate-pulse" />
+                {formatDuration(elapsedSeconds)}
+              </span>
+            </div>
           </div>
 
           {/* Stop */}

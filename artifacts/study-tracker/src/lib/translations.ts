@@ -499,6 +499,7 @@ export const translations = {
     testAttended: "Attended",
     testSkippedReview: "Skipped Questions",
     testAnswerFirst: "Please answer or skip this question first.",
+    testTotalTime: "Total Time",
   },
   bn: {
     // Auth
@@ -998,5 +999,6 @@ export const translations = {
     testAttended: "অংশগ্রহণ",
     testSkippedReview: "স্কিপ করা প্রশ্ন",
     testAnswerFirst: "উত্তর দিন অথবা স্কিপ করুন।",
+    testTotalTime: "মোট সময়",
   }
 };

@@ -290,8 +290,8 @@ export function TestRunner() {
               </div>
               <div className="w-px h-7 bg-white/20" />
               {/* Total Time */}
-              <div className="flex flex-col items-center gap-0.5 px-1 min-w-[64px]">
-                <span className="text-sm sm:text-base font-bold font-mono text-purple-200 tracking-wider whitespace-nowrap">
+              <div className="flex flex-col items-center gap-0.5 px-1 min-w-[60px]">
+                <span className="text-base sm:text-lg font-bold tabular-nums text-purple-200 whitespace-nowrap">
                   {formatDuration(elapsedSeconds)}
                 </span>
                 <span className="text-[10px] sm:text-[11px] text-white/70 flex items-center gap-1">
@@ -474,8 +474,8 @@ export function TestRunner() {
                 {currentIdx + 1} / {total}
               </span>
               <span className="text-white/30 text-xs">•</span>
-              <span className="inline-flex items-center gap-1 font-mono text-[10px] sm:text-[11px] font-bold bg-black/20 text-white px-2 py-0.5 rounded-full border border-white/15 tracking-wider shadow-inner whitespace-nowrap">
-                <Clock size={11} className="text-white/90 animate-pulse" />
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tabular-nums bg-black/25 text-white px-2.5 py-0.5 rounded-full border border-white/15 shadow-sm whitespace-nowrap">
+                <Clock size={11} className="text-white/80 animate-pulse" />
                 {formatDuration(elapsedSeconds)}
               </span>
             </div>

@@ -23,6 +23,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 // ─── Sortable wrapper ─────────────────────────────────────────────────────────
 
@@ -266,10 +267,10 @@ export function Test() {
   // Info modal
   const [showInfo, setShowInfo] = useState(false);
 
-  // Keep the copied card while moving between subjects, tabs, or routes.
+  // Keep the copied card while moving between subjects, tabs, routes, or different user IDs.
   useEffect(() => {
     try {
-      const stored = sessionStorage.getItem(COPIED_TEST_CARD_STORAGE_KEY);
+      const stored = localStorage.getItem(COPIED_TEST_CARD_STORAGE_KEY) || sessionStorage.getItem(COPIED_TEST_CARD_STORAGE_KEY);
       if (!stored) return;
       const parsed = JSON.parse(stored) as Partial<CopiedTestCard>;
       if (typeof parsed.title === 'string' && typeof parsed.question === 'string' && typeof parsed.answer === 'string') {
@@ -280,6 +281,7 @@ export function Test() {
         });
       }
     } catch {
+      localStorage.removeItem(COPIED_TEST_CARD_STORAGE_KEY);
       sessionStorage.removeItem(COPIED_TEST_CARD_STORAGE_KEY);
     }
   }, []);
@@ -372,25 +374,68 @@ export function Test() {
       answer: card.answer,
     };
     setCopiedCard(nextCopiedCard);
+    const json = JSON.stringify(nextCopiedCard);
     try {
-      sessionStorage.setItem(COPIED_TEST_CARD_STORAGE_KEY, JSON.stringify(nextCopiedCard));
+      localStorage.setItem(COPIED_TEST_CARD_STORAGE_KEY, json);
+      sessionStorage.setItem(COPIED_TEST_CARD_STORAGE_KEY, json);
     } catch {
       // The in-memory copy still works if browser storage is unavailable.
     }
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(json).catch(() => {});
+    }
+    toast.success(lang === 'bn' ? `"${card.title}" টেস্ট কার্ড কপি করা হয়েছে` : `Copied test card "${card.title}"`);
   };
 
   const handlePasteCard = async () => {
-    if (!selectedSubjectId || !copiedCard) return;
+    if (!selectedSubjectId) {
+      toast.error(lang === 'bn' ? 'প্রথমে একটি সাবজেক্ট নির্বাচন করুন' : 'Please select a subject first');
+      return;
+    }
+
+    let cardToPaste: CopiedTestCard | null = copiedCard;
+    if (!cardToPaste) {
+      try {
+        const stored = localStorage.getItem(COPIED_TEST_CARD_STORAGE_KEY) || sessionStorage.getItem(COPIED_TEST_CARD_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as Partial<CopiedTestCard>;
+          if (typeof parsed.title === 'string' && typeof parsed.question === 'string' && typeof parsed.answer === 'string') {
+            cardToPaste = { title: parsed.title, question: parsed.question, answer: parsed.answer };
+            setCopiedCard(cardToPaste);
+          }
+        }
+        if (!cardToPaste && navigator?.clipboard?.readText) {
+          const clipText = await navigator.clipboard.readText();
+          const parsed = JSON.parse(clipText) as Partial<CopiedTestCard>;
+          if (typeof parsed.title === 'string' && typeof parsed.question === 'string' && typeof parsed.answer === 'string') {
+            cardToPaste = { title: parsed.title, question: parsed.question, answer: parsed.answer };
+            setCopiedCard(cardToPaste);
+          }
+        }
+      } catch {}
+    }
+
+    if (!cardToPaste) {
+      toast.error(
+        lang === 'bn'
+          ? 'কপি করা কোনো টেস্ট কার্ড পাওয়া যায়নি! প্রথমে যেকোনো টেস্ট কার্ডের Copy বাটনে ক্লিক করুন।'
+          : 'No copied test card found! Please copy a test card first.'
+      );
+      return;
+    }
+
     setSaveError('');
-    if (activeTab === 'course') await addTestCard(selectedSubjectId, copiedCard);
-    else if (activeTab === 'personal') await addPersonalTestCard(selectedSubjectId, copiedCard);
-    else await addExtraTestCard(selectedSubjectId, copiedCard);
+    if (activeTab === 'course') await addTestCard(selectedSubjectId, cardToPaste);
+    else if (activeTab === 'personal') await addPersonalTestCard(selectedSubjectId, cardToPaste);
+    else await addExtraTestCard(selectedSubjectId, cardToPaste);
     setExpandedCardId(null);
+    toast.success(lang === 'bn' ? `"${cardToPaste.title}" টেস্ট কার্ড সফলভাবে পেস্ট করা হয়েছে` : `Pasted test card "${cardToPaste.title}" successfully`);
   };
 
   const handleClearCopiedCard = () => {
     setCopiedCard(null);
     try {
+      localStorage.removeItem(COPIED_TEST_CARD_STORAGE_KEY);
       sessionStorage.removeItem(COPIED_TEST_CARD_STORAGE_KEY);
     } catch {
       // Nothing else is needed when browser storage is unavailable.
@@ -513,8 +558,8 @@ export function Test() {
                 </span>
               )}
 
-              {/* Paste a copied card into the currently selected subject. */}
-              {selectedSubjectId && copiedCard && !isAdding && !editingCardId && canEditSelectedDeck && (
+              {/* Paste a copied card into the currently selected subject (mandatory/always visible). */}
+              {selectedSubjectId && !isAdding && !editingCardId && canEditSelectedDeck && (
                 <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(313 80% 52%)' } as React.CSSProperties}>
                   <motion.button
                     whileTap={{ scale: 0.97 }}

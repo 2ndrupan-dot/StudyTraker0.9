@@ -22,6 +22,7 @@ import { AdminProvider } from "./context/AdminContext";
 import { ContentProtectionGuard } from "./components/ContentProtectionGuard";
 import { hideAppShell } from "./lib/appShell";
 import { BrandedLoadingScreen } from "./components/BrandedLoadingScreen";
+import { Toaster } from "sonner";
 
 // Branded full-screen loader shown whenever auth/course data is still being
 // fetched (e.g. right after a page reload). Reuses the same animated
@@ -246,6 +247,7 @@ function Router() {
 
   return (
     <>
+      <Toaster richColors position="top-center" />
       <RouteTracker />
       <Switch>
         <Route path="/auth">

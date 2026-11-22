@@ -10,7 +10,10 @@ import {
   BookOpen, Layers, List, Lightbulb, Dot, FolderPlus,
   CheckCircle2, Circle, Pencil, Lock,
   Star, AlertTriangle, StickyNote, Filter, RotateCcw, GripVertical, ArrowUpDown,
+  Copy, ClipboardPaste,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { cloneSubjectWithoutNotes, COPIED_SUBJECT_STORAGE_KEY } from '@/lib/subjectCopy';
 import { Countdown } from '@/components/Countdown';
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor, KeyboardSensor,
@@ -392,7 +395,7 @@ function useTreeTrunk() {
 // ─── Main Component ────────────────────────────────────────────────────────
 export function Subjects() {
   const {
-    subjects, addSubject, deleteSubject, updateSubjectDays, updateSubjectMeta,
+    subjects, addSubject, importSubject, deleteSubject, updateSubjectDays, updateSubjectMeta,
     updateChapterMeta, updateTopicMeta, updateSubtopicMeta, updateConceptMeta, updatePointMeta,
     addChapter, deleteChapter, toggleChapterComplete,
     addTopic, deleteTopic, toggleTopicComplete,
@@ -563,6 +566,65 @@ export function Subjects() {
   // Show time picker for all levels except subject (in edit) and except point
   const showTimePicker = activePath.level !== 'point' && !(modal === 'edit' && activePath.level === 'subject');
 
+  const handleCopySubject = (subj: Subject) => {
+    const stripped = cloneSubjectWithoutNotes(subj);
+    const json = JSON.stringify(stripped);
+    try {
+      localStorage.setItem(COPIED_SUBJECT_STORAGE_KEY, json);
+    } catch (err) {
+      console.warn('localStorage save failed', err);
+    }
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(json).catch(() => {});
+    }
+    toast.success(lang === 'bn' ? `"${subj.title}" সাবজেক্ট কপি করা হয়েছে (নোট ছাড়া)` : `Copied subject "${subj.title}" (without notes)`);
+  };
+
+  const handlePasteSubject = async () => {
+    if (!canAddItems) {
+      toast.error(lang === 'bn' ? 'আপনার এই কোর্সে সাবজেক্ট যোগ করার অনুমতি নেই' : 'You do not have permission to add subjects to this course');
+      return;
+    }
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(COPIED_SUBJECT_STORAGE_KEY);
+    } catch {}
+
+    if (!raw && navigator?.clipboard?.readText) {
+      try {
+        const clipText = await navigator.clipboard.readText();
+        if (clipText && clipText.includes('"chapters"') && clipText.includes('"title"')) {
+          raw = clipText;
+        }
+      } catch {}
+    }
+
+    if (!raw) {
+      toast.error(
+        lang === 'bn'
+          ? 'কপি করা কোনো সাবজেক্ট পাওয়া যায়নি! প্রথমে যেকোনো সাবজেক্টের Copy বাটনে ক্লিক করুন।'
+          : 'No copied subject found! Please copy a subject first.'
+      );
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as Subject;
+      if (!parsed || typeof parsed.title !== 'string' || !Array.isArray(parsed.chapters)) {
+        toast.error(lang === 'bn' ? 'কপি করা সাবজেক্টের তথ্য সঠিক নয়!' : 'Invalid copied subject data!');
+        return;
+      }
+      const newSubj = cloneSubjectWithoutNotes(parsed);
+      newSubj.color = getRandomColor();
+      newSubj.deadline = new Date().toISOString();
+      importSubject(newSubj);
+      closeModal();
+      toast.success(lang === 'bn' ? `"${newSubj.title}" সাবজেক্ট সফলভাবে পেস্ট করা হয়েছে` : `Pasted subject "${newSubj.title}" successfully`);
+    } catch (err) {
+      toast.error(lang === 'bn' ? 'সাবজেক্ট পেস্ট করতে সমস্যা হয়েছে!' : 'Failed to paste subject!');
+    }
+  };
+
   const handleSave = () => {
     if (!formTitle.trim()) return;
     const { subjId, chapterId, topicId, subtopicId, conceptId, pointId, level } = activePath;
@@ -688,16 +750,29 @@ export function Subjects() {
               </motion.div>
             )}
             {canAddItems && (
-              <motion.div whileTap={{ scale: 0.95 }}>
-                <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
-                  <button
-                    className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
-                    onClick={() => openAdd('subject', {})}
-                  >
-                    <Plus size={12} /> {t('addSubject')}
-                  </button>
-                </span>
-              </motion.div>
+              <>
+                <motion.div whileTap={{ scale: 0.95 }}>
+                  <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(228 84% 57%)' } as React.CSSProperties}>
+                    <button
+                      className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
+                      onClick={() => openAdd('subject', {})}
+                    >
+                      <Plus size={12} /> {t('addSubject')}
+                    </button>
+                  </span>
+                </motion.div>
+                <motion.div whileTap={{ scale: 0.95 }}>
+                  <span className="spin-border-wrap" style={{ '--spin-mask': 'hsl(280 84% 57%)' } as React.CSSProperties}>
+                    <button
+                      className="spin-border-inner flex items-center h-7 gap-1 px-2.5 bg-white/20 text-white text-[11px] font-bold hover:bg-white/30 transition-colors"
+                      onClick={handlePasteSubject}
+                      title={lang === 'bn' ? 'কপি করা সাবজেক্ট পেস্ট করুন' : 'Paste Copied Subject'}
+                    >
+                      <ClipboardPaste size={12} /> {lang === 'bn' ? 'পেস্ট' : 'Paste'}
+                    </button>
+                  </span>
+                </motion.div>
+              </>
             )}
           </div>
         </div>
@@ -1029,6 +1104,13 @@ export function Subjects() {
                           title={t('resetSubject')}
                         >
                           <RotateCcw size={11} />
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); handleCopySubject(subj); }}
+                          className="p-1 text-muted-foreground hover:bg-sky-500/10 hover:text-sky-600 rounded-full transition-colors"
+                          title={lang === 'bn' ? 'সাবজেক্ট কপি করুন (নোট ছাড়া)' : 'Copy Subject Structure (without notes)'}
+                        >
+                          <Copy size={11} />
                         </button>
                         {canEditItems && <>
                           <button
@@ -1567,7 +1649,17 @@ export function Subjects() {
             className="text-center py-16 text-muted-foreground"
           >
             <BookOpen size={48} className="mx-auto mb-4 opacity-30" />
-            <p className="font-semibold text-lg opacity-60">{t('addSubject')}</p>
+            <p className="font-semibold text-lg opacity-60 mb-3">{t('addSubject')}</p>
+            {canAddItems && (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button onClick={() => openAdd('subject', {})} className="px-4 py-2 text-xs">
+                  <Plus size={14} className="mr-1" /> {t('addSubject')}
+                </Button>
+                <Button onClick={handlePasteSubject} variant="outline" className="px-4 py-2 text-xs border-purple-400/50 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10">
+                  <ClipboardPaste size={14} className="mr-1" /> {lang === 'bn' ? 'পেস্ট সাবজেক্ট' : 'Paste Subject'}
+                </Button>
+              </div>
+            )}
           </motion.div>
         )}
       </div>
@@ -1581,6 +1673,23 @@ export function Subjects() {
         icon={ModalIcon}
       >
         <div className="space-y-5">
+          {activePath.level === 'subject' && modal === 'add' && (
+            <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/25 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <ClipboardPaste size={16} className="text-purple-600 dark:text-purple-400 shrink-0" />
+                <span className="text-xs font-semibold text-purple-700 dark:text-purple-300 truncate">
+                  {lang === 'bn' ? 'কপি করা কোনো সাবজেক্ট পেস্ট করবেন?' : 'Paste a copied subject?'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handlePasteSubject}
+                className="shrink-0 px-3 py-1 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-colors shadow-sm"
+              >
+                {lang === 'bn' ? 'পেস্ট করুন' : 'Paste'}
+              </button>
+            </div>
+          )}
           <Input
             placeholder={t('title')}
             value={formTitle}

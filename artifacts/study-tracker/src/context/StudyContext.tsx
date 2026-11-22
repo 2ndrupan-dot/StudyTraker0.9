@@ -573,6 +573,7 @@ interface StudyContextType {
   setTimezone: (tz: string) => void;
   setGlobalNoteSize: (size: string) => void;
   addSubject: (subject: Omit<Subject, 'id' | 'completed' | 'chapters'>) => void;
+  importSubject: (subject: Subject) => void;
   updateSubjectDays: (subjectId: string, days: number) => void;
   deleteSubject: (subjectId: string) => void;
   updateSubjectMeta: (subjectId: string, title: string) => void;
@@ -2681,6 +2682,10 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setSubjects(prev => redistributeDays([...prev, newSubject], settings.courseTotalDays));
   };
 
+  const importSubject = (subjectTree: Subject) => {
+    setSubjects(prev => redistributeDays([...prev, subjectTree], settings.courseTotalDays));
+  };
+
   const updateSubjectDays = (subjId: string, days: number) => {
     setSubjects(prev => redistributeDays(
       prev.map(s => s.id === subjId ? { ...s, allocatedDays: days, manualDays: true } : s),
@@ -4318,7 +4323,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       localNotesRecoveryCount, localNotesRecoveryItems: recoveryItems, restoreLocalNotes, dismissLocalNotesRecovery,
       setNote, toggleImportant, toggleWeak,
       setCourseTotalDays, setDailyStudyHours, setCourseStartDate, setTimezone, setGlobalNoteSize,
-      addSubject, updateSubjectDays, deleteSubject, updateSubjectMeta, resetSubjectProgress,
+      addSubject, importSubject, updateSubjectDays, deleteSubject, updateSubjectMeta, resetSubjectProgress,
       reorderSubjects, reorderChapters, reorderTopics, reorderSubtopics, reorderConcepts, reorderPoints,
       addChapter, deleteChapter, toggleChapterComplete, updateChapterMeta,
       addTopic, deleteTopic, toggleTopicComplete, updateTopicMeta,

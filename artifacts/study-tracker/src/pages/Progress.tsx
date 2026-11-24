@@ -7,7 +7,7 @@ import { useCourse } from '@/context/CourseContext';
 import { computeGranularProgress, formatProgressPercent } from '@/lib/timeEngine';
 import { useLang } from '@/context/LangContext';
 import { Layout } from '@/components/Layout';
-import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock, Share2, TrendingUp, TrendingDown, Minus, Flame } from 'lucide-react';
+import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock, Share2, TrendingUp, TrendingDown, Minus, Flame, Brain, Landmark, Calculator, Atom, FlaskConical, Dna, Leaf, Laptop, Languages, Scale, Lightbulb, Compass, Calendar, GraduationCap } from 'lucide-react';
 import { NotificationBell } from '@/components/NotificationBell';
 import { Countdown } from '@/components/Countdown';
 import { useAdmin } from '@/context/AdminContext';
@@ -31,6 +31,26 @@ function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = 
   } catch {
     return fallback;
   }
+}
+
+function getSubjectIcon(title: string) {
+  const lower = title.toLowerCase().trim();
+  if (lower.includes('ভূগোল') || lower.includes('geograph') || lower.includes('geo') || lower.includes('ভুগোল')) return Globe;
+  if (lower.includes('শিশু') || lower.includes('বিকাশ') || lower.includes('child') || lower.includes('psycholog') || lower.includes('pedagog') || lower.includes('cdp') || lower.includes('মনোবিজ্ঞান')) return Brain;
+  if (lower.includes('ইতিহাস') || lower.includes('histor')) return Landmark;
+  if (lower.includes('গণিত') || lower.includes('অংক') || lower.includes('অঙ্ক') || lower.includes('math') || lower.includes('algebra') || lower.includes('geometr') || lower.includes('arithmetic')) return Calculator;
+  if (lower.includes('english') || lower.includes('ইংরেজি') || lower.includes('ইংলিশ') || lower.includes('grammar')) return Languages;
+  if (lower.includes('বাংলা') || lower.includes('bengali') || lower.includes('bangla') || lower.includes('সাহিত্য')) return BookOpen;
+  if (lower.includes('পরিবেশ') || lower.includes('evs') || lower.includes('environ') || lower.includes('ecology')) return Leaf;
+  if (lower.includes('পদার্থ') || lower.includes('physics')) return Atom;
+  if (lower.includes('রসায়ন') || lower.includes('chem')) return FlaskConical;
+  if (lower.includes('জীব') || lower.includes('bio')) return Dna;
+  if (lower.includes('বিজ্ঞান') || lower.includes('science')) return Atom;
+  if (lower.includes('কম্পিউটার') || lower.includes('computer') || lower.includes('ict') || lower.includes('আইসিটি') || lower.includes('tech')) return Laptop;
+  if (lower.includes('রাষ্ট্র') || lower.includes('polity') || lower.includes('political') || lower.includes('সংবিধান') || lower.includes('constitution')) return Scale;
+  if (lower.includes('দর্শন') || lower.includes('philosophy')) return Lightbulb;
+  if (lower.includes('gk') || lower.includes('জ্ঞান') || lower.includes('general knowledge')) return Compass;
+  return GraduationCap;
 }
 
 // ─── Note Search Modal ───────────────────────────────────────────────────────
@@ -1054,22 +1074,42 @@ export function Progress() {
           {subjects.map((s, i) => {
             const p = computeGranularProgress([s]).percent;
             const rem = Math.max(0, 100 - p);
+            const SubjIcon = getSubjectIcon(s.title);
             return (
               <ScrollReveal
                 key={s.id}
                 direction="right"
                 delay={i * 0.08}
-                className="bg-card p-4 rounded-2xl border border-border/50 shadow-sm flex flex-col gap-3"
+                className="relative bg-card pl-5 pr-4 py-4 rounded-2xl border border-border/50 shadow-sm flex flex-col gap-3 overflow-hidden"
               >
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: s.color }} />
-                    <span className="font-bold text-foreground text-sm">{s.title}</span>
+                {/* Left colored border stripe */}
+                <div className="absolute left-0 top-0 bottom-0 w-1.5 z-10" style={{ backgroundColor: s.color }} />
+
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 shadow-xs"
+                      style={{
+                        backgroundColor: `${s.color}15`,
+                        borderColor: `${s.color}30`,
+                        color: s.color,
+                      }}
+                    >
+                      <SubjIcon size={19} />
+                    </div>
+                    <span className="font-bold text-foreground text-sm sm:text-base leading-tight">{s.title}</span>
                   </div>
-                  <span className="text-[10px] font-bold bg-secondary px-2 py-1 rounded text-muted-foreground">
-                    {safeFormat(s.deadline, 'MMM d')}
-                  </span>
+
+                  {s.deadline && (
+                    <div className="px-2.5 py-1 rounded-xl bg-secondary/80 border border-border/50 flex items-center gap-1.5 shadow-xs">
+                      <Calendar size={13} style={{ color: s.color }} />
+                      <span className="text-xs font-semibold text-foreground/80">
+                        {safeFormat(s.deadline, 'MMM d')}
+                      </span>
+                    </div>
+                  )}
                 </div>
+
                 <div>
                   <div className="flex items-center gap-3">
                     <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">

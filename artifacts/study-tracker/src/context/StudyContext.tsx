@@ -2687,7 +2687,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   // ─── Subject methods ───────────────────────────────────────────────────
   const setCourseTotalDays = (days: number) => {
-    setSettings(prev => ({ ...prev, courseTotalDays: days }));
+    setSettings(prev => ({
+      ...prev,
+      courseTotalDays: days,
+      ...(!prev.courseStartDate ? { courseStartDate: toDateStrIST(nowIST(prev.timezone)) } : {}),
+    }));
     setSubjects(curr => {
       const redistributed = redistributeDays(curr, days);
       return applyTimeAdjustment(redistributed, settings.dailyStudyHours, days);

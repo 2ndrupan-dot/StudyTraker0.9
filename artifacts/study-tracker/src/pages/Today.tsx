@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { FaWhatsapp } from 'react-icons/fa';
 import { usePWAInstall } from '@/context/PWAInstallContext';
-import { differenceInDays, parseISO } from 'date-fns';
+import { differenceInDays, differenceInCalendarDays, parseISO, addDays, format, isValid } from 'date-fns';
 import { todayIST, nowIST, toDateStrIST, addDaysIST, formatTodayDisplayIST, msUntilISTMidnight } from '@/lib/istTime';
 import { Modal, Input, Button, NoteEditorModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -607,6 +607,16 @@ function useTreeTrunk() {
   return registerRoot;
 }
 
+function safeFormat(dateStr: string | null | undefined, fmt: string, fallback = '—'): string {
+  if (!dateStr) return fallback;
+  try {
+    const d = parseISO(dateStr);
+    return isValid(d) ? format(d, fmt) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 export function Today() {
   const {
@@ -651,6 +661,7 @@ export function Today() {
   const [isHoursModalOpen, setHoursModalOpen] = useState(false);
   const [isCompletedModalOpen, setCompletedModalOpen] = useState(false);
   const [daysInput, setDaysInput] = useState(settings.courseTotalDays?.toString() || '');
+  const [endDateInput, setEndDateInput] = useState('');
   const [hoursInput, setHoursInput] = useState(settings.dailyStudyHours?.toString() || '3');
 
   // Accordion: single expanded subject at a time (null = all collapsed)
@@ -1681,9 +1692,54 @@ export function Today() {
     }
   };
 
+  const handleDaysInputChange = (val: string) => {
+    setDaysInput(val);
+    const d = parseInt(val, 10);
+    if (!isNaN(d) && d > 0) {
+      try {
+        const todayDate = parseISO(todayIST(settings?.timezone));
+        const computedEnd = addDays(todayDate, d);
+        setEndDateInput(format(computedEnd, 'yyyy-MM-dd'));
+      } catch {
+        setEndDateInput('');
+      }
+    } else {
+      setEndDateInput('');
+    }
+  };
+
+  const handleEndDateInputChange = (dateStr: string) => {
+    setEndDateInput(dateStr);
+    if (dateStr) {
+      try {
+        const selected = parseISO(dateStr);
+        if (isValid(selected)) {
+          const todayDate = parseISO(todayIST(settings?.timezone));
+          const diff = differenceInCalendarDays(selected, todayDate);
+          if (diff > 0) {
+            setDaysInput(diff.toString());
+          } else if (diff === 0) {
+            setDaysInput('1');
+          } else {
+            setDaysInput('');
+          }
+        } else {
+          setDaysInput('');
+        }
+      } catch {
+        setDaysInput('');
+      }
+    } else {
+      setDaysInput('');
+    }
+  };
+
   const handleSetDays = () => {
-    const d = parseInt(daysInput);
-    if (!isNaN(d) && d > 0) { setCourseTotalDays(d); setDaysModalOpen(false); }
+    const d = parseInt(daysInput, 10);
+    if (!isNaN(d) && d > 0) {
+      setCourseTotalDays(d);
+      setDaysModalOpen(false);
+    }
   };
   const handleSetHours = () => {
     const h = parseFloat(hoursInput);
@@ -2031,7 +2087,22 @@ export function Today() {
             <div className="flex items-center gap-2 flex-wrap">
                 <motion.button
                   whileTap={{ scale: 0.97 }}
-                  onClick={() => { setDaysInput(settings.courseTotalDays?.toString() || ''); setDaysModalOpen(true); }}
+                  onClick={() => {
+                    const currentDays = settings.courseTotalDays;
+                    if (currentDays && currentDays > 0) {
+                      setDaysInput(currentDays.toString());
+                      try {
+                        const todayDate = parseISO(todayIST(settings?.timezone));
+                        setEndDateInput(format(addDays(todayDate, currentDays), 'yyyy-MM-dd'));
+                      } catch {
+                        setEndDateInput('');
+                      }
+                    } else {
+                      setDaysInput('');
+                      setEndDateInput('');
+                    }
+                    setDaysModalOpen(true);
+                  }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors whitespace-nowrap"
                 >
                   <Target size={12} className="text-white/80 shrink-0" />
@@ -3001,20 +3072,68 @@ export function Today() {
 
       <Modal isOpen={isDaysModalOpen} onClose={() => setDaysModalOpen(false)} title={t('setCourseDays')}>
         <p className="text-sm text-muted-foreground mb-4">{t('setCourseDaysDesc')}</p>
-        <label className="block text-sm font-medium text-foreground">
-          {t('numberOfDays')}
-          <Input
-            className="mt-1.5"
-            type="number"
-            value={daysInput}
-            onChange={e => setDaysInput(e.target.value)}
-            placeholder="e.g. 90"
-            onKeyDown={e => e.key === 'Enter' && handleSetDays()}
-          />
-        </label>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
+              <Clock size={13} className="text-primary" />
+              {t('numberOfDays')}
+            </label>
+            <div className="relative">
+              <Input
+                type="number"
+                min="1"
+                value={daysInput}
+                onChange={e => handleDaysInputChange(e.target.value)}
+                placeholder="e.g. 90"
+                className="pr-12"
+                onKeyDown={e => e.key === 'Enter' && handleSetDays()}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground pointer-events-none">
+                {isBn ? 'দিন' : 'days'}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
+              <CalendarDays size={13} className="text-primary" />
+              {t('targetEndDate')}
+            </label>
+            <input
+              type="date"
+              min={todayIST(settings?.timezone)}
+              value={endDateInput}
+              onChange={e => handleEndDateInputChange(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSetDays()}
+              className="w-full h-10 px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors cursor-pointer"
+            />
+          </div>
+        </div>
+
+        {daysInput && parseInt(daysInput, 10) > 0 && endDateInput && (
+          <div className="p-3 mb-4 rounded-xl bg-primary/10 border border-primary/20 flex items-center gap-2.5">
+            <Target size={16} className="text-primary shrink-0" />
+            <div className="text-xs">
+              <span className="text-muted-foreground">{t('selectedTargetSummary')}: </span>
+              <span className="font-semibold text-primary">
+                {safeFormat(endDateInput, 'MMM d, yyyy')}
+              </span>
+              <span className="text-muted-foreground font-medium"> ({daysInput} {isBn ? 'দিন বাকি' : 'days left'})</span>
+            </div>
+          </div>
+        )}
+
         <div className="mt-4 flex gap-2">
           <Button variant="ghost" onClick={() => setDaysModalOpen(false)} className="flex-1">{t('cancel')}</Button>
-          <Button variant="primary" onClick={handleSetDays} className="flex-1">{t('saveGoal')}</Button>
+          <Button
+            variant="primary"
+            onClick={handleSetDays}
+            disabled={!daysInput || isNaN(parseInt(daysInput, 10)) || parseInt(daysInput, 10) <= 0}
+            className="flex-1"
+          >
+            {t('saveGoal')}
+          </Button>
         </div>
       </Modal>
 

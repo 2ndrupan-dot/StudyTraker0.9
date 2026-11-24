@@ -497,3 +497,23 @@ mark.search-hl.search-hl-active,
   from { opacity: 0; transform: translate(-50%, -8px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
+
+/* Hide native calendar picker indicator and dropdown arrows across all browsers and mobile */
+.hide-date-picker-indicator::-webkit-calendar-picker-indicator,
+.hide-date-picker-indicator::-webkit-inner-spin-button,
+.hide-date-picker-indicator::-webkit-clear-button {
+  display: none !important;
+  -webkit-appearance: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+  color: transparent !important;
+  pointer-events: none !important;
+}
+
+.hide-date-picker-indicator {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+}

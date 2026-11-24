@@ -3152,7 +3152,7 @@ export function Today() {
                 value={endDateInput}
                 onChange={e => handleEndDateInputChange(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSetDays()}
-                className="pr-10 cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                className="pr-10 cursor-pointer hide-date-picker-indicator"
               />
               <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground flex items-center justify-center">
                 <CalendarDays size={17} />

@@ -3090,7 +3090,10 @@ export function Today() {
                 className="pr-16 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 onKeyDown={e => e.key === 'Enter' && handleSetDays()}
               />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-muted-foreground select-none">
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2 text-muted-foreground select-none">
+                <span className="text-xs font-medium pointer-events-none">
+                  {isBn ? 'দিন' : 'Days'}
+                </span>
                 <div className="flex flex-col items-center justify-center gap-1 py-0.5">
                   <button
                     type="button"
@@ -3123,9 +3126,6 @@ export function Today() {
                     </svg>
                   </button>
                 </div>
-                <span className="text-xs font-medium pointer-events-none">
-                  {isBn ? 'দিন' : 'Days'}
-                </span>
               </div>
             </div>
           </div>

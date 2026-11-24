@@ -250,11 +250,68 @@ export function isChapterContentDone(ch: Chapter): boolean {
   return ch.completed;
 }
 
+// ─── Hierarchical progress helpers (Method 1: Overview 20% + Branches 80%) ───
+// Any level with child branches allocates 20% weight to its own overview,
+// and 80% distributed among its children. If an item has no children, its
+// completion is 100% when its completed flag is set.
+
+export function computePointProgress(p: Point): number {
+  return p.completed ? 1 : 0;
+}
+
+export function computeConceptProgress(c: Concept): number {
+  if (!c.points || c.points.length === 0) {
+    return c.completed ? 1 : 0;
+  }
+  const overviewVal = c.completed ? 0.2 : 0;
+  const pointsSum = c.points.reduce((sum, p) => sum + computePointProgress(p), 0);
+  const branchesVal = 0.8 * (pointsSum / c.points.length);
+  return overviewVal + branchesVal;
+}
+
+export function computeSubtopicProgress(sub: Subtopic): number {
+  if (!sub.concepts || sub.concepts.length === 0) {
+    return sub.completed ? 1 : 0;
+  }
+  const overviewVal = sub.completed ? 0.2 : 0;
+  const conceptsSum = sub.concepts.reduce((sum, c) => sum + computeConceptProgress(c), 0);
+  const branchesVal = 0.8 * (conceptsSum / sub.concepts.length);
+  return overviewVal + branchesVal;
+}
+
+export function computeTopicProgress(t: Topic): number {
+  if (!t.subtopics || t.subtopics.length === 0) {
+    return t.completed ? 1 : 0;
+  }
+  const overviewVal = t.completed ? 0.2 : 0;
+  const subsSum = t.subtopics.reduce((sum, sub) => sum + computeSubtopicProgress(sub), 0);
+  const branchesVal = 0.8 * (subsSum / t.subtopics.length);
+  return overviewVal + branchesVal;
+}
+
+export function computeChapterProgress(ch: Chapter): number {
+  if (!ch.topics || ch.topics.length === 0) {
+    return ch.completed ? 1 : 0;
+  }
+  const overviewVal = ch.completed ? 0.2 : 0;
+  const topicsSum = ch.topics.reduce((sum, t) => sum + computeTopicProgress(t), 0);
+  const branchesVal = 0.8 * (topicsSum / ch.topics.length);
+  return overviewVal + branchesVal;
+}
+
+export function computeSubjectProgress(subj: Subject): number {
+  if (!subj.chapters || subj.chapters.length === 0) {
+    return subj.completed ? 1 : 0;
+  }
+  const chaptersSum = subj.chapters.reduce((sum, ch) => sum + computeChapterProgress(ch), 0);
+  return chaptersSum / subj.chapters.length;
+}
+
 // ─── Granular overall progress ────────────────────────────────────────────────
-// Counts every node at every level (subject, chapter, topic, subtopic, concept,
-// point) as one equally-weighted unit. Ticking the "overview" checkbox on ANY
-// item at ANY level — not just fully finishing a leaf — nudges the percentage,
-// so students see steady small gains as they work through the tree.
+// Method 1: Hierarchical Weighted Progress (Overview 20% + Branches 80%)
+// Ticking the "overview" checkbox on ANY item at ANY level nudges the percentage,
+// and completing each child branch steadily advances the progress. When all
+// branches are finished, the item reaches 100% (Green).
 export function computeGranularProgress(subjects: Subject[]): { completed: number; total: number; percent: number } {
   let total = 0, completed = 0;
   for (const subj of subjects) {
@@ -275,10 +332,14 @@ export function computeGranularProgress(subjects: Subject[]): { completed: numbe
       }
     }
   }
-  // Keep the raw (unrounded) fraction — with a large tree, one item can be a
-  // tiny slice (e.g. 1/293 ≈ 0.34%), and rounding that to whole numbers would
-  // show "0%" right after finishing something, which feels discouraging.
-  const percent = total === 0 ? 0 : (completed / total) * 100;
+
+  if (subjects.length === 0) {
+    return { completed: 0, total: 0, percent: 0 };
+  }
+
+  const subjectProgressSum = subjects.reduce((sum, subj) => sum + computeSubjectProgress(subj), 0);
+  const percent = Math.min(100, Math.max(0, (subjectProgressSum / subjects.length) * 100));
+
   return { completed, total, percent };
 }
 

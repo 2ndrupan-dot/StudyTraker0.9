@@ -1070,7 +1070,7 @@ export function Progress() {
 
         {/* Subject Breakdown */}
         <h3 className="font-bold text-lg mb-4 text-foreground px-1">{t('subjects')}</h3>
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {subjects.map((s, i) => {
             const p = computeGranularProgress([s]).percent;
             const rem = Math.max(0, 100 - p);
@@ -1080,30 +1080,30 @@ export function Progress() {
                 key={s.id}
                 direction="right"
                 delay={i * 0.08}
-                className="relative bg-card pl-5 pr-4 py-4 rounded-2xl border border-border/50 shadow-sm flex flex-col gap-3 overflow-hidden"
+                className="relative bg-card pl-4 pr-3.5 py-2.5 rounded-xl border border-border/50 shadow-xs flex flex-col gap-2 overflow-hidden"
               >
                 {/* Left colored border stripe */}
-                <div className="absolute left-0 top-0 bottom-0 w-1.5 z-10" style={{ backgroundColor: s.color }} />
+                <div className="absolute left-0 top-0 bottom-0 w-1 z-10" style={{ backgroundColor: s.color }} />
 
                 <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
                     <div
-                      className="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 shadow-xs"
+                      className="w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 shadow-xs"
                       style={{
                         backgroundColor: `${s.color}15`,
                         borderColor: `${s.color}30`,
                         color: s.color,
                       }}
                     >
-                      <SubjIcon size={19} />
+                      <SubjIcon size={14} />
                     </div>
-                    <span className="font-bold text-foreground text-sm sm:text-base leading-tight">{s.title}</span>
+                    <span className="font-semibold text-foreground text-xs sm:text-sm leading-tight">{s.title}</span>
                   </div>
 
                   {s.deadline && (
-                    <div className="px-2.5 py-1 rounded-xl bg-secondary/80 border border-border/50 flex items-center gap-1.5 shadow-xs">
-                      <Calendar size={13} style={{ color: s.color }} />
-                      <span className="text-xs font-semibold text-foreground/80">
+                    <div className="px-2 py-0.5 rounded-lg bg-secondary/80 border border-border/50 flex items-center gap-1 shadow-xs">
+                      <Calendar size={11} style={{ color: s.color }} />
+                      <span className="text-[11px] font-medium text-foreground/80">
                         {safeFormat(s.deadline, 'MMM d')}
                       </span>
                     </div>
@@ -1111,8 +1111,8 @@ export function Progress() {
                 </div>
 
                 <div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.max(p, p > 0 ? 0.5 : 0)}%` }}
@@ -1121,11 +1121,11 @@ export function Progress() {
                         style={{ backgroundColor: s.color }}
                       />
                     </div>
-                    <span className="text-xs font-bold text-foreground shrink-0 w-12 text-right">
+                    <span className="text-xs font-bold text-foreground shrink-0 w-11 text-right">
                       {formatProgressPercent(p)}%
                     </span>
                   </div>
-                  <div className="flex justify-end mt-1">
+                  <div className="flex justify-end mt-0.5">
                     {rem <= 0 ? (
                       <span className="text-[10px] font-bold text-green-500">
                         ✓ {lang === 'bn' ? 'সম্পূর্ণ' : 'Done'}

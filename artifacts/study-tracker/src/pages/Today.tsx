@@ -17,6 +17,7 @@ import { todayIST, nowIST, toDateStrIST, addDaysIST, formatTodayDisplayIST, msUn
 import { Modal, Input, Button, NoteEditorModal } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollReveal } from '@/components/ScrollReveal';
+import { cn, CARD_ACCENTS } from '@/lib/utils';
 import type { Subject, MarkPath, MarkLevel } from '@/lib/types';
 import { ItemActions } from '@/components/ItemActions';
 import { doc, onSnapshot, getDoc, arrayUnion } from 'firebase/firestore';
@@ -1930,16 +1931,21 @@ export function Today() {
     const isExpanded = expandedSubjectId === group.subjectId;
     const groupTotal = group.incompleteTasks.length;
     const groupMins = group.incompleteTasks.reduce((s, t) => s + t.estimatedMins, 0);
+    const subjIdx = subjects.findIndex(s => s.id === group.subjectId);
+    const accent = CARD_ACCENTS[(subjIdx >= 0 ? subjIdx : 0) % CARD_ACCENTS.length];
 
     return (
       <ScrollReveal
         key={group.subjectId}
-        className="rounded-2xl border-2 border-border/50 overflow-hidden shadow-sm"
+        className={cn(
+          "rounded-2xl border-2 overflow-hidden shadow-sm bg-gradient-to-br transition-all duration-200",
+          accent
+        )}
       >
         <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: group.subjectColor }} />
         <button
           onClick={() => toggleSubjectAccordion(group.subjectId)}
-          className="w-full flex items-center gap-3 pl-5 pr-4 py-3 text-left transition-colors bg-card hover:bg-secondary/30 active:bg-secondary/50"
+          className="w-full flex items-center gap-3 pl-5 pr-4 py-3 text-left transition-colors hover:bg-black/5 dark:hover:bg-white/5 active:bg-black/10"
         >
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5 flex-wrap">
@@ -2390,15 +2396,20 @@ export function Today() {
                       <div className="px-2 pb-2 pt-1 space-y-2 border-t border-border/30">
                         {completedSubjectGroups.map(group => {
                           const isExpanded = completedExpandedSubjId === group.subjectId;
+                          const subjIdx = subjects.findIndex(s => s.id === group.subjectId);
+                          const accent = CARD_ACCENTS[(subjIdx >= 0 ? subjIdx : 0) % CARD_ACCENTS.length];
                           return (
                             <div
                               key={group.subjectId}
-                              className="rounded-xl border border-border/40 overflow-hidden relative bg-card"
+                              className={cn(
+                                "rounded-xl border overflow-hidden relative bg-gradient-to-br transition-all duration-200",
+                                accent
+                              )}
                             >
                               <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: group.subjectColor }} />
                               <button
                                 onClick={() => toggleCompletedSubjAccordion(group.subjectId)}
-                                className="w-full flex items-center gap-3 pl-4 pr-3 py-2.5 text-left transition-colors hover:bg-secondary/30 active:bg-secondary/50"
+                                className="w-full flex items-center gap-3 pl-4 pr-3 py-2.5 text-left transition-colors hover:bg-black/5 dark:hover:bg-white/5 active:bg-black/10"
                               >
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-0.5">

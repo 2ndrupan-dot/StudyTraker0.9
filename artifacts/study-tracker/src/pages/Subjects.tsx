@@ -34,7 +34,7 @@ import { ScrollReveal } from '@/components/ScrollReveal';
 import { ItemActions, MarksBadgeRow } from '@/components/ItemActions';
 import { TempNoteSection } from '@/components/TempNoteSection';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getRandomColor } from '@/lib/utils';
+import { cn, getRandomColor, CARD_ACCENTS } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import type { DifficultyLevel, MarkPath, Subject, Chapter, Topic, Subtopic, Concept, Point } from '@/lib/types';
 
@@ -1032,6 +1032,7 @@ export function Subjects() {
               const prog = chapterCount === 0 ? 0 : (completedChapters / chapterCount) * 100;
               const overviewProg = chapterCount === 0 ? 0 : (counts.overviewOnly / chapterCount) * 100;
               const subjPath: MarkPath = { subjectId: subj.id, level: 'subject' };
+              const accent = CARD_ACCENTS[idx % CARD_ACCENTS.length];
 
               return (
                 <SortableItemWrapper key={subj.id} id={subj.id} reorderMode={reorderMode}>
@@ -1040,12 +1041,15 @@ export function Subjects() {
                 <motion.div
                   id={`study-item-${subj.id}`}
                   exit={{ opacity: 0, scale: 0.96 }}
-                  className="relative bg-card rounded-2xl shadow-sm border-2 overflow-hidden card-hover" style={{ borderColor: "rgba(148,163,184,0.55)" }}
+                  className={cn(
+                    "relative rounded-2xl shadow-sm border-2 overflow-hidden card-hover bg-gradient-to-br transition-all duration-200",
+                    accent
+                  )}
                 >
                   <div className="absolute left-0 top-0 bottom-0 w-1.5 z-10" style={{ backgroundColor: subj.color }} />
                   {/* Subject header */}
                   <div
-                    className="p-3 relative flex items-center justify-between cursor-pointer active:bg-secondary/40 transition-colors group/row"
+                    className="p-3 relative flex items-center justify-between cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:bg-black/10 transition-colors group/row"
                     onClick={() => toggleSubj(subj.id)}
                   >
                     <div className="pl-3 flex-1 min-w-0">

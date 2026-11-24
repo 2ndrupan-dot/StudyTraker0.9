@@ -1070,26 +1070,28 @@ export function Progress() {
                     {safeFormat(s.deadline, 'MMM d')}
                   </span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.max(p, p > 0 ? 0.5 : 0)}%` }}
-                      transition={{ duration: 0.6, delay: 0.1 * i }}
-                      className="h-full rounded-full"
-                      style={{ backgroundColor: s.color }}
-                    />
-                  </div>
-                  <div className="flex flex-col items-end leading-none shrink-0 min-w-[56px]">
-                    <span className="text-xs font-bold text-foreground">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.max(p, p > 0 ? 0.5 : 0)}%` }}
+                        transition={{ duration: 0.6, delay: 0.1 * i }}
+                        className="h-full rounded-full"
+                        style={{ backgroundColor: s.color }}
+                      />
+                    </div>
+                    <span className="text-xs font-bold text-foreground shrink-0 w-12 text-right">
                       {formatProgressPercent(p)}%
                     </span>
+                  </div>
+                  <div className="flex justify-end mt-1">
                     {rem <= 0 ? (
-                      <span className="text-[10px] font-bold text-green-500 mt-1">
+                      <span className="text-[10px] font-bold text-green-500">
                         ✓ {lang === 'bn' ? 'সম্পূর্ণ' : 'Done'}
                       </span>
                     ) : (
-                      <span className="text-[10px] font-medium text-muted-foreground mt-1">
+                      <span className="text-[10px] font-medium text-muted-foreground">
                         {formatProgressPercent(rem)}% {lang === 'bn' ? 'বাকি' : 'left'}
                       </span>
                     )}

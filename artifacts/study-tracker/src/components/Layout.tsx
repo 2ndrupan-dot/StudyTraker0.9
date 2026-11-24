@@ -920,8 +920,7 @@ function BottomNav({ onSearchClick }: { onSearchClick: () => void }) {
                 {isActive && (
                   <motion.div
                     layoutId="tab-indicator"
-                    className="absolute top-0 w-10 h-1 rounded-b-full"
-                    style={{ background: 'linear-gradient(90deg, hsl(243 88% 62%), hsl(263 80% 60%))' }}
+                    className="absolute top-0 w-10 h-1 rounded-b-full gradient-primary"
                   />
                 )}
                 {isActive ? (

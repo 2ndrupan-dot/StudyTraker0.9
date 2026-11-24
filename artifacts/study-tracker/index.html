@@ -26,6 +26,17 @@
     <script>
       (function () {
         try {
+          var theme = localStorage.getItem('@study_theme');
+          if (!theme && localStorage.getItem('@study_dark_mode') === 'true') {
+            theme = 'dark';
+          }
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else if (theme === 'study') {
+            document.documentElement.classList.add('study');
+          }
+        } catch (e) { /* ignore */ }
+        try {
           var KEY = '@study_splash_seen_session';
           if (sessionStorage.getItem(KEY)) {
             document.documentElement.classList.add('as-reload');
@@ -48,6 +59,12 @@
         background: #f4f4fb;
         transition: opacity 0.26s ease;
         overflow: hidden;
+      }
+      .dark #app-shell-loader {
+        background: #131722;
+      }
+      .study #app-shell-loader {
+        background: #ece3d2;
       }
       #app-shell-loader .as-content {
         filter: blur(3px);

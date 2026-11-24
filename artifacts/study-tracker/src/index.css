@@ -93,6 +93,86 @@ html, body {
   --radius: 0.75rem;
 }
 
+.dark {
+  /* Background: deep midnight / charcoal slate */
+  --background: 224 25% 10%;
+  /* Foreground: crisp soft white */
+  --foreground: 210 25% 96%;
+
+  /* Card: elevated slate card */
+  --card: 224 22% 14%;
+  --card-foreground: 210 25% 96%;
+
+  /* Border & Input */
+  --border: 224 18% 22%;
+  --input: 224 18% 22%;
+
+  /* Primary: vibrant indigo */
+  --primary: 243 85% 68%;
+  --primary-foreground: 224 35% 8%;
+  --ring: 243 85% 68%;
+
+  /* Secondary */
+  --secondary: 224 20% 18%;
+  --secondary-foreground: 210 25% 92%;
+
+  /* Muted */
+  --muted: 224 18% 18%;
+  --muted-foreground: 220 15% 65%;
+
+  /* Accent */
+  --accent: 263 60% 25%;
+  --accent-foreground: 263 85% 85%;
+
+  /* Success: emerald */
+  --success: 152 65% 45%;
+  --success-foreground: 0 0% 100%;
+
+  /* Destructive */
+  --destructive: 0 75% 58%;
+  --destructive-foreground: 0 0% 100%;
+}
+
+.study {
+  /* Background: warm eye-comfort parchment cream - zero blue light glare */
+  --background: 38 35% 91%;
+  /* Foreground: deep warm espresso / coffee brown */
+  --foreground: 28 38% 16%;
+
+  /* Card: soft natural warm paper */
+  --card: 38 48% 97%;
+  --card-foreground: 28 38% 16%;
+
+  /* Border & Input: subtle warm sepia */
+  --border: 36 24% 78%;
+  --input: 36 24% 78%;
+
+  /* Primary: warm terracotta / study amber */
+  --primary: 26 84% 44%;
+  --primary-foreground: 40 50% 98%;
+  --ring: 26 84% 44%;
+
+  /* Secondary */
+  --secondary: 38 30% 85%;
+  --secondary-foreground: 28 38% 18%;
+
+  /* Muted */
+  --muted: 38 26% 84%;
+  --muted-foreground: 28 20% 40%;
+
+  /* Accent: golden parchment glow */
+  --accent: 38 70% 86%;
+  --accent-foreground: 26 85% 36%;
+
+  /* Success: eye-friendly sage green */
+  --success: 145 42% 38%;
+  --success-foreground: 40 50% 98%;
+
+  /* Destructive: warm rust */
+  --destructive: 8 68% 48%;
+  --destructive-foreground: 40 50% 98%;
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -113,6 +193,58 @@ html, body {
         hsl(240 35% 97%) 100%);
     }
   }
+}
+
+html.dark, html.dark body {
+  background-color: hsl(var(--background)) !important;
+}
+html.study, html.study body {
+  background-color: hsl(var(--background)) !important;
+}
+
+@media (min-width: 768px) {
+  html.dark body {
+    background: hsl(224 25% 10%) !important;
+  }
+  html.study body {
+    background: linear-gradient(160deg,
+      hsl(38 36% 92%) 0%,
+      hsl(35 32% 89%) 50%,
+      hsl(38 36% 91%) 100%) !important;
+  }
+}
+
+/* Sidebar in dark & study modes */
+.dark .gradient-sidebar {
+  background: linear-gradient(180deg,
+    hsl(224 28% 9%) 0%,
+    hsl(224 32% 6%) 100%);
+  border-right: 1px solid hsl(var(--border));
+}
+
+.study .gradient-sidebar {
+  background: linear-gradient(180deg,
+    hsl(28 35% 18%) 0%,
+    hsl(28 40% 14%) 100%);
+  border-right: 1px solid hsl(36 24% 78% / 0.3);
+}
+
+.dark .gradient-primary {
+  background: linear-gradient(135deg, hsl(243 85% 68%) 0%, hsl(263 80% 66%) 100%);
+}
+
+.study .gradient-primary {
+  background: linear-gradient(135deg, hsl(26 84% 44%) 0%, hsl(34 88% 46%) 100%);
+}
+
+.dark .text-gradient {
+  background: linear-gradient(135deg, hsl(243 85% 72%), hsl(263 80% 70%));
+  -webkit-background-clip: text;
+}
+
+.study .text-gradient {
+  background: linear-gradient(135deg, hsl(26 84% 44%), hsl(34 88% 42%));
+  -webkit-background-clip: text;
 }
 
 /* ── Gradient utilities ───────────────────────────────────────────────────── */

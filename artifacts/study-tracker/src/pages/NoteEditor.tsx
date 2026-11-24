@@ -589,7 +589,7 @@ export function NoteEditor() {
       >
         <div
           ref={canvasRef}
-          className="relative bg-white shadow-xl select-none"
+          className="relative bg-card text-card-foreground shadow-xl select-none border border-border/50"
           style={{
             width: A4_W,
             height: totalH,
@@ -797,7 +797,7 @@ function ElementBox({
               fontSize: element.fontSize ?? 16,
               fontWeight: element.fontWeight ?? 'normal',
               fontStyle: element.fontStyle ?? 'normal',
-              color: element.color ?? '#111827',
+              color: element.color ?? 'currentColor',
               textAlign: element.align ?? 'left',
               lineHeight: 1.4,
             }}

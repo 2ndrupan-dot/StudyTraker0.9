@@ -1,6 +1,7 @@
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { useEffect, useState } from "react";
 import { RefreshCw, WifiOff } from "lucide-react";
+import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LangProvider } from "./context/LangContext";
 import { CourseProvider, useCourse } from "./context/CourseContext";
@@ -281,23 +282,25 @@ function App() {
   return (
     <OfflineGuard>
       <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-        <LangProvider>
-          <AuthProvider>
-            <PWAInstallProvider>
-              <CourseProvider>
-                <StudyProvider>
-                  <TestProvider>
-                    <AdminProvider>
-                      <ContentProtectionGuard />
-                      <Router />
-                      <PWAUpdater />
-                    </AdminProvider>
-                  </TestProvider>
-                </StudyProvider>
-              </CourseProvider>
-            </PWAInstallProvider>
-          </AuthProvider>
-        </LangProvider>
+        <ThemeProvider>
+          <LangProvider>
+            <AuthProvider>
+              <PWAInstallProvider>
+                <CourseProvider>
+                  <StudyProvider>
+                    <TestProvider>
+                      <AdminProvider>
+                        <ContentProtectionGuard />
+                        <Router />
+                        <PWAUpdater />
+                      </AdminProvider>
+                    </TestProvider>
+                  </StudyProvider>
+                </CourseProvider>
+              </PWAInstallProvider>
+            </AuthProvider>
+          </LangProvider>
+        </ThemeProvider>
       </WouterRouter>
     </OfflineGuard>
   );

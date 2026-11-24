@@ -6,8 +6,9 @@ import type { MarkPath } from '@/lib/types';
 import { useCourse } from '@/context/CourseContext';
 import { computeGranularProgress, formatProgressPercent } from '@/lib/timeEngine';
 import { useLang } from '@/context/LangContext';
+import { useTheme } from '@/context/ThemeContext';
 import { Layout } from '@/components/Layout';
-import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock, Share2, TrendingUp, TrendingDown, Minus, Flame, Brain, Landmark, Calculator, Atom, FlaskConical, Dna, Leaf, Laptop, Languages, Scale, Lightbulb, Compass, Calendar, GraduationCap } from 'lucide-react';
+import { Settings, LogOut, User as UserIcon, BookOpen, Target, ShieldCheck, Camera, CalendarDays, CheckCircle2, Plus, ArrowLeftRight, BookMarked, Pencil, BookOpenCheck, NotebookPen, StickyNote, Trash2, Search, ChevronRight, Globe, RotateCcw, AlertTriangle, Clock, Share2, TrendingUp, TrendingDown, Minus, Flame, Brain, Landmark, Calculator, Atom, FlaskConical, Dna, Leaf, Laptop, Languages, Scale, Lightbulb, Compass, Calendar, GraduationCap, Sun, Moon, Glasses, Sparkles } from 'lucide-react';
 import { NotificationBell } from '@/components/NotificationBell';
 import { Countdown } from '@/components/Countdown';
 import { useAdmin } from '@/context/AdminContext';
@@ -369,6 +370,7 @@ export function Progress() {
   const { subjects, settings, setCourseStartDate, setTimezone, setGlobalNoteSize, dataLoaded } = useStudy();
   const { courses, deletedCourses, activeCourseId, activeCourse, createCourse, switchCourse, renameCourse, deleteCourse, restoreCourse, permanentlyDeleteCourse, sharedCoursesMeta } = useCourse();
   const { t, lang, setLang } = useLang();
+  const { theme, setTheme } = useTheme();
   const [, setLocation] = useLocation();
   const { isAdmin, appContact } = useAdmin();
   const [modals, setModals] = useState({ profile: false, settings: false, logout: false, addCourse: false, switchCourse: false });
@@ -1233,6 +1235,111 @@ export function Progress() {
                 বাংলা
               </button>
             </div>
+          </div>
+
+          {/* Theme Mode Selector (Light / Dark / Study) */}
+          <div className="border-t border-border/40 pt-5">
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles size={15} className="text-primary" />
+              <p className="text-sm font-semibold text-foreground">{t('theme')}</p>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">{t('themeDesc')}</p>
+
+            <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+              {/* Light Mode */}
+              <button
+                type="button"
+                onClick={() => setTheme('light')}
+                className={`relative flex flex-col items-center text-center p-2.5 sm:p-3 rounded-2xl border transition-all duration-200 ${
+                  theme === 'light'
+                    ? 'border-primary bg-primary/10 shadow-sm ring-2 ring-primary/30'
+                    : 'border-border/60 bg-secondary/60 hover:bg-secondary text-muted-foreground'
+                }`}
+              >
+                <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center mb-1.5 sm:mb-2 transition-colors ${
+                  theme === 'light' ? 'bg-amber-500 text-white shadow-sm' : 'bg-secondary text-foreground'
+                }`}>
+                  <Sun size={19} />
+                </div>
+                <p className={`text-xs font-bold leading-tight ${theme === 'light' ? 'text-foreground' : 'text-foreground/80'}`}>
+                  {t('themeLight')}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                  {lang === 'bn' ? 'স্বাভাবিক' : 'Day'}
+                </p>
+                {theme === 'light' && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary" />
+                )}
+              </button>
+
+              {/* Dark Mode */}
+              <button
+                type="button"
+                onClick={() => setTheme('dark')}
+                className={`relative flex flex-col items-center text-center p-2.5 sm:p-3 rounded-2xl border transition-all duration-200 ${
+                  theme === 'dark'
+                    ? 'border-primary bg-primary/15 shadow-sm ring-2 ring-primary/30'
+                    : 'border-border/60 bg-secondary/60 hover:bg-secondary text-muted-foreground'
+                }`}
+              >
+                <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center mb-1.5 sm:mb-2 transition-colors ${
+                  theme === 'dark' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-secondary text-foreground'
+                }`}>
+                  <Moon size={19} />
+                </div>
+                <p className={`text-xs font-bold leading-tight ${theme === 'dark' ? 'text-foreground' : 'text-foreground/80'}`}>
+                  {t('themeDark')}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                  {lang === 'bn' ? 'নাইট' : 'Night'}
+                </p>
+                {theme === 'dark' && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary" />
+                )}
+              </button>
+
+              {/* Study Mode (Eye Care) */}
+              <button
+                type="button"
+                onClick={() => setTheme('study')}
+                className={`relative flex flex-col items-center text-center p-2.5 sm:p-3 rounded-2xl border transition-all duration-200 ${
+                  theme === 'study'
+                    ? 'border-amber-600 bg-amber-500/15 shadow-sm ring-2 ring-amber-500/30'
+                    : 'border-border/60 bg-secondary/60 hover:bg-secondary text-muted-foreground'
+                }`}
+              >
+                <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center mb-1.5 sm:mb-2 transition-colors ${
+                  theme === 'study' ? 'bg-amber-600 text-white shadow-sm' : 'bg-secondary text-foreground'
+                }`}>
+                  <Glasses size={19} />
+                </div>
+                <p className={`text-xs font-bold leading-tight ${theme === 'study' ? 'text-amber-800 dark:text-amber-300 font-extrabold' : 'text-foreground'}`}>
+                  {t('themeStudy')}
+                </p>
+                <span className="text-[9px] font-bold text-amber-800 dark:text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded-full mt-0.5">
+                  {t('themeEyeProtectionBadge')}
+                </span>
+                {theme === 'study' && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-600" />
+                )}
+              </button>
+            </div>
+
+            {/* Eye-care comfort notice when study mode is active */}
+            {theme === 'study' && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-3 flex items-start gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 text-xs"
+              >
+                <Glasses size={16} className="shrink-0 mt-0.5 text-amber-600" />
+                <p className="text-[11px] leading-relaxed">
+                  {lang === 'bn'
+                    ? 'স্টাডি মোড অন রয়েছে: ওয়ার্ম পেপার টোন ও ক্ষতিকর ব্লু-লাইট মুক্ত ইন্টারফেস দীর্ঘক্ষণ পড়াশোনা ও টেস্ট দেওয়ার জন্য চোখের সুরক্ষা নিশ্চিত করে।'
+                    : 'Study Mode active: warm paper tone and zero blue-light reduce glare and ocular strain for long study sessions.'}
+                </p>
+              </motion.div>
+            )}
           </div>
 
           {/* Timezone */}

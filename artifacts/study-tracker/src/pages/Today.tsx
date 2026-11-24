@@ -662,6 +662,7 @@ export function Today() {
   const [isCompletedModalOpen, setCompletedModalOpen] = useState(false);
   const [daysInput, setDaysInput] = useState(settings.courseTotalDays?.toString() || '');
   const [endDateInput, setEndDateInput] = useState('');
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const [hoursInput, setHoursInput] = useState(settings.dailyStudyHours?.toString() || '3');
 
   // Accordion: single expanded subject at a time (null = all collapsed)
@@ -3100,14 +3101,29 @@ export function Today() {
               <CalendarDays size={13} className="text-primary" />
               {t('targetEndDate')}
             </label>
-            <Input
-              type="date"
-              min={todayIST(settings?.timezone)}
-              value={endDateInput}
-              onChange={e => handleEndDateInputChange(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSetDays()}
-              className="cursor-pointer"
-            />
+            <div
+              className="relative cursor-pointer"
+              onClick={() => {
+                try {
+                  dateInputRef.current?.showPicker();
+                } catch {
+                  dateInputRef.current?.focus();
+                }
+              }}
+            >
+              <Input
+                ref={dateInputRef}
+                type="date"
+                min={todayIST(settings?.timezone)}
+                value={endDateInput}
+                onChange={e => handleEndDateInputChange(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSetDays()}
+                className="pr-10 cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+              />
+              <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground flex items-center justify-center">
+                <CalendarDays size={17} />
+              </div>
+            </div>
           </div>
         </div>
 

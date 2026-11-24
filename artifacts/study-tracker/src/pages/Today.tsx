@@ -6,7 +6,7 @@ import { Layout } from '@/components/Layout';
 import {
   Target, CheckCircle2, Clock, CalendarDays, Edit3, BookOpen,
   Layers, Zap, Sun, ChevronRight, AlarmClock, Hash, Lightbulb, List,
-  ChevronDown, AlertTriangle, X, RotateCcw, TrendingUp, PlayCircle,
+  ChevronDown, ChevronUp, AlertTriangle, X, RotateCcw, TrendingUp, PlayCircle,
   Lock, Flame, ThumbsUp, RefreshCw, Plus, StickyNote, Star, AlertOctagon,
   Download, Share2, Check, GraduationCap,
 } from 'lucide-react';
@@ -3087,12 +3087,46 @@ export function Today() {
                 value={daysInput}
                 onChange={e => handleDaysInputChange(e.target.value)}
                 placeholder="e.g. 90"
-                className="pr-12"
+                className="pr-16 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 onKeyDown={e => e.key === 'Enter' && handleSetDays()}
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground pointer-events-none">
-                {isBn ? 'দিন' : 'days'}
-              </span>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-muted-foreground select-none">
+                <div className="flex flex-col items-center justify-center gap-1 py-0.5">
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => {
+                      const current = parseInt(daysInput, 10);
+                      const next = isNaN(current) || current < 1 ? 1 : current + 1;
+                      handleDaysInputChange(next.toString());
+                    }}
+                    className="p-0.5 hover:text-primary active:scale-90 text-muted-foreground/75 hover:text-foreground transition-colors cursor-pointer"
+                    aria-label="Increase days"
+                  >
+                    <svg className="w-2.5 h-2 fill-current" viewBox="0 0 10 6">
+                      <path d="M5 0L10 6H0L5 0Z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => {
+                      const current = parseInt(daysInput, 10);
+                      const next = isNaN(current) || current <= 1 ? 1 : current - 1;
+                      handleDaysInputChange(next.toString());
+                    }}
+                    className="p-0.5 hover:text-primary active:scale-90 text-muted-foreground/75 hover:text-foreground transition-colors cursor-pointer"
+                    aria-label="Decrease days"
+                  >
+                    <svg className="w-2.5 h-2 fill-current" viewBox="0 0 10 6">
+                      <path d="M5 6L0 0H10L5 6Z" />
+                    </svg>
+                  </button>
+                </div>
+                <span className="text-xs font-medium pointer-events-none">
+                  {isBn ? 'দিন' : 'Days'}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -3135,7 +3169,7 @@ export function Today() {
               <span className="font-semibold text-primary">
                 {safeFormat(endDateInput, 'MMM d, yyyy')}
               </span>
-              <span className="text-muted-foreground font-medium"> ({daysInput} {isBn ? 'দিন বাকি' : 'days left'})</span>
+              <span className="text-muted-foreground font-medium"> ({daysInput} {isBn ? 'দিন বাকি' : 'Days left'})</span>
             </div>
           </div>
         )}

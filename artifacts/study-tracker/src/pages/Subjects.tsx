@@ -1081,10 +1081,10 @@ export function Subjects() {
                         <span className="whitespace-nowrap shrink-0">{format(parseISO(subj.deadline), 'MMM d, yy')}</span>
                       </div>
                       {/* Layered progress bar */}
-                      <div className="mt-2 h-1 w-full bg-secondary rounded-full overflow-hidden relative">
+                      <div className="mt-2.5 h-2 w-full bg-slate-300/70 dark:bg-white/15 border border-slate-300/90 dark:border-white/15 rounded-full overflow-hidden relative shadow-inner">
                         {overviewProg > 0 && (
                           <motion.div
-                            className="absolute left-0 top-0 h-full opacity-40"
+                            className="absolute left-0 top-0 h-full opacity-40 rounded-full"
                             initial={{ width: 0 }}
                             animate={{ width: `${prog + overviewProg}%` }}
                             transition={{ duration: 0.6, ease: 'easeOut' }}
@@ -1092,7 +1092,7 @@ export function Subjects() {
                           />
                         )}
                         <motion.div
-                          className="absolute left-0 top-0 h-full"
+                          className="absolute left-0 top-0 h-full rounded-full shadow-xs"
                           initial={{ width: 0 }}
                           animate={{ width: `${prog}%` }}
                           transition={{ duration: 0.6, ease: 'easeOut' }}

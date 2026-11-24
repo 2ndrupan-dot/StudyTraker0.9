@@ -1122,12 +1122,12 @@ export function Progress() {
 
                 <div>
                   <div className="flex items-center gap-2.5">
-                    <div className="flex-1 h-1.5 bg-black/10 dark:bg-white/10 rounded-full overflow-hidden">
+                    <div className="flex-1 h-2 bg-slate-300/70 dark:bg-white/15 border border-slate-300/90 dark:border-white/15 rounded-full overflow-hidden shadow-inner">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.max(p, p > 0 ? 0.5 : 0)}%` }}
                         transition={{ duration: 0.6, delay: 0.1 * i }}
-                        className="h-full rounded-full"
+                        className="h-full rounded-full shadow-xs"
                         style={{ backgroundColor: s.color }}
                       />
                     </div>

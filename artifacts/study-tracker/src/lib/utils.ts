@@ -24,16 +24,16 @@ export const SUBJECT_COLORS = [
   '#84CC16', // Lime
 ];
 
-// Card pastel accent gradients matching Test & Notes sections
+// Ultra-light pastel accent cards matching Progress metric insights (/8 bg, /20 border)
 export const CARD_ACCENTS = [
-  'from-blue-500/20 to-blue-400/5 border-blue-200/60 dark:border-blue-800/40',
-  'from-violet-500/20 to-violet-400/5 border-violet-200/60 dark:border-violet-800/40',
-  'from-emerald-500/20 to-emerald-400/5 border-emerald-200/60 dark:border-emerald-800/40',
-  'from-amber-500/20 to-amber-400/5 border-amber-200/60 dark:border-amber-800/40',
-  'from-rose-500/20 to-rose-400/5 border-rose-200/60 dark:border-rose-800/40',
-  'from-cyan-500/20 to-cyan-400/5 border-cyan-200/60 dark:border-cyan-800/40',
-  'from-purple-500/20 to-purple-400/5 border-purple-200/60 dark:border-purple-800/40',
-  'from-orange-500/20 to-orange-400/5 border-orange-200/60 dark:border-orange-800/40',
+  'bg-blue-500/8 border-blue-500/20 dark:border-blue-500/30 dark:bg-blue-500/10',
+  'bg-violet-500/8 border-violet-500/20 dark:border-violet-500/30 dark:bg-violet-500/10',
+  'bg-emerald-500/8 border-emerald-500/20 dark:border-emerald-500/30 dark:bg-emerald-500/10',
+  'bg-amber-500/8 border-amber-500/20 dark:border-amber-500/30 dark:bg-amber-500/10',
+  'bg-rose-500/8 border-rose-500/20 dark:border-rose-500/30 dark:bg-rose-500/10',
+  'bg-cyan-500/8 border-cyan-500/20 dark:border-cyan-500/30 dark:bg-cyan-500/10',
+  'bg-purple-500/8 border-purple-500/20 dark:border-purple-500/30 dark:bg-purple-500/10',
+  'bg-orange-500/8 border-orange-500/20 dark:border-orange-500/30 dark:bg-orange-500/10',
 ];
 
 export const CARD_ICON_COLORS = [

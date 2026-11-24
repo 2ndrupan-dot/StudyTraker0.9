@@ -1938,7 +1938,7 @@ export function Today() {
       <ScrollReveal
         key={group.subjectId}
         className={cn(
-          "rounded-2xl border-2 overflow-hidden shadow-sm bg-gradient-to-br transition-all duration-200",
+          "rounded-2xl border-2 overflow-hidden shadow-sm transition-all duration-200",
           accent
         )}
       >
@@ -2402,7 +2402,7 @@ export function Today() {
                             <div
                               key={group.subjectId}
                               className={cn(
-                                "rounded-xl border overflow-hidden relative bg-gradient-to-br transition-all duration-200",
+                                "rounded-xl border overflow-hidden relative transition-all duration-200",
                                 accent
                               )}
                             >

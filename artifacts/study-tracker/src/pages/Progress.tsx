@@ -1085,7 +1085,7 @@ export function Progress() {
                 direction="right"
                 delay={i * 0.08}
                 className={cn(
-                  "relative pl-4 pr-3.5 py-2.5 rounded-xl border shadow-xs flex flex-col gap-2 overflow-hidden bg-gradient-to-br transition-all duration-200",
+                  "relative pl-4 pr-3.5 py-2.5 rounded-xl border shadow-xs flex flex-col gap-2 overflow-hidden transition-all duration-200",
                   accent
                 )}
               >

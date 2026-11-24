@@ -22,7 +22,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { cn } from '@/lib/utils';
+import { cn, CARD_ACCENTS } from '@/lib/utils';
 import { toast } from 'sonner';
 
 // ─── Sortable wrapper ─────────────────────────────────────────────────────────
@@ -55,16 +55,6 @@ function SortableItem({ id, reorderMode, children }: {
 
 // ─── Subject colour map ───────────────────────────────────────────────────────
 
-const CARD_ACCENTS = [
-  'from-blue-500/20 to-blue-400/5 border-blue-200/60 dark:border-blue-800/40',
-  'from-violet-500/20 to-violet-400/5 border-violet-200/60 dark:border-violet-800/40',
-  'from-emerald-500/20 to-emerald-400/5 border-emerald-200/60 dark:border-emerald-800/40',
-  'from-amber-500/20 to-amber-400/5 border-amber-200/60 dark:border-amber-800/40',
-  'from-rose-500/20 to-rose-400/5 border-rose-200/60 dark:border-rose-800/40',
-  'from-cyan-500/20 to-cyan-400/5 border-cyan-200/60 dark:border-cyan-800/40',
-  'from-purple-500/20 to-purple-400/5 border-purple-200/60 dark:border-purple-800/40',
-  'from-orange-500/20 to-orange-400/5 border-orange-200/60 dark:border-orange-800/40',
-];
 const ICON_COLORS = [
   'text-blue-500', 'text-violet-500', 'text-emerald-500', 'text-amber-500',
   'text-rose-500', 'text-cyan-500', 'text-purple-500', 'text-orange-500',
@@ -705,7 +695,7 @@ export function Test() {
                                     whileTap={{ scale: reorderMode ? 1 : 0.97 }}
                                     onClick={() => { if (!reorderMode) handleSelectSubject(subj.id); }}
                                     className={cn(
-                                      'w-full text-left bg-gradient-to-br border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all duration-200 relative',
+                                      'w-full text-left border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all duration-200 relative',
                                       accent,
                                       reorderMode ? 'cursor-grab' : 'cursor-pointer',
                                     )}

@@ -1042,7 +1042,7 @@ export function Subjects() {
                   id={`study-item-${subj.id}`}
                   exit={{ opacity: 0, scale: 0.96 }}
                   className={cn(
-                    "relative rounded-2xl shadow-sm border-2 overflow-hidden card-hover bg-gradient-to-br transition-all duration-200",
+                    "relative rounded-2xl shadow-sm border-2 overflow-hidden card-hover transition-all duration-200",
                     accent
                   )}
                 >

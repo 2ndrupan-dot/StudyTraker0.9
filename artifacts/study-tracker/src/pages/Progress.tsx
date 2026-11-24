@@ -1053,6 +1053,7 @@ export function Progress() {
         <div className="space-y-3">
           {subjects.map((s, i) => {
             const p = computeGranularProgress([s]).percent;
+            const rem = Math.max(0, 100 - p);
             return (
               <ScrollReveal
                 key={s.id}
@@ -1079,7 +1080,20 @@ export function Progress() {
                       style={{ backgroundColor: s.color }}
                     />
                   </div>
-                  <span className="text-xs font-bold text-muted-foreground w-10 text-right">{formatProgressPercent(p)}%</span>
+                  <div className="flex flex-col items-end leading-none shrink-0 min-w-[56px]">
+                    <span className="text-xs font-bold text-foreground">
+                      {formatProgressPercent(p)}%
+                    </span>
+                    {rem <= 0 ? (
+                      <span className="text-[10px] font-bold text-green-500 mt-1">
+                        ✓ {lang === 'bn' ? 'সম্পূর্ণ' : 'Done'}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-medium text-muted-foreground mt-1">
+                        {formatProgressPercent(rem)}% {lang === 'bn' ? 'বাকি' : 'left'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </ScrollReveal>
             );

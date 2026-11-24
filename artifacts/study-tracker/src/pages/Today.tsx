@@ -3100,13 +3100,13 @@ export function Today() {
               <CalendarDays size={13} className="text-primary" />
               {t('targetEndDate')}
             </label>
-            <input
+            <Input
               type="date"
               min={todayIST(settings?.timezone)}
               value={endDateInput}
               onChange={e => handleEndDateInputChange(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSetDays()}
-              className="w-full h-10 px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors cursor-pointer"
+              className="cursor-pointer"
             />
           </div>
         </div>

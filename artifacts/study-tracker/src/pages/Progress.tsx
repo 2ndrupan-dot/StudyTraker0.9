@@ -1108,9 +1108,12 @@ export function Progress() {
                   </div>
 
                   {s.deadline && (
-                    <div className="px-2 py-0.5 rounded-lg bg-white/70 dark:bg-black/20 border border-border/50 flex items-center gap-1 shadow-xs">
+                    <div
+                      className="px-2.5 py-0.5 rounded-lg bg-white/90 dark:bg-white/10 border flex items-center gap-1.5 shadow-2xs backdrop-blur-xs"
+                      style={{ borderColor: `${s.color}25` }}
+                    >
                       <Calendar size={11} style={{ color: s.color }} />
-                      <span className="text-[11px] font-medium text-foreground/80">
+                      <span className="text-[11px] font-semibold text-foreground/85">
                         {safeFormat(s.deadline, 'MMM d')}
                       </span>
                     </div>

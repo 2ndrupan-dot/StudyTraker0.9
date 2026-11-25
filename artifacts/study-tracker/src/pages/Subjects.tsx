@@ -280,7 +280,17 @@ function minutesToSliders(totalMins: number) {
 }
 
 // ─── Sortable Item Wrapper ──────────────────────────────────────────────────
-function SortableItemWrapper({ id, reorderMode, children }: { id: string; reorderMode: boolean; children: (handle: React.ReactNode) => React.ReactNode }) {
+function SortableItemWrapper({
+  id,
+  reorderMode,
+  handleClassName,
+  children,
+}: {
+  id: string;
+  reorderMode: boolean;
+  handleClassName?: string;
+  children: (handle: React.ReactNode) => React.ReactNode;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -295,11 +305,14 @@ function SortableItemWrapper({ id, reorderMode, children }: { id: string; reorde
       {...attributes}
       {...(reorderMode ? listeners : {})}
       onClick={e => e.stopPropagation()}
-      className={`shrink-0 self-stretch flex items-center px-1.5 transition-colors select-none border-l border-border/30 ml-1 ${
-        reorderMode
-          ? 'touch-none cursor-grab active:cursor-grabbing text-primary/70 hover:text-primary hover:bg-primary/10'
-          : 'touch-auto cursor-default text-muted-foreground/20 pointer-events-none'
-      }`}
+      className={cn(
+        `shrink-0 self-stretch flex items-center justify-center px-1.5 transition-colors select-none ${
+          reorderMode
+            ? 'touch-none cursor-grab active:cursor-grabbing text-primary/70 hover:text-primary hover:bg-primary/10'
+            : 'touch-auto cursor-default text-muted-foreground/20 pointer-events-none'
+        }`,
+        handleClassName ?? 'border-l border-border/30 ml-1'
+      )}
       title={reorderMode ? 'ড্র্যাগ করে সরান' : 'Reorder Mode চালু করুন'}
     >
       <GripVertical size={14} />
@@ -1035,7 +1048,7 @@ export function Subjects() {
               const accent = CARD_ACCENTS[idx % CARD_ACCENTS.length];
 
               return (
-                <SortableItemWrapper key={subj.id} id={subj.id} reorderMode={reorderMode}>
+                <SortableItemWrapper key={subj.id} id={subj.id} reorderMode={reorderMode} handleClassName="border-0 m-0 p-1">
                 {(subjHandle) => (
                 <ScrollReveal direction="right" delay={idx * 0.08}>
                 <motion.div
@@ -1052,106 +1065,116 @@ export function Subjects() {
                     className="p-3 relative cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:bg-black/10 transition-colors group/row"
                     onClick={() => toggleSubj(subj.id)}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="pl-3 flex-1 min-w-0">
-                        {/* Title */}
-                        <h3 className="font-bold text-foreground text-base leading-tight mb-0.5 break-words">{subj.title}</h3>
-                        {/* Badges row — L1, days, status badges, marks */}
-                        <div className="flex items-center gap-1 flex-nowrap overflow-hidden mb-1">
-                          <span className="text-[9px] font-bold text-muted-foreground/60 dark:text-slate-300 bg-secondary/80 dark:bg-white/10 px-1.5 py-0.5 rounded border border-border/40">L1</span>
-                          <button
-                            onClick={e => {
-                              e.stopPropagation();
-                              setActivePath(prev => ({ ...prev, subjId: subj.id, level: 'subject' }));
-                              setFormDays(subj.allocatedDays.toString());
-                              setModal('days');
-                            }}
-                            className="px-1.5 py-0.5 bg-secondary dark:bg-white/10 text-muted-foreground dark:text-slate-200 text-[10px] font-bold rounded-md border border-border/50 cursor-pointer hover:bg-primary/10 transition-colors"
-                          >
-                            {subj.allocatedDays} d
-                          </button>
-                          {subj.chapters.length > 0 && subj.chapters.every(c => isChapterContentDone(c)) && (
-                            <span className="px-1.5 py-0.5 bg-green-500/10 text-green-700 text-[9px] font-bold rounded-md">✓ {t('filterCompleted')}</span>
-                          )}
-                          <MarksBadgeRow important={subj.important} weak={subj.weak} note={subj.note} onClickNote={() => openNote(subjPath, subj.note ?? '')} size="xs" />
+                    <div className="flex items-stretch">
+                      {/* Left: Info, Actions & full-width progress bar up to the divider */}
+                      <div className="flex-1 min-w-0 pr-2 flex flex-col justify-between">
+                        <div className="flex items-start justify-between gap-1">
+                          <div className="pl-3 flex-1 min-w-0">
+                            {/* Title */}
+                            <h3 className="font-bold text-foreground text-base leading-tight mb-0.5 break-words">{subj.title}</h3>
+                            {/* Badges row — L1, days, status badges, marks */}
+                            <div className="flex items-center gap-1 flex-nowrap overflow-hidden mb-1">
+                              <span className="text-[9px] font-bold text-muted-foreground/60 dark:text-slate-300 bg-secondary/80 dark:bg-white/10 px-1.5 py-0.5 rounded border border-border/40">L1</span>
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setActivePath(prev => ({ ...prev, subjId: subj.id, level: 'subject' }));
+                                  setFormDays(subj.allocatedDays.toString());
+                                  setModal('days');
+                                }}
+                                className="px-1.5 py-0.5 bg-secondary dark:bg-white/10 text-muted-foreground dark:text-slate-200 text-[10px] font-bold rounded-md border border-border/50 cursor-pointer hover:bg-primary/10 transition-colors"
+                              >
+                                {subj.allocatedDays} d
+                              </button>
+                              {subj.chapters.length > 0 && subj.chapters.every(c => isChapterContentDone(c)) && (
+                                <span className="px-1.5 py-0.5 bg-green-500/10 text-green-700 text-[9px] font-bold rounded-md">✓ {t('filterCompleted')}</span>
+                              )}
+                              <MarksBadgeRow important={subj.important} weak={subj.weak} note={subj.note} onClickNote={() => openNote(subjPath, subj.note ?? '')} size="xs" />
+                            </div>
+                            {/* Meta row — chapters count + date */}
+                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium overflow-hidden">
+                              <span className="whitespace-nowrap">{t('chapters')}: {completedChapters}/{chapterCount}</span>
+                              <span className="shrink-0">•</span>
+                              <span className="whitespace-nowrap shrink-0">{format(parseISO(subj.deadline), 'MMM d, yy')}</span>
+                            </div>
+                          </div>
+                          {/* Action buttons — compact two-row layout */}
+                          <div className="flex flex-col items-end gap-0.5 pl-1 shrink-0">
+                            <div className="flex items-center gap-0">
+                              <ItemActions
+                                path={subjPath}
+                                important={subj.important}
+                                weak={subj.weak}
+                                hasNote={!!subj.note}
+                                currentNote={subj.note}
+                                onOpenNote={openNote}
+                                size="sm"
+                              />
+                            </div>
+                            <div className="flex items-center gap-0">
+                              <button
+                                onClick={e => { e.stopPropagation(); setResetConfirmSubjId(subj.id); }}
+                                className="p-1 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 dark:text-slate-300 dark:hover:text-amber-400 rounded-full transition-colors"
+                                title={t('resetSubject')}
+                              >
+                                <RotateCcw size={11} />
+                              </button>
+                              <button
+                                onClick={e => { e.stopPropagation(); openCopyModal(subj); }}
+                                className="p-1 text-muted-foreground hover:bg-sky-500/10 hover:text-sky-600 dark:text-slate-300 dark:hover:text-sky-400 rounded-full transition-colors"
+                                title={lang === 'bn' ? 'সাবজেক্ট কপি করুন' : 'Copy Subject Structure'}
+                              >
+                                <Copy size={11} />
+                              </button>
+                              {canEditItems && <>
+                                <button
+                                  onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
+                                  className="p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-primary rounded-full transition-colors"
+                                >
+                                  <Pencil size={11} />
+                                </button>
+                                <button
+                                  onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }, subj.title); }}
+                                  className="p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive dark:text-slate-300 dark:hover:text-destructive rounded-full transition-colors"
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              </>}
+                              <motion.div
+                                animate={{ rotate: isExpanded ? 90 : 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="text-muted-foreground dark:text-slate-200 bg-secondary dark:bg-white/10 p-1 rounded-full"
+                              >
+                                <ChevronRight size={12} />
+                              </motion.div>
+                            </div>
+                          </div>
                         </div>
-                        {/* Meta row — chapters count + date */}
-                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium overflow-hidden">
-                          <span className="whitespace-nowrap">{t('chapters')}: {completedChapters}/{chapterCount}</span>
-                          <span className="shrink-0">•</span>
-                          <span className="whitespace-nowrap shrink-0">{format(parseISO(subj.deadline), 'MMM d, yy')}</span>
+
+                        {/* Layered progress bar — extends all the way to the divider */}
+                        <div className="mt-2.5 pl-3 w-full">
+                          <div className="h-2 w-full bg-slate-300/70 dark:bg-white/15 border border-slate-300/90 dark:border-white/15 rounded-full overflow-hidden relative shadow-inner">
+                            <motion.div
+                              className="absolute left-0 top-0 h-full rounded-full shadow-xs"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.max(prog, prog > 0 ? 0.5 : 0)}%` }}
+                              transition={{ duration: 0.6, ease: 'easeOut' }}
+                              style={{ backgroundColor: subj.color }}
+                            />
+                          </div>
                         </div>
                       </div>
-                      {/* Action buttons — compact two-row layout */}
-                      <div className="flex flex-col items-end gap-0.5 pl-1 shrink-0">
-                        <div className="flex items-center gap-0">
-                          <ItemActions
-                            path={subjPath}
-                            important={subj.important}
-                            weak={subj.weak}
-                            hasNote={!!subj.note}
-                            currentNote={subj.note}
-                            onOpenNote={openNote}
-                            size="sm"
-                          />
+
+                      {/* Right column: Single divider border-l, Reorder grip handle on top, Bold percentage on bottom */}
+                      <div className="shrink-0 flex flex-col justify-between items-center border-l border-border/30 ml-0.5 pl-1 pr-0.5 min-w-[2.85rem]">
+                        <div className="flex items-center justify-center pt-0.5">
+                          {subjHandle}
                         </div>
-                        <div className="flex items-center gap-0">
-                          <button
-                            onClick={e => { e.stopPropagation(); setResetConfirmSubjId(subj.id); }}
-                            className="p-1 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 dark:text-slate-300 dark:hover:text-amber-400 rounded-full transition-colors"
-                            title={t('resetSubject')}
-                          >
-                            <RotateCcw size={11} />
-                          </button>
-                          <button
-                            onClick={e => { e.stopPropagation(); openCopyModal(subj); }}
-                            className="p-1 text-muted-foreground hover:bg-sky-500/10 hover:text-sky-600 dark:text-slate-300 dark:hover:text-sky-400 rounded-full transition-colors"
-                            title={lang === 'bn' ? 'সাবজেক্ট কপি করুন' : 'Copy Subject Structure'}
-                          >
-                            <Copy size={11} />
-                          </button>
-                          {canEditItems && <>
-                            <button
-                              onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
-                              className="p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-primary rounded-full transition-colors"
-                            >
-                              <Pencil size={11} />
-                            </button>
-                            <button
-                              onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }, subj.title); }}
-                              className="p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive dark:text-slate-300 dark:hover:text-destructive rounded-full transition-colors"
-                            >
-                              <Trash2 size={11} />
-                            </button>
-                          </>}
-                          <motion.div
-                            animate={{ rotate: isExpanded ? 90 : 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="text-muted-foreground dark:text-slate-200 bg-secondary dark:bg-white/10 p-1 rounded-full"
-                          >
-                            <ChevronRight size={12} />
-                          </motion.div>
+                        <div className="flex items-center justify-center pb-0.5">
+                          <span className="text-[11px] font-bold text-foreground dark:text-slate-200 tabular-nums">
+                            {formatProgressPercent(prog)}%
+                          </span>
                         </div>
-                      </div>
-                      {subjHandle}
-                    </div>
-                    {/* Layered progress bar — stops at the divider between action buttons and reorder handle, with bold percentage to the right */}
-                    <div className="mt-2.5 pl-3 flex items-center">
-                      <div className="flex-1 min-w-0">
-                        <div className="h-2 w-full bg-slate-300/70 dark:bg-white/15 border border-slate-300/90 dark:border-white/15 rounded-full overflow-hidden relative shadow-inner">
-                          <motion.div
-                            className="absolute left-0 top-0 h-full rounded-full shadow-xs"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${Math.max(prog, prog > 0 ? 0.5 : 0)}%` }}
-                            transition={{ duration: 0.6, ease: 'easeOut' }}
-                            style={{ backgroundColor: subj.color }}
-                          />
-                        </div>
-                      </div>
-                      <div className="shrink-0 self-stretch flex items-center justify-center border-l border-border/30 ml-1 px-1.5 min-w-[2.25rem]">
-                        <span className="text-[11px] font-bold text-foreground dark:text-slate-200 tabular-nums">
-                          {formatProgressPercent(prog)}%
-                        </span>
                       </div>
                     </div>
                   </div>

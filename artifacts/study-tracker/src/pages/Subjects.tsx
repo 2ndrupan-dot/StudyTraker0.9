@@ -1057,7 +1057,7 @@ export function Subjects() {
                       <h3 className="font-bold text-foreground text-base leading-tight mb-0.5 break-words">{subj.title}</h3>
                       {/* Badges row — L1, days, status badges, marks */}
                       <div className="flex items-center gap-1 flex-nowrap overflow-hidden mb-1">
-                        <span className="text-[9px] font-bold text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded border border-border/40">L1</span>
+                        <span className="text-[9px] font-bold text-muted-foreground/60 dark:text-slate-300 bg-secondary/80 dark:bg-white/10 px-1.5 py-0.5 rounded border border-border/40">L1</span>
                         <button
                           onClick={e => {
                             e.stopPropagation();
@@ -1065,7 +1065,7 @@ export function Subjects() {
                             setFormDays(subj.allocatedDays.toString());
                             setModal('days');
                           }}
-                          className="px-1.5 py-0.5 bg-secondary text-muted-foreground text-[10px] font-bold rounded-md border border-border/50 cursor-pointer hover:bg-primary/10 transition-colors"
+                          className="px-1.5 py-0.5 bg-secondary dark:bg-white/10 text-muted-foreground dark:text-slate-200 text-[10px] font-bold rounded-md border border-border/50 cursor-pointer hover:bg-primary/10 transition-colors"
                         >
                           {subj.allocatedDays} d
                         </button>
@@ -1116,14 +1116,14 @@ export function Subjects() {
                       <div className="flex items-center gap-0">
                         <button
                           onClick={e => { e.stopPropagation(); setResetConfirmSubjId(subj.id); }}
-                          className="p-1 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 rounded-full transition-colors"
+                          className="p-1 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 dark:text-slate-300 dark:hover:text-amber-400 rounded-full transition-colors"
                           title={t('resetSubject')}
                         >
                           <RotateCcw size={11} />
                         </button>
                         <button
                           onClick={e => { e.stopPropagation(); openCopyModal(subj); }}
-                          className="p-1 text-muted-foreground hover:bg-sky-500/10 hover:text-sky-600 rounded-full transition-colors"
+                          className="p-1 text-muted-foreground hover:bg-sky-500/10 hover:text-sky-600 dark:text-slate-300 dark:hover:text-sky-400 rounded-full transition-colors"
                           title={lang === 'bn' ? 'সাবজেক্ট কপি করুন' : 'Copy Subject Structure'}
                         >
                           <Copy size={11} />
@@ -1131,13 +1131,13 @@ export function Subjects() {
                         {canEditItems && <>
                           <button
                             onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
-                            className="p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-full transition-colors"
+                            className="p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-primary rounded-full transition-colors"
                           >
                             <Pencil size={11} />
                           </button>
                           <button
                             onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }, subj.title); }}
-                            className="p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-full transition-colors"
+                            className="p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive dark:text-slate-300 dark:hover:text-destructive rounded-full transition-colors"
                           >
                             <Trash2 size={11} />
                           </button>
@@ -1145,7 +1145,7 @@ export function Subjects() {
                         <motion.div
                           animate={{ rotate: isExpanded ? 90 : 0 }}
                           transition={{ duration: 0.2 }}
-                          className="text-muted-foreground bg-secondary p-1 rounded-full"
+                          className="text-muted-foreground dark:text-slate-200 bg-secondary dark:bg-white/10 p-1 rounded-full"
                         >
                           <ChevronRight size={12} />
                         </motion.div>
@@ -1157,7 +1157,7 @@ export function Subjects() {
                   {/* Chapters */}
                   <AnimatePresence>
                     {isExpanded && (
-                      <motion.div {...collapseAnim} className="overflow-hidden bg-indigo-500/[0.04] border-t border-indigo-300/25">
+                      <motion.div {...collapseAnim} className="overflow-hidden bg-indigo-500/[0.04] dark:bg-black/20 border-t border-indigo-300/25 dark:border-indigo-500/20">
                         <div className="relative pt-0 px-3 pl-4 ml-2.5" ref={registerTrunkRoot}>
                           <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-indigo-400/65 pointer-events-none" style={{ height: 0 }} />
                           <div className="space-y-2">
@@ -1187,27 +1187,27 @@ export function Subjects() {
                               {(chHandle) => (
                               <div className="relative" data-last-item={isLastChapter ? 'true' : undefined}>
                               <div className="absolute -left-[19px] top-1/2 -translate-y-full h-[24px] w-[19px] border-l-[3px] border-b-[2px] border-indigo-400/65 rounded-bl-[10px] pointer-events-none" />
-                              <motion.div id={`study-item-${chapter.id}`} {...itemAnim} className={`relative bg-indigo-50/60 border-2 rounded-xl overflow-hidden shadow-sm ${chLocked ? 'opacity-70' : ''} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`} style={{ borderColor: chLocked ? "rgba(99,102,241,0.55)" : "rgba(99,102,241,0.65)" }}>
+                              <motion.div id={`study-item-${chapter.id}`} {...itemAnim} className={`relative bg-indigo-50/60 dark:bg-slate-900/90 dark:border-indigo-500/40 border-2 rounded-xl overflow-hidden shadow-sm ${chLocked ? 'opacity-70' : ''} ${chapter.important ? 'ring-1 ring-yellow-300/60' : ''} ${chapter.weak ? 'ring-1 ring-rose-300/60' : ''}`} style={{ borderColor: chLocked ? "rgba(99,102,241,0.55)" : "rgba(99,102,241,0.65)" }}>
                                 <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-indigo-400/70 rounded-r-full z-10" />
                                 <div
-                                  className="px-3 pt-3 pb-2 cursor-pointer hover:bg-secondary/30 transition-colors group/row relative"
+                                  className="px-3 pt-3 pb-2 cursor-pointer hover:bg-secondary/30 dark:hover:bg-white/5 transition-colors group/row relative"
                                   onClick={() => toggleChapter(chapter.id)}
                                 >
-                                  <p className={`font-semibold text-sm w-full leading-snug break-words ${isChapterContentDone(chapter) ? 'text-muted-foreground' : 'text-foreground'}`}>
+                                  <p className={`font-semibold text-sm w-full leading-snug break-words ${isChapterContentDone(chapter) ? 'text-muted-foreground dark:text-slate-400' : 'text-foreground dark:text-slate-100'}`}>
                                     <BookOpen size={11} className="text-primary shrink-0 inline-block mr-1.5 -translate-y-0.5" />
                                     {chapter.title}
                                   </p>
                                   <div className="flex items-center gap-1.5 mt-1.5">
                                     <button
                                       onClick={e => { e.stopPropagation(); if (!chLocked) toggleChapterComplete(subj.id, chapter.id); }}
-                                      className={`shrink-0 transition-colors ${chLocked ? 'cursor-not-allowed text-muted-foreground/50' : 'text-muted-foreground hover:text-primary'}`}
+                                      className={`shrink-0 transition-colors ${chLocked ? 'cursor-not-allowed text-muted-foreground/50' : 'text-muted-foreground hover:text-primary dark:text-slate-300 dark:hover:text-primary'}`}
                                       disabled={chLocked}
                                       title={chLocked ? t('completePrevChapter') : undefined}
                                     >
                                       {chLocked ? <Lock size={18} className="text-muted-foreground/50" /> : isChapterContentDone(chapter) ? <CheckCircle2 size={18} className="text-green-500" /> : chapter.completed ? <CheckCircle2 size={18} className="text-amber-600" /> : <Circle size={18} />}
                                     </button>
                                     <div className="flex items-center gap-1 flex-wrap">
-                                      <span className="text-[9px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L2</span>
+                                      <span className="text-[9px] font-bold text-muted-foreground/60 dark:text-slate-300 bg-secondary/80 dark:bg-white/10 px-1 py-0.5 rounded border border-border/30">L2</span>
                                     </div>
                                     <div className="ml-auto flex items-center gap-0.5 shrink-0">
                                       <ItemActions
@@ -1222,25 +1222,25 @@ export function Subjects() {
                                       {canEditItems && <>
                                         <button
                                           onClick={e => { e.stopPropagation(); openEdit('chapter', { subjId: subj.id, chapterId: chapter.id }, chapter.title, chapter.estimatedMinutes, undefined, chapter.difficulty); }}
-                                          className="p-1.5 text-muted-foreground hover:text-primary rounded-lg transition-colors"
+                                          className="p-1.5 text-muted-foreground hover:text-primary dark:text-slate-300 dark:hover:text-primary rounded-lg transition-colors"
                                         >
                                           <Pencil size={12} />
                                         </button>
                                         <button
                                           onClick={e => { e.stopPropagation(); openDelete('chapter', { subjId: subj.id, chapterId: chapter.id }, chapter.title); }}
-                                          className="p-1.5 text-muted-foreground hover:text-destructive transition-colors rounded-lg"
+                                          className="p-1.5 text-muted-foreground hover:text-destructive dark:text-slate-300 dark:hover:text-destructive transition-colors rounded-lg"
                                         >
                                           <Trash2 size={13} />
                                         </button>
                                       </>}
                                       <motion.div animate={{ rotate: chExpanded ? 90 : 0 }} transition={{ duration: 0.18 }}>
-                                        <ChevronRight size={15} className="text-muted-foreground" />
+                                        <ChevronRight size={15} className="text-muted-foreground dark:text-slate-300" />
                                       </motion.div>
                                       {chHandle}
                                     </div>
                                   </div>
                                   <MarksBadgeRow important={chapter.important} weak={chapter.weak} note={chapter.note} onClickNote={() => openNote(chPath, chapter.note ?? '')} />
-                                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                                  <p className="text-[10px] text-muted-foreground dark:text-slate-400 mt-0.5">
                                     {t('topics')}: {completedTopics}/{topicCount}
                                     {chSubtopics > 0 ? ` • Subtopics: ${chCompletedSubs}/${chSubtopics}` : ''}
                                     {chapter.estimatedMinutes ? ` • ${formatTotalTime(chapter.estimatedMinutes, t)}` : ''}
@@ -1250,7 +1250,7 @@ export function Subjects() {
                                 {/* Topics */}
                                 <AnimatePresence>
                                   {chExpanded && (
-                                    <motion.div {...collapseAnim} className="overflow-hidden border-t border-violet-300/25 bg-violet-500/[0.05]">
+                                    <motion.div {...collapseAnim} className="overflow-hidden border-t border-violet-300/25 dark:border-violet-500/20 bg-violet-500/[0.05] dark:bg-black/20">
                                       <div className="relative pt-0 px-2 pl-8 ml-2.5" ref={registerTrunkRoot}>
                                         <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-violet-400/65 pointer-events-none" style={{ height: 0 }} />
                                         <div className="space-y-1.5">
@@ -1275,14 +1275,14 @@ export function Subjects() {
                                             {(topHandle) => (
                                             <div className="relative" data-last-item={isLastTopic ? 'true' : undefined}>
                                             <div className="absolute -left-[35px] top-1/2 -translate-y-full h-[22px] w-[35px] border-l-[3px] border-b-[2px] border-violet-400/65 rounded-bl-[10px] pointer-events-none" />
-                                            <motion.div id={`study-item-${topic.id}`} {...itemAnim} className={`relative bg-violet-50/60 border-2 rounded-lg overflow-hidden ${topLocked ? 'opacity-60' : ''} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`} style={{ borderColor: topLocked ? "rgba(139,92,246,0.55)" : "rgba(139,92,246,0.6)" }}>
+                                            <motion.div id={`study-item-${topic.id}`} {...itemAnim} className={`relative bg-violet-50/60 dark:bg-slate-900/90 dark:border-violet-500/40 border-2 rounded-lg overflow-hidden ${topLocked ? 'opacity-60' : ''} ${topic.important ? 'ring-1 ring-yellow-300/50' : ''} ${topic.weak ? 'ring-1 ring-rose-300/50' : ''}`} style={{ borderColor: topLocked ? "rgba(139,92,246,0.55)" : "rgba(139,92,246,0.6)" }}>
                                               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-violet-400/70 rounded-r-full z-10" />
                                               <div
-                                                className="px-3 pt-2.5 pb-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
+                                                className="px-3 pt-2.5 pb-1.5 cursor-pointer hover:bg-secondary/20 dark:hover:bg-white/5 group/row relative"
                                                 onClick={() => toggleTopic(topic.id)}
                                               >
-                                                <p className={`text-xs font-semibold w-full leading-snug ${isTopicContentDone(topic) ? 'text-muted-foreground' : 'text-foreground'}`}>
-                                                  <Layers size={10} className="text-accent-foreground shrink-0 inline-block mr-1.5 -translate-y-0.5" />
+                                                <p className={`text-xs font-semibold w-full leading-snug ${isTopicContentDone(topic) ? 'text-muted-foreground dark:text-slate-400' : 'text-foreground dark:text-slate-100'}`}>
+                                                  <Layers size={10} className="text-accent-foreground dark:text-violet-400 shrink-0 inline-block mr-1.5 -translate-y-0.5" />
                                                   {topic.title}
                                                 </p>
                                                 <div className="flex items-center gap-1.5 mt-1">
@@ -1292,10 +1292,10 @@ export function Subjects() {
                                                     disabled={topLocked}
                                                     title={topLocked ? t('completePrevTopic') : undefined}
                                                   >
-                                                    {topLocked ? <Lock size={15} className="text-muted-foreground/40" /> : isTopicContentDone(topic) ? <CheckCircle2 size={15} className="text-green-500" /> : topic.completed ? <CheckCircle2 size={15} className="text-amber-600" /> : <Circle size={15} className="text-muted-foreground" />}
+                                                    {topLocked ? <Lock size={15} className="text-muted-foreground/40" /> : isTopicContentDone(topic) ? <CheckCircle2 size={15} className="text-green-500" /> : topic.completed ? <CheckCircle2 size={15} className="text-amber-600" /> : <Circle size={15} className="text-muted-foreground dark:text-slate-400" />}
                                                   </button>
                                                   <div className="flex items-center gap-1 flex-wrap">
-                                                    <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L3</span>
+                                                    <span className="text-[8px] font-bold text-muted-foreground/50 dark:text-slate-300 bg-secondary/80 dark:bg-white/10 px-1 py-0.5 rounded border border-border/30 dark:border-white/10">L3</span>
                                                   </div>
                                                   <div className="ml-auto flex items-center gap-0.5 shrink-0">
                                                     <ItemActions
@@ -1310,25 +1310,25 @@ export function Subjects() {
                                                     {canEditItems && <>
                                                       <button
                                                         onClick={e => { e.stopPropagation(); openEdit('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }, topic.title, topic.estimatedMinutes, undefined, topic.difficulty); }}
-                                                        className="p-1 text-muted-foreground hover:text-primary"
+                                                        className="p-1 text-muted-foreground hover:text-primary dark:text-slate-300 dark:hover:text-primary"
                                                       >
                                                         <Pencil size={10} />
                                                       </button>
                                                       <button
                                                         onClick={e => { e.stopPropagation(); openDelete('topic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id }, topic.title); }}
-                                                        className="p-1 text-muted-foreground hover:text-destructive"
+                                                        className="p-1 text-muted-foreground hover:text-destructive dark:text-slate-300 dark:hover:text-rose-400"
                                                       >
                                                         <Trash2 size={11} />
                                                       </button>
                                                     </>}
                                                     <motion.div animate={{ rotate: tExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
-                                                      <ChevronRight size={13} className="text-muted-foreground" />
+                                                      <ChevronRight size={13} className="text-muted-foreground dark:text-slate-300" />
                                                     </motion.div>
                                                     {topHandle}
                                                   </div>
                                                 </div>
                                                 <MarksBadgeRow size="xs" important={topic.important} weak={topic.weak} note={topic.note} onClickNote={() => openNote(topPath, topic.note ?? '')} />
-                                                <p className="text-[9px] text-muted-foreground mt-0.5">
+                                                <p className="text-[9px] text-muted-foreground dark:text-slate-400 mt-0.5">
                                                   Subtopics: {completedSubs}/{topic.subtopics.length}
                                                   {topConcepts > 0 ? ` • Concepts: ${topCompletedConcepts}/${topConcepts}` : ''}
                                                   {topic.estimatedMinutes ? ` • ${formatTotalTime(topic.estimatedMinutes, t)}` : ''}
@@ -1338,7 +1338,7 @@ export function Subjects() {
                                               {/* Subtopics */}
                                               <AnimatePresence>
                                                 {tExpanded && (
-                                                  <motion.div {...collapseAnim} className="overflow-hidden border-t border-sky-300/20 bg-sky-500/[0.05]">
+                                                  <motion.div {...collapseAnim} className="overflow-hidden border-t border-sky-300/20 dark:border-sky-500/20 bg-sky-500/[0.05] dark:bg-black/20">
                                                     <div className="relative pt-0 px-2 pl-10 ml-2.5" ref={registerTrunkRoot}>
                                                       <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-sky-400/65 pointer-events-none" style={{ height: 0 }} />
                                                       <div className="space-y-1">
@@ -1363,22 +1363,22 @@ export function Subjects() {
                                                           {(subHandle) => (
                                                           <div className="relative" data-last-item={isLastSub ? 'true' : undefined}>
                                                           <div className="absolute -left-[43px] top-1/2 -translate-y-full h-[20px] w-[43px] border-l-[3px] border-b-[2px] border-sky-400/65 rounded-bl-[10px] pointer-events-none" />
-                                                          <motion.div id={`study-item-${sub.id}`} {...itemAnim} className={`relative bg-sky-50/60 border-2 rounded-lg overflow-hidden ${subLocked ? 'opacity-55' : ''} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`} style={{ borderColor: subLocked ? "rgba(14,165,233,0.5)" : "rgba(14,165,233,0.6)" }}>
+                                                          <motion.div id={`study-item-${sub.id}`} {...itemAnim} className={`relative bg-sky-50/60 dark:bg-slate-900/90 dark:border-sky-500/40 border-2 rounded-lg overflow-hidden ${subLocked ? 'opacity-55' : ''} ${sub.important ? 'ring-1 ring-yellow-300/40' : ''} ${sub.weak ? 'ring-1 ring-rose-300/40' : ''}`} style={{ borderColor: subLocked ? "rgba(14,165,233,0.5)" : "rgba(14,165,233,0.6)" }}>
                                                             <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-sky-400/70 rounded-r-full z-10" />
                                                             <div
-                                                              className="px-2.5 pt-2 pb-1.5 cursor-pointer hover:bg-secondary/20 group/row relative"
+                                                              className="px-2.5 pt-2 pb-1.5 cursor-pointer hover:bg-secondary/20 dark:hover:bg-white/5 group/row relative"
                                                               onClick={() => toggleSubtopicExpand(sub.id)}
                                                             >
-                                                              <p className={`text-[11px] font-medium w-full leading-snug ${isSubtopicContentDone(sub) ? 'text-muted-foreground' : 'text-foreground'}`}>
-                                                                <List size={9} className="text-blue-400 shrink-0 inline-block mr-1.5 -translate-y-0.5" />
+                                                              <p className={`text-[11px] font-medium w-full leading-snug ${isSubtopicContentDone(sub) ? 'text-muted-foreground dark:text-slate-400' : 'text-foreground dark:text-slate-100'}`}>
+                                                                <List size={9} className="text-blue-400 dark:text-sky-400 shrink-0 inline-block mr-1.5 -translate-y-0.5" />
                                                                 {sub.title}
                                                               </p>
                                                               <div className="flex items-center gap-1 mt-1 flex-wrap">
                                                                 <button onClick={e => { e.stopPropagation(); if (!subLocked) toggleSubtopicComplete(subj.id, chapter.id, topic.id, sub.id); }} disabled={subLocked} title={subLocked ? t('completePrevSubtopic') : undefined} className="shrink-0">
-                                                                  {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : isSubtopicContentDone(sub) ? <CheckCircle2 size={13} className="text-green-500" /> : sub.completed ? <CheckCircle2 size={13} className="text-amber-600" /> : <Circle size={13} className="text-muted-foreground" />}
+                                                                  {subLocked ? <Lock size={13} className="text-muted-foreground/35" /> : isSubtopicContentDone(sub) ? <CheckCircle2 size={13} className="text-green-500" /> : sub.completed ? <CheckCircle2 size={13} className="text-amber-600" /> : <Circle size={13} className="text-muted-foreground dark:text-slate-400" />}
                                                                 </button>
                                                                 <div className="flex items-center gap-1 flex-wrap">
-                                                                  <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L4</span>
+                                                                  <span className="text-[8px] font-bold text-muted-foreground/50 dark:text-slate-300 bg-secondary/80 dark:bg-white/10 px-1 py-0.5 rounded border border-border/30 dark:border-white/10">L4</span>
                                                                 </div>
                                                                 <div className="ml-auto flex items-center gap-0.5 shrink-0">
                                                                   <ItemActions
@@ -1391,21 +1391,21 @@ export function Subjects() {
                                                                     size="sm"
                                                                   />
                                                                   {canEditItems && <>
-                                                                    <button onClick={e => { e.stopPropagation(); openEdit('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title, sub.estimatedMinutes, undefined, sub.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
+                                                                    <button onClick={e => { e.stopPropagation(); openEdit('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title, sub.estimatedMinutes, undefined, sub.difficulty); }} className="p-1 text-muted-foreground hover:text-primary dark:text-slate-300 dark:hover:text-primary">
                                                                       <Pencil size={9} />
                                                                     </button>
-                                                                    <button onClick={e => { e.stopPropagation(); openDelete('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title); }} className="p-1 text-muted-foreground hover:text-destructive">
+                                                                    <button onClick={e => { e.stopPropagation(); openDelete('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id }, sub.title); }} className="p-1 text-muted-foreground hover:text-destructive dark:text-slate-300 dark:hover:text-rose-400">
                                                                       <Trash2 size={10} />
                                                                     </button>
                                                                   </>}
                                                                   <motion.div animate={{ rotate: subExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
-                                                                    <ChevronRight size={11} className="text-muted-foreground" />
+                                                                    <ChevronRight size={11} className="text-muted-foreground dark:text-slate-300" />
                                                                   </motion.div>
                                                                   {subHandle}
                                                                 </div>
                                                               </div>
                                                               <MarksBadgeRow size="xs" important={sub.important} weak={sub.weak} note={sub.note} onClickNote={() => openNote(subPath, sub.note ?? '')} />
-                                                              <p className="text-[8px] text-muted-foreground">
+                                                              <p className="text-[8px] text-muted-foreground dark:text-slate-400">
                                                                 Concepts: {completedConcepts}/{sub.concepts.length}
                                                                 {subPoints > 0 ? ` • Points: ${subCompletedPoints}/${subPoints}` : ''}
                                                                 {sub.estimatedMinutes ? ` • ${formatTotalTime(sub.estimatedMinutes, t)}` : ''}
@@ -1415,7 +1415,7 @@ export function Subjects() {
                                                             {/* Concepts */}
                                                             <AnimatePresence>
                                                               {subExpanded && (
-                                                                <motion.div {...collapseAnim} className="overflow-hidden border-t border-border/20 bg-secondary/10">
+                                                                <motion.div {...collapseAnim} className="overflow-hidden border-t border-border/20 dark:border-fuchsia-500/20 bg-secondary/10 dark:bg-black/20">
                                                                   <div className="relative ml-2.5 p-1.5 pl-8 space-y-1" ref={registerTrunkRoot}>
                                                                     <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-fuchsia-400/70 pointer-events-none" style={{ height: 0 }} />
                                                                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
@@ -1436,22 +1436,22 @@ export function Subjects() {
                                                                         {(conHandle) => (
                                                                          <div className="relative" data-last-item={conIdx === sub.concepts.length - 1 ? 'true' : undefined}>
                                                                          <div className="absolute -left-[35px] top-1/2 -translate-y-full h-[20px] w-[35px] border-l-[3px] border-b-[2px] border-fuchsia-400/70 rounded-bl-[10px] pointer-events-none" />
-                                                                         <motion.div id={`study-item-${concept.id}`} {...itemAnim} className={`relative bg-fuchsia-50/60 border-2 rounded-lg overflow-hidden ${conLocked ? 'opacity-50' : ''} ${concept.important ? 'ring-1 ring-yellow-300/40' : ''} ${concept.weak ? 'ring-1 ring-rose-300/40' : ''}`} style={{ borderColor: conLocked ? "rgba(232,121,249,0.5)" : "rgba(232,121,249,0.65)" }}>
+                                                                         <motion.div id={`study-item-${concept.id}`} {...itemAnim} className={`relative bg-fuchsia-50/60 dark:bg-slate-900/90 dark:border-fuchsia-500/40 border-2 rounded-lg overflow-hidden ${conLocked ? 'opacity-50' : ''} ${concept.important ? 'ring-1 ring-yellow-300/40' : ''} ${concept.weak ? 'ring-1 ring-rose-300/40' : ''}`} style={{ borderColor: conLocked ? "rgba(232,121,249,0.5)" : "rgba(232,121,249,0.65)" }}>
                                                                            <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-fuchsia-400/70 rounded-r-full z-10" />
                                                                           <div
-                                                                             className="px-2 pt-1.5 pb-1 pl-3 cursor-pointer hover:bg-fuchsia-100/50 group/row relative"
+                                                                             className="px-2 pt-1.5 pb-1 pl-3 cursor-pointer hover:bg-fuchsia-100/50 dark:hover:bg-white/5 group/row relative"
                                                                             onClick={() => toggleConceptExpand(concept.id)}
                                                                           >
-                                                                            <p className={`text-[10px] font-medium w-full leading-snug ${isConceptContentDone(concept) ? 'text-muted-foreground' : 'text-foreground'}`}>
+                                                                            <p className={`text-[10px] font-medium w-full leading-snug ${isConceptContentDone(concept) ? 'text-muted-foreground dark:text-slate-400' : 'text-foreground dark:text-slate-100'}`}>
                                                                               {concept.title}
                                                                             </p>
                                                                             <div className="flex items-center gap-1 mt-0.5">
                                                                               <button onClick={e => { e.stopPropagation(); if (!conLocked) toggleConceptComplete(subj.id, chapter.id, topic.id, sub.id, concept.id); }} disabled={conLocked} title={conLocked ? t('completePrevConcept') : undefined} className="shrink-0">
-                                                                                {conLocked ? <Lock size={11} className="text-muted-foreground/30" /> : isConceptContentDone(concept) ? <CheckCircle2 size={11} className="text-green-500" /> : concept.completed ? <CheckCircle2 size={11} className="text-amber-600" /> : <Circle size={11} className="text-muted-foreground" />}
+                                                                                {conLocked ? <Lock size={11} className="text-muted-foreground/30" /> : isConceptContentDone(concept) ? <CheckCircle2 size={11} className="text-green-500" /> : concept.completed ? <CheckCircle2 size={11} className="text-amber-600" /> : <Circle size={11} className="text-muted-foreground dark:text-slate-400" />}
                                                                               </button>
                                                                               <div className="flex items-center gap-1 flex-wrap">
-                                                                                 <Lightbulb size={8} className="text-fuchsia-500 shrink-0" />
-                                                                                <span className="text-[8px] font-bold text-muted-foreground/50 bg-secondary/80 px-1 py-0.5 rounded border border-border/30">L5</span>
+                                                                                 <Lightbulb size={8} className="text-fuchsia-500 dark:text-fuchsia-400 shrink-0" />
+                                                                                <span className="text-[8px] font-bold text-muted-foreground/50 dark:text-slate-300 bg-secondary/80 dark:bg-white/10 px-1 py-0.5 rounded border border-border/30 dark:border-white/10">L5</span>
                                                                               </div>
                                                                               <div className="ml-auto flex items-center gap-0.5 shrink-0">
                                                                                 <ItemActions
@@ -1464,21 +1464,21 @@ export function Subjects() {
                                                                                   size="sm"
                                                                                 />
                                                                                 {canEditItems && <>
-                                                                                  <button onClick={e => { e.stopPropagation(); openEdit('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title, concept.estimatedMinutes, undefined, concept.difficulty); }} className="p-1 text-muted-foreground hover:text-primary">
+                                                                                  <button onClick={e => { e.stopPropagation(); openEdit('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title, concept.estimatedMinutes, undefined, concept.difficulty); }} className="p-1 text-muted-foreground hover:text-primary dark:text-slate-300 dark:hover:text-primary">
                                                                                     <Pencil size={8} />
                                                                                   </button>
-                                                                                  <button onClick={e => { e.stopPropagation(); openDelete('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title); }} className="p-1 text-muted-foreground hover:text-destructive">
+                                                                                  <button onClick={e => { e.stopPropagation(); openDelete('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id }, concept.title); }} className="p-1 text-muted-foreground hover:text-destructive dark:text-slate-300 dark:hover:text-rose-400">
                                                                                     <Trash2 size={9} />
                                                                                   </button>
                                                                                 </>}
                                                                                 <motion.div animate={{ rotate: cExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
-                                                                                  <ChevronRight size={10} className="text-muted-foreground" />
+                                                                                  <ChevronRight size={10} className="text-muted-foreground dark:text-slate-300" />
                                                                                 </motion.div>
                                                                                 {conHandle}
                                                                               </div>
                                                                             </div>
                                                                             <MarksBadgeRow size="xs" important={concept.important} weak={concept.weak} note={concept.note} onClickNote={() => openNote(conPath, concept.note ?? '')} />
-                                                                            <p className="text-[8px] text-muted-foreground">
+                                                                            <p className="text-[8px] text-muted-foreground dark:text-slate-400">
                                                                               {concept.points.length > 0 ? `Points: ${completedPoints}/${concept.points.length}` : ''}
                                                                               {concept.estimatedMinutes ? ` • ${formatTotalTime(concept.estimatedMinutes, t)}` : ''}
                                                                             </p>
@@ -1487,7 +1487,7 @@ export function Subjects() {
                                                                           {/* Points */}
                                                                           <AnimatePresence>
                                                                             {cExpanded && (
-                                                                              <motion.div {...collapseAnim} className="overflow-hidden border-t border-border/10 bg-secondary/10">
+                                                                              <motion.div {...collapseAnim} className="overflow-hidden border-t border-border/10 dark:border-emerald-500/20 bg-secondary/10 dark:bg-black/20">
                                                                                  <div className="relative ml-2.5 p-1.5 pl-7 space-y-0.5" ref={registerTrunkRoot}>
                                                                                    <div data-trunk className="absolute -left-[3px] top-0 w-[3px] bg-emerald-400/70 pointer-events-none" style={{ height: 0 }} />
                                                                                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
@@ -1509,17 +1509,17 @@ export function Subjects() {
                                                                                     <motion.div
                                                                                       id={`study-item-${point.id}`}
                                                                                       {...itemAnim}
-                                                                                       className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-lg border border-emerald-300/60 bg-emerald-50/40 hover:bg-emerald-50/80 group/row ${ptLocked ? 'opacity-45' : ''} ${point.important ? 'ring-1 ring-yellow-300/40' : ''} ${point.weak ? 'ring-1 ring-rose-300/40' : ''}`}
+                                                                                       className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-lg border border-emerald-300/60 dark:border-emerald-500/40 bg-emerald-50/40 dark:bg-slate-900/90 hover:bg-emerald-50/80 dark:hover:bg-slate-800/90 group/row ${ptLocked ? 'opacity-45' : ''} ${point.important ? 'ring-1 ring-yellow-300/40' : ''} ${point.weak ? 'ring-1 ring-rose-300/40' : ''}`}
                                                                                     >
-                                                                                      <p className={`text-[9px] font-medium w-full ${point.completed ? 'text-muted-foreground' : 'text-foreground'}`}>
+                                                                                      <p className={`text-[9px] font-medium w-full ${point.completed ? 'text-muted-foreground dark:text-slate-400' : 'text-foreground dark:text-slate-100'}`}>
                                                                                         {point.title}
                                                                                       </p>
                                                                                       <div className="flex items-center gap-1.5">
                                                                                         <button onClick={() => { if (!ptLocked) togglePointComplete(subj.id, chapter.id, topic.id, sub.id, concept.id, point.id); }} disabled={ptLocked} title={ptLocked ? t('completePrevPoint') : undefined} className="shrink-0">
-                                                                                          {ptLocked ? <Lock size={10} className="text-muted-foreground/30" /> : point.completed ? <CheckCircle2 size={10} className="text-green-500" /> : <Circle size={10} className="text-muted-foreground" />}
+                                                                                          {ptLocked ? <Lock size={10} className="text-muted-foreground/30" /> : point.completed ? <CheckCircle2 size={10} className="text-green-500" /> : <Circle size={10} className="text-muted-foreground dark:text-slate-400" />}
                                                                                         </button>
-                                                                                        <Dot size={10} className="text-muted-foreground shrink-0" />
-                                                                                        <span className="text-[7px] font-bold text-muted-foreground/40 bg-secondary/60 px-1 py-0.5 rounded border border-border/20 shrink-0">L6</span>
+                                                                                        <Dot size={10} className="text-muted-foreground dark:text-emerald-400 shrink-0" />
+                                                                                        <span className="text-[7px] font-bold text-muted-foreground/40 dark:text-slate-300 bg-secondary/60 dark:bg-white/10 px-1 py-0.5 rounded border border-border/20 dark:border-white/10 shrink-0">L6</span>
                                                                                         <div className="ml-auto flex items-center gap-0.5 shrink-0">
                                                                                           <ItemActions
                                                                                             path={ptPath}
@@ -1531,11 +1531,11 @@ export function Subjects() {
                                                                                             size="sm"
                                                                                           />
                                                                                           {canEditItems && (
-                                                                                            <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-all shrink-0">
-                                                                                              <button onClick={() => openEdit('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title, undefined, undefined, point.difficulty)} className="p-0.5 text-muted-foreground hover:text-primary">
+                                                                                            <div className="flex items-center gap-0.5 opacity-80 sm:opacity-0 sm:group-hover/row:opacity-100 transition-all shrink-0">
+                                                                                              <button onClick={() => openEdit('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title, undefined, undefined, point.difficulty)} className="p-0.5 text-muted-foreground hover:text-primary dark:text-slate-300 dark:hover:text-primary">
                                                                                                 <Pencil size={8} />
                                                                                               </button>
-                                                                                              <button onClick={() => openDelete('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title)} className="p-0.5 text-muted-foreground hover:text-destructive">
+                                                                                              <button onClick={() => openDelete('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id, pointId: point.id }, point.title)} className="p-0.5 text-muted-foreground hover:text-destructive dark:text-slate-300 dark:hover:text-rose-400">
                                                                                                 <Trash2 size={9} />
                                                                                               </button>
                                                                                             </div>
@@ -1557,7 +1557,7 @@ export function Subjects() {
                                                                                   </DndContext>
                                                                                   {canAddItems && <button
                                                                                     onClick={() => openAdd('point', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id, conceptId: concept.id })}
-                                                                                    className="w-full py-1 border border-dashed text-[9px] font-semibold text-foreground/60 rounded-md flex items-center justify-center gap-0.5 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.35)", backgroundColor: "rgba(14,165,233,0.03)" }}
+                                                                                    className="w-full py-1 border border-dashed text-[9px] font-semibold text-foreground/60 dark:text-slate-300 rounded-md flex items-center justify-center gap-0.5 transition-colors hover:text-foreground dark:hover:text-white dark:bg-white/5" style={{ borderColor: "rgba(14,165,233,0.35)", backgroundColor: "rgba(14,165,233,0.03)" }}
                                                                                   >
                                                                                     <Plus size={9} /> {t('addPoint')}
                                                                                   </button>}
@@ -1575,7 +1575,7 @@ export function Subjects() {
                                                                     </DndContext>
                                                                     {canAddItems && <button
                                                                       onClick={() => openAdd('concept', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id, subtopicId: sub.id })}
-                                                                      className="w-full py-1.5 border border-dashed text-[10px] font-semibold text-foreground/60 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.4)", backgroundColor: "rgba(14,165,233,0.04)" }}
+                                                                      className="w-full py-1.5 border border-dashed text-[10px] font-semibold text-foreground/60 dark:text-slate-300 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground dark:hover:text-white dark:bg-white/5" style={{ borderColor: "rgba(14,165,233,0.4)", backgroundColor: "rgba(14,165,233,0.04)" }}
                                                                     >
                                                                       <Plus size={10} /> {t('addConcept')}
                                                                     </button>}
@@ -1596,7 +1596,7 @@ export function Subjects() {
                                                       <div className="px-2 pl-10 ml-2.5 pt-2 pb-2">
                                                       {canAddItems && <button
                                                         onClick={() => openAdd('subtopic', { subjId: subj.id, chapterId: chapter.id, topicId: topic.id })}
-                                                        className="w-full py-2 border border-dashed text-[10px] font-semibold text-foreground/65 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(14,165,233,0.45)", backgroundColor: "rgba(14,165,233,0.05)" }}
+                                                        className="w-full py-2 border border-dashed text-[10px] font-semibold text-foreground/65 dark:text-slate-300 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground dark:hover:text-white dark:bg-white/5" style={{ borderColor: "rgba(14,165,233,0.45)", backgroundColor: "rgba(14,165,233,0.05)" }}
                                                       >
                                                         <Plus size={11} /> {t('addSubtopic')}
                                                       </button>}
@@ -1617,7 +1617,7 @@ export function Subjects() {
                                         <div className="px-2 pl-8 ml-2.5 pt-2 pb-2">
                                         {canAddItems && <button
                                           onClick={() => openAdd('topic', { subjId: subj.id, chapterId: chapter.id })}
-                                          className="w-full py-2 border border-dashed text-xs font-semibold text-foreground/65 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground" style={{ borderColor: "rgba(139,92,246,0.45)", backgroundColor: "rgba(139,92,246,0.05)" }}
+                                          className="w-full py-2 border border-dashed text-xs font-semibold text-foreground/65 dark:text-slate-300 rounded-lg flex items-center justify-center gap-1 transition-colors hover:text-foreground dark:hover:text-white dark:bg-white/5" style={{ borderColor: "rgba(139,92,246,0.45)", backgroundColor: "rgba(139,92,246,0.05)" }}
                                         >
                                           <Plus size={12} /> {t('addTopic')}
                                         </button>}
@@ -1638,7 +1638,7 @@ export function Subjects() {
                           <div className="px-3 pl-4 ml-2.5 pt-2 pb-3">
                           {canAddItems && <button
                             onClick={() => openAdd('chapter', { subjId: subj.id })}
-                            className="w-full py-3 border-2 border-dashed text-sm font-semibold text-foreground/65 rounded-xl flex items-center justify-center gap-2 transition-colors hover:text-foreground" style={{ borderColor: "rgba(99,102,241,0.5)", backgroundColor: "rgba(99,102,241,0.05)" }}
+                            className="w-full py-3 border-2 border-dashed text-sm font-semibold text-foreground/65 dark:text-slate-300 rounded-xl flex items-center justify-center gap-2 transition-colors hover:text-foreground dark:hover:text-white dark:bg-white/5" style={{ borderColor: "rgba(99,102,241,0.5)", backgroundColor: "rgba(99,102,241,0.05)" }}
                           >
                             <FolderPlus size={16} /> {t('addChapter')}
                           </button>}

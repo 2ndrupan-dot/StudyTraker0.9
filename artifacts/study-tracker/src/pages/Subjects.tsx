@@ -1049,39 +1049,95 @@ export function Subjects() {
                   <div className="absolute left-0 top-0 bottom-0 w-1.5 z-10" style={{ backgroundColor: subj.color }} />
                   {/* Subject header */}
                   <div
-                    className="p-3 relative flex items-center justify-between cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:bg-black/10 transition-colors group/row"
+                    className="p-3 relative cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:bg-black/10 transition-colors group/row"
                     onClick={() => toggleSubj(subj.id)}
                   >
-                    <div className="pl-3 flex-1 min-w-0">
-                      {/* Title */}
-                      <h3 className="font-bold text-foreground text-base leading-tight mb-0.5 break-words">{subj.title}</h3>
-                      {/* Badges row — L1, days, status badges, marks */}
-                      <div className="flex items-center gap-1 flex-nowrap overflow-hidden mb-1">
-                        <span className="text-[9px] font-bold text-muted-foreground/60 dark:text-slate-300 bg-secondary/80 dark:bg-white/10 px-1.5 py-0.5 rounded border border-border/40">L1</span>
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            setActivePath(prev => ({ ...prev, subjId: subj.id, level: 'subject' }));
-                            setFormDays(subj.allocatedDays.toString());
-                            setModal('days');
-                          }}
-                          className="px-1.5 py-0.5 bg-secondary dark:bg-white/10 text-muted-foreground dark:text-slate-200 text-[10px] font-bold rounded-md border border-border/50 cursor-pointer hover:bg-primary/10 transition-colors"
-                        >
-                          {subj.allocatedDays} d
-                        </button>
-                        {subj.chapters.length > 0 && subj.chapters.every(c => isChapterContentDone(c)) && (
-                          <span className="px-1.5 py-0.5 bg-green-500/10 text-green-700 text-[9px] font-bold rounded-md">✓ {t('filterCompleted')}</span>
-                        )}
-                        <MarksBadgeRow important={subj.important} weak={subj.weak} note={subj.note} onClickNote={() => openNote(subjPath, subj.note ?? '')} size="xs" />
+                    <div className="flex items-center justify-between">
+                      <div className="pl-3 flex-1 min-w-0">
+                        {/* Title */}
+                        <h3 className="font-bold text-foreground text-base leading-tight mb-0.5 break-words">{subj.title}</h3>
+                        {/* Badges row — L1, days, status badges, marks */}
+                        <div className="flex items-center gap-1 flex-nowrap overflow-hidden mb-1">
+                          <span className="text-[9px] font-bold text-muted-foreground/60 dark:text-slate-300 bg-secondary/80 dark:bg-white/10 px-1.5 py-0.5 rounded border border-border/40">L1</span>
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              setActivePath(prev => ({ ...prev, subjId: subj.id, level: 'subject' }));
+                              setFormDays(subj.allocatedDays.toString());
+                              setModal('days');
+                            }}
+                            className="px-1.5 py-0.5 bg-secondary dark:bg-white/10 text-muted-foreground dark:text-slate-200 text-[10px] font-bold rounded-md border border-border/50 cursor-pointer hover:bg-primary/10 transition-colors"
+                          >
+                            {subj.allocatedDays} d
+                          </button>
+                          {subj.chapters.length > 0 && subj.chapters.every(c => isChapterContentDone(c)) && (
+                            <span className="px-1.5 py-0.5 bg-green-500/10 text-green-700 text-[9px] font-bold rounded-md">✓ {t('filterCompleted')}</span>
+                          )}
+                          <MarksBadgeRow important={subj.important} weak={subj.weak} note={subj.note} onClickNote={() => openNote(subjPath, subj.note ?? '')} size="xs" />
+                        </div>
+                        {/* Meta row — chapters count + date */}
+                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium overflow-hidden">
+                          <span className="whitespace-nowrap">{t('chapters')}: {completedChapters}/{chapterCount}</span>
+                          <span className="shrink-0">•</span>
+                          <span className="whitespace-nowrap shrink-0">{format(parseISO(subj.deadline), 'MMM d, yy')}</span>
+                        </div>
                       </div>
-                      {/* Meta row — chapters count + date */}
-                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium overflow-hidden">
-                        <span className="whitespace-nowrap">{t('chapters')}: {completedChapters}/{chapterCount}</span>
-                        <span className="shrink-0">•</span>
-                        <span className="whitespace-nowrap shrink-0">{format(parseISO(subj.deadline), 'MMM d, yy')}</span>
+                      {/* Action buttons — compact two-row layout */}
+                      <div className="flex flex-col items-end gap-0.5 pl-1 shrink-0">
+                        <div className="flex items-center gap-0">
+                          <ItemActions
+                            path={subjPath}
+                            important={subj.important}
+                            weak={subj.weak}
+                            hasNote={!!subj.note}
+                            currentNote={subj.note}
+                            onOpenNote={openNote}
+                            size="sm"
+                          />
+                        </div>
+                        <div className="flex items-center gap-0">
+                          <button
+                            onClick={e => { e.stopPropagation(); setResetConfirmSubjId(subj.id); }}
+                            className="p-1 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 dark:text-slate-300 dark:hover:text-amber-400 rounded-full transition-colors"
+                            title={t('resetSubject')}
+                          >
+                            <RotateCcw size={11} />
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); openCopyModal(subj); }}
+                            className="p-1 text-muted-foreground hover:bg-sky-500/10 hover:text-sky-600 dark:text-slate-300 dark:hover:text-sky-400 rounded-full transition-colors"
+                            title={lang === 'bn' ? 'সাবজেক্ট কপি করুন' : 'Copy Subject Structure'}
+                          >
+                            <Copy size={11} />
+                          </button>
+                          {canEditItems && <>
+                            <button
+                              onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
+                              className="p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-primary rounded-full transition-colors"
+                            >
+                              <Pencil size={11} />
+                            </button>
+                            <button
+                              onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }, subj.title); }}
+                              className="p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive dark:text-slate-300 dark:hover:text-destructive rounded-full transition-colors"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </>}
+                          <motion.div
+                            animate={{ rotate: isExpanded ? 90 : 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="text-muted-foreground dark:text-slate-200 bg-secondary dark:bg-white/10 p-1 rounded-full"
+                          >
+                            <ChevronRight size={12} />
+                          </motion.div>
+                        </div>
                       </div>
-                      {/* Layered progress bar */}
-                      <div className="mt-2.5 h-2 w-full bg-slate-300/70 dark:bg-white/15 border border-slate-300/90 dark:border-white/15 rounded-full overflow-hidden relative shadow-inner">
+                      {subjHandle}
+                    </div>
+                    {/* Layered progress bar — full width across card with equal symmetric gap */}
+                    <div className="mt-2.5 pl-3 pr-3 w-full">
+                      <div className="h-2 w-full bg-slate-300/70 dark:bg-white/15 border border-slate-300/90 dark:border-white/15 rounded-full overflow-hidden relative shadow-inner">
                         {overviewProg > 0 && (
                           <motion.div
                             className="absolute left-0 top-0 h-full opacity-40 rounded-full"
@@ -1100,58 +1156,6 @@ export function Subjects() {
                         />
                       </div>
                     </div>
-                    {/* Action buttons — compact two-row layout */}
-                    <div className="flex flex-col items-end gap-0.5 pl-1 shrink-0">
-                      <div className="flex items-center gap-0">
-                        <ItemActions
-                          path={subjPath}
-                          important={subj.important}
-                          weak={subj.weak}
-                          hasNote={!!subj.note}
-                          currentNote={subj.note}
-                          onOpenNote={openNote}
-                          size="sm"
-                        />
-                      </div>
-                      <div className="flex items-center gap-0">
-                        <button
-                          onClick={e => { e.stopPropagation(); setResetConfirmSubjId(subj.id); }}
-                          className="p-1 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 dark:text-slate-300 dark:hover:text-amber-400 rounded-full transition-colors"
-                          title={t('resetSubject')}
-                        >
-                          <RotateCcw size={11} />
-                        </button>
-                        <button
-                          onClick={e => { e.stopPropagation(); openCopyModal(subj); }}
-                          className="p-1 text-muted-foreground hover:bg-sky-500/10 hover:text-sky-600 dark:text-slate-300 dark:hover:text-sky-400 rounded-full transition-colors"
-                          title={lang === 'bn' ? 'সাবজেক্ট কপি করুন' : 'Copy Subject Structure'}
-                        >
-                          <Copy size={11} />
-                        </button>
-                        {canEditItems && <>
-                          <button
-                            onClick={e => { e.stopPropagation(); openEdit('subject', { subjId: subj.id }, subj.title, undefined, subj.allocatedDays); }}
-                            className="p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-primary rounded-full transition-colors"
-                          >
-                            <Pencil size={11} />
-                          </button>
-                          <button
-                            onClick={e => { e.stopPropagation(); openDelete('subject', { subjId: subj.id }, subj.title); }}
-                            className="p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive dark:text-slate-300 dark:hover:text-destructive rounded-full transition-colors"
-                          >
-                            <Trash2 size={11} />
-                          </button>
-                        </>}
-                        <motion.div
-                          animate={{ rotate: isExpanded ? 90 : 0 }}
-                          transition={{ duration: 0.2 }}
-                          className="text-muted-foreground dark:text-slate-200 bg-secondary dark:bg-white/10 p-1 rounded-full"
-                        >
-                          <ChevronRight size={12} />
-                        </motion.div>
-                      </div>
-                    </div>
-                    {subjHandle}
                   </div>
 
                   {/* Chapters */}

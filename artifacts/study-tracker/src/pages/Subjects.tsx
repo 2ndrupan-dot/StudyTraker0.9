@@ -28,6 +28,7 @@ import {
   isChapterUnlocked, isTopicUnlocked, isSubtopicUnlocked,
   isConceptUnlocked, isPointUnlocked,
   isChapterContentDone, isTopicContentDone, isSubtopicContentDone, isConceptContentDone,
+  computeGranularProgress, formatProgressPercent,
 } from '@/lib/timeEngine';
 import { Modal, ConfirmModal, Input, Button, NoteEditorModal } from '@/components/ui';
 import { ScrollReveal } from '@/components/ScrollReveal';
@@ -1028,9 +1029,8 @@ export function Subjects() {
               const isExpanded = expandedSubj === subj.id;
               const chapterCount = subj.chapters.length;
               const completedChapters = subj.chapters.filter(c => isChapterContentDone(c)).length;
-              const counts = chapterCounts(subj);
-              const prog = chapterCount === 0 ? 0 : (completedChapters / chapterCount) * 100;
-              const overviewProg = chapterCount === 0 ? 0 : (counts.overviewOnly / chapterCount) * 100;
+              const granular = computeGranularProgress([subj]);
+              const prog = granular.percent;
               const subjPath: MarkPath = { subjectId: subj.id, level: 'subject' };
               const accent = CARD_ACCENTS[idx % CARD_ACCENTS.length];
 
@@ -1135,25 +1135,23 @@ export function Subjects() {
                       </div>
                       {subjHandle}
                     </div>
-                    {/* Layered progress bar — full width across card with equal symmetric gap */}
-                    <div className="mt-2.5 pl-3 pr-3 w-full">
-                      <div className="h-2 w-full bg-slate-300/70 dark:bg-white/15 border border-slate-300/90 dark:border-white/15 rounded-full overflow-hidden relative shadow-inner">
-                        {overviewProg > 0 && (
+                    {/* Layered progress bar — stops at the divider between action buttons and reorder handle, with bold percentage to the right */}
+                    <div className="mt-2.5 pl-3 flex items-center">
+                      <div className="flex-1 min-w-0">
+                        <div className="h-2 w-full bg-slate-300/70 dark:bg-white/15 border border-slate-300/90 dark:border-white/15 rounded-full overflow-hidden relative shadow-inner">
                           <motion.div
-                            className="absolute left-0 top-0 h-full opacity-40 rounded-full"
+                            className="absolute left-0 top-0 h-full rounded-full shadow-xs"
                             initial={{ width: 0 }}
-                            animate={{ width: `${prog + overviewProg}%` }}
+                            animate={{ width: `${Math.max(prog, prog > 0 ? 0.5 : 0)}%` }}
                             transition={{ duration: 0.6, ease: 'easeOut' }}
                             style={{ backgroundColor: subj.color }}
                           />
-                        )}
-                        <motion.div
-                          className="absolute left-0 top-0 h-full rounded-full shadow-xs"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${prog}%` }}
-                          transition={{ duration: 0.6, ease: 'easeOut' }}
-                          style={{ backgroundColor: subj.color }}
-                        />
+                        </div>
+                      </div>
+                      <div className="shrink-0 self-stretch flex items-center justify-center border-l border-border/30 ml-1 px-1.5 min-w-[2.25rem]">
+                        <span className="text-[11px] font-bold text-foreground dark:text-slate-200 tabular-nums">
+                          {formatProgressPercent(prog)}%
+                        </span>
                       </div>
                     </div>
                   </div>

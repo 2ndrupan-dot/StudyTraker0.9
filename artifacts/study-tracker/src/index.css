@@ -476,6 +476,96 @@ mark.search-hl.search-hl-active,
   background-color: #f97316;
   color: #fff;
 }
+
+/* ── Dark mode note text & highlight contrast fixes ─────────────────────── */
+.dark .rich-editor-content,
+.dark .note-a4-page .rich-editor-content,
+.dark .note-a4-page,
+.dark .ProseMirror {
+  color: hsl(var(--foreground));
+}
+
+/* Force dark, bold text on all highlights in dark mode so pastel backgrounds are clearly readable */
+.dark .rich-editor-content mark:not(.search-hl-active),
+.dark .note-a4-page mark:not(.search-hl-active),
+.dark .ProseMirror mark:not(.search-hl-active),
+.dark mark[data-color]:not(.search-hl-active),
+.dark .rich-editor-content span[style*="background-color"]:not([style*="background-color: transparent"]):not([style*="background-color:transparent"]),
+.dark .note-a4-page span[style*="background-color"]:not([style*="background-color: transparent"]):not([style*="background-color:transparent"]) {
+  color: #0f172a !important;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 0.5px 3px;
+}
+
+.dark .rich-editor-content mark:not(.search-hl-active) *,
+.dark .note-a4-page mark:not(.search-hl-active) *,
+.dark .ProseMirror mark:not(.search-hl-active) *,
+.dark mark[data-color]:not(.search-hl-active) *,
+.dark .rich-editor-content span[style*="background-color"]:not([style*="background-color: transparent"]):not([style*="background-color:transparent"]) *,
+.dark .note-a4-page span[style*="background-color"]:not([style*="background-color: transparent"]):not([style*="background-color:transparent"]) * {
+  color: #0f172a !important;
+}
+
+/* Override dark/black inline styles in dark mode when outside highlights so body text is clearly readable */
+.dark .rich-editor-content [style*="color: #000"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:#000"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: #000000"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:#000000"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: #111827"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:#111827"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: #1f2937"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:#1f2937"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: #374151"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:#374151"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: #212529"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:#212529"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: black"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:black"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: rgb(0"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:rgb(0"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: rgb(17"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:rgb(17"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: rgb(31"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:rgb(31"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: rgb(33"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:rgb(33"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: rgb(34"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:rgb(34"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: rgb(51"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:rgb(51"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color: rgb(55"]:not(mark):not(mark *),
+.dark .rich-editor-content [style*="color:rgb(55"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: #000"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:#000"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: #000000"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:#000000"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: #111827"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:#111827"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: #1f2937"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:#1f2937"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: #374151"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:#374151"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: #212529"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:#212529"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: black"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:black"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: rgb(0"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:rgb(0"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: rgb(17"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:rgb(17"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: rgb(31"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:rgb(31"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: rgb(33"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:rgb(33"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: rgb(34"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:rgb(34"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: rgb(51"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:rgb(51"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color: rgb(55"]:not(mark):not(mark *),
+.dark .note-a4-page [style*="color:rgb(55"]:not(mark):not(mark *) {
+  color: hsl(var(--foreground)) !important;
+}
 .rich-editor-content ::selection { background-color: rgba(99, 102, 241, 0.28); color: inherit; }
 .rich-editor-content a {
   color: hsl(var(--primary));

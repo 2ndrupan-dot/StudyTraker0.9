@@ -1359,6 +1359,32 @@ function SubjectNotesCompilerModal({
 }
 
 // ─── HTML helpers ─────────────────────────────────────────────────────────────
+function parseRgb(color: string): [number, number, number] | null {
+  const hex = color.trim().toLowerCase();
+  if (hex.startsWith('#')) {
+    const raw = hex.slice(1);
+    if (raw.length === 3) {
+      return [parseInt(raw[0] + raw[0], 16), parseInt(raw[1] + raw[1], 16), parseInt(raw[2] + raw[2], 16)];
+    } else if (raw.length === 6) {
+      return [parseInt(raw.slice(0, 2), 16), parseInt(raw.slice(2, 4), 16), parseInt(raw.slice(4, 6), 16)];
+    }
+  }
+  const rgbMatch = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(color);
+  if (rgbMatch) {
+    return [parseInt(rgbMatch[1], 10), parseInt(rgbMatch[2], 10), parseInt(rgbMatch[3], 10)];
+  }
+  if (color.trim().toLowerCase() === 'black') return [0, 0, 0];
+  return null;
+}
+
+function isDarkColor(color: string): boolean {
+  const rgb = parseRgb(color);
+  if (!rgb) return false;
+  // Relative luminance: 0.2126*R + 0.7152*G + 0.0722*B
+  const lum = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
+  return lum <= 0.28;
+}
+
 export function toSafeHtml(value: string): string {
   if (!value) return '';
   const trimmed = value.trim();
@@ -1423,6 +1449,32 @@ function convertDelimitedMathToNodes(html: string): string {
     if (cursor < source.length) fragment.append(document.createTextNode(source.slice(cursor)));
     textNode.replaceWith(fragment);
   }
+
+  // Ensure highlight elements have high-contrast dark text so they stand out clearly in dark mode
+  template.content.querySelectorAll<HTMLElement>('mark, [data-color]').forEach(markEl => {
+    if (!markEl.classList.contains('search-hl-active')) {
+      markEl.style.color = '#0f172a';
+    }
+  });
+
+  // Remove hardcoded black/dark text colors outside highlights so text naturally inherits
+  // dark in light mode and soft-white in dark mode
+  template.content.querySelectorAll<HTMLElement>('*').forEach(el => {
+    if (el.closest('mark') || el.closest('[data-color]')) return;
+    const bg = el.style?.backgroundColor;
+    if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') return;
+
+    const styleColor = el.style?.color;
+    if (styleColor && isDarkColor(styleColor)) {
+      el.style.removeProperty('color');
+      if (!el.getAttribute('style')?.trim()) {
+        el.removeAttribute('style');
+      }
+      if (el.tagName === 'SPAN' && !el.getAttribute('style') && !el.className && !el.hasAttribute('data-type')) {
+        el.replaceWith(...Array.from(el.childNodes));
+      }
+    }
+  });
 
   return template.innerHTML;
 }
